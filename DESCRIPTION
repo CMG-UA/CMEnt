@@ -52,6 +52,7 @@ Suggests:
     bumphunter,
     ExperimentHub,
     microbenchmark,
+    minfiData,
     ggplot2,
     pheatmap
 Additional_repositories: 
