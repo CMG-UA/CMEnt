@@ -27,25 +27,26 @@ library(ggplot2)
 We'll use a subset of the AML dataset from ExperimentHub to keep the example manageable.
 
 ```{r load_data}
-# Load the example colon cancer dataset
+# Load the example data from minfiData
 data(MsetEx)
-data(sheet)
 
-# Select tumor and normal samples
-sample_groups <- factor(sheet$status, levels = c("normal", "cancer"))
-mset <- preprocessFunnorm(MsetEx)
+# Get sample type information from MsetEx
+sample_types <- pData(MsetEx)$Sample_Group
+sample_types[sample_types == "GroupA"] <- 'normal'
+sample_types[sample_types == "GroupB"] <- 'cancer'
+sample_groups <- factor(sample_types, levels = c("normal", "cancer"))
 
 # Subset to a smaller set for the example (3 cancer, 3 normal)
 set.seed(123)
 samples_per_group <- 3
-cancer_idx <- sample(which(sheet$status == "cancer"), samples_per_group)
-normal_idx <- sample(which(sheet$status == "normal"), samples_per_group)
+cancer_idx <- sample(which(sample_groups == "cancer"), samples_per_group)
+normal_idx <- sample(which(sample_groups == "normal"), samples_per_group)
 selected_samples <- c(cancer_idx, normal_idx)
 
-# Create the final subset
-mset <- mset[, selected_samples]
+# Create the final subset - MsetEx is already preprocessed
+mset <- MsetEx[, selected_samples]
 pheno <- data.frame(
-    status = sheet$status[selected_samples],
+    status = sample_groups[selected_samples],
     row.names = colnames(mset)
 )
 ```
@@ -57,22 +58,36 @@ pheno <- data.frame(
 design <- model.matrix(~pheno$status)
 colnames(design) <- c("Intercept", "StatusCancer")
 
+# Get probe locations from annotation
+ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+
 # Find DMPs using limma
 dmps <- dmpFinder(getBeta(mset), 
                   pheno = pheno$status,
                   type = "categorical")
 
+# Calculate delta beta values (difference between group means)
+cancer_means <- rowMeans(getBeta(mset[, pheno$status == "cancer"]))
+normal_means <- rowMeans(getBeta(mset[, pheno$status == "normal"]))
+delta_betas <- cancer_means - normal_means
+
+# Add delta beta to dmps results
+dmps$delta_beta <- delta_betas
+
 # Filter significant DMPs
-sig_dmps <- dmps[dmps$pval < 0.05 & abs(dmps$deltaBeta) > 0.2, ]
+sig_dmps <- dmps[dmps$pval < 0.05 & abs(dmps$delta_beta) > 0.2, ]
+
+# Get genomic locations for significant DMPs
+probe_info <- ann450k[rownames(sig_dmps), ]
 
 # Create DMPs data frame for DMRSegal
 dmrs_input <- data.frame(
     dmp = rownames(sig_dmps),
-    chr = gsub("chr", "", seqnames(rowRanges(mset))[match(rownames(sig_dmps), rownames(mset))]),
-    pos = start(rowRanges(mset))[match(rownames(sig_dmps), rownames(mset))],
+    chr = gsub("chr", "", probe_info$chr),
+    pos = probe_info$pos,
     pval = sig_dmps$pval,
     pval_adj = p.adjust(sig_dmps$pval, method = "BH"),
-    delta_beta = sig_dmps$deltaBeta,
+    delta_beta = sig_dmps$delta_beta,
     stringsAsFactors = FALSE
 )
 ```

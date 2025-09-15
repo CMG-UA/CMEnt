@@ -4,10 +4,41 @@
 \name{DMRSegal-package}
 \alias{DMRSegal}
 \alias{DMRSegal-package}
-\title{DMRSegal: The Title of the Project}
+\title{DMRSegal: Identify Differentially Methylated Regions from DMPs}
 \description{
-A paragraph providing a full description of the project (on several lines...)
+DMRSegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
+from pre-computed Differentially Methylated Positions (DMPs). The package uses a
+correlation-based approach to expand regions around significant DMPs, considering both
+statistical significance and biological relevance of methylation changes.
 }
+\section{Main Functions}{
+
+\itemize{
+\item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
+\item \code{\link{expand_dmrs}}: Helper function for DMR expansion
+\item \code{\link{find_initial_regions}}: Helper function for finding initial regions
+}
+}
+
+\section{Input Data}{
+
+The package accepts two types of methylation data input:
+\itemize{
+\item Beta value files: Tab-separated files containing methylation beta values
+\item Tabix files: Indexed bed.gz files for efficient access to large datasets
+}
+}
+
+\section{Workflow}{
+
+\enumerate{
+\item Start with pre-computed DMPs from any differential methylation analysis
+\item Provide methylation data (beta values or tabix)
+\item Define parameters for region expansion
+\item Get DMRs as a GRanges object with comprehensive statistics
+}
+}
+
 \seealso{
 Useful links:
 \itemize{
