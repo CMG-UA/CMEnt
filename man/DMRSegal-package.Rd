@@ -11,8 +11,8 @@ A paragraph providing a full description of the project (on several lines...)
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/VasLem/DMRSegal}
-  \item Report bugs at \url{https://github.com/VasLem/DMRSegal/issues}
+  \item \url{https://github.com/CMG-UA/DMRSegal}
+  \item Report bugs at \url{https://github.com/CMG-UA/DMRSegal/issues}
 }
 
 }

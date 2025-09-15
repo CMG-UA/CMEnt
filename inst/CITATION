@@ -6,5 +6,5 @@ bibentry(
   author  = c(person("Lemonidis Vasileios")),
   year    = "2025",
   note    = "R package version 0.0.0.9000",
-  url     = "https://github.com/VasLem/DMRSegal"
+  url     = "https://github.com/CMG-UA/DMRSegal"
 )
