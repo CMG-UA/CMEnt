@@ -1,7 +1,36 @@
-#' @keywords internal
-"_PACKAGE"
-
-# Imports: start ---- 
-# Imports: end ----
-
+#' DMRSegal: Identify Differentially Methylated Regions from DMPs
+#'
+#' DMRSegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs) 
+#' from pre-computed Differentially Methylated Positions (DMPs). The package uses a 
+#' correlation-based approach to expand regions around significant DMPs, considering both 
+#' statistical significance and biological relevance of methylation changes.
+#'
+#' @section Main Functions:
+#' \itemize{
+#'   \item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
+#'   \item \code{\link{expand_dmrs}}: Helper function for DMR expansion
+#'   \item \code{\link{find_initial_regions}}: Helper function for finding initial regions
+#' }
+#'
+#' @section Input Data:
+#' The package accepts two types of methylation data input:
+#' \itemize{
+#'   \item Beta value files: Tab-separated files containing methylation beta values
+#'   \item Tabix files: Indexed bed.gz files for efficient access to large datasets
+#' }
+#'
+#' @section Workflow:
+#' 1. Start with pre-computed DMPs from any differential methylation analysis
+#' 2. Provide methylation data (beta values or tabix)
+#' 3. Define parameters for region expansion
+#' 4. Get DMRs as a GRanges object with comprehensive statistics
+#'
+#' @docType package
+#' @name DMRSegal
+#' @import GenomicRanges
+#' @import IRanges
+#' @import methods
+#' @importFrom stats cor p.adjust
+#' @importFrom utils read.table write.table
+#' @importFrom data.table fread
 NULL

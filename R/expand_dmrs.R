@@ -1,21 +1,59 @@
 #' DMR Expansion Functions
+#' 
+#' A collection of functions for expanding Differentially Methylated Regions (DMRs)
+#' by examining nearby CpG sites and their correlation patterns.
+#'
 #' @keywords internal
+NULL
 
 #' Expand DMRs to nearby CpG regions
 #'
-#' @param dmr DMR data frame with initial boundaries
-#' @param beta.file Path to beta value file
-#' @param beta.row.names Vector of beta matrix row names
-#' @param beta.col.names Vector of beta matrix column names
-#' @param sample.groups Factor of sample groups
-#' @param sorted.locs Data frame of sorted CpG locations
-#' @param max.pval Maximum p-value for correlation
-#' @param min.cpg.delta_beta Minimum delta beta threshold
-#' @param casecontrol Optional case-control vector
-#' @param tabix.file Optional path to tabix file
-#' @param expansion.step Number of CpGs to check in each step
-#' @return Expanded DMR data frame
+#' This function takes an initial DMR and expands it by examining nearby CpG sites.
+#' The expansion is guided by correlation patterns between CpGs and their methylation
+#' profiles across samples. Only CpGs showing consistent methylation changes and
+#' significant correlations are included in the expanded region.
+#'
+#' @param dmr DMR data frame containing initial boundaries and CpG information:
+#'        \itemize{
+#'          \item chr: Chromosome
+#'          \item start: Start position
+#'          \item end: End position
+#'          \item dmps: List of DMPs in the region
+#'        }
+#' @param beta.file Path to tab-separated file containing beta values. Required if tabix.file not provided.
+#' @param beta.row.names Vector of row names (CpG IDs) from the beta matrix
+#' @param beta.col.names Vector of column names (sample IDs) from the beta matrix
+#' @param sample.groups Factor specifying the group (e.g., Case/Control) for each sample
+#' @param sorted.locs Data frame of sorted CpG locations containing:
+#'        \itemize{
+#'          \item chr: Chromosome
+#'          \item pos: Genomic position
+#'          \item cpg: CpG ID
+#'        }
+#' @param max.pval Maximum p-value threshold for considering correlations significant
+#' @param min.cpg.delta_beta Minimum absolute delta beta required for CpG inclusion
+#' @param casecontrol Optional logical vector indicating case/control status
+#' @param tabix.file Optional path to tabix-indexed methylation data file
+#' @param expansion.step Number of CpGs to examine in each expansion step
+#'
+#' @return A data frame containing the expanded DMR with:
+#'   \itemize{
+#'     \item Updated genomic boundaries
+#'     \item List of included CpGs
+#'     \item Statistical metrics for the region
+#'     \item Reason for stopping expansion
+#'   }
+#'
+#' @details
+#' The expansion process:
+#' 1. Starts with an initial DMR defined by DMPs
+#' 2. Examines nearby CpGs in steps
+#' 3. Tests correlation between CpGs
+#' 4. Includes CpGs meeting delta beta and correlation criteria
+#' 5. Continues until no more qualifying CpGs are found
+#'
 #' @importFrom data.table fread
+#' @importFrom stats cor.test p.adjust
 #' @keywords internal
 .expandDMRs <- function(dmr,
                        beta.file,

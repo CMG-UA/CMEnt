@@ -1,12 +1,45 @@
-#' Initial region finding functions
-#' @keywords internal
-
-#' Find initial DMR regions from DMPs
+#' Initial Region Finding Functions
+#' 
+#' Functions for identifying initial DMR candidates from a set of 
+#' Differentially Methylated Positions (DMPs).
 #'
-#' @param dmps Data frame of DMPs
-#' @param max.lookup.dist Maximum distance for DMR lookup
-#' @param min.dmps Minimum number of DMPs per region
-#' @return Data frame of initial regions
+#' @keywords internal
+NULL
+
+#' Find Initial DMR Regions from DMPs
+#'
+#' This function takes a set of significant DMPs and identifies initial DMR candidates
+#' by grouping nearby DMPs based on genomic distance. These initial regions serve as
+#' seeds for subsequent DMR expansion.
+#'
+#' @param dmps Data frame containing DMP information:
+#'        \itemize{
+#'          \item chr: Chromosome
+#'          \item pos: Genomic position
+#'          \item dmp: DMP ID
+#'          \item pval: Statistical significance
+#'          \item delta_beta: Methylation difference
+#'        }
+#' @param max.lookup.dist Maximum distance (in base pairs) between DMPs to be considered
+#'        part of the same initial region
+#' @param min.dmps Minimum number of DMPs required to define an initial region
+#'
+#' @return A data frame containing initial DMR regions with:
+#'   \itemize{
+#'     \item chr: Chromosome
+#'     \item start: Region start position
+#'     \item end: Region end position
+#'     \item n_dmps: Number of DMPs in the region
+#'     \item dmps: Comma-separated list of DMPs
+#'   }
+#'
+#' @details
+#' The function:
+#' 1. Sorts DMPs by chromosome and position
+#' 2. Groups DMPs within max.lookup.dist of each other
+#' 3. Filters regions to ensure minimum DMP count
+#' 4. Returns regions suitable for expansion
+#'
 #' @keywords internal
 .findInitialRegions <- function(dmps, max.lookup.dist, min.dmps) {
     # Ensure DMPs are sorted
