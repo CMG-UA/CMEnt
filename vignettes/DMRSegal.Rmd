@@ -367,6 +367,10 @@ get_dmr_betas <- function(dmr, beta_matrix) {
 
 # Plot methylation heatmap for top DMRs
 top_dmrs <- head(sort(dmrs, by = ~ abs(mean_delta_beta), decreasing = TRUE))
+# Load example data included with the package
+data(example_beta)
+data(example_pheno)
+
 top_dmr_betas <- do.call(rbind, lapply(top_dmrs, get_dmr_betas, example_beta))
 
 Heatmap(top_dmr_betas,

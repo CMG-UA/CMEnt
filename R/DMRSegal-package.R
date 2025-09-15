@@ -25,8 +25,9 @@
 #' 3. Define parameters for region expansion
 #' 4. Get DMRs as a GRanges object with comprehensive statistics
 #'
-#' @docType package
-#' @name DMRSegal
+#' @keywords internal
+"_PACKAGE"
+
 #' @import GenomicRanges
 #' @import IRanges
 #' @import methods
