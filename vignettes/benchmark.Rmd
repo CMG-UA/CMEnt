@@ -1,8 +1,8 @@
 # Benchmarking DMRSegal against other DMR detection tools
 # 
 # This notebook compares DMRSegal with other popular DMR detection tools using 
-# real-world methylation data. We'll use a small public dataset from a leukemia study
-# (GSE42865) which contains AML vs control samples.
+# real-world methylation data. We'll use a small subset of the colon cancer dataset
+# from the minfiData package, which contains tumor vs normal samples.
 
 ## Setup
 
@@ -17,7 +17,7 @@ library(minfi)
 library(DMRcate)
 library(bumphunter)
 library(DMRSegal)
-library(ExperimentHub)
+library(minfiData)  # Contains example 450k array data
 library(microbenchmark)
 library(ggplot2)
 ```
@@ -27,31 +27,39 @@ library(ggplot2)
 We'll use a subset of the AML dataset from ExperimentHub to keep the example manageable.
 
 ```{r load_data}
-# Get the data from ExperimentHub
-eh <- ExperimentHub()
-query(eh, "FlowSorted.Blood.EPIC")
+# Load the example colon cancer dataset
+data(MsetEx)
+data(sheet)
 
-# Load blood reference data (contains AML samples)
-blood_ref <- eh[["EH1136"]]  # FlowSorted.Blood.EPIC
+# Select tumor and normal samples
+sample_groups <- factor(sheet$status, levels = c("normal", "cancer"))
+mset <- preprocessFunnorm(MsetEx)
 
-# Select a subset of samples (5 AML and 5 normal)
-aml_samples <- blood_ref[, blood_ref$CellType %in% c("AML", "WBC")]
-aml_samples <- aml_samples[, 1:10]  # Take first 10 samples
+# Subset to a smaller set for the example (3 cancer, 3 normal)
+set.seed(123)
+samples_per_group <- 3
+cancer_idx <- sample(which(sheet$status == "cancer"), samples_per_group)
+normal_idx <- sample(which(sheet$status == "normal"), samples_per_group)
+selected_samples <- c(cancer_idx, normal_idx)
 
-# Preprocess data
-mset <- preprocessFunnorm(aml_samples)
+# Create the final subset
+mset <- mset[, selected_samples]
+pheno <- data.frame(
+    status = sheet$status[selected_samples],
+    row.names = colnames(mset)
+)
 ```
 
 ## Get DMPs using minfi
 
 ```{r get_dmps}
 # Create design matrix
-design <- model.matrix(~aml_samples$CellType)
-colnames(design) <- c("Intercept", "CellType_AML")
+design <- model.matrix(~pheno$status)
+colnames(design) <- c("Intercept", "StatusCancer")
 
 # Find DMPs using limma
 dmps <- dmpFinder(getBeta(mset), 
-                  pheno = aml_samples$CellType,
+                  pheno = pheno$status,
                   type = "categorical")
 
 # Filter significant DMPs
@@ -74,12 +82,10 @@ dmrs_input <- data.frame(
 ### DMRSegal
 
 ```{r dmrsegal}
-# Create phenotype data
-pheno <- data.frame(
-    row.names = colnames(mset),
-    group = factor(aml_samples$CellType),
-    stringsAsFactors = FALSE
-)
+# The phenotype data is already created above in the data loading section
+# But let's rename the column to match our expected format
+pheno$group <- pheno$status
+pheno$status <- NULL
 
 # Write beta values to temp file
 beta_file <- tempfile(fileext = ".txt")
