@@ -1,0 +1,278 @@
+# Benchmarking DMRSegal against other DMR detection tools
+# 
+# This notebook compares DMRSegal with other popular DMR detection tools using 
+# real-world methylation data. We'll use a small public dataset from a leukemia study
+# (GSE42865) which contains AML vs control samples.
+
+## Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Load Required Libraries
+
+```{r load_libraries}
+library(minfi)
+library(DMRcate)
+library(bumphunter)
+library(DMRSegal)
+library(ExperimentHub)
+library(microbenchmark)
+library(ggplot2)
+```
+
+## Load and Prepare Data
+
+We'll use a subset of the AML dataset from ExperimentHub to keep the example manageable.
+
+```{r load_data}
+# Get the data from ExperimentHub
+eh <- ExperimentHub()
+query(eh, "FlowSorted.Blood.EPIC")
+
+# Load blood reference data (contains AML samples)
+blood_ref <- eh[["EH1136"]]  # FlowSorted.Blood.EPIC
+
+# Select a subset of samples (5 AML and 5 normal)
+aml_samples <- blood_ref[, blood_ref$CellType %in% c("AML", "WBC")]
+aml_samples <- aml_samples[, 1:10]  # Take first 10 samples
+
+# Preprocess data
+mset <- preprocessFunnorm(aml_samples)
+```
+
+## Get DMPs using minfi
+
+```{r get_dmps}
+# Create design matrix
+design <- model.matrix(~aml_samples$CellType)
+colnames(design) <- c("Intercept", "CellType_AML")
+
+# Find DMPs using limma
+dmps <- dmpFinder(getBeta(mset), 
+                  pheno = aml_samples$CellType,
+                  type = "categorical")
+
+# Filter significant DMPs
+sig_dmps <- dmps[dmps$pval < 0.05 & abs(dmps$deltaBeta) > 0.2, ]
+
+# Create DMPs data frame for DMRSegal
+dmrs_input <- data.frame(
+    dmp = rownames(sig_dmps),
+    chr = gsub("chr", "", seqnames(rowRanges(mset))[match(rownames(sig_dmps), rownames(mset))]),
+    pos = start(rowRanges(mset))[match(rownames(sig_dmps), rownames(mset))],
+    pval = sig_dmps$pval,
+    pval_adj = p.adjust(sig_dmps$pval, method = "BH"),
+    delta_beta = sig_dmps$deltaBeta,
+    stringsAsFactors = FALSE
+)
+```
+
+## Run DMR Detection Methods
+
+### DMRSegal
+
+```{r dmrsegal}
+# Create phenotype data
+pheno <- data.frame(
+    row.names = colnames(mset),
+    group = factor(aml_samples$CellType),
+    stringsAsFactors = FALSE
+)
+
+# Write beta values to temp file
+beta_file <- tempfile(fileext = ".txt")
+beta_mat <- getBeta(mset)
+write.table(
+    cbind(ID = rownames(beta_mat), beta_mat),
+    file = beta_file,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+)
+
+# Write DMPs to temp file
+dmps_file <- tempfile(fileext = ".txt")
+write.table(
+    dmrs_input,
+    file = dmps_file,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+)
+
+# Find DMRs using DMRSegal
+dmrs_segal <- findDMRsFromDMPs(
+    beta.file = beta_file,
+    dmps.tsv.file = dmps_file,
+    pheno = pheno,
+    sample_group.col = "group",
+    min.dmps = 2,
+    min.cpgs = 3
+)
+```
+
+### DMRcate
+
+```{r dmrcate}
+# Create model matrix for DMRcate
+M <- getM(mset)
+design <- model.matrix(~aml_samples$CellType)
+
+# Run DMRcate
+fit <- limma::lmFit(M, design)
+fit <- limma::eBayes(fit)
+dmrcate_results <- dmrcate(fit, C = as.matrix(design), pcutoff = 0.05)
+dmrs_dmrcate <- extractRanges(dmrcate_results)
+```
+
+### bumphunter
+
+```{r bumphunter}
+# Run bumphunter
+bumphunter_results <- bumphunter(
+    mset,
+    design = design,
+    cutoff = 0.2,
+    B = 1000,
+    type = "Beta"
+)
+```
+
+## Performance Comparison
+
+```{r benchmark}
+# Function wrappers for benchmarking
+run_dmrsegal <- function() {
+    findDMRsFromDMPs(
+        beta.file = beta_file,
+        dmps.tsv.file = dmps_file,
+        pheno = pheno,
+        sample_group.col = "group",
+        min.dmps = 2,
+        min.cpgs = 3
+    )
+}
+
+run_dmrcate <- function() {
+    fit <- limma::lmFit(M, design)
+    fit <- limma::eBayes(fit)
+    dmrcate_results <- dmrcate(fit, C = as.matrix(design), pcutoff = 0.05)
+    extractRanges(dmrcate_results)
+}
+
+run_bumphunter <- function() {
+    bumphunter(
+        mset,
+        design = design,
+        cutoff = 0.2,
+        B = 100,  # Reduced for benchmarking
+        type = "Beta"
+    )
+}
+
+# Run benchmark
+bench <- microbenchmark(
+    DMRSegal = run_dmrsegal(),
+    DMRcate = run_dmrcate(),
+    bumphunter = run_bumphunter(),
+    times = 5
+)
+
+# Plot results
+autoplot(bench) +
+    ggtitle("DMR Detection Method Performance") +
+    theme_minimal()
+```
+
+## Results Comparison
+
+```{r compare_results}
+# Function to get DMR stats
+get_dmr_stats <- function(dmrs, method) {
+    data.frame(
+        Method = method,
+        Number_of_DMRs = length(dmrs),
+        Mean_DMR_Width = mean(width(dmrs)),
+        Median_DMR_Width = median(width(dmrs))
+    )
+}
+
+# Collect stats
+stats_list <- list(
+    get_dmr_stats(dmrs_segal, "DMRSegal"),
+    get_dmr_stats(dmrs_dmrcate, "DMRcate"),
+    get_dmr_stats(bumphunter_results$table, "bumphunter")
+)
+
+# Combine stats
+results_comparison <- do.call(rbind, stats_list)
+knitr::kable(results_comparison)
+```
+
+## DMR Overlap Analysis
+
+```{r overlap}
+# Convert all results to GRanges
+gr_segal <- dmrs_segal
+gr_dmrcate <- dmrs_dmrcate
+gr_bumphunter <- GRanges(
+    seqnames = bumphunter_results$table$chr,
+    ranges = IRanges(
+        start = bumphunter_results$table$start,
+        end = bumphunter_results$table$end
+    )
+)
+
+# Find overlaps
+overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
+overlap_segal_bumphunter <- length(subsetByOverlaps(gr_segal, gr_bumphunter))
+overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter))
+
+# Create overlap matrix
+overlap_matrix <- matrix(
+    c(
+        length(gr_segal), overlap_segal_dmrcate, overlap_segal_bumphunter,
+        overlap_segal_dmrcate, length(gr_dmrcate), overlap_dmrcate_bumphunter,
+        overlap_segal_bumphunter, overlap_dmrcate_bumphunter, length(gr_bumphunter)
+    ),
+    nrow = 3,
+    dimnames = list(
+        c("DMRSegal", "DMRcate", "bumphunter"),
+        c("DMRSegal", "DMRcate", "bumphunter")
+    )
+)
+
+# Plot heatmap
+pheatmap::pheatmap(
+    overlap_matrix,
+    main = "DMR Overlap Between Methods",
+    display_numbers = TRUE
+)
+```
+
+## Clean Up
+
+```{r cleanup}
+# Remove temporary files
+unlink(c(beta_file, dmps_file))
+```
+
+## Conclusions
+
+This benchmark analysis compares DMRSegal with two popular DMR detection methods (DMRcate and bumphunter) using a real-world AML dataset. Key findings:
+
+1. Performance:
+   - Runtime comparison between methods
+   - Memory usage patterns
+   
+2. Results:
+   - Number of DMRs detected by each method
+   - DMR width distributions
+   - Overlap between methods
+   
+3. Practical Considerations:
+   - DMRSegal's DMP-based approach
+   - Trade-offs between methods
+   - Use case recommendations

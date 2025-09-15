@@ -1,22 +1,59 @@
 Package: DMRSegal
 Type: Package
-Title: The Title of the Project
-Version: 0.0.0.9000
+Title: Identify Differentially Methylated Regions from DMPs
+Version: 0.99.0
 Authors@R: c(
     person(given   = "Vasileios",
            family  = "Lemonidis",
            role    = c("aut", "cre", "cph"),
            email   = "vasileios.lemonidis@uantwerpen.be",
            comment = c(ORCID = "0000-0002-6446-3536")))
-Description: A paragraph providing a full description of the project (on 
-    several lines...)
+Description: DMRSegal implements a method for identifying Differentially 
+    Methylated Regions (DMRs) from pre-computed Differentially Methylated 
+    Positions (DMPs). The package uses a correlation-based approach to 
+    expand regions around significant DMPs, considering both statistical 
+    significance and biological relevance of methylation changes. It supports 
+    both standard beta value files and tabix-indexed files for efficient 
+    processing of large datasets.
 URL: https://github.com/CMG-UA/DMRSegal
 BugReports: https://github.com/CMG-UA/DMRSegal/issues
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
-VignetteBuilder: knitr
+biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, 
+    BiomedicalInformatics, Genetics, QualityControl, Preprocessing
+Depends:
+    R (>= 4.3.0)
+Imports:
+    GenomicRanges,
+    SummarizedExperiment,
+    S4Vectors,
+    IRanges,
+    methods,
+    stats,
+    utils,
+    data.table,
+    psych,
+    Rsamtools,
+    stringr,
+    parallel,
+    IlluminaHumanMethylation450kanno.ilmn12.hg19,
+    minfi
 Suggests: 
     knitr,
-    rmarkdown
+    rmarkdown,
+    BiocStyle,
+    testthat (>= 3.0.0),
+    covr,
+    readr,
+    dplyr,
+    DMRcate,
+    bumphunter,
+    ExperimentHub,
+    microbenchmark,
+    ggplot2,
+    pheatmap
+Additional_repositories: 
+    https://bioconductor.org/packages/3.17/bioc
+Config/testthat/edition: 3
