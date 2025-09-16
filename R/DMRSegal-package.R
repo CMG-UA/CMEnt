@@ -18,6 +18,14 @@
 #'   \item Beta value files: Tab-separated files containing methylation beta values
 #'   \item Tabix files: Indexed bed.gz files for efficient access to large datasets
 #' }
+#' 
+#' @section Platform Support:
+#' The package supports methylation data from both major Illumina platforms:
+#' \itemize{
+#'   \item Illumina EPIC array (850k)
+#'   \item Illumina 450k array
+#'   \item Custom CpG positions (when provided in DMP data)
+#' }
 #'
 #' @section Workflow:
 #' 1. Start with pre-computed DMPs from any differential methylation analysis

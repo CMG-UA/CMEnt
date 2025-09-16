@@ -38,8 +38,14 @@ createMethylationData <- function(n_cpgs, n_samples, n_dmrs = 10) {
         beta[dmr_idx, case_idx] <- pmin(pmax(beta[dmr_idx, case_idx], 0), 1)
     }
     
-    # Create CpG IDs and sample names
-    cpg_ids <- paste0("cg", sprintf("%07d", 1:n_cpgs))
+    # Create mix of 450k and EPIC CpG IDs and sample names
+    n_450k <- floor(n_cpgs * 0.6)  # 60% 450k probes
+    n_epic <- n_cpgs - n_450k      # 40% EPIC-specific probes
+    
+    cpg_ids <- c(
+        paste0("cg", sprintf("%07d", 1:n_450k)),              # 450k style
+        paste0("cg", sprintf("%08d", (n_450k + 1):n_cpgs))    # EPIC style
+    )
     sample_names <- paste0("sample", 1:n_samples)
     
     # Add row and column names

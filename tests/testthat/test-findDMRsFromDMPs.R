@@ -11,9 +11,17 @@ library(GenomicRanges)
 #' @param n_samples Number of samples to generate
 #' @param seed Random seed for reproducibility
 #' @return List containing beta_file, beta_values, cpg_ids, and pheno
-create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42) {
+create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42, platform = "450k") {
     set.seed(seed)
-    cpg_ids <- paste0("cg", sprintf("%07d", 1:n_cpgs))
+    # Create mix of 450k and EPIC style IDs
+    if (platform == "mixed") {
+        cpg_ids <- c(
+            paste0("cg", sprintf("%07d", 1:(n_cpgs/2))),  # 450k style
+            paste0("cg", sprintf("%08d", (n_cpgs/2 + 1):n_cpgs))  # EPIC style
+        )
+    } else {
+        cpg_ids <- paste0("cg", sprintf("%07d", 1:n_cpgs))
+    }
     
     # Create beta values with clear differential methylation pattern
     n_half <- n_samples %/% 2

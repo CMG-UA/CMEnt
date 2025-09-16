@@ -1,11 +1,11 @@
 context("CpG ID handling")
 
 test_that("Initial regions preserve CpG IDs", {
-  # Create test data
+  # Create test data with mixed 450k and EPIC probes
   test_dmps <- data.frame(
     chr = c("chr1", "chr1", "chr1", "chr1"),
     pos = c(1000, 1200, 1400, 1600),
-    dmp = c("cg01", "cg02", "cg03", "cg04"),
+    dmp = c("cg01", "cg00000002", "cg03", "cg00000004"),  # Mix of formats
     pval = c(0.01, 0.02, 0.01, 0.03),
     delta_beta = c(0.2, 0.3, 0.25, 0.15),
     stringsAsFactors = FALSE
@@ -16,8 +16,11 @@ test_that("Initial regions preserve CpG IDs", {
   
   # Verify CpG IDs are preserved
   expect_equal(regions$start_dmp, "cg01")
-  expect_equal(regions$end_dmp, "cg04")
+  expect_equal(regions$end_dmp, "cg00000004")  # EPIC format
   expect_equal(regions$n_dmps, 4)
+  
+  # Verify position-based ordering is used, not string-based
+  expect_true(all(diff(regions$pos) > 0))
 })
 
 test_that("DMR expansion maintains correct CpG IDs", {
@@ -33,11 +36,11 @@ test_that("DMR expansion maintains correct CpG IDs", {
     stringsAsFactors = FALSE
   )
   
-  # Create test methylation data
+  # Create test methylation data with mixed probe types
   test_meth_data <- data.frame(
     chr = c("chr1", "chr1", "chr1", "chr1", "chr1", "chr1"),
     pos = c(800, 1000, 1200, 1400, 1600, 1800),
-    cpg = c("cg00", "cg01", "cg02", "cg03", "cg04", "cg05"),
+    cpg = c("cg00000000", "cg01", "cg00000002", "cg03", "cg00000004", "cg00000005"),  # Mix of formats
     stringsAsFactors = FALSE
   )
   

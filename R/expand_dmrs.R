@@ -138,6 +138,10 @@ NULL
         exp.step <- end.site.ind - start.site.ind + 1
         
         # Read beta values
+        if (extreme.verbosity) {
+            message("Reading upstream beta values from index ", start.site.ind,
+                    " to ", end.site.ind, " (", exp.step, " CpGs)")
+        }
         if (!is.null(beta.file)) {
             upstream.betas <- data.table::fread(
                 file = beta.file,
@@ -148,8 +152,9 @@ NULL
                 colClasses = c("character",
                              rep("numeric", length(file.beta.col.names)))
             )
+            rownames(upstream.betas) <- upstream.betas[, 1]
             upstream.betas <- upstream.betas[, cols.inds]
-            browser()
+
         } else {
             upstream.region <- paste0(
                 sorted.locs[start.site.ind, 'chr'], ':',
@@ -179,7 +184,7 @@ NULL
         i <- 1
         while (TRUE) {
             if (extreme.verbosity) {
-                message("Testing connectivity for upstream CpGs at position ", i)
+                message("Testing connectivity for upstream CpGs at relative position -", i)
                 message("CpG1: ", rownames(upstream.betas)[i])
                 message("CpG2: ", rownames(upstream.betas)[i + 1])
             }
@@ -191,8 +196,7 @@ NULL
                 max.pval = max.pval,
                 casecontrol = casecontrol,
                 min.delta_beta = min.cpg.delta_beta,
-                extreme.verbosity = extreme.verbosity,
-                casecontrol = casecontrol
+                extreme.verbosity = extreme.verbosity
             )
             
             # Store statistics
@@ -204,7 +208,7 @@ NULL
                 upstream.stop.found <- TRUE
                 upstream.stop.reason <- corr.ret$reason
                 if (verbose) {
-                    message("Upstream expansion stopped at position ", sorted.locs[upstream.exp, "pos"])
+                    message("Upstream expansion stopped at absolute position ", sorted.locs[upstream.exp, "pos"])
                     message("Reason: ", upstream.stop.reason)
                 }
                 break
@@ -263,6 +267,10 @@ NULL
         }
         
         # Read beta values
+        if (extreme.verbosity) {
+            message("Reading downstream beta values from index ", start.site.ind,
+                    " to ", end.site.ind, " (", expansion.step - x + 1, " CpGs)")
+        }
         if (!is.null(beta.file)) {
             downstream.betas <- data.table::fread(
                 file = beta.file,
@@ -273,6 +281,7 @@ NULL
                 colClasses = c("character",
                              rep("numeric", length(file.beta.col.names)))
             )
+            rownames(downstream.betas) <- downstream.betas[, 1]
             downstream.betas <- downstream.betas[, cols.inds]
         } else {
             downstream.region <- paste0(
@@ -301,6 +310,11 @@ NULL
         # Test connectivity and collect statistics
         i <- 1
         while (TRUE) {
+            if (extreme.verbosity) {
+                message("Testing connectivity for downstream CpGs at relative position +", i)
+                message("CpG1: ", rownames(downstream.betas)[i])
+                message("CpG2: ", rownames(downstream.betas)[i + 1])
+            }
             corr.ret <- .test.connectivity(
                 site1.beta = unlist(downstream.betas[i, ]),
                 site2.beta = unlist(downstream.betas[i + 1, ]),
@@ -317,6 +331,10 @@ NULL
             if (!corr.ret[[1]]) {
                 downstream.exp <- start.site.ind + i - 1
                 downstream.stop.reason <- corr.ret$reason
+                if (verbose) {
+                    message("Downstream expansion stopped at absolute position ", sorted.locs[downstream.exp, "pos"])
+                    message("Reason: ", downstream.stop.reason)
+                }
                 downstream.stop.found <- TRUE
                 break
             }
@@ -346,9 +364,29 @@ NULL
     
     if (verbose) message("\nCalculating final DMR statistics...")
     
-    # Calculate final statistics and update DMR fields to match original implementation
-    region_cpgs <- which(beta.row.names >= beta.row.names[upstream.exp] & 
-                        beta.row.names <= beta.row.names[downstream.exp])
+    if (verbose) message("\nCalculating final DMR statistics...")
+    
+    # Get genomic range for the expanded region
+    region_start_pos <- sorted.locs[beta.row.names[upstream.exp], "pos"]
+    region_end_pos <- sorted.locs[beta.row.names[downstream.exp], "pos"]
+    
+    if (extreme.verbosity) {
+        message("Region boundaries:")
+        message("Start CpG: ", beta.row.names[upstream.exp], " at position ", region_start_pos)
+        message("End CpG: ", beta.row.names[downstream.exp], " at position ", region_end_pos)
+    }
+    
+    # Find all CpGs in the region based on genomic position using rownames to maintain proper CpG IDs
+    region_indices <- which(
+        sorted.locs$chr == dmr$chr &
+        sorted.locs$pos >= region_start_pos &
+        sorted.locs$pos <= region_end_pos
+    )
+    region_cpgs <- match(sorted.locs$cpg[region_indices], beta.row.names)
+    
+    if (verbose) {
+        message("Found ", length(region_cpgs), " CpGs in region")
+    }
     
     # Calculate beta values for DMPs in the region
     if (extreme.verbosity) message("Building beta value matrix for statistics...")

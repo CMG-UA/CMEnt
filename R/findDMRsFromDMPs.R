@@ -139,11 +139,87 @@ findDMRsFromDMPs <- function(beta.file = NULL,
              paste(unique_dmps[!(unique_dmps %in% beta.info$row.names)], collapse=','))
     }
     
-    # Create sorted locations from DMPs data frame
-    sorted.locs <- as.data.frame(dmps[!duplicated(dmps$dmp), c("chr", "pos", "dmp")])
-    names(sorted.locs)[names(sorted.locs) == "dmp"] <- "cpg"
-    rownames(sorted.locs) <- sorted.locs$cpg
+    # Create full CpG locations dataframe from methylation data and DMPs
+    # First get genomic locations for all CpGs in beta matrix
+    if (!is.null(beta.file)) {
+        # Try loading EPIC annotations first
+        cpg_locations <- try({
+            if (requireNamespace("IlluminaHumanMethylationEPICanno.ilm10b4.hg19", quietly = TRUE)) {
+                IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
+            } else {
+                NULL
+            }
+        })
+        
+        # If EPIC fails or missing CpGs, try 450k annotations
+        if (inherits(cpg_locations, "try-error") || is.null(cpg_locations) || 
+            !all(beta.info$row.names %in% rownames(cpg_locations))) {
+            cpg_locations_450k <- try({
+                if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
+                    IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
+                } else {
+                    NULL
+                }
+            })
+            
+            if (!inherits(cpg_locations_450k, "try-error") && !is.null(cpg_locations_450k)) {
+                if (is.null(cpg_locations)) {
+                    cpg_locations <- cpg_locations_450k
+                } else {
+                    # Merge EPIC and 450k annotations, keeping EPIC versions where duplicated
+                    missing_cpgs <- setdiff(rownames(cpg_locations_450k), rownames(cpg_locations))
+                    if (length(missing_cpgs) > 0) {
+                        cpg_locations <- rbind(cpg_locations,
+                                            cpg_locations_450k[missing_cpgs,])
+                    }
+                }
+            }
+        }
+        
+        if (is.null(cpg_locations)) {
+            stop("Could not load either EPIC or 450k annotations. Please install ",
+                 "IlluminaHumanMethylationEPICanno.ilm10b4.hg19 and/or ",
+                 "IlluminaHumanMethylation450kanno.ilmn12.hg19")
+        }
+        
+        # Check if we have all CpG locations
+        missing_cpgs <- setdiff(beta.info$row.names, rownames(cpg_locations))
+        if (length(missing_cpgs) > 0) {
+            warning("Could not find genomic locations for ", length(missing_cpgs), 
+                   " CpGs in annotation packages. These will be excluded unless ",
+                   "they are DMPs with positions provided.")
+            if (verbose) {
+                message("First few missing CpGs: ", 
+                       paste(head(missing_cpgs, 5), collapse=", "))
+            }
+        }
+        
+        # Create initial sorted locations from available annotations
+        available_cpgs <- intersect(beta.info$row.names, rownames(cpg_locations))
+        sorted.locs <- data.frame(
+            chr = cpg_locations[available_cpgs, "chr"],
+            pos = cpg_locations[available_cpgs, "pos"],
+            cpg = available_cpgs,
+            stringsAsFactors = FALSE
+        )
+    } else {
+        # For tabix files, positions should be in file
+        stop("Tabix file support for full CpG locations not yet implemented")
+    }
+    
+    # Ensure all DMPs are in the sorted locations
+    unique_dmps <- unique(dmps$dmp)
+    missing_dmps <- unique_dmps[!unique_dmps %in% sorted.locs$cpg]
+    if (length(missing_dmps) > 0) {
+        # Add missing DMP locations from DMP file
+        missing_locs <- as.data.frame(dmps[dmps$dmp %in% missing_dmps, c("chr", "pos", "dmp")])
+        names(missing_locs)[names(missing_locs) == "dmp"] <- "cpg"
+        sorted.locs <- rbind(sorted.locs, missing_locs)
+    }
+    
+    # Sort by chromosome and position
     sorted.locs <- sorted.locs[order(sorted.locs$chr, sorted.locs$pos), ]
+    rownames(sorted.locs) <- sorted.locs$cpg
     
     # Process DMPs and find initial regions
     initial.regions <- .findInitialRegions(

@@ -38,8 +38,10 @@ Imports:
     Rsamtools,
     stringr,
     parallel,
-    IlluminaHumanMethylation450kanno.ilmn12.hg19,
     minfi
+Suggests: 
+    IlluminaHumanMethylation450kanno.ilmn12.hg19,
+    IlluminaHumanMethylationEPICanno.ilm10b4.hg19
 Suggests: 
     knitr,
     rmarkdown,
