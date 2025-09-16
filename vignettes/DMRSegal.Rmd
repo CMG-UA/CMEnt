@@ -32,6 +32,14 @@ package implements a correlation-based approach to expand significant DMPs into
 regions, considering both the statistical significance and the biological 
 relevance of methylation changes.
 
+Key features of `DMRSegal`:
+
+- Support for both 450K and EPIC array platforms
+- Parallel processing for improved performance
+- Flexible input formats including regular files and tabix-indexed data
+- Comprehensive quality metrics and statistics for identified DMRs
+- Memory-efficient processing of large datasets
+
 # Installation
 
 You can install the released version of DMRSegal from Bioconductor with:

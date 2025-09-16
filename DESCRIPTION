@@ -26,6 +26,7 @@ biocViews: DNAMethylation, Epigenetics, DifferentialMethylation,
 Depends:
     R (>= 4.3.0)
 Imports:
+    argparse,
     GenomicRanges,
     SummarizedExperiment,
     S4Vectors,
@@ -41,8 +42,7 @@ Imports:
     minfi
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
-    IlluminaHumanMethylationEPICanno.ilm10b4.hg19
-Suggests: 
+    IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
     knitr,
     rmarkdown,
     BiocStyle,
@@ -60,3 +60,7 @@ Suggests:
 Additional_repositories: 
     https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3
+Collate:
+    'dmrs_finder_from_dmps.r'
+    'find_dmrs_from_dmps.r'
+    'zzz.R'

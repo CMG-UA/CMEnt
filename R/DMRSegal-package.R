@@ -8,8 +8,6 @@
 #' @section Main Functions:
 #' \itemize{
 #'   \item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
-#'   \item \code{\link{expand_dmrs}}: Helper function for DMR expansion
-#'   \item \code{\link{find_initial_regions}}: Helper function for finding initial regions
 #' }
 #'
 #' @section Input Data:

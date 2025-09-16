@@ -15,8 +15,6 @@ statistical significance and biological relevance of methylation changes.
 
 \itemize{
 \item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
-\item \code{\link{expand_dmrs}}: Helper function for DMR expansion
-\item \code{\link{find_initial_regions}}: Helper function for finding initial regions
 }
 }
 
@@ -26,6 +24,16 @@ The package accepts two types of methylation data input:
 \itemize{
 \item Beta value files: Tab-separated files containing methylation beta values
 \item Tabix files: Indexed bed.gz files for efficient access to large datasets
+}
+}
+
+\section{Platform Support}{
+
+The package supports methylation data from both major Illumina platforms:
+\itemize{
+\item Illumina EPIC array (850k)
+\item Illumina 450k array
+\item Custom CpG positions (when provided in DMP data)
 }
 }
 
