@@ -136,11 +136,13 @@ findDMRsFromDMPs <- function(beta.file = NULL,
             end = dmrs$end
         ),
         mcols = S4Vectors::DataFrame(
-            # DMP information
-            start_dmp = dmrs$start_dmp,
-            end_dmp = dmrs$end_dmp,
-            start_dmp_pos = dmrs$start_dmp_pos,
-            end_dmp_pos = dmrs$end_dmp_pos,
+            # CpG and DMP information
+            start_cpg = dmrs$start_cpg,  # Added CpG ID fields
+            end_cpg = dmrs$end_cpg,      # Added CpG ID fields
+            start_dmp = dmrs$start_dmp,  # Keep DMP fields for compatibility
+            end_dmp = dmrs$end_dmp,      # Keep DMP fields for compatibility
+            start_dmp_pos = dmrs$start,  # Use actual genomic positions
+            end_dmp_pos = dmrs$end,      # Use actual genomic positions
             dmps_num = dmrs$dmps_num,
             
             # Delta beta statistics

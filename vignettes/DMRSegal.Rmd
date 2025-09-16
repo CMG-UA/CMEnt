@@ -593,6 +593,62 @@ metadata columns:
 GenomicRanges::mcols(dmrs)
 ```
 
+# CpG ID Handling
+
+DMRSegal carefully preserves CpG IDs throughout the analysis process. Understanding how CpG IDs are handled is important for tracking specific sites and integrating results with other analyses.
+
+## CpG ID Fields in Output
+
+The DMR results include specific CpG ID fields:
+
+- `start_dmp`: CpG ID of the first DMP in the region
+- `end_dmp`: CpG ID of the last DMP in the region
+
+```{r}
+# Example showing CpG ID fields in results
+head(dmrs$start_dmp)
+head(dmrs$end_dmp)
+```
+
+## Working with CpG IDs
+
+Here's an example of how to use CpG IDs for further analysis:
+
+```{r}
+# Create example data with CpG IDs
+test_dmps <- data.frame(
+    chr = c("chr1", "chr1", "chr1"),
+    pos = c(1000, 1200, 1400),
+    dmp = c("cg01", "cg02", "cg03"),
+    pval = c(0.01, 0.02, 0.01),
+    delta_beta = c(0.2, 0.3, 0.25)
+)
+
+# Find DMRs preserving CpG IDs
+dmrs_with_ids <- findDMRsFromDMPs(
+    test_dmps,
+    example_beta,
+    minDMPs = 2
+)
+
+# Access CpG IDs for the first DMR
+first_dmr <- dmrs_with_ids[1]
+cat("First DMR spans from", first_dmr$start_dmp, "to", first_dmr$end_dmp, "\n")
+
+# Filter DMRs based on specific CpG IDs
+contains_cg02 <- dmrs_with_ids$start_dmp <= "cg02" & dmrs_with_ids$end_dmp >= "cg02"
+dmrs_with_cg02 <- dmrs_with_ids[contains_cg02]
+```
+
+## Important Notes
+
+1. CpG IDs are preserved from input through output, making it easy to track specific sites.
+2. The `start_dmp` and `end_dmp` fields represent the boundary CpGs of the DMR.
+3. These IDs can be used to:
+   - Filter DMRs containing specific CpGs
+   - Map DMRs back to original methylation data
+   - Integrate results with other methylation analyses
+
 # Session Info
 
 ```{r}

@@ -80,9 +80,9 @@ NULL
     beta.col.names <- ret$beta.col.names
     sorted.locs <- sorted.locs[beta.row.names,]
     
-    # Initialize DMR boundaries
-    dmr.start <- dmr$start_dmp
-    dmr.end <- dmr$end_dmp
+    # Initialize DMR boundaries using CpG IDs
+    dmr.start <- dmr$start_cpg  # Changed from start_dmp to start_cpg
+    dmr.end <- dmr$end_cpg      # Changed from end_dmp to end_cpg
     dmr.start.ind <- which(beta.row.names == dmr.start)
     
     if (length(dmr.start.ind) == 0) {

@@ -29,8 +29,10 @@ NULL
 #'     \item chr: Chromosome
 #'     \item start: Region start position
 #'     \item end: Region end position
+#'     \item start_dmp: CpG ID of the first DMP in the region
+#'     \item end_dmp: CpG ID of the last DMP in the region
 #'     \item n_dmps: Number of DMPs in the region
-#'     \item dmps: Comma-separated list of DMPs
+#'     \item mean_pval: Mean adjusted p-value of DMPs in the region
 #'   }
 #'
 #' @details
@@ -50,7 +52,6 @@ NULL
     # Initialize variables
     regions <- data.frame()
     current_chr <- NULL
-    current_start <- NULL
     current_dmps <- c()
     
     # Process each DMP
@@ -63,7 +64,6 @@ NULL
                 regions <- rbind(regions, .createRegion(current_dmps, dmps))
             }
             current_chr <- dmp$chr
-            current_start <- dmp$pos
             current_dmps <- i
             next
         }
@@ -77,7 +77,6 @@ NULL
                 regions <- rbind(regions, .createRegion(current_dmps, dmps))
             }
             # Start new region
-            current_start <- dmp$pos
             current_dmps <- i
         }
     }
@@ -102,8 +101,8 @@ NULL
         chr = region_dmps$chr[1],
         start = min(region_dmps$pos),
         end = max(region_dmps$pos),
-        start_dmp = rownames(region_dmps)[1],
-        end_dmp = rownames(region_dmps)[nrow(region_dmps)],
+        start_dmp = region_dmps$dmp[1],  # Use the DMP ID from the 'dmp' column
+        end_dmp = region_dmps$dmp[nrow(region_dmps)],  # Use the last DMP ID
         n_dmps = nrow(region_dmps),
         mean_pval = mean(region_dmps$pval_adj),
         stringsAsFactors = FALSE
