@@ -22,7 +22,7 @@
 #' @param min.dmps Minimum number of DMPs required per region (default: 1)
 #' @param min.cpgs Minimum number of CpGs required per region (default: 50)
 #' @param ignored.sample.groups Sample groups to ignore (default: NULL)
-#' @param output.id Optional identifier for output files (default: NULL)
+#' @param output.prefix Optional identifier for output files (default: NULL)
 #' @param njobs Number of parallel jobs (default: detectCores())
 #' @param verbose Enable verbose output (default: FALSE)
 #' @param beta.row.names.file Optional file with beta value row names (default: NULL)
@@ -122,8 +122,19 @@
       stop("Internal error: requested CpG IDs not found in beta file during subsetting: ", paste(missing, collapse=","))
     }
     sub <- full[idx, , drop=FALSE]
+    if (nrow(sub) == 0){
+      browser()
+      stop("None of the provided sites exist in the read beta file")
+    }
     sub <- apply(sub, 2, as.numeric)
-    rownames(sub) <- sites
+    
+    tryCatch({
+      
+      rownames(sub) <- sites
+    }, error=function(e){
+      browser()
+    }
+    )
     nas.per.row <- apply(sub,1,function(r) sum(is.na(r)))
     if (any(nas.per.row == ncol(sub))) {
       warning("All-NA beta rows detected for sites: ", paste(names(nas.per.row)[nas.per.row==ncol(sub)], collapse=","))
@@ -241,8 +252,10 @@
       upstream.betas <- as.data.frame(sapply(upstream.betas[,beta.col.names], as.numeric))
     }
     upstream.betas <- upstream.betas[rev(seq_len(nrow(upstream.betas))),,drop=F]
-
-
+    if (nrow(upstream.betas) == 1){
+      upstream.stop.reason <- "end-of-input"
+      break
+    }
     i <- 1
     while (T) {
       corr.ret <- .testConnectivity(site1.beta = unlist(upstream.betas[i, ]),
@@ -381,6 +394,7 @@
         message('sample.groups:', paste(sample.groups, collapse=','))
         message('max.pval.corrected:', max.pval.corrected)
         message("Error message:", corr.ret)
+        browser()
       }
       return(list(F, pval, delta_beta, failing=g, reason='error occurred'))
     }
@@ -434,7 +448,7 @@
 #' @param max.lookup.dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min.dmps Numeric. Minimum number of DMPs in a DMR. Default is 1.
 #' @param min.cpgs Numeric. Minimum number of CpGs in a DMR. Default is 50.
-#' @param output.id Character. Identifier for the output files. Default is NULL.
+#' @param output.prefix Character. Identifier for the output files. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param verbose Logical. Whether to print detailed messages. Default is FALSE.
 #'
@@ -443,7 +457,6 @@
 findDMRsFromDMPs <- function(beta.file,
                              dmps.tsv.file,
                              pheno,
-                             output.dir = '.',
                              pval.col = "pval_adj",
                              sample_group.col = "Sample_Group",
                              casecontrol.col = "casecontrol",
@@ -456,7 +469,7 @@ findDMRsFromDMPs <- function(beta.file,
                              min.dmps = 1,
                              min.cpgs = 50,
                              ignored.sample.groups = NULL,
-                             output.id = NULL,
+                             output.prefix = NULL,
                              njobs = parallel::detectCores(),
                              verbose = FALSE,
                              beta.row.names.file=NULL,
@@ -485,13 +498,15 @@ findDMRsFromDMPs <- function(beta.file,
   } else {
     ignored.sample.groups <- unlist(strsplit(ignored.sample.groups, ','))
   }
-  if (is.null(output.id)) {
-    output.id <- "dmrs_from_dmps"
+  if (!is.null(output.prefix)) {
+    output.dir <- dirname(output.prefix)
+    dir.create(output.dir, showWarnings = F)
+    output.prefix <- paste0(output.prefix,'.')
   } else {
-    output.id <- paste0("dmrs_from_dmps.", output.id)
+    output.dir <- NULL
+    output.prefix <- NULL
   }
-  dir.create(output.dir, showWarnings = F)
-  output.prefix <- file.path(output.dir, paste0(output.id,'.'))
+  
   
   if (verbose)
     message("Reading dmp tsv file..")
@@ -506,10 +521,12 @@ findDMRsFromDMPs <- function(beta.file,
   ))
   if (inherits(dmps.tsv, "try-error")) {
     message("Provided DMPs file is empty or does not exist. Not proceeding.")
-    for (f in c('.methylation.tsv.gz', '.tsv.gz')){
-            gzfile <- gzfile(paste0(output.prefix, f), "w", compression = 2)   
-            close(gzfile)
-        }
+    if (!is.null(output.prefix)) {
+      for (f in c('.methylation.tsv.gz', '.tsv.gz')){
+        gzfile <- gzfile(paste0(output.prefix, f), "w", compression = 2)   
+        close(gzfile)
+      }
+    }
     return(NULL)
   }
   if (! sample_group.col %in% colnames(dmps.tsv)){
@@ -529,11 +546,13 @@ findDMRsFromDMPs <- function(beta.file,
   if (verbose)
     message("Reading beta file characteristics..")
   
-  output.beta.row.names.file <- paste0(output.prefix, "row.names.txt")
-  if (is.null(beta.row.names.file)){
-    beta.row.names.file <- output.beta.row.names.file # load from previous run
+  if (!is.null(output.prefix)){
+    output.beta.row.names.file <- paste0(output.prefix, "row.names.txt")
+    if (is.null(beta.row.names.file)){
+      beta.row.names.file <- output.beta.row.names.file # load from previous run
+    }
   }
-  if (file.exists(beta.row.names.file)){
+  if (!is.null(beta.row.names.file) && file.exists(beta.row.names.file)){
     if (verbose) message("Reading beta file row names from beta row names file ", beta.row.names.file, "..")
     beta.row.names <- unlist(read.table(beta.row.names.file, header=F, comment.char = "", quote = ""))
   } else {
@@ -556,8 +575,10 @@ findDMRsFromDMPs <- function(beta.file,
       showProgress=T,
       nThread=njobs))
     }
+    if (!is.null(beta.row.names.file)){
     if (verbose) message("Saving beta file row names to beta row names file: ", beta.row.names.file)
     writeLines(paste(beta.row.names, collapse='\n'), beta.row.names.file)
+    }
   }
   if (verbose)
     message('Number of rows names read:', length(beta.row.names))
@@ -612,10 +633,12 @@ findDMRsFromDMPs <- function(beta.file,
     dmps <- setdiff(dmps, missing.in.annotation)
   }
   if (length(dmps) == 0) {
+    browser()
     stop("No DMPs remain after filtering against array annotation.")
   }
   if (! all(dmps %in% beta.row.names)){
     missing.in.beta <- dmps[!(dmps %in% beta.row.names)]
+    browser()
     stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing.in.beta, collapse=','))
   }
   dmps <- dmps[orderByLoc(dmps)]
@@ -627,13 +650,14 @@ findDMRsFromDMPs <- function(beta.file,
   
   if (verbose)
     message("Getting subset beta corresponding to DMPs..")
-  dmps.beta.output.file <-   paste0(output.prefix, "dmps.beta.tsv.gz")
-  if (is.null(dmps.beta.file)){
-    dmps.beta.file <- dmps.beta.output.file # loading from previous run
-  }
-
   dmps.locs <- sorted.locs[dmps, , drop = F]
-  if (file.exists(dmps.beta.file)){ 
+  if (!is.null(output.prefix)){
+    dmps.beta.output.file <-   paste0(output.prefix, "dmps.beta.tsv.gz")
+    if (is.null(dmps.beta.file)){
+      dmps.beta.file <- dmps.beta.output.file # loading from previous run
+    }
+  }
+  if (!is.null(dmps.beta.file) && file.exists(dmps.beta.file)){ 
     if (verbose) message("Reading beta file row names from supplied dmps beta file..")
     gz <- gzfile(dmps.beta.output.file,'r')
     dmps.beta <- read.table(gz,header = T,sep = '\t', check.names = F, row.names=1, comment.char = "", quote = "")
@@ -649,9 +673,12 @@ findDMRsFromDMPs <- function(beta.file,
                           tabix.file,verbose=F)
       dmps.beta <- as.data.frame(sapply(dmps.beta[,beta.col.names], as.numeric))
     }
-    gz <- gzfile(dmps.beta.output.file, 'w')
-    write.table(dmps.beta, gz, sep = '\t', row.names=T, col.names=NA, quote=F)
-    close(gz)
+    if (!is.null(output.prefix)){
+      if (verbose) message("Saving dmps beta to file: ", dmps.beta.output.file)
+      gz <- gzfile(dmps.beta.output.file, 'w')
+      write.table(dmps.beta, gz, sep = '\t', row.names=T, col.names=NA, quote=F)
+      close(gz)
+    } 
   }
   if (nrow(dmps.locs) != nrow(dmps.beta)) {
     stop("Number of rows in the queried dmps beta file does not match the number of DMPs. Number of rows in beta file: ", 
@@ -681,7 +708,7 @@ findDMRsFromDMPs <- function(beta.file,
     cdmps <- dmps[m]
     cdmps.beta <- dmps.beta[m, , drop = F]
     cdmps.locs <- dmps.locs[m, , drop = F]
-    controls.beta <- cdmps.beta[,pheno[,casecontrol.col]==0]
+    controls.beta <- cdmps.beta[,pheno[,casecontrol.col]==0,drop=F]
     controls.beta.mean <- apply(controls.beta, 1, mean)
     controls.beta.sd <- apply(controls.beta, 1, sd)
     controls.beta.num <- apply(!is.na(controls.beta), 1, sum)
@@ -966,10 +993,12 @@ findDMRsFromDMPs <- function(beta.file,
   extended.dmrs <- filtered.dmrs
   if (nrow(extended.dmrs) == 0){
     if (verbose) message("No DMRs were found")
-    for (f in c('.methylation.tsv.gz', '.tsv.gz')){
-            gzfile <- gzfile(file.path(output.dir, paste0(output.id, f)), "w", compression = 2)   
-            close(gzfile)
-        }
+    if (!is.null(output.prefix)) {
+      for (f in c('.methylation.tsv.gz', '.tsv.gz')){
+        gzfile <- gzfile(file.path(output.dir, paste0(output.prefix, f)), "w", compression = 2)   
+        close(gzfile)
+      }
+    }
     return(NULL)
   }
 
@@ -977,22 +1006,22 @@ findDMRsFromDMPs <- function(beta.file,
   ne.dmrs.cols.to.keep <- c("start_dmp", "end_dmp", ne.dmrs.cols.to.keep[! ne.dmrs.cols.to.keep %in% colnames(extended.dmrs)])
   dmrs <- merge(extended.dmrs, dmrs[,ne.dmrs.cols.to.keep], by=c("start_dmp", "end_dmp"))
   dmrs <- dmrs[str_order(dmrs[, "id"], numeric = T), ]
-
-  dir.create(output.dir, showWarnings = F)
-  dmrs.file <- file.path(output.dir, paste0(output.id, ".tsv.gz"))
-  if (verbose)
-    message("Saving DMRs to ", dmrs.file, "..")
-  gz <- gzfile(dmrs.file, 'w')
-  write.table(
-    dmrs,
-    gz,
-    sep = "\t",
-    quote = FALSE,
-    qmethod = "double",
-    col.names = TRUE,
-    row.names = FALSE
-  )
-  close(gz)
+  if (!is.null(output.prefix)) {
+    dmrs.file <- paste0(output.prefix, "dmrs.tsv.gz")
+    if (verbose)
+      message("Saving DMRs to ", dmrs.file, "..")
+    gz <- gzfile(dmrs.file, 'w')
+    write.table(
+      dmrs,
+      gz,
+      sep = "\t",
+      quote = FALSE,
+      qmethod = "double",
+      col.names = TRUE,
+      row.names = FALSE
+    )
+    close(gz)
+  }
 
 
   dmrs.cpgs <- data.frame()
@@ -1007,55 +1036,57 @@ findDMRsFromDMPs <- function(beta.file,
     dmrs.cpgs <- rbind(dmrs.cpgs, data.frame(dmr=extended.dmrs$id[i], cpgs=cpgs))
     extended.dmrs.sites <- c(extended.dmrs.sites,  cpgs)
   }
-
-  dmrs.cpgs.file <- file.path(output.dir, paste0(output.id, ".cpgs.tsv.gz"))
-  if (verbose)
-    message("Saving extended DMRs constituent CpGs names mapping to ", dmrs.cpgs.file, "..")
-  gz <- gzfile(dmrs.cpgs.file, 'w')
-  write.table(
-    dmrs.cpgs,
-    gz,
-    sep = "\t",
-    quote = FALSE,
-    qmethod = "double",
-    col.names = TRUE,
-    row.names = FALSE
-  )
-  close(gz)
-
+  if (!is.null(output.prefix)) {
+    dmrs.cpgs.file <- paste0(output.prefix, ".cpgs.tsv.gz")
+    if (verbose)
+      message("Saving extended DMRs constituent CpGs names mapping to ", dmrs.cpgs.file, "..")
+    gz <- gzfile(dmrs.cpgs.file, 'w')
+    write.table(
+      dmrs.cpgs,
+      gz,
+      sep = "\t",
+      quote = FALSE,
+      qmethod = "double",
+      col.names = TRUE,
+      row.names = FALSE
+    )
+    close(gz)
+  }
   extended.dmrs.sites <- unique(extended.dmrs.sites)
   extended.dmrs.sites <- rownames(sorted.locs)[rownames(sorted.locs)%in% extended.dmrs.sites]
-  extended.dmrs.beta.file <- paste0(output.prefix, "extended.dmrs.beta.tsv.gz")
-  if (verbose)
-    message("Saving extended DMRs constituent CpGs betas to ", extended.dmrs.beta.file, "..")
+  if (!is.null(output.prefix)) {
+    extended.dmrs.beta.file <- paste0(output.prefix, "extended.dmrs.beta.tsv.gz")
+    if (verbose)
+      message("Saving extended DMRs constituent CpGs betas to ", extended.dmrs.beta.file, "..")
 
-  if (!is.null(beta.file)){
-      extended.dmrs.beta <- .subset.beta(beta.file,
-                              extended.dmrs.sites,
-                              beta.row.names = beta.row.names,
-                              beta.col.names = beta.col.names)
-  } else {
-    extended.dmrs.beta <- tabix(
-      as.data.frame(
-        sorted.locs[extended.dmrs.sites,c('chr','start','end')]),
-                        tabix.file,
-      params=paste0("-@ ", njobs),
-      verbose=F)
-    extended.dmrs.beta <- as.data.frame(sapply(extended.dmrs.beta[,beta.col.names], as.numeric))
+    if (!is.null(beta.file)){
+        extended.dmrs.beta <- .subset.beta(beta.file,
+                                extended.dmrs.sites,
+                                beta.row.names = beta.row.names,
+                                beta.col.names = beta.col.names)
+    } else {
+      extended.dmrs.beta <- tabix(
+        as.data.frame(
+          sorted.locs[extended.dmrs.sites,c('chr','start','end')]),
+                          tabix.file,
+        params=paste0("-@ ", njobs),
+        verbose=F)
+      extended.dmrs.beta <- as.data.frame(sapply(extended.dmrs.beta[,beta.col.names], as.numeric))
+    }
+    rownames(extended.dmrs.beta) <- extended.dmrs.sites
+
+    gz <- gzfile(extended.dmrs.beta.file, 'w')
+    write.table(
+      extended.dmrs.beta,
+      gz,
+      sep = "\t",
+      quote = FALSE,
+      qmethod = "double",
+      col.names = NA,
+      row.names = TRUE
+    )
+    close(gz)
   }
-  rownames(extended.dmrs.beta) <- extended.dmrs.sites
-
-  gz <- gzfile(extended.dmrs.beta.file, 'w')
-  write.table(
-    extended.dmrs.beta,
-    gz,
-    sep = "\t",
-    quote = FALSE,
-    qmethod = "double",
-    col.names = NA,
-    row.names = TRUE
-  )
-  close(gz)
   rm(extended.dmrs.beta)
   gc()
 

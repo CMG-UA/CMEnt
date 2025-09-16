@@ -9,7 +9,7 @@ if (exists("create_test_data", where = asNamespace("testthat"))) {
 # Adjust tests to use helper-generated DMPs directly to guarantee presence
 test_that("Package handles 450k probes", {
     # Create 450k-style test data
-    test_data <- create_test_data("450k")
+    test_data <- create_test_data(platform="450k")
     
     # Should work with 450k annotations
     result <- findDMRsFromDMPs(
@@ -26,7 +26,7 @@ test_that("Package handles 450k probes", {
 
 test_that("Package handles EPIC probes", {
     # Create EPIC-style test data
-    test_data <- create_test_data("EPIC")
+    test_data <- create_test_data(platform="EPIC")
     
     # Should work with EPIC annotations
     result <- findDMRsFromDMPs(
@@ -44,8 +44,8 @@ test_that("Package handles EPIC probes", {
 
 test_that("Package handles mixed probe types", {
     # Create mixed test data
-    test_450k <- create_test_data("450k")
-    test_epic <- create_test_data("EPIC")
+    test_450k <- create_test_data(platform="450k")
+    test_epic <- create_test_data(platform="EPIC")
     
     # Create DMPs data frame with mixed probe names from both beta value files
     mixed_dmps <- data.frame(
@@ -81,7 +81,7 @@ test_that("Package handles mixed probe types", {
 
 test_that("Package handles custom CpG positions", {
     # Create test data
-    test_data <- create_test_data("450k")
+    test_data <- create_test_data(platform="450k")
     
     # Create DMPs with same probe names as the beta file
     custom_dmps <- data.frame(
@@ -90,6 +90,7 @@ test_that("Package handles custom CpG positions", {
         pos = seq(1000, 5000, by = 1000),
         pval = rep(0.01, 5),
         pval_adj = rep(0.01, 5),
+        qval = rep(.001, 5),
         delta_beta = rep(0.3, 5),
         Sample_Group = rep("Case", 5),  # Add Sample_Group column
         cases_beta = rep(0.8, 5),

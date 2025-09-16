@@ -170,18 +170,18 @@ test_that("DMR finding handles edge cases", {
     write.table(multi_chr_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
     
     result <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
-        pheno = pheno,
-        sample_group.col = "Sample_Group",
-        min.dmps = 2,
-        min.cpgs = 2
+      beta.file = beta_file,
+      dmps.tsv.file = dmps_file,
+      pheno = pheno,
+      sample_group.col = "Sample_Group",
+      min.dmps = 2,
+      min.cpgs = 2
     )
     
     # Should find separate DMRs for each chromosome
     if (length(result) > 0) {
-        chr_counts <- table(as.character(seqnames(result)))
-        expect_true(all(chr_counts <= 1), "Should not merge DMRs across chromosomes")
+      chr_counts <- table(as.character(seqnames(result)))
+      expect_true(all(chr_counts <= 1), "Should not merge DMRs across chromosomes")
     }
     
     # Clean up
@@ -189,5 +189,5 @@ test_that("DMR finding handles edge cases", {
 })
 
 test_that("findDMRsFromDMPs works with tabix input", {
-    skip("Tabix tests require external setup")
+  skip("Tabix tests require external setup")
 })

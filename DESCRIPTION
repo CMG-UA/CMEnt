@@ -20,7 +20,7 @@ BugReports: https://github.com/CMG-UA/DMRSegal/issues
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, 
     BiomedicalInformatics, Genetics, QualityControl, Preprocessing
 Depends:
@@ -39,10 +39,11 @@ Imports:
     Rsamtools,
     stringr,
     parallel,
-    minfi
-Suggests: 
+    minfi,
+    BSgenome.Hsapiens.UCSC.hg19,
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
-    IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
+    IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+Suggests: 
     knitr,
     rmarkdown,
     BiocStyle,

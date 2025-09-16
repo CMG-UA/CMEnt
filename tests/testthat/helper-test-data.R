@@ -29,7 +29,12 @@ create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42, platform = 
   }
   all_ids <- rownames(locs)
   if (length(all_ids) < n_cpgs) n_cpgs <- length(all_ids)
+  tryCatch({
   sel_ids <- sample(all_ids, n_cpgs)
+  }, error = function(err){
+    browser()
+    }
+  )
   # Sort selected IDs by genomic position to satisfy function precondition
   sel_locs <- locs[sel_ids, , drop = FALSE]
   # Use the same ordering logic as findDMRsFromDMPs (stringr::str_order with numeric=TRUE
