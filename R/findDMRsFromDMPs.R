@@ -83,12 +83,12 @@ findDMRsFromDMPs <- function(beta.file = NULL,
         if (!file.exists(beta.file)) {
             stop("Beta file not found: ", beta.file)
         }
-        beta.info <- .get.beta.col.names.and.inds(beta.file, colnames(pheno))
+        beta.info <- .get.beta.col.names.and.inds(beta.file, rownames(pheno))
     } else {
         if (!file.exists(tabix.file)) {
             stop("Tabix file not found: ", tabix.file)
         }
-        beta.info <- .get.beta.col.names.and.inds(tabix.file, colnames(pheno),
+        beta.info <- .get.beta.col.names.and.inds(tabix.file, rownames(pheno),
                                                  is.tabix = TRUE)
     }
     
