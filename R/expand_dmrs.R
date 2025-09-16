@@ -80,9 +80,9 @@ NULL
     beta.col.names <- ret$beta.col.names
     sorted.locs <- sorted.locs[beta.row.names,]
     
-    # Initialize DMR boundaries using CpG IDs
-    dmr.start <- dmr$start_cpg  # Changed from start_dmp to start_cpg
-    dmr.end <- dmr$end_cpg      # Changed from end_dmp to end_cpg
+    # Initialize DMR boundaries using DMP IDs
+    dmr.start <- dmr$start_dmp  # Use initial DMP boundaries
+    dmr.end <- dmr$end_dmp      # Use initial DMP boundaries
     dmr.start.ind <- which(beta.row.names == dmr.start)
     
     if (length(dmr.start.ind) == 0) {
@@ -341,8 +341,9 @@ NULL
         dmr$end <- sorted.locs[dmr$end_cpg, "pos"]
         dmr$n_cpgs <- length(region_cpgs)
         dmr$dmps_num <- length(dmp_indices)
-        dmr$stop_connection_reason <- downstream.stop.reason  # We use the last stop reason
-        
+        dmr$downstream_cpg_expansion_stop_reason <- downstream.stop.reason
+        dmr$upstream_cpg_expansion_stop_reason <- upstream.stop.reason
+  
         # Delta beta statistics
         dmr$delta_beta <- mean(abs(delta_betas)) * sign(sum(sign(delta_betas)))
         dmr$delta_beta_sd <- sd(delta_betas)
