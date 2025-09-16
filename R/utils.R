@@ -9,10 +9,11 @@
 #' @return List with beta column information
 #' @keywords internal
 .get.beta.col.names.and.inds <- function(beta.file, beta.col.names=NULL, is.tabix=FALSE) {
-    if (endsWith(beta.file, 'gz'))
+    if (endsWith(beta.file, 'gz')) {
         conn <- gzfile(beta.file, 'r')
-    else
+    } else {
         conn <- file(beta.file, 'r')
+    }
     file.beta.col.names <- scan(conn, sep = '\t',
                                what = character(),
                                nlines = 1,
@@ -24,15 +25,15 @@
     }
     
     if (is.null(beta.col.names)) {
+        cols.inds <- seq(2, length(file.beta.col.names))
         beta.col.names <- file.beta.col.names[-1]
-        cols.inds <- seq(2, length(beta.col.names))
     } else {
         cols.inds <- match(beta.col.names, file.beta.col.names)
         cols.inds <- cols.inds[!is.na(cols.inds), drop=FALSE]
         if (length(cols.inds) == 0) {
             stop("Beta file does not contain any phenotype rownames as column name. ",
                  "First 5 supplied phenotype rownames: ",
-                 paste(beta.col.names[1:min(5, length(beta.col.names))], 
+                 paste(beta.col.names[seq_len(min(5, length(beta.col.names)))],
                        collapse=','))
         }
         beta.col.names <- file.beta.col.names[cols.inds]
@@ -95,78 +96,3 @@
     beta.sites
 }
 
-#' Test connectivity between CpG sites
-#'
-#' @param site1.beta Beta values for first site
-#' @param site2.beta Beta values for second site
-#' @param sample.groups Sample group factor
-#' @param max.pval Maximum p-value threshold
-#' @param casecontrol Case-control vector
-#' @param min.delta_beta Minimum delta beta
-#' @param extreme.verbosity Verbose output flag
-#' @return List with connectivity test results
-#' @keywords internal
-.test.connectivity <- function(site1.beta,
-                             site2.beta,
-                             sample.groups,
-                             max.pval,
-                             casecontrol = NULL,
-                             min.delta_beta = 0,
-                             extreme.verbosity = FALSE) {
-    pval <- 0
-    delta_beta <- NULL
-    max.pval.corrected <- max.pval / length(unique(sample.groups))
-    
-    for (g in levels(sample.groups)) {
-        if (sum(sample.groups == g) < 3)
-            next
-        
-        op <- options(warn = 2)$warn
-        corr.ret <- try(psych::corr.test(
-            site1.beta[sample.groups == g],
-            site2.beta[sample.groups == g]
-        ))
-        options(warn = op)
-        
-        if (inherits(corr.ret, "try-error")) {
-            if (extreme.verbosity) {
-                message("Error in correlation test for group ", g)
-            }
-            return(list(FALSE, pval, delta_beta,
-                       failing = g,
-                       reason = 'error occurred'))
-        }
-        
-        r <- max(pval, corr.ret$p)
-        if (is.null(r) || is.na(r)) {
-            return(list(FALSE, pval, delta_beta,
-                       failing = g,
-                       reason = 'na pval'))
-        }
-        
-        pval <- r
-        if (pval > max.pval.corrected) {
-            return(list(FALSE, pval, delta_beta,
-                       failing = g,
-                       reason = 'pval>max.pval (corrected)'))
-        }
-    }
-    
-    if (!is.null(casecontrol) && (min.delta_beta > 0)) {
-        if (length(casecontrol) != length(site2.beta)) {
-            return(list(FALSE, pval, delta_beta,
-                       failing = 'all',
-                       reason = 'casecontrol length mismatch'))
-        }
-        
-        delta_beta <- abs(mean(site2.beta[casecontrol]) - 
-                         mean(site2.beta[!casecontrol]))
-        if (delta_beta < min.delta_beta) {
-            return(list(FALSE, pval, delta_beta,
-                       failing = 'all',
-                       reason = 'delta_beta < min_delta_beta'))
-        }
-    }
-    
-    list(TRUE, pval, delta_beta)
-}

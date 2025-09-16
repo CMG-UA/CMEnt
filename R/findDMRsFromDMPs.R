@@ -47,7 +47,7 @@ findDMRsFromDMPs <- function(beta.file = NULL,
                             pval.col = "pval_adj",
                             sample_group.col,
                             min.cpg.delta_beta = 0,
-                            expansion.step = 5,
+                            expansion.step = 500,
                             max.pval = 0.05,
                             max.lookup.dist = 10000,
                             min.dmps = 1,
@@ -56,8 +56,9 @@ findDMRsFromDMPs <- function(beta.file = NULL,
                             output.id = NULL,
                             njobs = 1,
                             verbose = FALSE,
+                            extreme.verbosity = FALSE,
                             beta.row.names.file = NULL) {
-    
+    verbose <- verbose || extreme.verbosity
     # Input validation
     if (is.null(beta.file) && is.null(tabix.file)) {
         stop("Either beta.file or tabix.file must be provided")
@@ -72,6 +73,14 @@ findDMRsFromDMPs <- function(beta.file = NULL,
     }
     sample.groups <- as.factor(pheno[[sample_group.col]])
     
+    # Create case-control vector from sample groups
+    casecontrol <- NULL
+    if (length(unique(sample.groups)) == 2 && 
+        !any(levels(sample.groups) %in% ignored.sample.groups)) {
+        if (verbose) message("Creating case-control vector from binary sample groups")
+        casecontrol <- as.numeric(sample.groups == levels(sample.groups)[2])
+    }
+    
     # Read DMPs
     dmps <- data.table::fread(dmps.tsv.file)
     if (!pval.col %in% colnames(dmps)) {
@@ -83,17 +92,60 @@ findDMRsFromDMPs <- function(beta.file = NULL,
         if (!file.exists(beta.file)) {
             stop("Beta file not found: ", beta.file)
         }
+        
+        # Read beta row names if not provided
+        if (is.null(beta.row.names.file)) {
+            beta.row.names <- unlist(data.table::fread(
+                file = beta.file,
+                select = 1,
+                header = TRUE
+            ))
+        } else {
+            beta.row.names <- readLines(beta.row.names.file)
+        }
+        
         beta.info <- .get.beta.col.names.and.inds(beta.file, rownames(pheno))
+        beta.info$row.names <- beta.row.names
     } else {
         if (!file.exists(tabix.file)) {
             stop("Tabix file not found: ", tabix.file)
         }
         beta.info <- .get.beta.col.names.and.inds(tabix.file, rownames(pheno),
                                                  is.tabix = TRUE)
+        
+        # For tabix files, read row names from first column
+        if (is.null(beta.row.names.file)) {
+            beta.row.names <- unlist(data.table::fread(
+                file = tabix.file,
+                select = 1,
+                header = TRUE
+            ))
+        } else {
+            beta.row.names <- readLines(beta.row.names.file)
+        }
+        beta.info$row.names <- beta.row.names
+    }
+    if (is.null(beta.row.names.file) && !is.null(output.id)) {
+        output.beta.row.names.file <- paste0(output.id, "_row_names.txt")
+        beta.row.names.file <- output.beta.row.names.file # load from previous run
+        if (verbose) message("Saving beta file row names to beta row names file: ", beta.row.names.file)
+        writeLines(paste(beta.row.names, collapse='\n'), beta.row.names.file)        
+    }
+    # Process DMPs and create sorted locations
+    # First check if all DMPs are in beta file
+    unique_dmps <- unique(dmps$dmp)
+    if (!all(unique_dmps %in% beta.info$row.names)) {
+        stop("Some of the DMPs are not present in the beta file. DMPs: ", 
+             paste(unique_dmps[!(unique_dmps %in% beta.info$row.names)], collapse=','))
     }
     
+    # Create sorted locations from DMPs data frame
+    sorted.locs <- as.data.frame(dmps[!duplicated(dmps$dmp), c("chr", "pos", "dmp")])
+    names(sorted.locs)[names(sorted.locs) == "dmp"] <- "cpg"
+    rownames(sorted.locs) <- sorted.locs$cpg
+    sorted.locs <- sorted.locs[order(sorted.locs$chr, sorted.locs$pos), ]
+    
     # Process DMPs and find initial regions
-    dmps <- dmps[order(dmps$chr, dmps$pos), ]
     initial.regions <- .findInitialRegions(
         dmps = dmps,
         max.lookup.dist = max.lookup.dist,
@@ -103,7 +155,7 @@ findDMRsFromDMPs <- function(beta.file = NULL,
     if (verbose) {
         message("Found ", nrow(initial.regions), " initial regions")
     }
-    
+    browser()
     # Expand regions in parallel
     expanded.regions <- parallel::mclapply(
         seq_len(nrow(initial.regions)),
@@ -115,10 +167,13 @@ findDMRsFromDMPs <- function(beta.file = NULL,
                 beta.row.names = beta.info$row.names,
                 beta.col.names = beta.info$col.names,
                 sample.groups = sample.groups,
-                sorted.locs = dmps,
+                sorted.locs = sorted.locs,
                 max.pval = max.pval,
                 min.cpg.delta_beta = min.cpg.delta_beta,
-                expansion.step = expansion.step
+                casecontrol = casecontrol,  # Add case-control vector
+                expansion.step = expansion.step,
+                verbose = verbose,
+                extreme.verbosity = extreme.verbosity
             )
         },
         mc.cores = njobs
@@ -130,86 +185,86 @@ findDMRsFromDMPs <- function(beta.file = NULL,
     
     # Convert to GRanges with all metadata from original implementation
     gr <- GenomicRanges::GRanges(
-        seqnames = dmrs$chr,
+        seqnames = valid.regions$chr,
         ranges = IRanges::IRanges(
-            start = dmrs$start,
-            end = dmrs$end
+            start = valid.regions$start,
+            end = valid.regions$end
         ),
         mcols = S4Vectors::DataFrame(
             # CpG and DMP information
-            start_cpg = dmrs$start_cpg,  # Added CpG ID fields
-            end_cpg = dmrs$end_cpg,      # Added CpG ID fields
-            start_dmp = dmrs$start_dmp,  # Keep DMP fields for compatibility
-            end_dmp = dmrs$end_dmp,      # Keep DMP fields for compatibility
-            start_dmp_pos = dmrs$start,  # Use actual genomic positions
-            end_dmp_pos = dmrs$end,      # Use actual genomic positions
-            dmps_num = dmrs$dmps_num,
+            start_cpg = valid.regions$start_cpg,  # Added CpG ID fields
+            end_cpg = valid.regions$end_cpg,      # Added CpG ID fields
+            start_dmp = valid.regions$start_dmp,  # Keep DMP fields for compatibility
+            end_dmp = valid.regions$end_dmp,      # Keep DMP fields for compatibility
+            start_dmp_pos = valid.regions$start,  # Use actual genomic positions
+            end_dmp_pos = valid.regions$end,      # Use actual genomic positions
+            dmps_num = valid.regions$dmps_num,
             
             # Delta beta statistics
-            delta_beta = dmrs$delta_beta,
-            delta_beta_sd = dmrs$delta_beta_sd,
-            delta_beta_se = dmrs$delta_beta_se,
-            delta_beta_min = dmrs$delta_beta_min,
-            delta_beta_max = dmrs$delta_beta_max,
-            delta_beta_start = dmrs$delta_beta_start,
-            delta_beta_mid = dmrs$delta_beta_mid,
-            delta_beta_end = dmrs$delta_beta_end,
+            delta_beta = valid.regions$delta_beta,
+            delta_beta_sd = valid.regions$delta_beta_sd,
+            delta_beta_se = valid.regions$delta_beta_se,
+            delta_beta_min = valid.regions$delta_beta_min,
+            delta_beta_max = valid.regions$delta_beta_max,
+            delta_beta_start = valid.regions$delta_beta_start,
+            delta_beta_mid = valid.regions$delta_beta_mid,
+            delta_beta_end = valid.regions$delta_beta_end,
             
             # Cases beta statistics
-            cases_beta = dmrs$cases_beta,
-            cases_beta_max = dmrs$cases_beta_max,
-            cases_beta_min = dmrs$cases_beta_min,
-            cases_beta_sd = dmrs$cases_beta_sd,
-            cases_beta_se = dmrs$cases_beta_se,
-            cases_beta_start = dmrs$cases_beta_start,
-            cases_beta_mid = dmrs$cases_beta_mid,
-            cases_beta_end = dmrs$cases_beta_end,
+            cases_beta = valid.regions$cases_beta,
+            cases_beta_max = valid.regions$cases_beta_max,
+            cases_beta_min = valid.regions$cases_beta_min,
+            cases_beta_sd = valid.regions$cases_beta_sd,
+            cases_beta_se = valid.regions$cases_beta_se,
+            cases_beta_start = valid.regions$cases_beta_start,
+            cases_beta_mid = valid.regions$cases_beta_mid,
+            cases_beta_end = valid.regions$cases_beta_end,
             
             # Cases beta SD statistics
-            cases_beta_dmps_sd = dmrs$cases_beta_dmps_sd,
-            cases_beta_dmps_sd_max = dmrs$cases_beta_dmps_sd_max,
-            cases_beta_dmps_sd_min = dmrs$cases_beta_dmps_sd_min,
-            cases_beta_dmps_sd_start = dmrs$cases_beta_dmps_sd_start,
-            cases_beta_dmps_sd_mid = dmrs$cases_beta_dmps_sd_mid,
-            cases_beta_dmps_sd_end = dmrs$cases_beta_dmps_sd_end,
+            cases_beta_dmps_sd = valid.regions$cases_beta_dmps_sd,
+            cases_beta_dmps_sd_max = valid.regions$cases_beta_dmps_sd_max,
+            cases_beta_dmps_sd_min = valid.regions$cases_beta_dmps_sd_min,
+            cases_beta_dmps_sd_start = valid.regions$cases_beta_dmps_sd_start,
+            cases_beta_dmps_sd_mid = valid.regions$cases_beta_dmps_sd_mid,
+            cases_beta_dmps_sd_end = valid.regions$cases_beta_dmps_sd_end,
             
             # Controls beta statistics
-            controls_beta = dmrs$controls_beta,
-            controls_beta_max = dmrs$controls_beta_max,
-            controls_beta_min = dmrs$controls_beta_min,
-            controls_beta_sd = dmrs$controls_beta_sd,
-            controls_beta_se = dmrs$controls_beta_se,
-            controls_beta_start = dmrs$controls_beta_start,
-            controls_beta_mid = dmrs$controls_beta_mid,
-            controls_beta_end = dmrs$controls_beta_end,
+            controls_beta = valid.regions$controls_beta,
+            controls_beta_max = valid.regions$controls_beta_max,
+            controls_beta_min = valid.regions$controls_beta_min,
+            controls_beta_sd = valid.regions$controls_beta_sd,
+            controls_beta_se = valid.regions$controls_beta_se,
+            controls_beta_start = valid.regions$controls_beta_start,
+            controls_beta_mid = valid.regions$controls_beta_mid,
+            controls_beta_end = valid.regions$controls_beta_end,
             
             # Controls beta SD statistics
-            controls_beta_dmps_sd = dmrs$controls_beta_dmps_sd,
-            controls_beta_dmps_sd_max = dmrs$controls_beta_dmps_sd_max,
-            controls_beta_dmps_sd_min = dmrs$controls_beta_dmps_sd_min,
-            controls_beta_dmps_sd_start = dmrs$controls_beta_dmps_sd_start,
-            controls_beta_dmps_sd_mid = dmrs$controls_beta_dmps_sd_mid,
-            controls_beta_dmps_sd_end = dmrs$controls_beta_dmps_sd_end,
+            controls_beta_dmps_sd = valid.regions$controls_beta_dmps_sd,
+            controls_beta_dmps_sd_max = valid.regions$controls_beta_dmps_sd_max,
+            controls_beta_dmps_sd_min = valid.regions$controls_beta_dmps_sd_min,
+            controls_beta_dmps_sd_start = valid.regions$controls_beta_dmps_sd_start,
+            controls_beta_dmps_sd_mid = valid.regions$controls_beta_dmps_sd_mid,
+            controls_beta_dmps_sd_end = valid.regions$controls_beta_dmps_sd_end,
             
             # Sample counts and correlation
-            cases_num = dmrs$cases_num,
-            controls_num = dmrs$controls_num,
-            corr_pval = dmrs$corr_pval,
+            cases_num = valid.regions$cases_num,
+            controls_num = valid.regions$controls_num,
+            corr_pval = valid.regions$corr_pval,
             
             # DMP statistics
-            dmps_pval_adj = dmrs$dmps_pval_adj,
-            dmps_pval_adj_min = dmrs$dmps_pval_adj_min,
-            dmps_pval_adj_max = dmrs$dmps_pval_adj_max,
-            dmps_pval = dmrs$dmps_pval,
-            dmps_pval_min = dmrs$dmps_pval_min,
-            dmps_pval_max = dmrs$dmps_pval_max,
-            dmps_qval = dmrs$dmps_qval,
-            dmps_qval_min = dmrs$dmps_qval_min,
-            dmps_qval_max = dmrs$dmps_qval_max,
+            dmps_pval_adj = valid.regions$dmps_pval_adj,
+            dmps_pval_adj_min = valid.regions$dmps_pval_adj_min,
+            dmps_pval_adj_max = valid.regions$dmps_pval_adj_max,
+            dmps_pval = valid.regions$dmps_pval,
+            dmps_pval_min = valid.regions$dmps_pval_min,
+            dmps_pval_max = valid.regions$dmps_pval_max,
+            dmps_qval = valid.regions$dmps_qval,
+            dmps_qval_min = valid.regions$dmps_qval_min,
+            dmps_qval_max = valid.regions$dmps_qval_max,
             
             # Region information
-            stop_connection_reason = dmrs$stop_connection_reason,
-            dmps = dmrs$dmps
+            stop_connection_reason = valid.regions$stop_connection_reason,
+            dmps = valid.regions$dmps
         )
     )
     

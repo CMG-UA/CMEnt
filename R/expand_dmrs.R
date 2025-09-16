@@ -32,9 +32,13 @@ NULL
 #'        }
 #' @param max.pval Maximum p-value threshold for considering correlations significant
 #' @param min.cpg.delta_beta Minimum absolute delta beta required for CpG inclusion
-#' @param casecontrol Optional logical vector indicating case/control status
+#' @param casecontrol Optional logical vector indicating case/control status (1=case, 0=control).
+#'        When provided, ensures that adjacent CpGs show consistent methylation changes
+#'        between cases and controls in addition to being correlated.
 #' @param tabix.file Optional path to tabix-indexed methylation data file
 #' @param expansion.step Number of CpGs to examine in each expansion step
+#' @param verbose Whether to print detailed debug information
+#' @param extreme.verbosity Whether to print very detailed debug information
 #'
 #' @return A data frame containing the expanded DMR with:
 #'   \itemize{
@@ -65,7 +69,9 @@ NULL
                        min.cpg.delta_beta = 0,
                        casecontrol = NULL,
                        tabix.file = NULL,
-                       expansion.step = 500) {
+                       expansion.step = 500,
+                       verbose = FALSE,
+                       extreme.verbosity = FALSE) {
     
     # Get beta value column information
     if (!is.null(beta.file)) {
@@ -81,6 +87,13 @@ NULL
     sorted.locs <- sorted.locs[beta.row.names,]
     
     # Initialize DMR boundaries using DMP IDs
+    if (verbose) {
+        message("\nInitializing DMR expansion...")
+        message("Expanding DMR: chr", dmr$chr, ":", dmr$start, "-", dmr$end)
+        message("Initial DMPs: ", dmr$start_dmp, " to ", dmr$end_dmp)
+        message("Region size: ", dmr$end - dmr$start, " bp")
+    }
+    
     dmr.start <- dmr$start_dmp  # Use initial DMP boundaries
     dmr.end <- dmr$end_dmp      # Use initial DMP boundaries
     dmr.start.ind <- which(beta.row.names == dmr.start)
@@ -90,7 +103,13 @@ NULL
              " in the beta file row names.")
     }
     
+    if (verbose) {
+        message("DMR start index: ", dmr.start.ind)
+        message("Using expansion step size: ", expansion.step)
+    }
+    
     # Initialize statistics tracking
+    if (verbose) message("\nInitializing statistics tracking...")
     all_betas <- list()  # Store beta values during expansion
     all_correlations <- numeric()  # Store correlation p-values
     
@@ -130,6 +149,7 @@ NULL
                              rep("numeric", length(file.beta.col.names)))
             )
             upstream.betas <- upstream.betas[, cols.inds]
+            browser()
         } else {
             upstream.region <- paste0(
                 sorted.locs[start.site.ind, 'chr'], ':',
@@ -158,13 +178,21 @@ NULL
         # Test connectivity and collect statistics
         i <- 1
         while (TRUE) {
+            if (extreme.verbosity) {
+                message("Testing connectivity for upstream CpGs at position ", i)
+                message("CpG1: ", rownames(upstream.betas)[i])
+                message("CpG2: ", rownames(upstream.betas)[i + 1])
+            }
+            
             corr.ret <- .test.connectivity(
                 site1.beta = unlist(upstream.betas[i, ]),
                 site2.beta = unlist(upstream.betas[i + 1, ]),
                 sample.groups = sample.groups,
                 max.pval = max.pval,
                 casecontrol = casecontrol,
-                min.delta_beta = min.cpg.delta_beta
+                min.delta_beta = min.cpg.delta_beta,
+                extreme.verbosity = extreme.verbosity,
+                casecontrol = casecontrol
             )
             
             # Store statistics
@@ -175,11 +203,16 @@ NULL
                 upstream.exp <- end.site.ind - i + 1
                 upstream.stop.found <- TRUE
                 upstream.stop.reason <- corr.ret$reason
+                if (verbose) {
+                    message("Upstream expansion stopped at position ", sorted.locs[upstream.exp, "pos"])
+                    message("Reason: ", upstream.stop.reason)
+                }
                 break
             }
             
             i <- i + 1
             if (i == nrow(upstream.betas)) {
+                if (extreme.verbosity) message("Reached end of upstream beta block")
                 # Store last beta values
                 all_betas[[length(all_betas) + 1]] <- upstream.betas[i, ]
                 break
@@ -257,6 +290,7 @@ NULL
                 warning("Error reading downstream region ", downstream.region,
                        " from tabix file, stopping extension.")
                 downstream.stop.reason <- "error-reading-tabix"
+                if (verbose) message("Error reading downstream region from tabix file")
                 break
             }
             downstream.betas <- as.data.frame(
@@ -310,11 +344,14 @@ NULL
         }
     }
     
+    if (verbose) message("\nCalculating final DMR statistics...")
+    
     # Calculate final statistics and update DMR fields to match original implementation
     region_cpgs <- which(beta.row.names >= beta.row.names[upstream.exp] & 
                         beta.row.names <= beta.row.names[downstream.exp])
     
     # Calculate beta values for DMPs in the region
+    if (extreme.verbosity) message("Building beta value matrix for statistics...")
     beta_matrix <- do.call(rbind, all_betas)
     region_dmps <- which(beta.row.names >= dmr$start_dmp & 
                         beta.row.names <= dmr$end_dmp)
@@ -390,12 +427,22 @@ NULL
         dmr$controls_beta_dmps_sd_mid <- controls_sds[ceiling(length(controls_sds)/2)]
         dmr$controls_beta_dmps_sd_end <- controls_sds[length(controls_sds)]
         
-        # Sample counts
+        # Sample counts and final statistics
         dmr$cases_num <- sum(casecontrol)
         dmr$controls_num <- sum(!casecontrol)
         
         # Correlation statistics
         dmr$corr_pval <- max(all_correlations, na.rm=TRUE)  # Same as original max_pval_in_region
+        
+        if (verbose) {
+            message("\nDMR expansion completed:")
+            message("Final DMR size: ", format(dmr$end - dmr$start, scientific=FALSE), " bp")
+            message("Total CpGs in region: ", dmr$n_cpgs)
+            message("Total DMPs in region: ", dmr$dmps_num) 
+            message("Delta beta: ", format(dmr$delta_beta, digits=3))
+            message("Case/control split: ", dmr$cases_num, "/", dmr$controls_num)
+            message("Max correlation p-value: ", format(dmr$corr_pval, scientific=TRUE, digits=3))
+        }
     } else {
         # Handle the case where we don't have case/control info or no DMPs
         dmr$start_cpg <- beta.row.names[upstream.exp]
