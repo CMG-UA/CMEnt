@@ -66,41 +66,11 @@ dmps <- dmpFinder(getBeta(mset),
                   pheno = pheno$status,
                   type = "categorical")
 
-# Calculate delta beta values (difference between group means)
-cancer_means <- rowMeans(getBeta(mset[, pheno$status == "cancer"]))
-normal_means <- rowMeans(getBeta(mset[, pheno$status == "normal"]))
-cancer_sd <- rowSds(getBeta(mset[, pheno$status == "cancer"]))
-normal_sd <- rowSds(getBeta(mset[, pheno$status=='normal']))
-delta_betas <- cancer_means - normal_means
-
 # Add delta beta to dmps results
 dmps$pval_adj <-p.adjust(dmps$pval, method = "BH")
-dmps$delta_beta <- delta_betas
-dmps$cases_beta <- cancer_means
-dmps$cases_beta_sd <- cancer_sd
-dmps$controls_beta_sd <- normal_sd
-dmps$qval <- NA
 
 # Filter significant DMPs
 sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-
-# Get genomic locations for significant DMPs
-probe_info <- ann450k[rownames(sig_dmps), ]
-
-# Create DMPs data frame for DMRSegal
-dmrs_input <- data.frame(
-    dmp = rownames(sig_dmps),
-    chr = gsub("chr", "", probe_info$chr),
-    pos = probe_info$pos,
-    qval = sig_dmps$qval,
-    pval = sig_dmps$pval,
-    pval_adj = p.adjust(sig_dmps$pval, method = "BH"),
-    delta_beta = sig_dmps$delta_beta,
-    cases_beta = sig_dmps$cases_beta,
-    cases_beta_sd = sig_dmps$cases_beta_sd,
-    controls_beta_sd = sig_dmps$controls_beta_sd,
-    stringsAsFactors = FALSE
-)
 ```
 
 ## Run DMR Detection Methods
@@ -132,11 +102,11 @@ beta_file <- sortBetaFileByCoordinates(beta_file, overwrite=T)
 # Write DMPs to temp file
 dmps_file <- tempfile(fileext = ".txt")
 write.table(
-    dmrs_input,
+    sig_dmps,
     file = dmps_file,
     sep = "\t",
     quote = FALSE,
-    row.names = FALSE
+    row.names = TRUE
 )
 
 # Find DMRs using DMRSegal

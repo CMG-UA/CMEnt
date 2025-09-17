@@ -759,8 +759,6 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   stopifnot(pval.col %in% colnames(dmps.tsv))
   
-  colnames(dmps.tsv)[[1]] <- "dmp"
-  
   if (verbose)
     message("Reading beta file characteristics..")
   
@@ -837,8 +835,12 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     message("Reordering DMPs based on location..")
   
   if (is.null(dmps.tsv.id.col)){
-    dmps.tsv.id.col <- "__dmp_id__"
-    dmps.tsv[,dmps.tsv.id.col] <- rownames(dmps.tsv)
+    dmps.tsv.id.col <- "row.names"
+  }
+  if (! dmps.tsv.id.col %in% colnames(dmps.tsv)){
+    stop("DMP id column '", dmps.tsv.id.col,
+         "' does not reside in the DMPs file columns: ", 
+         paste(colnames(dmps.tsv), collapse=','))
   }
   dmps.tsv <- dmps.tsv[orderByLoc(dmps.tsv[, dmps.tsv.id.col]), , drop = F]
   # if (verbose)
