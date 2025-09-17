@@ -8,10 +8,9 @@
 .get.beta.col.names.and.inds(beta.file, beta.col.names = NULL, is.tabix = F)
 
 findDMRsFromDMPs(
-  beta.file,
-  dmps.tsv.file,
-  pheno,
-  output.dir = ".",
+  beta.file = NULL,
+  dmps.tsv.file = NULL,
+  pheno = NULL,
   pval.col = "pval_adj",
   sample_group.col = "Sample_Group",
   casecontrol.col = "casecontrol",
@@ -24,7 +23,7 @@ findDMRsFromDMPs(
   min.dmps = 1,
   min.cpgs = 50,
   ignored.sample.groups = NULL,
-  output.id = NULL,
+  output.prefix = NULL,
   njobs = parallel::detectCores(),
   verbose = FALSE,
   beta.row.names.file = NULL,
@@ -33,13 +32,11 @@ findDMRsFromDMPs(
 )
 }
 \arguments{
-\item{beta.file}{Character. Path to the beta value file.}
+\item{beta.file}{Character. Path to the beta value file. Either this or tabix.file must be provided.}
 
 \item{dmps.tsv.file}{Character. Path to the DMPs TSV file.}
 
 \item{pheno}{Data frame. Phenotype data.}
-
-\item{output.dir}{Character. Directory to save the output files. Default is current directory.}
 
 \item{pval.col}{Character. Column name for p-values in the DMPs file. Default is "pval_adj".}
 
@@ -65,7 +62,7 @@ findDMRsFromDMPs(
 
 \item{ignored.sample.groups}{Sample groups to ignore (default: NULL)}
 
-\item{output.id}{Character. Identifier for the output files. Default is NULL.}
+\item{output.prefix}{Character. Identifier for the output files. Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
@@ -74,6 +71,8 @@ findDMRsFromDMPs(
 \item{beta.row.names.file}{Optional file with beta value row names (default: NULL)}
 
 \item{dmps.beta.file}{Optional separate beta file for DMPs (default: NULL)}
+
+\item{output.dir}{Character. Directory to save the output files. Default is current directory.}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:

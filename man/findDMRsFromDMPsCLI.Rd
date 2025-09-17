@@ -7,7 +7,7 @@
 findDMRsFromDMPsCLI(args)
 }
 \arguments{
-\item{args}{Argument list from argparse containing command line parameters}
+\item{args}{Argument list from optparse containing command line parameters}
 }
 \value{
 None, outputs results to files

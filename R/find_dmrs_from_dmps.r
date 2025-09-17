@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 #' Command Line Interface for Finding DMRs from DMPs
 #'
-#' @param args Argument list from argparse containing command line parameters
+#' @param args Argument list from optparse containing command line parameters
 #' @return None, outputs results to files
 #' @export
 findDMRsFromDMPsCLI <- function(args) {

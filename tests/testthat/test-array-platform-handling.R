@@ -17,6 +17,8 @@ test_that("Package handles 450k probes", {
         dmps.tsv.file = test_data$dmps_file,
         pheno = test_data$pheno,
         sample_group.col = "Sample_Group",
+        min.dmps = 1,
+        min.cpgs = 0,
         verbose = TRUE
     )
     
@@ -35,6 +37,8 @@ test_that("Package handles EPIC probes", {
         pheno = test_data$pheno,
         sample_group.col = "Sample_Group",
         array = "EPIC",
+        min.dmps = 1,
+        min.cpgs = 0,
         verbose = TRUE
     )
     

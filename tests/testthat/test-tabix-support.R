@@ -6,7 +6,7 @@ test_that("DMR finding works with tabix files", {
     skip_if_not_installed("Rsamtools")
     
     # Create test data
-    test_data <- create_test_data(n_cpgs = 100, n_samples = 10)
+    test_data <- create_test_data(n_cpgs = 100, n_dmps=10, n_samples = 10)
     
     # Create bgzipped and tabix-indexed file
     beta_bgz_file <- paste0(test_data$beta_file, ".bgz")
@@ -29,6 +29,7 @@ test_that("DMR finding works with tabix files", {
     # Run with tabix file
     result_tabix <- findDMRsFromDMPs(
         tabix.file = beta_bgz_file,
+        beta.file = NULL,
         dmps.tsv.file = dmps_file,
         pheno = test_data$pheno,
         sample_group.col = "group",

@@ -26,7 +26,7 @@ biocViews: DNAMethylation, Epigenetics, DifferentialMethylation,
 Depends:
     R (>= 4.3.0)
 Imports:
-    argparse,
+    optparse,
     GenomicRanges,
     SummarizedExperiment,
     S4Vectors,
@@ -63,6 +63,9 @@ Additional_repositories:
     https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3
 Collate:
+    'data.R'
+    'utils.r'
     'dmrs_finder_from_dmps.r'
     'find_dmrs_from_dmps.r'
+    'DMRSegal-package.R'
     'zzz.R'
