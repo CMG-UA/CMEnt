@@ -1,12 +1,13 @@
 # Helper functions for tests
 
 #' Create test data for DMR finding tests
-#' @param n_cpgs Number of CpGs to generate
+#' @param n_dmps Number of DMPs to generate
+#' @param n_cpgs Number of CpGs (rows) in beta value matrix
 #' @param n_samples Number of samples to generate
 #' @param seed Random seed for reproducibility
 #' @param platform Array platform to simulate ("450K", "EPIC", or "mixed")
 #' @return List containing test data components
-create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42, platform = "450K") {
+create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed = 42, platform = "450K") {
   set.seed(seed)
   platform <- toupper(platform)
   # Annotation requirements
@@ -29,6 +30,7 @@ create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42, platform = 
   }
   all_ids <- rownames(locs)
   if (length(all_ids) < n_cpgs) n_cpgs <- length(all_ids)
+  if (n_cpgs < n_dmps) stop("n_cpgs must be >= n_dmps")
   tryCatch({
   sel_ids <- sample(all_ids, n_cpgs)
   }, error = function(err){
@@ -53,21 +55,25 @@ create_test_data <- function(n_cpgs = 10, n_samples = 10, seed = 42, platform = 
   pheno <- data.frame(row.names = colnames(beta_values),
                       Sample_Group = factor(rep(c("Case", "Control"), c(n_half, n_samples - n_half))),
                       casecontrol = as.integer(rep(c(1,0), c(n_half, n_samples - n_half))))
-  k <- max(2, floor(n_cpgs/2))
-  dmps <- data.frame(dmp = cpg_ids[seq_len(k)],
-                     chr = sel_locs$chr[seq_len(k)],
-                     pos = sel_locs$pos[seq_len(k)],
-                     pval = runif(k, 0, 0.01),
-                     pval_adj = runif(k, 0, 0.01),
-                     qval = runif(k, 0, 0.01),
-                     delta_beta = runif(k, 0.2, 0.5),
-                     cases_beta = runif(k, 0.6, 0.9),
-                     controls_beta = runif(k, 0.2, 0.5),
+  dmp_ids <- sample(cpg_ids, n_dmps)
+  dmp_locs <- sel_locs[dmp_ids, , drop = FALSE]
+  ord <- stringr::str_order(paste0(dmp_locs$chr, ":", dmp_locs$pos), numeric = TRUE)
+  dmp_ids <- dmp_ids[ord]
+  dmp_locs <- dmp_locs[ord, , drop = FALSE]
+  dmps <- data.frame(dmp = dmp_ids,
+                     chr = dmp_locs$chr,
+                     pos = dmp_locs$pos,
+                     pval = runif(n_dmps, 0, 0.01),
+                     pval_adj = runif(n_dmps, 0, 0.01),
+                     qval = runif(n_dmps, 0, 0.01),
+                     delta_beta = runif(n_dmps, 0.2, 0.5),
+                     cases_beta = runif(n_dmps, 0.6, 0.9),
+                     controls_beta = runif(n_dmps, 0.2, 0.5),
                      cases_beta_sd = 0.1,
                      controls_beta_sd = 0.1,
                      cases_num = n_half,
                      controls_num = n_samples - n_half,
-                     Sample_Group = rep("Case", k))
+                     Sample_Group = rep("Case", n_dmps))
   dmps_file <- tempfile(fileext = ".txt")
   write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
   list(beta_file = beta_file, beta_values = beta_values, dmps_file = dmps_file, dmps = dmps, pheno = pheno, cpg_ids = cpg_ids)

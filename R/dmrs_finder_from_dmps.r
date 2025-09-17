@@ -366,7 +366,9 @@
     }
   }
   dmr$start_cpg <- beta.row.names[upstream.exp]
+  tryCatch({
   dmr$end_cpg <- beta.row.names[downstream.exp]
+  }, error=function(e){browser()})
   dmr$start <- sorted.locs[dmr$start_cpg, 'pos']
   dmr$end <- sorted.locs[dmr$end_cpg, 'pos']
   dmr$downstream_cpg_expansion_stop_reason <- downstream.stop.reason
@@ -434,7 +436,7 @@
 #'
 #' This function identifies DMRs from a given set of DMPs and a beta value file.
 #'
-#' @param beta.file Character. Path to the beta value file.
+#' @param beta.file Character. Path to the beta value file. Either this or tabix.file must be provided.
 #' @param dmps.tsv.file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
 #' @param output.dir Character. Directory to save the output files. Default is current directory.
@@ -454,9 +456,9 @@
 #'
 #' @return Data frame of identified DMRs.
 #' @export
-findDMRsFromDMPs <- function(beta.file,
-                             dmps.tsv.file,
-                             pheno,
+findDMRsFromDMPs <- function(beta.file=NULL,
+                             dmps.tsv.file=NULL,
+                             pheno=NULL,
                              pval.col = "pval_adj",
                              sample_group.col = "Sample_Group",
                              casecontrol.col = "casecontrol",
@@ -475,6 +477,12 @@ findDMRsFromDMPs <- function(beta.file,
                              beta.row.names.file=NULL,
                              dmps.beta.file=NULL,
                              tabix.file=NULL) {
+  if (is.null(dmps.tsv.file) || is.null(pheno)){
+    stop("dmps.tsv.file and pheno parameters are required")
+  }
+  if (is.null(beta.file) && is.null(tabix.file)){
+    stop("Either beta.file or tabix.file parameter is required")
+  }
   stopifnot(!is.null(max.pval))
   stopifnot(!is.null(min.dmps))
   stopifnot(!is.null(min.cpgs))
@@ -565,7 +573,8 @@ findDMRsFromDMPs <- function(beta.file,
       header = T,
       showProgress=T,
       nThread=njobs
-    ))}
+    ))
+    }
     else{
       beta.row.names <- unlist(fread(
       file = tabix.file,
