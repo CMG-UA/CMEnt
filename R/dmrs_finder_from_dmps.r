@@ -1327,11 +1327,16 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   rm(extended.dmrs.beta)
   gc()
-
-  GenomicRanges::makeGRangesFromDataFrame(dmrs, 
-                                          keep.extra.columns = T,
-                                          ignore.strand = T,
-                                          seqnames.field = "chr",
-                                          seqinfo = Seqinfo(genome = genome),
-                                          na.rm=T)
+  tryCatch({
+    GenomicRanges::makeGRangesFromDataFrame(dmrs, 
+                                            keep.extra.columns = T,
+                                            ignore.strand = T,
+                                            seqinfo = Seqinfo(genome = genome),
+                                            na.rm=T)
+  }, error = function(e){
+    message("Error in makeGRangesFromDataFrame: ", e)
+    message("DMRs data frame head:\n\t", paste(capture.output(print(head(dmrs))), collapse='\n\t'))
+    if(interactive()) browser()
+    stop(e)
+  })
 }
