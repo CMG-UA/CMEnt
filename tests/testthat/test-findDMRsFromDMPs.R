@@ -6,7 +6,7 @@ library(GenomicRanges)
 
 test_that("DMR finding works correctly with nearby DMPs", {
     # Create test data with known differential methylation
-    test_data <- create_test_data(n_cpgs = 20, n_samples = 10)
+    test_data <- create_test_data(n_cpgs = 20, n_dmps = 10, n_samples = 10)
     beta_file <- test_data$beta_file
     pheno <- test_data$pheno
     
@@ -57,7 +57,7 @@ test_that("DMR finding works correctly with nearby DMPs", {
 
 test_that("DMR finding respects distance threshold", {
     # Create test data
-    test_data <- create_test_data(n_cpgs = 20, n_samples = 10)
+    test_data <- create_test_data(n_cpgs = 20, n_dmps=10, n_samples = 10)
     beta_file <- test_data$beta_file
     pheno <- test_data$pheno
     

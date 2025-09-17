@@ -1099,6 +1099,10 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   rm(extended.dmrs.beta)
   gc()
 
-
-  dmrs
+  GenomicRanges::makeGRangesFromDataFrame(dmrs, 
+                                          keep.extra.columns = T,
+                                          ignore.strand = T,
+                                          seqnames.field = "chr",
+                                          seqinfo = Seqinfo(genome = genome),
+                                          na.rm=T)
 }

@@ -3,7 +3,7 @@ library(testthat)
 
 test_that("DMR finding works with both 450k and EPIC array platforms", {
     # 450K test data (already sorted and with internally consistent DMPs)
-    test_450k <- create_test_data(n_cpgs = 50, n_samples = 10, platform = "450K")
+    test_450k <- create_test_data(n_cpgs = 50, n_dmps=10, n_samples = 10, platform = "450K")
     # Use a subset of existing helper-generated dmps (ensures matching chr/pos)
     dmps_450k <- test_450k$dmps[1:10, ]
     # Ensure qval column exists (core function expects it when computing summaries)
@@ -12,7 +12,7 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     write.table(dmps_450k, file = test_450k$dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # EPIC test data
-    test_epic <- create_test_data(n_cpgs = 50, n_samples = 10, platform = "EPIC")
+    test_epic <- create_test_data(n_cpgs = 50, n_dmps=10, n_samples = 10, platform = "EPIC")
     dmps_epic <- test_epic$dmps[1:10, ]
     if (!"qval" %in% colnames(dmps_epic)) dmps_epic$qval <- dmps_epic$pval_adj
     test_epic$dmps_file <- tempfile(fileext = ".txt")
@@ -54,7 +54,7 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     expect_true(all(epic_metadata_cols %in% colnames(mcols(result_450k))))
     
     # Mixed platform: combine subsets from both (simulate by merging dmps and beta from 450K but array=c("450K","EPIC"))
-    test_mixed <- create_test_data(n_cpgs = 60, n_samples = 10, platform = "450K")
+    test_mixed <- create_test_data(n_cpgs = 60, n_dmps=12, n_samples = 10, platform = "450K")
     mixed_dmps <- test_mixed$dmps[1:12, ]
     if (!"qval" %in% colnames(mixed_dmps)) mixed_dmps$qval <- mixed_dmps$pval_adj
     test_mixed$dmps_file <- tempfile(fileext = ".txt")
