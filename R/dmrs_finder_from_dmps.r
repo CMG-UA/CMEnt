@@ -1084,6 +1084,17 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   dmrs <- do.call(rbind, ret)
   if(verbose) message("Summary of connected DMRs before filtering based on connected DMP number:\n\t", paste(capture.output(summary(dmrs)), collapse="\n\t"))
   dmrs <- dmrs[dmrs$dmps_num >= min.dmps, , drop = FALSE]
+  if (nrow(dmrs) == 0) {
+    if (verbose)
+      message("No DMRs remain after filtering based on connected DMP number.")
+    if (!is.null(output.prefix)) {
+      for (f in c('.methylation.tsv.gz', '.tsv.gz')){
+        gzfile <- gzfile(paste0(output.prefix, f), "w", compression = 2)   
+        close(gzfile)
+      }
+    }
+    return(NULL)
+  }
   cases.num <- dmrs$cases_num
   controls.num <- dmrs$controls_num
   cases.sd.dmps.methylation <- dmrs$cases_beta_sd
@@ -1219,7 +1230,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   
   extended.dmrs <- filtered.dmrs
   if (nrow(extended.dmrs) == 0){
-    if (verbose) message("No DMRs were found")
+    if (verbose) message("No DMRs passed the filtering based on min.cpgs and min.adj.dmps criteria.")
     if (!is.null(output.prefix)) {
       for (f in c('.methylation.tsv.gz', '.tsv.gz')){
         gzfile <- gzfile(file.path(output.dir, paste0(output.prefix, f)), "w", compression = 2)   
