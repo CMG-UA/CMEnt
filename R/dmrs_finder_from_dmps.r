@@ -936,6 +936,17 @@ findDMRsFromDMPs <- function(beta.file=NULL,
             
             dmr.dmps.tsv <- gdmps.tsv[cdmps[dmr.dmps.inds], , drop = F]
             dmr.dmps.tsv[,'controls_beta'] <- dmr.dmps.tsv[,'cases_beta'] - dmr.dmps.tsv[,'delta_beta']
+            for (num.col in c('cases_num', 'controls_num')){
+              if (! num.col %in% colnames(dmr.dmps.tsv)){
+                dmr.dmps.tsv[,num.col] <- sum(!is.na(dmr.dmps.tsv[,'cases_beta']))
+              }
+            }
+            for (opt.col in c('cases_beta_sd', 'controls_beta_sd')){
+              if (! opt.col %in% colnames(dmr.dmps.tsv)){
+                dmr.dmps.tsv[,opt.col] <- NA
+              }
+            }
+            
             new.dmr <- data.frame(
               chr = chr,
               start_dmp = cdmps[[start.ind]],
