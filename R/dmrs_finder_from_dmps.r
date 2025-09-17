@@ -1159,8 +1159,6 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   # Set up progress tracking for DMR expansion
   n_dmrs <- nrow(ungrouped.dmrs)
   if (verbose && n_dmrs > 1) {
-    if (verbose)
-      message("Expanding DMRs on neighborhood CpGs..")
     p_dmr <- progressr::progressor(steps = n_dmrs)
   }
   
@@ -1371,16 +1369,8 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   rm(extended.dmrs.beta)
   gc()
-  tryCatch({
-    GenomicRanges::makeGRangesFromDataFrame(dmrs, 
+  GenomicRanges::makeGRangesFromDataFrame(dmrs, 
                                             keep.extra.columns = T,
-                                            ignore.strand = T,
                                             seqinfo = Seqinfo(genome = genome),
                                             na.rm=T)
-  }, error = function(e){
-    message("Error in makeGRangesFromDataFrame: ", e)
-    message("DMRs data frame head:\n\t", paste(capture.output(print(head(dmrs))), collapse='\n\t'))
-    if(interactive()) browser()
-    stop(e)
-  })
 }
