@@ -1079,11 +1079,15 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   dmrs$cohensd <- dmrs$delta_beta / pooled.sd
 
 
-
-  ungrouped.dmrs <- dmrs[
+  if (dmp_group.col %in% colnames(dmrs)) {
+    ungrouped.dmrs <- dmrs[
     dmrs[,dmp_group.col] == dmrs[1,dmp_group.col] ,
     c("chr", "start_dmp", "end_dmp", "start_dmp_pos", "end_dmp_pos", "dmps_num", "corr_pval")
     ]
+  } else {
+    ungrouped.dmrs <- dmrs[, c("chr", "start_dmp", "end_dmp", "start_dmp_pos", "end_dmp_pos", "dmps_num", "corr_pval")]
+  }
+  
   if (verbose)
     message("Number of initial DMRs:", nrow(ungrouped.dmrs))
     message("Summary:\n\t", paste(capture.output(summary(ungrouped.dmrs)), collapse="\n\t"))
