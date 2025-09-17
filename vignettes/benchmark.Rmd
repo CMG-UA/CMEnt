@@ -49,6 +49,8 @@ pheno <- data.frame(
     status = sample_groups[selected_samples],
     row.names = colnames(mset)
 )
+pheno$group <- pheno$status
+pheno$casecontrol <- pheno$status == "cancer"
 ```
 
 ## Get DMPs using minfi
@@ -65,12 +67,12 @@ ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
 dmps <- dmpFinder(getBeta(mset), 
                   pheno = pheno$status,
                   type = "categorical")
-
+dmps <- dmps[!is.na(dmps$pval),]
 # Add delta beta to dmps results
 dmps$pval_adj <-p.adjust(dmps$pval, method = "BH")
 
 # Filter significant DMPs
-sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
+sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
 ```
 
 ## Run DMR Detection Methods
@@ -80,9 +82,7 @@ sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
 ```{r dmrsegal}
 # The phenotype data is already created above in the data loading section
 # But let's rename the column to match our expected format
-pheno$group <- pheno$status
-pheno$casecontrol <- pheno$status == "cancer"
-pheno$status <- NULL
+
 
 # Write beta values to temp file
 beta_file <- tempfile(fileext = ".txt")

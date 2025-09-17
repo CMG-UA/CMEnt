@@ -70,7 +70,9 @@
 #' }
 #'
 #' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame
-#' @importFrom parallel detectCores mclapply
+#' @importFrom future.apply future_lapply
+#' @importFrom future availableCores
+#' @importFrom progressr progressor
 #' @importFrom stringr str_count str_order
 #' @importFrom readr read_tsv
 #' @importFrom data.table fread fwrite
@@ -78,6 +80,7 @@
 #' @importFrom dplyr %>% filter select mutate
 #' @importFrom bedr tabix
 #' @importFrom BSgenome getSeq
+#' @importFrom utils txtProgressBar setTxtProgressBar
 #' @importFrom rtracklayer import.chain
 #' @importFrom GenomeInfoDb Seqinfo
 #' @importFrom stats sd
@@ -87,7 +90,7 @@
 #' @import IlluminaHumanMethylationEPICanno.ilm10b4.hg19
 #' @export
 
-
+# Helper functions for progress tracking with temporary files
 .get.beta.col.names.and.inds <- function(beta.file, beta.col.names=NULL, is.tabix=F){
   if (endsWith(beta.file, 'gz'))
     conn <- gzfile(beta.file, 'r')
@@ -677,7 +680,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
                              min.cpgs = 50,
                              ignored.sample.groups = NULL,
                              output.prefix = NULL,
-                             njobs = parallel::detectCores(),
+                             njobs = future::availableCores(),
                              verbose = FALSE,
                              beta.row.names.file=NULL,
                              dmps.beta.file=NULL,
@@ -943,7 +946,27 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   if (verbose)
     message("Connecting DMPs to form initial DMRs..")
   
-  ret <- parallel::mclapply(unique(dmps.locs$chr), function(chr) {
+  # Set up progress tracking for DMP connection
+  chromosomes <- unique(dmps.locs$chr)
+  n_chromosomes <- length(chromosomes)
+  
+  # Set up future plan for parallel processing
+  if (!identical(njobs, 1L)) {
+    if (.Platform$OS.type == "unix") {
+      future::plan(future::multicore, workers = njobs)
+    } else {
+      future::plan(future::multisession, workers = njobs)
+    }
+  } else {
+    future::plan(future::sequential)
+  }
+  
+  # Use progressr for cross-platform progress reporting
+  if (verbose && n_chromosomes > 1) {
+    p <- progressr::progressor(steps = n_chromosomes)
+  }
+  
+  ret <- future.apply::future_lapply(chromosomes, function(chr) {
     m <- dmps.locs$chr == chr
     cdmps.tsv <- dmps.tsv[(dmps.tsv[, dmps.tsv.id.col] %in% rownames(dmps.locs)), , drop = F]
     cdmps <- dmps[m]
@@ -953,6 +976,11 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     start.ind <- 1
     corr.pval <- 1
     dmr.dmps.inds <- c()
+    
+    # Update progress for this chromosome
+    if (verbose && n_chromosomes > 1 && exists("p")) {
+      p()
+    }
     for (i in seq_len(nrow(cdmps.beta))) {
       reg.dmr <- F
       dmr.dmps.inds <- c(dmr.dmps.inds, i)
@@ -1127,7 +1155,16 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     message("Summary:\n\t", paste(capture.output(summary(ungrouped.dmrs)), collapse="\n\t"))
   if (verbose)
     message("Expanding DMRs on neighborhood CpGs..")
-  ret <- parallel::mclapply(split(ungrouped.dmrs, seq_along(ungrouped.dmrs[, 1])), function(dmr) {
+  
+  # Set up progress tracking for DMR expansion
+  n_dmrs <- nrow(ungrouped.dmrs)
+  if (verbose && n_dmrs > 1) {
+    if (verbose)
+      message("Expanding DMRs on neighborhood CpGs..")
+    p_dmr <- progressr::progressor(steps = n_dmrs)
+  }
+  
+  ret <- future.apply::future_lapply(split(ungrouped.dmrs, seq_along(ungrouped.dmrs[, 1])), function(dmr) {
     ret <- .expandDMRs(
       dmr = dmr,
       sample.groups = sample.groups,
@@ -1142,8 +1179,15 @@ findDMRsFromDMPs <- function(beta.file=NULL,
       min.cpg.delta_beta = min.cpg.delta_beta,
       sorted.locs=sorted.locs
     )
+    
+    # Update progress for this DMR
+    if (verbose && n_dmrs > 1 && exists("p_dmr")) {
+      p_dmr()
+    }
+    
     ret
   })
+  
   if (inherits(ret, "try-error")) {
     stop(ret)
   }
