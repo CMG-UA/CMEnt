@@ -660,6 +660,7 @@ sortBetaFileByCoordinates <- function(beta.file,
 findDMRsFromDMPs <- function(beta.file=NULL,
                              dmps.tsv.file=NULL,
                              pheno=NULL,
+                             dmps.tsv.id.col = NULL,
                              pval.col = "pval_adj",
                              sample_group.col = "Sample_Group",
                              dmp_group.col = NULL,
@@ -834,20 +835,25 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   
   if (verbose)
     message("Reordering DMPs based on location..")
-  dmps.tsv <- dmps.tsv[orderByLoc(dmps.tsv$dmp), , drop = F]
+  
+  if (is.null(dmps.tsv.id.col)){
+    dmps.tsv.id.col <- "__dmp_id__"
+    dmps.tsv[,dmps.tsv.id.col] <- rownames(dmps.tsv)
+  }
+  dmps.tsv <- dmps.tsv[orderByLoc(dmps.tsv[, dmps.tsv.id.col]), , drop = F]
   # if (verbose)
   #   message("Head of ordered dmps.tsv:\n\t", paste(capture.output(print(dmps.tsv[1:10,])), collapse='\n\t')) 
   # if (verbose)
   #   message("Tail of ordered dmps.tsv:\n\t", paste(capture.output(print(dmps.tsv[(nrow(dmps.tsv)-10):nrow(dmps.tsv),])), collapse='\n\t'))
   
-  dmps <- unique(dmps.tsv$dmp)
+  dmps <- unique(dmps.tsv[, dmps.tsv.id.col])
   # Filter DMPs not present in array annotation first (prevents NA logical indices later)
   missing.in.annotation <- setdiff(dmps, rownames(sorted.locs))
   if (length(missing.in.annotation) > 0) {
     warning("Dropping ", length(missing.in.annotation), " DMP(s) not found in the array annotation: ",
             paste(head(missing.in.annotation, 10), collapse=','),
             if (length(missing.in.annotation) > 10) " ..." else "")
-    dmps.tsv <- dmps.tsv[!(dmps.tsv$dmp %in% missing.in.annotation), , drop=FALSE]
+    dmps.tsv <- dmps.tsv[!(dmps.tsv[, dmps.tsv.id.col] %in% missing.in.annotation), , drop=FALSE]
     dmps <- setdiff(dmps, missing.in.annotation)
   }
   if (length(dmps) == 0) {
@@ -869,8 +875,8 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   if (verbose)
     message("Getting subset beta corresponding to DMPs..")
   dmps.locs <- sorted.locs[dmps, , drop = F]
-  dmps.tsv[, "chr"] <- dmps.locs[dmps.tsv[,'dmp'], 'chr']
-  dmps.tsv[, "pos"] <- dmps.locs[dmps.tsv[,'dmp'], 'pos']
+  dmps.tsv[, "chr"] <- dmps.locs[dmps.tsv[, dmps.tsv.id.col], 'chr']
+  dmps.tsv[, "pos"] <- dmps.locs[dmps.tsv[, dmps.tsv.id.col], 'pos']
   if (!is.null(output.prefix)){
     dmps.beta.output.file <-   paste0(output.prefix, "dmps.beta.tsv.gz")
     if (is.null(dmps.beta.file)){
@@ -900,12 +906,12 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     control_sd <- apply(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 0, drop=F], 1, sd, na.rm=T)
     dmps.tsv[,'cases_num'] <- colSums(!is.na(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 1, drop=F]))
     dmps.tsv[,'controls_num'] <- colSums(!is.na(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 0, drop=F]))
-    dmps.tsv[,'cases_beta'] <- case_means[dmps.tsv[,'dmp']]
-    dmps.tsv[,'controls_beta'] <- control_means[dmps.tsv[,'dmp']]
-    dmps.tsv[,'cases_beta_sd'] <- case_sd[dmps.tsv[,'dmp']]
-    dmps.tsv[,'controls_beta_sd'] <- control_sd[dmps.tsv[,'dmp']]
+    dmps.tsv[,'cases_beta'] <- case_means[dmps.tsv[, dmps.tsv.id.col]]
+    dmps.tsv[,'controls_beta'] <- control_means[dmps.tsv[, dmps.tsv.id.col]]
+    dmps.tsv[,'cases_beta_sd'] <- case_sd[dmps.tsv[, dmps.tsv.id.col]]
+    dmps.tsv[,'controls_beta_sd'] <- control_sd[dmps.tsv[, dmps.tsv.id.col]]
     dmps.tsv[,'delta_beta'] <- dmps.tsv[,'cases_beta'] - dmps.tsv[,'controls_beta']
-    
+
     if (!is.null(output.prefix)){
       if (verbose) message("Saving dmps beta to file: ", dmps.beta.output.file)
       gz <- gzfile(dmps.beta.output.file, 'w')
@@ -937,7 +943,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   
   ret <- parallel::mclapply(unique(dmps.locs$chr), function(chr) {
     m <- dmps.locs$chr == chr
-    cdmps.tsv <- dmps.tsv[(dmps.tsv$dmp%in%rownames(dmps.locs)), , drop = F]
+    cdmps.tsv <- dmps.tsv[(dmps.tsv[, dmps.tsv.id.col] %in% rownames(dmps.locs)), , drop = F]
     cdmps <- dmps[m]
     cdmps.beta <- dmps.beta[m, , drop = F]
     cdmps.locs <- dmps.locs[m, , drop = F]
@@ -978,7 +984,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
             
             gdmps.tsv <- cdmps.tsv[
                 (cdmps.tsv[, dmp_group.col] == dmp_group),]
-            rownames(gdmps.tsv) <- gdmps.tsv$dmp # here there must be unique CpGs in `dmp` column
+            rownames(gdmps.tsv) <- gdmps.tsv[, dmps.tsv.id.col] # here there must be unique CpGs in `dmp` column
             
             dmr.dmps.tsv <- gdmps.tsv[cdmps[dmr.dmps.inds], , drop = F]
             dmr.dmps.tsv[,'controls_beta'] <- dmr.dmps.tsv[,'cases_beta'] - dmr.dmps.tsv[,'delta_beta']
