@@ -61,7 +61,7 @@
 #' @importFrom parallel detectCores mclapply
 #' @importFrom stringr str_count str_order
 #' @importFrom readr read_tsv
-#' @importFrom data.table fread
+#' @importFrom data.table fread fwrite
 #' @importFrom psych corr.test
 #' @importFrom dplyr %>% filter select mutate
 #' @importFrom bedr tabix
@@ -70,6 +70,7 @@
 #' @importFrom GenomeInfoDb Seqinfo
 #' @importFrom stats sd
 #' @importFrom utils write.table read.table
+#' @importFrom tools file_ext file_path_sans_ext
 #' @import IlluminaHumanMethylation450kanno.ilmn12.hg19
 #' @import IlluminaHumanMethylationEPICanno.ilm10b4.hg19
 #' @export
@@ -103,6 +104,176 @@
   }
   ret <- list(beta.col.names=beta.col.names, beta.col.inds=cols.inds, file.beta.col.names=file.beta.col.names[-1])
   invisible(ret)
+}
+
+#' Sort Beta File by Genomic Coordinates
+#'
+#' @description This helper function sorts a methylation beta values file by genomic coordinates
+#' (chromosome and position) as required by the findDMRsFromDMPs function. The function reads
+#' the beta file, sorts the CpG sites according to their genomic positions using array annotation,
+#' and writes the sorted data to a new file.
+#'
+#' @param beta.file Character. Path to the input beta values file to be sorted
+#' @param output.file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
+#' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
+#' @param verbose Logical. Whether to print progress messages (default: TRUE)
+#' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
+#'
+#' @return Character. Path to the sorted output file
+#'
+#' @details The function performs the following steps:
+#' \enumerate{
+#'   \item Reads the beta values file
+#'   \item Loads the appropriate array annotation (450K or EPIC)
+#'   \item Sorts CpG sites by genomic coordinates (chr:pos)
+#'   \item Writes the sorted data to a new file
+#'   \item Validates that the output is properly sorted
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Sort a beta file for 450K array
+#' sorted_file <- sortBetaFileByCoordinates(
+#'   beta.file = "unsorted_beta.txt",
+#'   output.file = "sorted_beta.txt",
+#'   array = "450K"
+#' )
+#'
+#' # Sort an EPIC array beta file with default output name
+#' sorted_file <- sortBetaFileByCoordinates(
+#'   beta.file = "epic_beta.txt",
+#'   array = "EPIC"
+#' )
+#' }
+#'
+#' @export
+sortBetaFileByCoordinates <- function(beta.file, 
+                                      output.file = NULL,
+                                      array = c("450K", "EPIC"),
+                                      verbose = TRUE,
+                                      overwrite = FALSE) {
+  
+  # Validate inputs
+  array <- match.arg(array)
+  if (!file.exists(beta.file)) {
+    stop("Beta file does not exist: ", beta.file)
+  }
+  
+  # Set default output file name
+  if (is.null(output.file)) {
+    file_ext <- tools::file_ext(beta.file)
+    file_base <- tools::file_path_sans_ext(beta.file)
+    output.file <- paste0(file_base, "_sorted.", file_ext)
+  }
+  
+  # Check if output file exists
+  if (file.exists(output.file) && !overwrite) {
+    stop("Output file already exists: ", output.file, 
+         ". Set overwrite=TRUE to overwrite or choose a different output.file name.")
+  }
+  
+  if (verbose) {
+    message("Reading beta file: ", beta.file)
+  }
+  
+  # Read the beta file
+  beta_data <- data.table::fread(beta.file, header = TRUE, data.table = FALSE)
+  
+  # Get row names (CpG IDs) from first column
+  cpg_ids <- beta_data[[1]]
+  beta_values <- beta_data[, -1, drop = FALSE]
+  rownames(beta_values) <- cpg_ids
+  
+  if (verbose) {
+    message("Read ", nrow(beta_values), " CpG sites and ", ncol(beta_values), " samples")
+  }
+  
+  # Load array annotation
+  if (verbose) {
+    message("Loading ", array, " array annotation...")
+  }
+  
+  if (array == "450K") {
+    array_locs <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
+  } else if (array == "EPIC") {
+    array_locs <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
+  }
+  
+  # Sort array annotation by genomic coordinates
+  sorted_locs <- array_locs[stringr::str_order(paste0(array_locs[, "chr"], ":", array_locs[, "pos"]), numeric = TRUE), ]
+  
+  # Find CpGs that are present in both the beta file and array annotation
+  common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
+  missing_from_annotation <- setdiff(cpg_ids, rownames(sorted_locs))
+  missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
+  
+  if (length(missing_from_annotation) > 0) {
+    warning("Found ", length(missing_from_annotation), " CpG sites in beta file that are not in ", 
+            array, " annotation. These will be placed at the end of the sorted file.")
+  }
+  
+  if (verbose) {
+    message("Found ", length(common_cpgs), " CpG sites common to both beta file and array annotation")
+    if (length(missing_from_annotation) > 0) {
+      message("Found ", length(missing_from_annotation), " CpG sites only in beta file")
+    }
+  }
+  
+  # Create sorting order: first the CpGs that are in annotation (sorted by coordinates),
+  # then the CpGs not in annotation (in original order)
+  sorted_cpgs_in_annotation <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
+  cpgs_not_in_annotation <- cpg_ids[cpg_ids %in% missing_from_annotation]
+  
+  final_order <- c(sorted_cpgs_in_annotation, cpgs_not_in_annotation)
+  
+  # Reorder beta values
+  sorted_beta_values <- beta_values[final_order, , drop = FALSE]
+  
+  # Prepare output data frame
+  output_data <- data.frame(
+    ID = rownames(sorted_beta_values),
+    sorted_beta_values,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  if (verbose) {
+    message("Writing sorted beta file to: ", output.file)
+  }
+  
+  # Write sorted file
+  data.table::fwrite(
+    output_data, 
+    file = output.file, 
+    sep = "\t", 
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = TRUE
+  )
+  
+  # Validate sorting
+  if (verbose) {
+    message("Validating coordinate sorting...")
+  }
+  
+  # Read back the first column to verify sorting
+  sorted_cpg_ids <- data.table::fread(output.file, select = 1, header = TRUE)[[1]]
+  
+  # Check if the common CpGs are properly sorted
+  common_in_output <- sorted_cpg_ids[sorted_cpg_ids %in% rownames(sorted_locs)]
+  expected_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_in_output]
+  
+  if (!identical(common_in_output, expected_order)) {
+    warning("Sorting validation failed! The output file may not be properly sorted by coordinates.")
+  } else if (verbose) {
+    message("Sorting validation passed successfully!")
+  }
+  
+  if (verbose) {
+    message("Successfully created sorted beta file: ", output.file)
+  }
+  
+  return(output.file)
 }
 
 .subset.beta <- function(beta.file,
@@ -724,12 +895,6 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     cdmps <- dmps[m]
     cdmps.beta <- dmps.beta[m, , drop = F]
     cdmps.locs <- dmps.locs[m, , drop = F]
-    controls.beta <- cdmps.beta[,pheno[,casecontrol.col]==0,drop=F]
-    controls.beta.mean <- apply(controls.beta, 1, mean)
-    controls.beta.sd <- apply(controls.beta, 1, sd)
-    controls.beta.num <- apply(!is.na(controls.beta), 1, sum)
-    
-    
     dmrs <- data.frame()
     start.ind <- 1
     corr.pval <- 1
@@ -766,7 +931,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
           for (dmp_group in unique(cdmps.tsv[, dmp_group.col])){
             
             gdmps.tsv <- cdmps.tsv[
-                (cdmps.tsv[, dmp_group.col] == sample_group),]
+                (cdmps.tsv[, dmp_group.col] == dmp_group),]
             rownames(gdmps.tsv) <- gdmps.tsv$dmp # here there must be unique CpGs in `dmp` column
             
             dmr.dmps.tsv <- gdmps.tsv[cdmps[dmr.dmps.inds], , drop = F]

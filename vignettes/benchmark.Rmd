@@ -100,11 +100,14 @@ dmrs_input <- data.frame(
 # The phenotype data is already created above in the data loading section
 # But let's rename the column to match our expected format
 pheno$group <- pheno$status
+pheno$casecontrol <- pheno$status == "cancer"
 pheno$status <- NULL
 
 # Write beta values to temp file
 beta_file <- tempfile(fileext = ".txt")
 beta_mat <- getBeta(mset)
+
+
 write.table(
     cbind(ID = rownames(beta_mat), beta_mat),
     file = beta_file,
@@ -112,6 +115,8 @@ write.table(
     quote = FALSE,
     row.names = FALSE
 )
+
+sortBetaFileByCoordinates(beta_file)
 
 # Write DMPs to temp file
 dmps_file <- tempfile(fileext = ".txt")

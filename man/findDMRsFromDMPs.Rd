@@ -13,6 +13,7 @@ findDMRsFromDMPs(
   pheno = NULL,
   pval.col = "pval_adj",
   sample_group.col = "Sample_Group",
+  dmp_group.col = NULL,
   casecontrol.col = "casecontrol",
   min.cpg.delta_beta = 0,
   expansion.step = 50,
@@ -41,6 +42,8 @@ findDMRsFromDMPs(
 \item{pval.col}{Character. Column name for p-values in the DMPs file. Default is "pval_adj".}
 
 \item{sample_group.col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
+
+\item{dmp_group.col}{Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.}
 
 \item{casecontrol.col}{Character. Column name for case-control information in the phenotype data. Default is "casecontrol".}
 
