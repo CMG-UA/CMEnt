@@ -34,7 +34,7 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed 
   tryCatch({
   sel_ids <- sample(all_ids, n_cpgs)
   }, error = function(err){
-    browser()
+    if(interactive()) browser()
     }
   )
   # Sort selected IDs by genomic position to satisfy function precondition

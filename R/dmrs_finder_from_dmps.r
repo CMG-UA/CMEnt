@@ -294,7 +294,7 @@ sortBetaFileByCoordinates <- function(beta.file,
     }
     sub <- full[idx, , drop=FALSE]
     if (nrow(sub) == 0){
-      browser()
+      if(interactive()) browser()
       stop("None of the provided sites exist in the read beta file")
     }
     sub <- apply(sub, 2, as.numeric)
@@ -303,7 +303,7 @@ sortBetaFileByCoordinates <- function(beta.file,
       
       rownames(sub) <- sites
     }, error=function(e){
-      browser()
+      if(interactive()) browser()
     }
     )
     nas.per.row <- apply(sub,1,function(r) sum(is.na(r)))
@@ -539,7 +539,7 @@ sortBetaFileByCoordinates <- function(beta.file,
   dmr$start_cpg <- beta.row.names[upstream.exp]
   tryCatch({
   dmr$end_cpg <- beta.row.names[downstream.exp]
-  }, error=function(e){browser()})
+  }, error=function(e){if(interactive()) browser()})
   dmr$start <- sorted.locs[dmr$start_cpg, 'pos']
   dmr$end <- sorted.locs[dmr$end_cpg, 'pos']
   dmr$downstream_cpg_expansion_stop_reason <- downstream.stop.reason
@@ -557,7 +557,7 @@ sortBetaFileByCoordinates <- function(beta.file,
     if (sum(sample.groups == g) < 3)
       next
     op <- options(warn=2)$warn
-    corr.ret <- try(corr.test(site1.beta[sample.groups == g], site2.beta[sample.groups == g]))
+    corr.ret <- try(corr.test(site1.beta[sample.groups == g], site2.beta[sample.groups == g], ci=F))
     options(warn=op)
     if (inherits(corr.ret, "try-error")){
       if (extreme.verbosity){
@@ -567,7 +567,7 @@ sortBetaFileByCoordinates <- function(beta.file,
         message('sample.groups:', paste(sample.groups, collapse=','))
         message('max.pval.corrected:', max.pval.corrected)
         message("Error message:", corr.ret)
-        browser()
+        if(interactive()) browser()
       }
       return(list(F, pval, delta_beta, failing=g, reason='error occurred'))
     }
@@ -820,12 +820,12 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     dmps <- setdiff(dmps, missing.in.annotation)
   }
   if (length(dmps) == 0) {
-    browser()
+    if(interactive()) browser()
     stop("No DMPs remain after filtering against array annotation.")
   }
   if (! all(dmps %in% beta.row.names)){
     missing.in.beta <- dmps[!(dmps %in% beta.row.names)]
-    browser()
+    if(interactive()) browser()
     stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing.in.beta, collapse=','))
   }
   dmps <- dmps[orderByLoc(dmps)]
@@ -899,7 +899,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     start.ind <- 1
     corr.pval <- 1
     dmr.dmps.inds <- c()
-    for (i in seq(nrow(cdmps.beta))) {
+    for (i in seq_len(nrow(cdmps.beta))) {
       reg.dmr <- F
       dmr.dmps.inds <- c(dmr.dmps.inds, i)
       stop.condition <- F
@@ -945,6 +945,9 @@ findDMRsFromDMPs <- function(beta.file=NULL,
               if (! opt.col %in% colnames(dmr.dmps.tsv)){
                 dmr.dmps.tsv[,opt.col] <- NA
               }
+            }
+            if (! "qval" %in% colnames(dmr.dmps.tsv)){
+              dmr.dmps.tsv[,'qval'] <- NA
             }
             
             new.dmr <- data.frame(
@@ -1013,7 +1016,8 @@ findDMRsFromDMPs <- function(beta.file=NULL,
             }, error = function(e) {
               message("Error in rbind: ", e)
               message("New DMR: \n\t", paste(paste(colnames(new.dmr),unlist(new.dmr),sep=': '), collapse = '\n\t'))
-              message("Existing DMRs: \n\t", paste(capture.output(print(dmr)),collapse='\n\t') )
+              message("Existing DMRs: \n\t", paste(capture.output(print(dmrs)),collapse='\n\t') )
+              if(interactive()) browser()
             })
           }
         
@@ -1077,7 +1081,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
 
 
   ungrouped.dmrs <- dmrs[
-    dmrs[,sample_group.col] == dmrs[1,sample_group.col] ,
+    dmrs[,dmp_group.col] == dmrs[1,dmp_group.col] ,
     c("chr", "start_dmp", "end_dmp", "start_dmp_pos", "end_dmp_pos", "dmps_num", "corr_pval")
     ]
   if (verbose)
@@ -1124,7 +1128,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   all.locs.inds <- rownames(sorted.locs)
   names(all.locs.inds) <- all.locs.inds
-  all.locs.inds[1:length(all.locs.inds)] <- seq(length(all.locs.inds))
+  all.locs.inds[seq_along(all.locs.inds)] <- seq_along(all.locs.inds)
   extended.dmrs$start_ind <- as.numeric(all.locs.inds[extended.dmrs$start_cpg])
   extended.dmrs$end_ind <- as.numeric(all.locs.inds[extended.dmrs$end_cpg])
   extended.dmrs$sup_cpgs_num <- extended.dmrs$end_ind - extended.dmrs$start_ind + 1
@@ -1156,10 +1160,9 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   
   sequences <- getSeq(Hsapiens, extended.dmrs.lifted.over, as.character = TRUE)
-  sequences <- unstrsplit(sequences, sep = ",")
+  sequences <- character-utils::unstrsplit(sequences, sep = ",")
   extended.dmrs.lifted.over <- as.data.frame(extended.dmrs.lifted.over)
   extended.dmrs.lifted.over$cpgs_num <- str_count(sequences, "GC")
-  extended.dms <- as.data.frame(extended.dmrs)
   extended.dmrs <- merge(extended.dmrs, extended.dmrs.lifted.over[, c("id", "cpgs_num")], by = "id")
   colnames(extended.dmrs)[colnames(extended.dmrs) == "seqnames"] <- "chr"
 

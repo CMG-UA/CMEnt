@@ -70,7 +70,7 @@ dmps <- dmpFinder(getBeta(mset),
 cancer_means <- rowMeans(getBeta(mset[, pheno$status == "cancer"]))
 normal_means <- rowMeans(getBeta(mset[, pheno$status == "normal"]))
 cancer_sd <- rowSds(getBeta(mset[, pheno$status == "cancer"]))
-normal_sd <- rowSds(getBeta(mset[, pheno$status='normal']))
+normal_sd <- rowSds(getBeta(mset[, pheno$status=='normal']))
 delta_betas <- cancer_means - normal_means
 
 # Add delta beta to dmps results
@@ -78,6 +78,7 @@ dmps$delta_beta <- delta_betas
 dmps$cases_beta <- cancer_means
 dmps$cases_beta_sd <- cancer_sd
 dmps$controls_beta_sd <- normal_sd
+dmps$qval <- NA
 
 # Filter significant DMPs
 sig_dmps <- dmps[dmps$pval < 0.05 & abs(dmps$delta_beta) > 0.2, ]
@@ -90,6 +91,7 @@ dmrs_input <- data.frame(
     dmp = rownames(sig_dmps),
     chr = gsub("chr", "", probe_info$chr),
     pos = probe_info$pos,
+    qval = sig_dmps$qval,
     pval = sig_dmps$pval,
     pval_adj = p.adjust(sig_dmps$pval, method = "BH"),
     delta_beta = sig_dmps$delta_beta,
