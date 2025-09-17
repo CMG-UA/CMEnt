@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ## Load Required Libraries
 
 ```{r load_libraries}
+detach("package:DMRSegal", unload=T)
 library(minfi)
 library(DMRcate)
 library(bumphunter)
@@ -110,6 +111,22 @@ write.table(
 )
 
 # Find DMRs using DMRSegal
+dmrs_segal <- findDMRsFromDMPs(
+    beta.file = beta_file,
+    dmps.tsv.file = dmps_file,
+    pheno = pheno,
+    sample_group.col = "group",
+    min.dmps = 2,
+    min.cpgs = 3,
+    verbose=T
+)
+```
+```{r}
+devtools::install()
+```
+
+
+```{r}
 dmrs_segal <- findDMRsFromDMPs(
     beta.file = beta_file,
     dmps.tsv.file = dmps_file,

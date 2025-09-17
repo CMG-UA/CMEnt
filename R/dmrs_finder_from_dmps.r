@@ -1082,7 +1082,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     stop(ret)
   }
   dmrs <- do.call(rbind, ret)
-  message("Summary of connected DMRs before filtering based on connected DMP number:\n\t", paste(capture.output(summary(dmrs)), collapse="\n\t"))
+  if(verbose) message("Summary of connected DMRs before filtering based on connected DMP number:\n\t", paste(capture.output(summary(dmrs)), collapse="\n\t"))
   dmrs <- dmrs[dmrs$dmps_num >= min.dmps, , drop = FALSE]
   cases.num <- dmrs$cases_num
   controls.num <- dmrs$controls_num
