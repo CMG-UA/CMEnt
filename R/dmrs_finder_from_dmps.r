@@ -442,6 +442,7 @@
 #' @param output.dir Character. Directory to save the output files. Default is current directory.
 #' @param pval.col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
 #' @param sample_group.col Character. Column name for sample group information in the phenotype data. Default is NULL.
+#' @param dmp_group.col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
 #' @param casecontrol.col Character. Column name for case-control information in the phenotype data. Default is "casecontrol".
 #' @param min.cpg.delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion.step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
@@ -461,6 +462,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
                              pheno=NULL,
                              pval.col = "pval_adj",
                              sample_group.col = "Sample_Group",
+                             dmp_group.col = NULL,
                              casecontrol.col = "casecontrol",
                              min.cpg.delta_beta = 0,
                              expansion.step = 50,
@@ -537,10 +539,15 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     }
     return(NULL)
   }
-  if (! sample_group.col %in% colnames(dmps.tsv)){
-      stop("Sample group column '", sample_group.col,
+  if (!is.null(dmp_group.col)){
+  if (! dmp_group.col %in% colnames(dmps.tsv)){
+      stop("DMP group column '", dmp_group.col,
         "' does not reside in the DMPs file columns: ", 
            paste(colnames(dmps.tsv), collapse=','))
+  }
+  } else {
+    dmp_group.col <- "_DUMMY_DMP_GROUP_COL_"
+    dmps.tsv[,dmp_group.col] <- "all"
   }
   
   if (! pval.col %in% colnames(dmps.tsv)) {
@@ -756,10 +763,10 @@ findDMRsFromDMPs <- function(beta.file=NULL,
         }
       }
       if (reg.dmr) {
-          for (sample_group in unique(cdmps.tsv[, sample_group.col])){
+          for (dmp_group in unique(cdmps.tsv[, dmp_group.col])){
             
             gdmps.tsv <- cdmps.tsv[
-                (cdmps.tsv[, sample_group.col] == sample_group),]
+                (cdmps.tsv[, dmp_group.col] == sample_group),]
             rownames(gdmps.tsv) <- gdmps.tsv$dmp # here there must be unique CpGs in `dmp` column
             
             dmr.dmps.tsv <- gdmps.tsv[cdmps[dmr.dmps.inds], , drop = F]
@@ -822,7 +829,9 @@ findDMRsFromDMPs <- function(beta.file=NULL,
               stop_connection_reason = stop.reason,
               dmps = paste(cdmps[dmr.dmps.inds], collapse = ',')
             )
-            new.dmr[[sample_group.col]] <- sample_group
+            if (dmp_group.col != "_DUMMY_DMP_GROUP_COL_") {
+              new.dmr[[dmp_group.col]] <- dmp_group
+            }
             tryCatch({
               dmrs <- rbind(dmrs, new.dmr)
             }, error = function(e) {
