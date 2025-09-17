@@ -5,28 +5,40 @@
 #' Differentially Methylated Positions (DMPs) using a correlation-based approach. It expands
 #' significant DMPs into regions, considering both statistical significance and biological
 #' relevance of methylation changes.
+#' 
+#' @section Important Note on Input Data:
+#' Do not apply heavy filtering to your DMPs prior to using this function, particularly based on 
+#' beta values or effect sizes. The function works by expanding regions around significant DMPs 
+#' and connecting nearby CpGs into larger regions. Filtering out DMPs with smaller effect sizes 
+#' may remove important CpGs that could serve as "bridges" to connect more significant DMPs into 
+#' larger, biologically meaningful DMRs. For optimal results, include all statistically 
+#' significant DMPs (e.g., adjusted p-value < 0.05) and let the function handle region expansion 
+#' and filtering internally using the min.cpg.delta_beta parameter if needed.
 #'
 #' @param beta.file Path to the methylation beta values file or a data matrix with beta values
 #' @param dmps.tsv.file Path to the pre-computed DMPs file or a data frame with DMPs
 #' @param pheno Data frame containing sample phenotype information
-#' @param output.dir Output directory for results (default: '.')
 #' @param pval.col Column name in DMPs file containing p-values (default: "pval_adj")
 #' @param sample_group.col Column in pheno for sample grouping (default: "Sample_Group")
+#' @param dmp_group.col Column in DMPs file for grouping DMPs (default: NULL)
 #' @param casecontrol.col Column in pheno for case/control status (default: "casecontrol")
 #' @param min.cpg.delta_beta Minimum delta beta threshold for CpGs (default: 0)
-#' @param expansion.step Distance in bp to expand regions (default: 50)
+#' @param expansion.step Distance in bp to expand regions during search (default: 500)
+#' @param expansion.relaxation Relaxation parameter for region expansion (default: 0)
 #' @param array Array platform, either "450K" or "EPIC" (default: c("450K", "EPIC"))
 #' @param genome Reference genome, "hg19" or "hg38" (default: c("hg19", "hg38"))
-#' @param max.pval Maximum p-value threshold (default: 0.05)
-#' @param max.lookup.dist Maximum distance for region expansion (default: 10000)
+#' @param max.pval Maximum p-value threshold for DMPs (default: 0.05)
+#' @param max.lookup.dist Maximum distance for region expansion in bp (default: 10000)
 #' @param min.dmps Minimum number of DMPs required per region (default: 1)
+#' @param min.adj.dmps Minimum number of adjacent DMPs required per region (default: 1)
 #' @param min.cpgs Minimum number of CpGs required per region (default: 50)
-#' @param ignored.sample.groups Sample groups to ignore (default: NULL)
-#' @param output.prefix Optional identifier for output files (default: NULL)
+#' @param ignored.sample.groups Sample groups to ignore during analysis (default: NULL)
+#' @param output.prefix Optional identifier prefix for output files (default: NULL)
 #' @param njobs Number of parallel jobs (default: detectCores())
 #' @param verbose Enable verbose output (default: FALSE)
 #' @param beta.row.names.file Optional file with beta value row names (default: NULL)
 #' @param dmps.beta.file Optional separate beta file for DMPs (default: NULL)
+#' @param tabix.file Path to tabix-indexed beta values file (alternative to beta.file, default: NULL)
 #'
 #' @return A GRanges object containing identified DMRs with metadata columns:
 #' \itemize{
@@ -356,7 +368,8 @@ sortBetaFileByCoordinates <- function(beta.file,
                         min.cpg.delta_beta=0,
                         casecontrol = NULL,
                         tabix.file=NULL,
-                        expansion.step = 500) {
+                        expansion.step = 500,
+                        expansion.relaxation = 0) {
   if (!is.null(beta.file)){
     ret <- .get.beta.col.names.and.inds(beta.file, beta.col.names)
 
@@ -428,6 +441,7 @@ sortBetaFileByCoordinates <- function(beta.file,
       break
     }
     i <- 1
+    exp.relax.counter <- 0
     while (T) {
       corr.ret <- .testConnectivity(site1.beta = unlist(upstream.betas[i, ]),
                                      site2.beta = unlist(upstream.betas[i + 1, ]),
@@ -437,10 +451,17 @@ sortBetaFileByCoordinates <- function(beta.file,
                                      min.delta_beta = min.cpg.delta_beta,
                                      extreme.verbosity=T)
       if (!corr.ret[[1]]) {
-        upstream.exp <- end.site.ind - i + 1
-        upstream.stop.found <- T
-        upstream.stop.reason <- corr.ret$reason
-        break
+        if (exp.relax.counter < expansion.relaxation) {
+          exp.relax.counter <- exp.relax.counter + 1
+        } else {
+          upstream.exp <- end.site.ind - i + 1 - exp.relax.counter
+          upstream.stop.found <- T
+          upstream.stop.reason <- corr.ret$reason
+          exp.relax.counter <- 0
+          break
+        }
+      } else {
+        exp.relax.counter <- 0
       }
       i <- i + 1
       if (i == nrow(upstream.betas)){
@@ -458,7 +479,6 @@ sortBetaFileByCoordinates <- function(beta.file,
   }
   start.site.ind <- dmr.end.ind[[1]]
   downstream.exp <- start.site.ind
-  ns <- 0
   downstream.stop.found <- F
   while (T) {
     if (start.site.ind > length(beta.row.names)) {
@@ -510,6 +530,7 @@ sortBetaFileByCoordinates <- function(beta.file,
     }
     
     i <- 1
+    exp.relax.counter <- 0
     while (T) {
       corr.ret <- .testConnectivity(site1.beta = unlist(downstream.betas[i, ]),
                                      site2.beta = unlist(downstream.betas[i + 1, ]),
@@ -518,10 +539,17 @@ sortBetaFileByCoordinates <- function(beta.file,
                                      casecontrol = casecontrol,
                                      min.delta_beta = min.cpg.delta_beta)
       if (!corr.ret[[1]]) {
-        downstream.exp <- start.site.ind + i - 1
-        downstream.stop.reason <- corr.ret$reason
-        downstream.stop.found <- T
-        break
+        if (exp.relax.counter < expansion.relaxation) {
+          exp.relax.counter <- exp.relax.counter + 1
+        } else {
+          downstream.exp <- start.site.ind + i - 1 + exp.relax.counter
+          downstream.stop.found <- T
+          downstream.stop.reason <- corr.ret$reason
+          exp.relax.counter <- 0
+          break
+        }
+      } else {
+        exp.relax.counter <- 0
       }
       i <- i + 1
       if (i == nrow(downstream.betas)){
@@ -610,18 +638,19 @@ sortBetaFileByCoordinates <- function(beta.file,
 #' @param beta.file Character. Path to the beta value file. Either this or tabix.file must be provided.
 #' @param dmps.tsv.file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
-#' @param output.dir Character. Directory to save the output files. Default is current directory.
 #' @param pval.col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
 #' @param sample_group.col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param dmp_group.col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
 #' @param casecontrol.col Character. Column name for case-control information in the phenotype data. Default is "casecontrol".
 #' @param min.cpg.delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion.step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
+#' @param expansion.relaxation Numeric. Maximum number of intermittent CpGs allowed to not be significanly correlated, to increase the extended DMR size. Default is 0.
 #' @param array Character. Type of array used ("450K" or "EPIC"). Default is "450K".
 #' @param max.pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
 #' @param max.lookup.dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
-#' @param min.dmps Numeric. Minimum number of DMPs in a DMR. Default is 1.
-#' @param min.cpgs Numeric. Minimum number of CpGs in a DMR. Default is 50.
+#' @param min.dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
+#' @param min.cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
+#' @param min.adj.dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
 #' @param output.prefix Character. Identifier for the output files. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param verbose Logical. Whether to print detailed messages. Default is FALSE.
@@ -636,12 +665,14 @@ findDMRsFromDMPs <- function(beta.file=NULL,
                              dmp_group.col = NULL,
                              casecontrol.col = "casecontrol",
                              min.cpg.delta_beta = 0,
-                             expansion.step = 50,
+                             expansion.step = 500,
+                             expansion.relaxation = 0,
                              array = c("450K", "EPIC"),
                              genome = c("hg19", "hg38"),
                              max.pval = 0.05,
                              max.lookup.dist = 10000,
                              min.dmps = 1,
+                             min.adj.dmps = 1,
                              min.cpgs = 50,
                              ignored.sample.groups = NULL,
                              output.prefix = NULL,
@@ -838,6 +869,8 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   if (verbose)
     message("Getting subset beta corresponding to DMPs..")
   dmps.locs <- sorted.locs[dmps, , drop = F]
+  dmps.tsv[, "chr"] <- dmps.locs[dmps.tsv[,'dmp'], 'chr']
+  dmps.tsv[, "pos"] <- dmps.locs[dmps.tsv[,'dmp'], 'pos']
   if (!is.null(output.prefix)){
     dmps.beta.output.file <-   paste0(output.prefix, "dmps.beta.tsv.gz")
     if (is.null(dmps.beta.file)){
@@ -860,6 +893,19 @@ findDMRsFromDMPs <- function(beta.file=NULL,
                           tabix.file,verbose=F)
       dmps.beta <- as.data.frame(sapply(dmps.beta[,beta.col.names], as.numeric))
     }
+    if (verbose) message("Calculating delta_beta related columns in the DMPs table..")
+    case_means <- rowMeans(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 1, drop=F], na.rm=T)
+    control_means <- rowMeans(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 0, drop=F], na.rm=T)
+    case_sd <- apply(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 1, drop=F], 1, sd, na.rm=T)
+    control_sd <- apply(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 0, drop=F], 1, sd, na.rm=T)
+    dmps.tsv[,'cases_num'] <- colSums(!is.na(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 1, drop=F]))
+    dmps.tsv[,'controls_num'] <- colSums(!is.na(dmps.beta[, pheno[beta.col.names, casecontrol.col] == 0, drop=F]))
+    dmps.tsv[,'cases_beta'] <- case_means[dmps.tsv[,'dmp']]
+    dmps.tsv[,'controls_beta'] <- control_means[dmps.tsv[,'dmp']]
+    dmps.tsv[,'cases_beta_sd'] <- case_sd[dmps.tsv[,'dmp']]
+    dmps.tsv[,'controls_beta_sd'] <- control_sd[dmps.tsv[,'dmp']]
+    dmps.tsv[,'delta_beta'] <- dmps.tsv[,'cases_beta'] - dmps.tsv[,'controls_beta']
+    
     if (!is.null(output.prefix)){
       if (verbose) message("Saving dmps beta to file: ", dmps.beta.output.file)
       gz <- gzfile(dmps.beta.output.file, 'w')
@@ -946,9 +992,6 @@ findDMRsFromDMPs <- function(beta.file=NULL,
                 dmr.dmps.tsv[,opt.col] <- NA
               }
             }
-            if (! "qval" %in% colnames(dmr.dmps.tsv)){
-              dmr.dmps.tsv[,'qval'] <- NA
-            }
             
             new.dmr <- data.frame(
               chr = chr,
@@ -996,18 +1039,13 @@ findDMRsFromDMPs <- function(beta.file=NULL,
               cases_num = min(dmr.dmps.tsv[,'cases_num']),
               controls_num = min(dmr.dmps.tsv[,'controls_num']),
               corr_pval = corr.pval,
-              dmps_pval_adj = mean(dmr.dmps.tsv[, "pval_adj"]),
-              dmps_pval_adj_min = min(dmr.dmps.tsv[, "pval_adj"]),
-              dmps_pval_adj_max = max(dmr.dmps.tsv[, "pval_adj"]),
-              dmps_pval = mean(dmr.dmps.tsv[, "pval"]),
-              dmps_pval_min = min(dmr.dmps.tsv[, "pval"]),
-              dmps_pval_max = max(dmr.dmps.tsv[, "pval"]),
-              dmps_qval = mean(dmr.dmps.tsv[, "qval"]),
-              dmps_qval_min = min(dmr.dmps.tsv[, "qval"]),
-              dmps_qval_max = max(dmr.dmps.tsv[, "qval"]),
+              dmps_pval_adj = mean(dmr.dmps.tsv[, pval.col]),
+              dmps_pval_adj_min = min(dmr.dmps.tsv[, pval.col]),
+              dmps_pval_adj_max = max(dmr.dmps.tsv[, pval.col]),
               stop_connection_reason = stop.reason,
               dmps = paste(cdmps[dmr.dmps.inds], collapse = ',')
             )
+            names(new.dmr) <- gsub("pval_adj",pval.col,names(new.dmr), fixed=T)
             if (dmp_group.col != "_DUMMY_DMP_GROUP_COL_") {
               new.dmr[[dmp_group.col]] <- dmp_group
             }
@@ -1036,35 +1074,12 @@ findDMRsFromDMPs <- function(beta.file=NULL,
     stop(ret)
   }
   dmrs <- do.call(rbind, ret)
-  # Force numeric for key quantitative columns that may have been coerced to character
-  num.cols <- intersect(c('delta_beta','cases_beta_sd','controls_beta_sd','cases_beta','controls_beta',
-                          'cases_num','controls_num','delta_beta_sd','delta_beta_se','cases_beta_max',
-                          'cases_beta_min','controls_beta_max','controls_beta_min'), colnames(dmrs))
-  for (cn in num.cols) {
-    if (!is.numeric(dmrs[[cn]])) {
-      suppressWarnings(dmrs[[cn]] <- as.numeric(dmrs[[cn]]))
-    }
-  }
-  # Coerce any purely numeric character columns to numeric to avoid downstream arithmetic errors
-  for (cn in colnames(dmrs)) {
-    if (is.character(dmrs[[cn]])) {
-      suppressWarnings(numv <- as.numeric(dmrs[[cn]]))
-      # Convert only if there are no newly introduced NAs (excluding existing NAs)
-      if (!all(is.na(numv)) && sum(is.na(numv)) <= sum(is.na(dmrs[[cn]]))) {
-        dmrs[[cn]] <- numv
-      }
-    }
-  }
-  # Ensure numeric types (some test-generated DMP tables may have these as characters/factors)
-  to_numeric <- function(x) {
-    if (is.numeric(x)) return(x)
-    if (is.factor(x)) x <- as.character(x)
-    suppressWarnings(as.numeric(x))
-  }
-  cases.num <- to_numeric(dmrs$cases_num)
-  controls.num <- to_numeric(dmrs$controls_num)
-  cases.sd.dmps.methylation <- to_numeric(dmrs$cases_beta_sd)
-  controls.sd.dmps.methylation <- to_numeric(dmrs$controls_beta_sd)
+  message("Summary of connected DMRs before filtering based on connected DMP number:\n\t", paste(capture.output(summary(dmrs)), collapse="\n\t"))
+  dmrs <- dmrs[dmrs$dmps_num >= min.dmps, , drop = FALSE]
+  cases.num <- dmrs$cases_num
+  controls.num <- dmrs$controls_num
+  cases.sd.dmps.methylation <- dmrs$cases_beta_sd
+  controls.sd.dmps.methylation <- dmrs$controls_beta_sd
   if (anyNA(c(cases.num, controls.num))) {
     warning("NAs introduced while coercing cases_num / controls_num to numeric; replacing NAs with 1 to avoid division errors.")
     cases.num[is.na(cases.num)] <- 1
@@ -1104,6 +1119,7 @@ findDMRsFromDMPs <- function(beta.file=NULL,
       beta.col.names = beta.col.names,
       casecontrol = pheno[,casecontrol.col],
       expansion.step = expansion.step,
+      expansion.relaxation = expansion.relaxation,
       min.cpg.delta_beta = min.cpg.delta_beta,
       sorted.locs=sorted.locs
     )
@@ -1164,7 +1180,10 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   }
   
   sequences <- getSeq(Hsapiens, extended.dmrs.lifted.over, as.character = TRUE)
-  sequences <- character-utils::unstrsplit(sequences, sep = ",")
+  # Convert sequences to character vector if needed
+  if (is.list(sequences)) {
+    sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
+  }
   extended.dmrs.lifted.over <- as.data.frame(extended.dmrs.lifted.over)
   extended.dmrs.lifted.over$cpgs_num <- str_count(sequences, "GC")
   extended.dmrs <- merge(extended.dmrs, extended.dmrs.lifted.over[, c("id", "cpgs_num")], by = "id")
@@ -1174,10 +1193,9 @@ findDMRsFromDMPs <- function(beta.file=NULL,
   extended.dmrs[extended.dmrs$cpgs_num == 0, "cpgs_num"]  <- 1
   
   extended.dmrs$dmps_num_adj <- ceiling(extended.dmrs$cpgs_num / extended.dmrs$sup_cpgs_num * extended.dmrs$dmps_num)
-  
 
-  message("Summary of extended DMRs before filtering:\n\t", paste(capture.output(summary(extended.dmrs)), collapse="\n\t"))
-  filtered.dmrs <- extended.dmrs[(extended.dmrs$dmps_num_adj >= min.dmps) & (extended.dmrs$cpgs_num >= min.cpgs), ]
+  message("Summary of extended DMRs before filtering based on CpG number and adjusted DMPs number:\n\t", paste(capture.output(summary(extended.dmrs)), collapse="\n\t"))
+  filtered.dmrs <- extended.dmrs[extended.dmrs$cpgs_num >= min.cpgs & extended.dmrs$dmps_num_adj >= min.adj.dmps, , drop=FALSE]
   if (verbose)
     message(
       "Keeping ",

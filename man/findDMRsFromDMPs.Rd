@@ -16,12 +16,14 @@ findDMRsFromDMPs(
   dmp_group.col = NULL,
   casecontrol.col = "casecontrol",
   min.cpg.delta_beta = 0,
-  expansion.step = 50,
+  expansion.step = 500,
+  expansion.relaxation = 0,
   array = c("450K", "EPIC"),
   genome = c("hg19", "hg38"),
   max.pval = 0.05,
   max.lookup.dist = 10000,
   min.dmps = 1,
+  min.adj.dmps = 1,
   min.cpgs = 50,
   ignored.sample.groups = NULL,
   output.prefix = NULL,
@@ -51,6 +53,8 @@ findDMRsFromDMPs(
 
 \item{expansion.step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 
+\item{expansion.relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significanly correlated, to increase the extended DMR size. Default is 0.}
+
 \item{array}{Character. Type of array used ("450K" or "EPIC"). Default is "450K".}
 
 \item{genome}{Reference genome, "hg19" or "hg38" (default: c("hg19", "hg38"))}
@@ -59,11 +63,13 @@ findDMRsFromDMPs(
 
 \item{max.lookup.dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
 
-\item{min.dmps}{Numeric. Minimum number of DMPs in a DMR. Default is 1.}
+\item{min.dmps}{Numeric. Minimum number of connected DMPs in a DMR. Default is 1.}
 
-\item{min.cpgs}{Numeric. Minimum number of CpGs in a DMR. Default is 50.}
+\item{min.adj.dmps}{Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.}
 
-\item{ignored.sample.groups}{Sample groups to ignore (default: NULL)}
+\item{min.cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+
+\item{ignored.sample.groups}{Sample groups to ignore during analysis (default: NULL)}
 
 \item{output.prefix}{Character. Identifier for the output files. Default is NULL.}
 
@@ -75,7 +81,7 @@ findDMRsFromDMPs(
 
 \item{dmps.beta.file}{Optional separate beta file for DMPs (default: NULL)}
 
-\item{output.dir}{Character. Directory to save the output files. Default is current directory.}
+\item{tabix.file}{Path to tabix-indexed beta values file (alternative to beta.file, default: NULL)}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:
@@ -97,6 +103,17 @@ relevance of methylation changes.
 
 This function identifies DMRs from a given set of DMPs and a beta value file.
 }
+\section{Important Note on Input Data}{
+
+Do not apply heavy filtering to your DMPs prior to using this function, particularly based on
+beta values or effect sizes. The function works by expanding regions around significant DMPs
+and connecting nearby CpGs into larger regions. Filtering out DMPs with smaller effect sizes
+may remove important CpGs that could serve as "bridges" to connect more significant DMPs into
+larger, biologically meaningful DMRs. For optimal results, include all statistically
+significant DMPs (e.g., adjusted p-value < 0.05) and let the function handle region expansion
+and filtering internally using the min.cpg.delta_beta parameter if needed.
+}
+
 \examples{
 \dontrun{
 # Load example data
