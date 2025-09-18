@@ -17,7 +17,9 @@
 #'
 #' @param beta_file Path to the methylation beta values file or a data matrix with beta values
 #' @param dmps_tsv_file Path to the pre-computed DMPs file or a data frame with DMPs
-#' @param pheno Data frame containing sample phenotype information
+#' @param pheno Data frame. Phenotype data.
+#' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
+#' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
 #' @param pval_col Column name in DMPs file containing p-values (default: "pval_adj")
 #' @param sample_group_col Column in pheno for sample grouping (default: "Sample_Group")
 #' @param dmp_group_col Column in DMPs file for grouping DMPs (default: NULL)
