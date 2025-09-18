@@ -7,7 +7,7 @@
 #' @param seed Random seed for reproducibility
 #' @param platform Array platform to simulate ("450K", "EPIC")
 #' @return List containing test data components
-create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed = 42, platform = "450K") {
+create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_connections = 20, n_samples = 10, n_cases = 5, seed = 42, platform = "450K") {
     set.seed(seed)
     platform <- toupper(platform)
     # Annotation requirements
@@ -44,7 +44,6 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed 
     cpg_ids <- sel_ids[ord]
     sel_locs <- sel_locs[ord, , drop = FALSE]
 
-    n_half <- n_samples %/% 2
     beta_values <- matrix(runif(n_cpgs * n_samples, 0, 1),
         nrow = n_cpgs,
         dimnames = list(cpg_ids, paste0("sample", seq_len(n_samples)))
@@ -56,8 +55,8 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed 
     )
     pheno <- data.frame(
         row.names = colnames(beta_values),
-        Sample_Group = factor(rep(c("Case", "Control"), c(n_half, n_samples - n_half))),
-        casecontrol = as.integer(rep(c(1, 0), c(n_half, n_samples - n_half)))
+        Sample_Group = factor(rep(c("Case", "Control"), c(n_cases, n_samples - n_cases))),
+        casecontrol = as.integer(rep(c(1, 0), c(n_cases, n_samples - n_cases)))
     )
     dmp_ids <- sample(cpg_ids, n_dmps)
     dmp_locs <- sel_locs[dmp_ids, , drop = FALSE]
@@ -68,18 +67,11 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed 
         dmp = dmp_ids,
         chr = dmp_locs$chr,
         pos = dmp_locs$pos,
-        pval = runif(n_dmps, 0, 0.01),
         pval_adj = runif(n_dmps, 0, 0.01),
-        qval = runif(n_dmps, 0, 0.01),
-        delta_beta = runif(n_dmps, 0.2, 0.5),
-        cases_beta = runif(n_dmps, 0.6, 0.9),
-        controls_beta = runif(n_dmps, 0.2, 0.5),
-        cases_beta_sd = 0.1,
-        controls_beta_sd = 0.1,
-        cases_num = n_half,
-        controls_num = n_samples - n_half,
         Sample_Group = rep("Case", n_dmps)
     )
+    # Add statistical correlation on the beta values of neighboring DMPs in the same chromosome , limited by n_connections
+
     dmps_file <- tempfile(fileext = ".txt")
     write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
     list(beta_file = beta_file, beta_values = beta_values, dmps_file = dmps_file, dmps = dmps, pheno = pheno, cpg_ids = cpg_ids)

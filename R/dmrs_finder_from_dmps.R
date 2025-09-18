@@ -757,6 +757,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param dmps_tsv_file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
+#' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
 #' @param pval_col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param dmp_group_col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
@@ -765,22 +766,27 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param expansion_relaxation Numeric. Maximum number of intermittent CpGs allowed to not be significanly correlated, to increase the extended DMR size. Default is 0.
 #' @param array Character. Type of array used ("450K" or "EPIC"). Default is "450K".
+#' @param genome Character. Genome version ("hg19" or "hg38"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
 #' @param min_adj_dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
-#' @param output_prefix Character. Identifier for the output files. Default is NULL.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
+#' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
+#' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param verbose Logical. Whether to print detailed messages. Default is FALSE.
+#' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
+#' @param dmps_beta_file Character. Path to load and save the beta values of DMPs. If not provided, the beta values will be read from the beta file. Default is NULL.
+#' @param tabix_file Character. Path to a tabix-indexed beta file. Either this or beta_file must be provided. Default is NULL.
 #'
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromDMPs <- function(beta_file = NULL,
                              dmps_tsv_file = NULL,
-                             dmp_groups_info = NULL,
                              pheno = NULL,
                              dmps_tsv_id_col = NULL,
+                             dmp_groups_info = NULL,
                              pval_col = "pval_adj",
                              sample_group_col = "Sample_Group",
                              dmp_group_col = NULL,
@@ -1407,7 +1413,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
     extended_dmrs$dmps_num_adj <- ceiling(extended_dmrs$cpgs_num / extended_dmrs$sup_cpgs_num * extended_dmrs$dmps_num)
 
-    message("Summary of extended DMRs before filtering based on CpG number and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"))
+    if (verbose) message("Summary of extended DMRs before filtering based on CpG number and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"))
     filtered_dmrs <- extended_dmrs[extended_dmrs$cpgs_num >= min_cpgs & extended_dmrs$dmps_num_adj >= min_adj_dmps, , drop = FALSE]
     if (verbose) {
         message(
@@ -1422,7 +1428,6 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             " contained CpGs."
         )
     }
-
     extended_dmrs <- filtered_dmrs
     if (nrow(extended_dmrs) == 0) {
         if (verbose) message("No DMRs passed the filtering based on min_cpgs and min_adj_dmps criteria.")
@@ -1434,11 +1439,12 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         }
         return(NULL)
     }
-
+    if (verbose) message("Merging extended DMRs with original DMRs table to fill in missing information..")
     ne_dmrs_cols_to_keep <- colnames(dmrs)
     ne_dmrs_cols_to_keep <- c("start_dmp", "end_dmp", ne_dmrs_cols_to_keep[!ne_dmrs_cols_to_keep %in% colnames(extended_dmrs)])
     dmrs <- merge(extended_dmrs, dmrs[, ne_dmrs_cols_to_keep], by = c("start_dmp", "end_dmp"))
     dmrs <- dmrs[str_order(dmrs[, "id"], numeric = TRUE), ]
+    if (verbose) message("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"))
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         if (verbose) {
@@ -1456,10 +1462,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         )
         close(gz)
     }
-
-
-
-    gc()
+    if (verbose) message("Done.")
     GenomicRanges::makeGRangesFromDataFrame(dmrs,
         keep.extra.columns = TRUE,
         seqinfo = Seqinfo(genome = genome),
