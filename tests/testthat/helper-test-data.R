@@ -5,7 +5,7 @@
 #' @param n_cpgs Number of CpGs (rows) in beta value matrix
 #' @param n_samples Number of samples to generate
 #' @param seed Random seed for reproducibility
-#' @param platform Array platform to simulate ("450K", "EPIC", or "mixed")
+#' @param platform Array platform to simulate ("450K", "EPIC")
 #' @return List containing test data components
 create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed = 42, platform = "450K") {
   set.seed(seed)
@@ -22,11 +22,7 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_samples = 10, seed 
     }
     locs <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
   } else {
-    # Treat any other value as 450K for now
-    if (!requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
-      testthat::skip("Illumina 450K annotation not installed")
-    }
-    locs <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
+    stop("Unsupported platform. Use '450K' or 'EPIC'.")
   }
   all_ids <- rownames(locs)
   if (length(all_ids) < n_cpgs) n_cpgs <- length(all_ids)

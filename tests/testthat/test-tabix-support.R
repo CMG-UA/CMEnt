@@ -28,23 +28,23 @@ test_that("DMR finding works with tabix files", {
     
     # Run with tabix file
     result_tabix <- findDMRsFromDMPs(
-        tabix.file = beta_bgz_file,
-        beta.file = NULL,
-        dmps.tsv.file = dmps_file,
+        tabix_file = beta_bgz_file,
+        beta_file = NULL,
+        dmps_tsv_file = dmps_file,
         pheno = test_data$pheno,
-        sample_group.col = "group",
-        min.dmps = 2,
-        min.cpgs = 2
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 2
     )
     
     # Run with regular file for comparison
     result_regular <- findDMRsFromDMPs(
-        beta.file = test_data$beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = test_data$beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = test_data$pheno,
-        sample_group.col = "group",
-        min.dmps = 2,
-        min.cpgs = 2
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 2
     )
     
     # Check that results are consistent between tabix and regular file
@@ -58,12 +58,12 @@ test_that("DMR finding works with tabix files", {
     # Test tabix specific features
     # Test querying specific regions
     region_result <- findDMRsFromDMPs(
-        tabix.file = beta_bgz_file,
-        dmps.tsv.file = dmps_file,
+        tabix_file = beta_bgz_file,
+        dmps_tsv_file = dmps_file,
         pheno = test_data$pheno,
-        sample_group.col = "group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 2,
         region = "chr1:1000-5000"
     )
     

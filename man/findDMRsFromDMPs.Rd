@@ -23,9 +23,9 @@ findDMRsFromDMPs(
   genome = c("hg19", "hg38"),
   max.pval = 0.05,
   max.lookup.dist = 10000,
-  min.dmps = 1,
+  min_dmps = 1,
   min.adj.dmps = 1,
-  min.cpgs = 50,
+  min_cpgs = 50,
   ignored.sample.groups = NULL,
   output.prefix = NULL,
   njobs = future::availableCores(),
@@ -64,11 +64,11 @@ findDMRsFromDMPs(
 
 \item{max.lookup.dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
 
-\item{min.dmps}{Numeric. Minimum number of connected DMPs in a DMR. Default is 1.}
+\item{min_dmps}{Numeric. Minimum number of connected DMPs in a DMR. Default is 1.}
 
 \item{min.adj.dmps}{Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.}
 
-\item{min.cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
 
 \item{ignored.sample.groups}{Sample groups to ignore during analysis (default: NULL)}
 

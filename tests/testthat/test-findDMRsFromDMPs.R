@@ -33,12 +33,12 @@ test_that("DMR finding works correctly with nearby DMPs", {
     
     # Find DMRs
     result <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "Sample_Group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 2,
         max.lookup.dist = 200
     )
     
@@ -84,22 +84,22 @@ test_that("DMR finding respects distance threshold", {
     
     # Test with different distance thresholds
     result_200 <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "Sample_Group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 2,
         max.lookup.dist = 200
     )
     
     result_100 <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "Sample_Group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 2,
         max.lookup.dist = 100
     )
     
@@ -139,12 +139,12 @@ test_that("DMR finding handles edge cases", {
     
     # Should not find DMRs with single DMP
     result <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "Sample_Group",
-        min.dmps = 2,
-        min.cpgs = 2
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 2
     )
     
     expect_equal(length(result), 0, "Should not find DMRs with single DMP")
@@ -170,12 +170,12 @@ test_that("DMR finding handles edge cases", {
     write.table(multi_chr_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
     
     result <- findDMRsFromDMPs(
-      beta.file = beta_file,
-      dmps.tsv.file = dmps_file,
+      beta_file = beta_file,
+      dmps_tsv_file = dmps_file,
       pheno = pheno,
-      sample_group.col = "Sample_Group",
-      min.dmps = 2,
-      min.cpgs = 2
+      sample_group_col = "Sample_Group",
+      min_dmps = 2,
+      min_cpgs = 2
     )
     
     # Should find separate DMRs for each chromosome

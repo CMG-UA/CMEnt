@@ -20,39 +20,39 @@ findDMRsFromDMPsCLI <- function(args) {
   }
 
   # Prepare arguments for findDMRsFromDMPs
-  input.args <- list(
-    beta.file = args$beta,
-    tabix.file = args$tabix,
-    dmps.tsv.file = args$dmps_tsv_file,
-    pval.col = args$pval_col,
-    sample_group.col = args$sample_group_col,
-    dmp_group.col = args$dmp_group_col,
-    casecontrol.col = args$casecontrol_col,
-    min.cpg.delta_beta = args$min_cpg_delta_beta,
-    expansion.step = args$expansion_step,
-    expansion.relaxation = args$expansion_relaxation,
+  input_args <- list(
+    beta_file = args$beta,
+    tabix_file = args$tabix,
+    dmps_tsv_file = args$dmps_tsv_file,
+    pval_col = args$pval_col,
+    sample_group_col = args$sample_group_col,
+    dmp_group_col = args$dmp_group_col,
+    casecontrol_col = args$casecontrol_col,
+    min_cpg_delta_beta = args$min_cpg_delta_beta,
+    expansion_step = args$expansion_step,
+    expansion_relaxation = args$expansion_relaxation,
     array = args$array,
     genome = args$genome,
-    max.pval = args$max_pval,
-    max.lookup.dist = args$max_lookup_dist,
-    min.dmps = args$min_dmps,
-    min.adj.dmps = args$min_adj_dmps,
-    min.cpgs = args$min_cpgs,
-    ignored.sample.groups = args$ignored_sample_groups,
-    output.prefix = args$output_prefix,
+    max_pval = args$max_pval,
+    max_lookup_dist = args$max_lookup_dist,
+    min_dmps = args$min_dmps,
+    min_adj_dmps = args$min_adj_dmps,
+    min_cpgs = args$min_cpgs,
+    ignored_sample_groups = args$ignored_sample_groups,
+    output_prefix = args$output_prefix,
     njobs = args$njobs,
-    verbose = args$verbose,
-    beta.row.names.file = args$beta_row_names_file,
-    dmps.beta.file = args$dmps_beta_file,
+    verbose = args$verbose, 
+    beta_row_names_file = args$beta_row_names_file,
+    dmps_beta_file = args$dmps_beta_file,
     pheno = pheno
   )
 
   if (args$verbose){
     message("Input arguments (without the phenotype): \n\t", 
-            paste(paste(names(input.args), input.args, sep=': '), collapse='\n\t'))
+            paste(paste(names(input_args), input_args, sep=': '), collapse='\n\t'))
   }
   
-  invisible(do.call(findDMRsFromDMPs, input.args))
+  invisible(do.call(findDMRsFromDMPs, input_args))
 }
 
 

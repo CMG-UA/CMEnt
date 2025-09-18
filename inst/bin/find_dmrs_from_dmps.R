@@ -41,4 +41,3 @@ option_list <- list(
 parser <- OptionParser(option_list=option_list)
 args <- parse_args(parser)
 DMRSegal::findDMRsFromDMPsCLI(args)
-DMRSegal::findDMRsFromDMPsCLI(args)

@@ -22,23 +22,23 @@ test_that("Parallel processing produces same results as sequential", {
     
     # Run with single core
     result_single <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 2,
         njobs = 1
     )
     
     # Run with multiple cores
     result_parallel <- findDMRsFromDMPs(
-        beta.file = beta_file,
-        dmps.tsv.file = dmps_file,
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
         pheno = pheno,
-        sample_group.col = "group",
-        min.dmps = 2,
-        min.cpgs = 2,
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 2,
         njobs = 2
     )
     

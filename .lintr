@@ -1,0 +1,12 @@
+linters: linters_with_defaults(object_name_linter(styles = "snake_case"), 
+                           line_length_linter(120),
+                           assignment_linter(),
+                           commas_linter(allow_trailing = FALSE),
+                           indentation_linter(indent = 4L),
+                           semicolon_linter(allow_compound = FALSE, allow_trailing = FALSE),
+                           spaces_left_parentheses_linter(),
+                           infix_spaces_linter(),
+                           no_tab_linter(),
+                           trailing_whitespace_linter(),
+                           single_quotes_linter(),
+                           brace_linter())

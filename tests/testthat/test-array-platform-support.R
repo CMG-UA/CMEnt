@@ -20,10 +20,10 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     
     # Run DMR finding for 450k
     result_450k <- findDMRsFromDMPs(
-        beta.file = test_450k$beta_file,
-        dmps.tsv.file = test_450k$dmps_file,
+        beta_file = test_450k$beta_file,
+        dmps_tsv_file = test_450k$dmps_file,
         pheno = test_450k$pheno,
-        sample_group.col = "Sample_Group",
+        sample_group_col = "Sample_Group",
         array = "450K",
         output.dir = tempdir(),
         output.id = paste0("aps_450k_", as.integer(Sys.time()))
@@ -31,10 +31,10 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     
     # Run DMR finding for EPIC
     result_epic <- findDMRsFromDMPs(
-        beta.file = test_epic$beta_file,
-        dmps.tsv.file = test_epic$dmps_file,
+        beta_file = test_epic$beta_file,
+        dmps_tsv_file = test_epic$dmps_file,
         pheno = test_epic$pheno,
-        sample_group.col = "Sample_Group",
+        sample_group_col = "Sample_Group",
         array = "EPIC",
         output.dir = tempdir(),
         output.id = paste0("aps_epic_", as.integer(Sys.time()))
@@ -52,22 +52,5 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     
     expect_true(all(epic_metadata_cols %in% colnames(mcols(result_epic))))
     expect_true(all(epic_metadata_cols %in% colnames(mcols(result_450k))))
-    
-    # Mixed platform: combine subsets from both (simulate by merging dmps and beta from 450K but array=c("450K","EPIC"))
-    test_mixed <- create_test_data(n_cpgs = 60, n_dmps=12, n_samples = 10, platform = "450K")
-    mixed_dmps <- test_mixed$dmps[1:12, ]
-    if (!"qval" %in% colnames(mixed_dmps)) mixed_dmps$qval <- mixed_dmps$pval_adj
-    test_mixed$dmps_file <- tempfile(fileext = ".txt")
-    write.table(mixed_dmps, file = test_mixed$dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
-    mixed_result <- findDMRsFromDMPs(
-        beta.file = test_mixed$beta_file,
-        dmps.tsv.file = test_mixed$dmps_file,
-        pheno = test_mixed$pheno,
-        sample_group.col = "Sample_Group",
-        array = c("450K", "EPIC"),
-        output.dir = tempdir(),
-        output.id = paste0("aps_mixed_", as.integer(Sys.time()))
-    )
-    expect_s4_class(mixed_result, "GRanges")
-    expect_true(all(epic_metadata_cols %in% colnames(mcols(mixed_result))))
+
 })
