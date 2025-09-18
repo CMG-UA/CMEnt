@@ -1114,7 +1114,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
 
     # Use progressr for cross-platform progress reporting
-    if (verbose && n_chromosomes > 1) {
+    if (verbose) {
         p <- progressr::progressor(steps = n_chromosomes)
     }
 
@@ -1130,7 +1130,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         dmr_dmps_inds <- c()
 
         # Update progress for this chromosome
-        if (verbose && n_chromosomes > 1 && exists("p")) {
+        if (verbose && exists("p")) {
             p()
         }
         for (i in seq_len(nrow(cdmps_beta))) {
@@ -1313,7 +1313,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(ungrouped_dmrs)
-    if (verbose && n_dmrs > 1) {
+    if (verbose) {
         p_dmr <- progressr::progressor(steps = n_dmrs)
     }
 
@@ -1334,7 +1334,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         )
 
         # Update progress for this DMR
-        if (verbose && n_dmrs > 1 && exists("p_dmr")) {
+        if (verbose && exists("p_dmr")) {
             p_dmr()
         }
 

@@ -20,11 +20,16 @@ library(DMRSegal)
 library(minfiData)  # Contains example 450k array data
 library(microbenchmark)
 library(ggplot2)
+library(progressr)
+
+# Configure progressr for RStudio
+# This ensures progress bars are displayed properly in RStudio
+progressr::handlers("progress")
 ```
 
 ## Load and Prepare Data
 
-We'll use a subset of the AML dataset from ExperimentHub to keep the example manageable.
+We'll use a subset of the colon cancer dataset from minfiData MsetEx to keep the example manageable.
 
 ```{r load_data}
 # Load the example data from minfiData
