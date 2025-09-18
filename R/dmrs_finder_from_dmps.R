@@ -1465,9 +1465,9 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         close(gz)
     }
     if (verbose) message("Done.")
-    GenomicRanges::makeGRangesFromDataFrame(dmrs,
+    invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
         keep.extra.columns = TRUE,
         seqinfo = Seqinfo(genome = genome),
         na.rm = TRUE
-    )
+    ))
 }
