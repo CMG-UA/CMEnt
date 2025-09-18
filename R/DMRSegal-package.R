@@ -16,7 +16,7 @@
 #'   \item Beta value files: Tab-separated files containing methylation beta values
 #'   \item Tabix files: Indexed bed.gz files for efficient access to large datasets
 #' }
-#' 
+#'
 #' @section Platform Support:
 #' The package supports methylation data from both major Illumina platforms:
 #' \itemize{

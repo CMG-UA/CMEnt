@@ -63,8 +63,7 @@
                 )
             )
         }
-        if (!is.null(max_control_samples) &&
-            max_control_samples < nrow(control_samplesheet)) {
+        if (!is.null(max_control_samples) && max_control_samples < nrow(control_samplesheet)) {
             inds <- sort(sample(seq_len(nrow(control_samplesheet)), max_control_samples, replace = FALSE))
             control_samplesheet <- control_samplesheet[inds, ]
         }
@@ -88,15 +87,13 @@
                 )
             )
         }
-        if (!is.null(max_case_samples) &&
-            max_case_samples < nrow(case_samplesheet)) {
+        if (!is.null(max_case_samples) && max_case_samples < nrow(case_samplesheet)) {
             inds <- sort(sample(seq_len(nrow(case_samplesheet)), max_case_samples, replace = FALSE))
             case_samplesheet <- case_samplesheet[inds, ]
         }
     }
 
-    if (!is.null(sample_group_case) ||
-        !is.null(sample_group_control)) {
+    if (!is.null(sample_group_case) || !is.null(sample_group_control)) {
         if (!is.null(sample_group_case) && !is.null(sample_group_control)) {
             subset_samplesheet <- rbind(control_samplesheet, case_samplesheet)
         } else {
@@ -110,8 +107,7 @@
         subset_samplesheet <- ref
     }
 
-    if (!is.null(max_samples) &&
-        max_samples < nrow(subset_samplesheet)) {
+    if (!is.null(max_samples) && max_samples < nrow(subset_samplesheet)) {
         inds <- sort(sample(seq_len(nrow(subset_samplesheet)), max_samples, replace = FALSE))
         subset_samplesheet <- subset_samplesheet[inds, ]
     }
@@ -165,9 +161,9 @@
     sample_group_col <- args$sample_group_col
     sample_group_control <- args$sample_group_control
     sample_group_case <- args$sample_group_case
-    max_missing.ratio <- args$max_missing_cov_ratio
-    if (is.null(max_missing.ratio)) {
-        max_missing.ratio <- 0.3
+    max_missing_ratio <- args$max_missing_cov_ratio
+    if (is.null(max_missing_ratio)) {
+        max_missing_ratio <- 0.3
     }
     if (!is.null(sample_group_case)) {
         sample_group_case <- strsplit(sample_group_case, ",")[[1]]
@@ -203,7 +199,7 @@
 #' Get Sorted Genomic Locations for Array Platform
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
-#' methylation array platform (450K or EPIC). The locations are sorted by 
+#' methylation array platform (450K or EPIC). The locations are sorted by
 #' chromosome and position to ensure proper genomic ordering.
 #'
 #' @param array Character. Array platform type, either "450K" or "EPIC"
@@ -220,24 +216,24 @@
 #' \dontrun{
 #' # Get sorted locations for 450K array
 #' locs_450k <- getSortedGenomicLocs("450K")
-#' 
-#' # Get sorted locations for EPIC array  
+#'
+#' # Get sorted locations for EPIC array
 #' locs_epic <- getSortedGenomicLocs("EPIC")
 #' }
 #'
 #' @export
 getSortedGenomicLocs <- function(array) {
-  if (array == "450K") {
-    sorted_locs <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
-  } else if (array == "EPIC") {
-    sorted_locs <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
-  } else {
-    stop("Unknown array type: ", array)
-  }
-  sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = TRUE), ]
-  sorted_locs[,'start'] <- sorted_locs[,'pos']
-  sorted_locs[,'end'] <- sorted_locs[,'pos'] + 1
-  sorted_locs
+    if (array == "450K") {
+        sorted_locs <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
+    } else if (array == "EPIC") {
+        sorted_locs <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
+    } else {
+        stop("Unknown array type: ", array)
+    }
+    sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = TRUE), ]
+    sorted_locs[, "start"] <- sorted_locs[, "pos"]
+    sorted_locs[, "end"] <- sorted_locs[, "pos"] + 1
+    sorted_locs
 }
 
 #' Order Indices by Genomic Location
@@ -258,16 +254,16 @@ getSortedGenomicLocs <- function(array) {
 #' # Order CpG indices by genomic location
 #' cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
 #' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
-#' 
+#'
 #' # Order using pre-computed genomic locations
 #' locs <- getSortedGenomicLocs("EPIC")
 #' ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
 #' }
 #'
 #' @export
-orderByLoc <- function(x, array="450K", genomic_locs=NULL) {
-    if (is.null(genomic_locs)){
-      genomic_locs <- getSortedGenomicLocs(array)
+orderByLoc <- function(x, array = "450K", genomic_locs = NULL) {
+    if (is.null(genomic_locs)) {
+        genomic_locs <- getSortedGenomicLocs(array)
     }
     str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
-  }
+}
