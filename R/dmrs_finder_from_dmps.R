@@ -903,7 +903,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
     message("Reordering DMPs based on location..")
   
   if (is.null(dmps_tsv_id_col)){
-    dmps_tsv_id_col <- "row_names"
+    dmps_tsv_id_col <- "row.names"
   }
   if (! dmps_tsv_id_col %in% colnames(dmps_tsv)){
     stop("DMP id column '", dmps_tsv_id_col,
