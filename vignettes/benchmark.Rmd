@@ -118,7 +118,7 @@ dmrs_segal <- findDMRsFromDMPs(
     min_dmps = 2,
     min_cpgs = 3,
     njobs = 1,
-    verbose=TRUE
+    verbose = TRUE
 )
 ```
 

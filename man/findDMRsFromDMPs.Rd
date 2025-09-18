@@ -129,7 +129,7 @@ data(example_pheno)
 # Write beta values to file
 beta_file <- tempfile(fileext = ".txt")
 write.table(cbind(ID = rownames(example_beta), example_beta),
-            file = beta_file, sep = "\t", quote = FALSE, row_names = FALSE)
+            file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
 # Find DMRs
 dmrs <- findDMRsFromDMPs(

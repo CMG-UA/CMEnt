@@ -59,7 +59,7 @@
 #' # Write beta values to file
 #' beta_file <- tempfile(fileext = ".txt")
 #' write.table(cbind(ID = rownames(example_beta), example_beta),
-#'     file = beta_file, sep = "\t", quote = FALSE, row_names = FALSE
+#'     file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE
 #' )
 #'
 #' # Find DMRs
@@ -245,7 +245,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     output_data <- data.frame(
         ID = rownames(sorted_beta_values),
         sorted_beta_values,
-        check_names = FALSE,
+        check.names = FALSE,
         stringsAsFactors = FALSE
     )
 
@@ -259,8 +259,8 @@ sortBetaFileByCoordinates <- function(beta_file,
         file = output_file,
         sep = "\t",
         quote = FALSE,
-        row_names = FALSE,
-        col_names = TRUE
+        row.names = FALSE,
+        col.names = TRUE
     )
 
     return(output_file)
