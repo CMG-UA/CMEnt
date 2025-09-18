@@ -176,8 +176,8 @@
         sample_group_control <- strsplit(sample_group_control, ",")[[1]]
     }
     max_samples <- args$max_samples
-    max_case.samples <- args$max_case_samples
-    max_control.samples <- args$max_control_samples
+    max_case_samples <- args$max_case_samples
+    max_control_samples <- args$max_control_samples
 
     if (endsWith(samplesheet_file, ".csv")) {
         samplesheet_file_sep <- ","
@@ -193,15 +193,38 @@
         target_col = target_col,
         subset = subset,
         max_samples = max_samples,
-        max_case.samples = max_case.samples,
-        max_control.samples = max_control.samples,
+        max_case_samples = max_case_samples,
+        max_control_samples = max_control_samples,
     )
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret
 }
 
-
-
+#' Get Sorted Genomic Locations for Array Platform
+#'
+#' @description Retrieves and sorts genomic location annotations for the specified
+#' methylation array platform (450K or EPIC). The locations are sorted by 
+#' chromosome and position to ensure proper genomic ordering.
+#'
+#' @param array Character. Array platform type, either "450K" or "EPIC"
+#'
+#' @return A data frame containing sorted genomic locations with columns:
+#' \itemize{
+#'   \item chr: Chromosome
+#'   \item pos: Genomic position
+#'   \item start: Start position (same as pos)
+#'   \item end: End position (pos + 1)
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Get sorted locations for 450K array
+#' locs_450k <- getSortedGenomicLocs("450K")
+#' 
+#' # Get sorted locations for EPIC array  
+#' locs_epic <- getSortedGenomicLocs("EPIC")
+#' }
+#'
 #' @export
 getSortedGenomicLocs <- function(array) {
   if (array == "450K") {
@@ -211,16 +234,40 @@ getSortedGenomicLocs <- function(array) {
   } else {
     stop("Unknown array type: ", array)
   }
-  sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = T), ]
+  sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = TRUE), ]
   sorted_locs[,'start'] <- sorted_locs[,'pos']
   sorted_locs[,'end'] <- sorted_locs[,'pos'] + 1
   sorted_locs
 }
 
+#' Order Indices by Genomic Location
+#'
+#' @description Orders a vector of indices according to their corresponding genomic
+#' locations (chromosome and position). This function is useful for sorting CpG
+#' sites or other genomic features by their physical positions.
+#'
+#' @param x Character or integer vector. Indices or identifiers to be ordered
+#' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
+#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
+#' locations will be retrieved using getSortedGenomicLocs (default: NULL)
+#'
+#' @return Integer vector of ordered indices
+#'
+#' @examples
+#' \dontrun{
+#' # Order CpG indices by genomic location
+#' cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
+#' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
+#' 
+#' # Order using pre-computed genomic locations
+#' locs <- getSortedGenomicLocs("EPIC")
+#' ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
+#' }
+#'
 #' @export
 orderByLoc <- function(x, array="450K", genomic_locs=NULL) {
     if (is.null(genomic_locs)){
       genomic_locs <- getSortedGenomicLocs(array)
     }
-    str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = T)
+    str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
   }

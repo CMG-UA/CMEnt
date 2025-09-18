@@ -97,7 +97,7 @@ write.table(
     row.names = FALSE
 )
 
-beta_file <- sortBetaFileByCoordinates(beta_file, overwrite=T)
+beta_file <- sortBetaFileByCoordinates(beta_file, overwrite=TRUE)
 
 # Write DMPs to temp file
 dmps_file <- tempfile(fileext = ".txt")
@@ -118,7 +118,7 @@ dmrs_segal <- findDMRsFromDMPs(
     min_dmps = 2,
     min_cpgs = 3,
     njobs = 1,
-    verbose=T
+    verbose=TRUE
 )
 ```
 

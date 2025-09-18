@@ -1,4 +1,4 @@
-linters: linters_with_defaults(object_name_linter(styles = "snake_case"), 
+linters: linters_with_defaults(object_name_linter(styles = c("snake_case", "camelCase")), 
                            line_length_linter(120),
                            assignment_linter(),
                            commas_linter(allow_trailing = FALSE),

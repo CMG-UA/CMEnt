@@ -91,7 +91,7 @@
 #' @export
 
 # Helper functions for progress tracking with temporary files
-.get_beta_col_names_and_inds <- function(beta_file, beta_col_names=NULL, is_tabix=F){
+.getBetaColNamesAndInds <- function(beta_file, beta_col_names=NULL, is_tabix=FALSE){
   if (endsWith(beta_file, 'gz'))
     conn <- gzfile(beta_file, 'r')
   else
@@ -99,7 +99,7 @@
   file_beta_col_names <- scan(conn,sep = '\t',
                               what = character(),
                               nlines = 1,
-                              quiet = T)
+                              quiet = TRUE)
   close(conn)
   if (is_tabix) {
     file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
@@ -111,7 +111,7 @@
     
   } else {
     cols_inds <- match(beta_col_names, file_beta_col_names)
-    cols_inds <- cols_inds[!is.na(cols_inds), drop=F]
+    cols_inds <- cols_inds[!is.na(cols_inds), drop=FALSE]
     if (length(cols_inds) == 0){
       stop("Beta file does not contain any phenotype rownames as column name. First 5 supplied phenotype rownames: ",paste(beta_col_names[seq_len(min(5, length(beta_col_names)))], sep=','))
     }
@@ -131,6 +131,7 @@
 #' @param beta_file Character. Path to the input beta values file to be sorted
 #' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
 #' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
+#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
 #' @param verbose Logical. Whether to print progress messages (default: TRUE)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
 #'
@@ -253,7 +254,7 @@ sortBetaFileByCoordinates <- function(beta_file,
   return(output_file)
 }
 
-.subset_beta <- function(beta_file,
+.subsetBeta <- function(beta_file,
                          sites,
                          beta_row_names = NULL,
                          beta_col_names = NULL) {
@@ -293,10 +294,10 @@ sortBetaFileByCoordinates <- function(beta_file,
     beta_row_names <- unlist(fread(
       file = beta_file,
       select = 1,
-      header = T,
+      header = TRUE,
     ))
 
-  ret <- .get_beta_col_names_and_inds(beta_file, beta_col_names)
+  ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
   beta_col_names <- ret$beta_col_names
   cols_inds <- ret$beta_col_inds
   sites_inds <- which(beta_row_names %in% sites)
@@ -311,7 +312,7 @@ sortBetaFileByCoordinates <- function(beta_file,
       what = character(),
       skip = step,
       nlines = 1,
-      quiet = T
+      quiet = TRUE
     )
     as.numeric(l[cols_inds])
   })
@@ -336,10 +337,10 @@ sortBetaFileByCoordinates <- function(beta_file,
                         expansion_step = 500,
                         expansion_relaxation = 0) {
   if (!is.null(beta_file)){
-    ret <- .get_beta_col_names_and_inds(beta_file, beta_col_names)
+    ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
 
   } else {
-    ret <- .get_beta_col_names_and_inds(tabix_file, beta_col_names, is_tabix=T)
+    ret <- .getBetaColNamesAndInds(tabix_file, beta_col_names, is_tabix=TRUE)
   }
 
   cols_inds <- ret$beta_col_inds
@@ -357,8 +358,8 @@ sortBetaFileByCoordinates <- function(beta_file,
   }
   end_site_ind <- dmr_start_ind[[1]]
   upstream_exp <- end_site_ind
-  upstream_stop.found <- F
-  while (T) {
+  upstream_stop.found <- FALSE
+  while (TRUE) {
     if (end_site_ind < 0) {
       upstream_stop_reason <- "end-of-input"
       upstream_exp <- 1
@@ -378,7 +379,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         file = beta_file,
         skip = start_site_ind,
         nrows = exp.step,
-        header = F,data.table=FALSE,
+        header = FALSE,data.table=FALSE,
         colClasses=c("character", rep("numeric", length(file_beta_col_names)))
       )
       upstream_betas <- upstream_betas[, cols_inds]
@@ -390,8 +391,8 @@ sortBetaFileByCoordinates <- function(beta_file,
       upstream_betas <- try(tabix(
         upstream.region,
         tabix_file,
-        check.valid=F,
-        verbose=F
+        check.valid=FALSE,
+        verbose=FALSE
       ))
       if(inherits(upstream_betas, "try-error")){
         warning("Error reading upstream region ", upstream.region, " from tabix file, stopping extension. The error is:\n\t", paste(capture.output(print(upstream_betas)), collapse='\n\t'))
@@ -400,27 +401,27 @@ sortBetaFileByCoordinates <- function(beta_file,
       }
       upstream_betas <- as.data.frame(sapply(upstream_betas[,beta_col_names], as.numeric))
     }
-    upstream_betas <- upstream_betas[rev(seq_len(nrow(upstream_betas))),,drop=F]
+    upstream_betas <- upstream_betas[rev(seq_len(nrow(upstream_betas))),,drop=FALSE]
     if (nrow(upstream_betas) == 1){
       upstream_stop_reason <- "end-of-input"
       break
     }
     i <- 1
     exp_relax_counter <- 0
-    while (T) {
+    while (TRUE) {
       corr_ret <- .testConnectivity(site1.beta = unlist(upstream_betas[i, ]),
                                      site2_beta = unlist(upstream_betas[i + 1, ]),
                                      sample_groups = sample_groups,
                                      casecontrol = casecontrol,
                                      max_pval = max_pval,
                                      min_delta_beta = min_cpg_delta_beta,
-                                     extreme_verbosity=T)
+                                     extreme_verbosity=TRUE)
       if (!corr_ret[[1]]) {
         if (exp_relax_counter < expansion_relaxation) {
           exp_relax_counter <- exp_relax_counter + 1
         } else {
           upstream_exp <- end_site_ind - i + 1 - exp_relax_counter
-          upstream_stop.found <- T
+          upstream_stop.found <- TRUE
           upstream_stop_reason <- corr_ret$reason
           exp_relax_counter <- 0
           break
@@ -444,8 +445,8 @@ sortBetaFileByCoordinates <- function(beta_file,
   }
   start_site_ind <- dmr_end.ind[[1]]
   downstream_exp <- start_site_ind
-  downstream_stop.found <- F
-  while (T) {
+  downstream_stop.found <- FALSE
+  while (TRUE) {
     if (start_site_ind > length(beta_row_names)) {
       downstream_stop_reason <- 'end-of-input'
       downstream_exp <- start_site_ind - 1
@@ -470,7 +471,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         file = beta_file,
         skip = start_site_ind,
         nrows = expansion_step - x + 1,
-        header = F,
+        header = FALSE,
         data.table=FALSE,
         colClasses=c("character", rep("numeric", length(file_beta_col_names)))
       )
@@ -483,8 +484,8 @@ sortBetaFileByCoordinates <- function(beta_file,
       downstream_betas <- try(tabix(
         downstream.region,
         tabix_file,
-        check.valid=F,
-        verbose=F
+        check.valid=FALSE,
+        verbose=FALSE
       ))
       if(inherits(downstream_betas, "try-error")){
         warning("Error reading downstream region ", downstream.region, " from tabix file, stopping extension. The error is:\n\t", paste(capture.output(print(downstream_betas)), collapse='\n\t'))
@@ -496,7 +497,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     
     i <- 1
     exp_relax_counter <- 0
-    while (T) {
+    while (TRUE) {
       corr_ret <- .testConnectivity(site1.beta = unlist(downstream_betas[i, ]),
                                      site2_beta = unlist(downstream_betas[i + 1, ]),
                                      sample_groups = sample_groups,
@@ -508,7 +509,7 @@ sortBetaFileByCoordinates <- function(beta_file,
           exp_relax_counter <- exp_relax_counter + 1
         } else {
           downstream_exp <- start_site_ind + i - 1 + exp_relax_counter
-          downstream_stop.found <- T
+          downstream_stop.found <- TRUE
           downstream_stop_reason <- corr_ret$reason
           exp_relax_counter <- 0
           break
@@ -541,7 +542,7 @@ sortBetaFileByCoordinates <- function(beta_file,
   dmr
 }
 
-.testConnectivity <- function(site1.beta, site2_beta, sample_groups, max_pval,  casecontrol=NULL, min_delta_beta=0, extreme_verbosity=F) {
+.testConnectivity <- function(site1.beta, site2_beta, sample_groups, max_pval,  casecontrol=NULL, min_delta_beta=0, extreme_verbosity=FALSE) {
   pval <- 0
   delta_beta <- NULL
 
@@ -550,7 +551,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (sum(sample_groups == g) < 3)
       next
     op <- options(warn=2)$warn
-    corr_ret <- try(corr.test(site1.beta[sample_groups == g], site2_beta[sample_groups == g], ci=F))
+    corr_ret <- try(corr.test(site1.beta[sample_groups == g], site2_beta[sample_groups == g], ci=FALSE))
     options(warn=op)
     if (inherits(corr_ret, "try-error")){
       if (extreme_verbosity){
@@ -562,15 +563,15 @@ sortBetaFileByCoordinates <- function(beta_file,
         message("Error message:", corr_ret)
         if(interactive()) browser()
       }
-      return(list(F, pval, delta_beta, failing=g, reason='error occurred'))
+      return(list(FALSE, pval, delta_beta, failing=g, reason='error occurred'))
     }
     r <-  max(pval, corr_ret$p)
     if (is.null(r) || is.na(r)) {
-      return(list(F, pval, delta_beta, failing=g, reason='na pval'))
+      return(list(FALSE, pval, delta_beta, failing=g, reason='na pval'))
     }
     pval <- r
     if (pval > max_pval_corrected) {
-      return(list(F, pval, delta_beta, failing=g, reason='pval>max_pval (corrected)'))
+      return(list(FALSE, pval, delta_beta, failing=g, reason='pval>max_pval (corrected)'))
     }
   }
   if (!is.null(casecontrol) && (min_delta_beta>0)){
@@ -587,15 +588,45 @@ sortBetaFileByCoordinates <- function(beta_file,
         " while the site2_beta has length ", length(site2_beta)))
       
     }
-    delta_beta <- mean(site2_beta[casecontrol == 1], na_rm=T) - mean(site2_beta[casecontrol == 0], na_rm=T)
+    delta_beta <- mean(site2_beta[casecontrol == 1], na_rm=TRUE) - mean(site2_beta[casecontrol == 0], na_rm=TRUE)
     if (is.null(delta_beta) || is.na(delta_beta) || (abs(delta_beta) < min_delta_beta)){
-      return(list(F, pval, delta_beta, reason="delta_beta<min_delta_beta"))
+      return(list(FALSE, pval, delta_beta, reason="delta_beta<min_delta_beta"))
     }
   }
-  return (list(T, pval, delta_beta))
+  return (list(TRUE, pval, delta_beta))
 }
 
-
+#' Extract CpG Information from DMR Results
+#'
+#' @description This function extracts detailed CpG methylation information for
+#' identified DMRs, providing beta values and additional metadata for each CpG
+#' site within the DMR regions.
+#'
+#' @param dmrs GRanges object containing DMR results from findDMRsFromDMPs
+#' @param beta_file Character. Path to the methylation beta values file
+#' @param beta_row_names Character vector. Row names for beta values
+#' @param beta_col_names Character vector. Column names for beta values
+#' @param sorted_locs GRanges or data frame with sorted genomic locations
+#' @param output_prefix Character. Optional prefix for output files (default: NULL)
+#' @param tabix_file Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)
+#' @param njobs Integer. Number of cores for parallel processing (default: 1)
+#' @param verbose Logical. Whether to print progress messages (default: FALSE)
+#'
+#' @return A data frame containing detailed CpG information for each DMR
+#'
+#' @examples
+#' \dontrun{
+#' # Extract CpG info from DMR results
+#' cpg_info <- extractCpgInfoFromResultDMRs(
+#'   dmrs = dmr_results,
+#'   beta_file = "sorted_beta.txt",
+#'   beta_row_names = row_names,
+#'   beta_col_names = col_names,
+#'   sorted_locs = genomic_locations
+#' )
+#' }
+#'
+#' @export
 extractCpgInfoFromResultDMRs <- function(dmrs,
                                         beta_file=NULL,
                                         beta_row_names,
@@ -604,7 +635,12 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
                                         output_prefix=NULL,
                                         tabix_file=NULL,
                                         njobs=1,
-                                        verbose=F) {
+                                        verbose=FALSE) {
+  if (!is.null(output_prefix)) {
+    if (!dir.exists(dirname(output_prefix))) {
+      dir.create(dirname(output_prefix), recursive = TRUE)
+    }
+  }
   dmrs_cpgs <- data.frame()
   dmrs_sites <- c()
   if (verbose)
@@ -617,21 +653,23 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
     dmrs_cpgs <- rbind(dmrs_cpgs, data.frame(dmr=dmrs$id[i], cpgs=cpgs))
     dmrs_sites <- c(dmrs_sites,  cpgs)
   }
-
-  dmrs_cpgs_file <- paste0(output_prefix, ".cpgs.tsv.gz")
-  if (verbose)
-    message("Saving extended DMRs constituent CpGs names mapping to ", dmrs_cpgs_file, "..")
-  gz <- gzfile(dmrs_cpgs_file, 'w')
-  write.table(
-    dmrs_cpgs,
-    gz,
-    sep = "\t",
-    quote = FALSE,
-    qmethod = "double",
-    col.names = TRUE,
-    row.names = FALSE
-  )
-  close(gz)
+  
+  if (!is.null(output_prefix)) {
+    dmrs_cpgs_file <- paste0(output_prefix, ".cpgs.tsv.gz")
+    if (verbose)
+      message("Saving extended DMRs constituent CpGs names mapping to ", dmrs_cpgs_file, "..")
+    gz <- gzfile(dmrs_cpgs_file, 'w')
+    write.table(
+      dmrs_cpgs,
+      gz,
+      sep = "\t",
+      quote = FALSE,
+      qmethod = "double",
+      col.names = TRUE,
+      row.names = FALSE
+    )
+    close(gz)
+  }
   
   dmrs_sites <- unique(dmrs_sites)
   dmrs_sites <- rownames(sorted_locs)[rownames(sorted_locs)%in% dmrs_sites]
@@ -641,7 +679,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
     message("Saving extended DMRs constituent CpGs betas to ", dmrs_beta_file, "..")
 
   if (!is.null(beta_file)){
-      dmrs_beta <- .subset_beta(beta_file,
+      dmrs_beta <- .subsetBeta(beta_file,
                               dmrs_sites,
                               beta_row_names = beta_row_names,
                               beta_col_names = beta_col_names)
@@ -651,22 +689,23 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
         sorted_locs[dmrs_sites,c('chr','start','end')]),
                         tabix_file,
       params=paste0("-@ ", njobs),
-      verbose=F)
+      verbose=FALSE)
     dmrs_beta <- as.data.frame(sapply(dmrs_beta[,beta_col_names], as.numeric))
   }
   rownames(dmrs_beta) <- dmrs_sites
-
-  gz <- gzfile(dmrs_beta_file, 'w')
-  write.table(
-    dmrs_beta,
-    gz,
-    sep = "\t",
-    quote = FALSE,
-    qmethod = "double",
-    col.names = NA,
-    row.names = TRUE
-  )
-  close(gz)
+  if (!is.null(output_prefix)) {
+    gz <- gzfile(dmrs_beta_file, 'w')
+    write.table(
+      dmrs_beta,
+      gz,
+      sep = "\t",
+      quote = FALSE,
+      qmethod = "double",
+      col.names = NA,
+      row.names = TRUE
+    )
+    close(gz)
+  }
   ret <- list(dmrs_cpgs=dmrs_cpgs,
               dmrs_beta=dmrs_beta)
   invisible(ret)
@@ -681,6 +720,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param beta_file Character. Path to the beta value file. Either this or tabix_file must be provided.
 #' @param dmps_tsv_file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
+#' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param pval_col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param dmp_group_col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
@@ -756,7 +796,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   }
   if (!is.null(output_prefix)) {
     output_dir <- dirname(output_prefix)
-    dir.create(output_dir, showWarnings = F)
+    dir.create(output_dir, showWarnings = FALSE)
     output_prefix <- paste0(output_prefix,'.')
   } else {
     output_dir <- NULL
@@ -813,7 +853,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   }
   if (!is.null(beta_row_names_file) && file.exists(beta_row_names_file)){
     if (verbose) message("Reading beta file row names from beta row names file ", beta_row_names_file, "..")
-    beta_row_names <- unlist(read.table(beta_row_names_file, header=F, comment.char = "", quote = ""))
+    beta_row_names <- unlist(read.table(beta_row_names_file, header=FALSE, comment.char = "", quote = ""))
   } else {
     if (verbose) message("Reading beta file row names from beta file..")
     if (!is.null(beta_file)){
@@ -821,8 +861,8 @@ findDMRsFromDMPs <- function(beta_file=NULL,
       file = beta_file,
       select = 1,
       sep='\t',
-      header = T,
-      showProgress=T,
+      header = TRUE,
+      showProgress=TRUE,
       nThread=njobs
     ))
     }
@@ -831,8 +871,8 @@ findDMRsFromDMPs <- function(beta_file=NULL,
       file = tabix_file,
       select = 4,
       sep='\t',
-      header = T,
-      showProgress=T,
+      header = TRUE,
+      showProgress=TRUE,
       nThread=njobs))
     }
     if (!is.null(beta_row_names_file)){
@@ -850,9 +890,9 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   if (verbose) message("Number of samples to process: ", length(beta_col_names))
 
   if (!is.null(beta_file)){
-    beta_col_names <- .get_beta_col_names_and_inds(beta_file, beta_col_names)$beta_col_names
+    beta_col_names <- .getBetaColNamesAndInds(beta_file, beta_col_names)$beta_col_names
   } else {
-    beta_col_names <- .get_beta_col_names_and_inds(tabix_file, beta_col_names, is_tabix=T)$beta_col_names
+    beta_col_names <- .getBetaColNamesAndInds(tabix_file, beta_col_names, is_tabix=TRUE)$beta_col_names
   }
   pheno <- pheno[beta_col_names,]
   sample_groups <- factor(pheno[beta_col_names, sample_group_col])
@@ -871,7 +911,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
          paste(colnames(dmps_tsv), collapse=','))
   }
   sorted_locs <- getSortedGenomicLocs(array = array)
-  dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genomic_locs=sorted_locs), , drop = F]
+  dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genomic_locs=sorted_locs), , drop = FALSE]
   # if (verbose)
   #   message("Head of ordered dmps_tsv:\n\t", paste(capture.output(print(dmps_tsv[1:10,])), collapse='\n\t')) 
   # if (verbose)
@@ -905,7 +945,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   
   if (verbose)
     message("Getting subset beta corresponding to DMPs..")
-  dmps_locs <- sorted_locs[dmps, , drop = F]
+  dmps_locs <- sorted_locs[dmps, , drop = FALSE]
   dmps_tsv[, "chr"] <- dmps_locs[dmps_tsv[, dmps_tsv_id_col], 'chr']
   dmps_tsv[, "pos"] <- dmps_locs[dmps_tsv[, dmps_tsv_id_col], 'pos']
   if (!is.null(output_prefix)){
@@ -917,26 +957,26 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   if (!is.null(dmps_beta_file) && file.exists(dmps_beta_file)){ 
     if (verbose) message("Reading beta file row names from supplied dmps beta file..")
     gz <- gzfile(dmps_beta_output_file,'r')
-    dmps_beta <- read.table(gz,header = T,sep = '\t', check.names = F, row.names=1, comment.char = "", quote = "")
+    dmps_beta <- read.table(gz,header = TRUE,sep = '\t', check.names = FALSE, row.names=1, comment.char = "", quote = "")
     close(gz)
   } else {
     if (!is.null(beta_file)){
-      dmps_beta <- .subset_beta(beta_file,
+      dmps_beta <- .subsetBeta(beta_file,
                               dmps,
                               beta_row_names = beta_row_names,
                               beta_col_names = beta_col_names)
     } else {
       dmps_beta <- tabix(as.data.frame(dmps_locs[,c('chr','start','end')]),
-                          tabix_file,verbose=F)
+                          tabix_file,verbose=FALSE)
       dmps_beta <- as.data.frame(sapply(dmps_beta[,beta_col_names], as.numeric))
     }
     if (verbose) message("Calculating delta_beta related columns in the DMPs table..")
-    case_means <- rowMeans(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=F], na.rm=T)
-    control_means <- rowMeans(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=F], na.rm=T)
-    case_sd <- apply(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=F], 1, sd, na.rm=T)
-    control_sd <- apply(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=F], 1, sd, na.rm=T)
-    dmps_tsv[,'cases_num'] <- colSums(!is.na(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=F]))
-    dmps_tsv[,'controls_num'] <- colSums(!is.na(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=F]))
+    case_means <- rowMeans(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=FALSE], na.rm=TRUE)
+    control_means <- rowMeans(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=FALSE], na.rm=TRUE)
+    case_sd <- apply(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=FALSE], 1, sd, na.rm=TRUE)
+    control_sd <- apply(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=FALSE], 1, sd, na.rm=TRUE)
+    dmps_tsv[,'cases_num'] <- colSums(!is.na(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 1, drop=FALSE]))
+    dmps_tsv[,'controls_num'] <- colSums(!is.na(dmps_beta[, pheno[beta_col_names, casecontrol_col] == 0, drop=FALSE]))
     dmps_tsv[,'cases_beta'] <- case_means[dmps_tsv[, dmps_tsv_id_col]]
     dmps_tsv[,'controls_beta'] <- control_means[dmps_tsv[, dmps_tsv_id_col]]
     dmps_tsv[,'cases_beta_sd'] <- case_sd[dmps_tsv[, dmps_tsv_id_col]]
@@ -946,7 +986,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
     if (!is.null(output_prefix)){
       if (verbose) message("Saving dmps beta to file: ", dmps_beta_output_file)
       gz <- gzfile(dmps_beta_output_file, 'w')
-      write.table(dmps_beta, gz, sep = '\t', row.names=T, col.names=NA, quote=F)
+      write.table(dmps_beta, gz, sep = '\t', row.names=TRUE, col.names=NA, quote=FALSE)
       close(gz)
     } 
   }
@@ -994,10 +1034,10 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   
   ret <- future.apply::future_lapply(chromosomes, function(chr) {
     m <- dmps_locs$chr == chr
-    cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = F]
+    cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
     cdmps <- dmps[m]
-    cdmps_beta <- dmps_beta[m, , drop = F]
-    cdmps_locs <- dmps_locs[m, , drop = F]
+    cdmps_beta <- dmps_beta[m, , drop = FALSE]
+    cdmps_locs <- dmps_locs[m, , drop = FALSE]
     dmrs <- data.frame()
     start_ind <- 1
     corr_pval <- 1
@@ -1008,18 +1048,18 @@ findDMRsFromDMPs <- function(beta_file=NULL,
       p()
     }
     for (i in seq_len(nrow(cdmps_beta))) {
-      reg_dmr <- F
+      reg_dmr <- FALSE
       dmr_dmps_inds <- c(dmr_dmps_inds, i)
-      stop_condition <- F
+      stop_condition <- FALSE
       if (i == nrow(cdmps_beta)) {
-        stop_condition <- T 
+        stop_condition <- TRUE 
         stop_reason <- 'end of input'
       } else if ((max_lookup_dist>0) && (cdmps_locs[i + 1, "pos"] - cdmps_locs[i, 'pos'] > max_lookup_dist)) {
-        stop_condition <- T
+        stop_condition <- TRUE
         stop_reason <- 'exceeded max distance' 
       }
       if (stop_condition) {
-        reg_dmr <- T
+        reg_dmr <- TRUE
       } else {
         t <- .testConnectivity(
           site1.beta = unlist(cdmps_beta[i, ]),
@@ -1031,7 +1071,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
         corr_pval <- min(corr_pval, t[[2]])
         
         if (!t[[1]]) {
-          reg_dmr <- T
+          reg_dmr <- TRUE
           stop_reason <- t$reason
         }
       }
@@ -1042,7 +1082,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
                 (cdmps_tsv[, dmp_group_col] == dmp_group),]
             rownames(gdmps_tsv) <- gdmps_tsv[, dmps_tsv_id_col] # here there must be unique CpGs in `dmp` column
             
-            dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = F]
+            dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = FALSE]
             dmr_dmps_tsv[,'controls_beta'] <- dmr_dmps_tsv[,'cases_beta'] - dmr_dmps_tsv[,'delta_beta']
             for (num.col in c('cases_num', 'controls_num')){
               if (! num.col %in% colnames(dmr_dmps_tsv)){
@@ -1107,7 +1147,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
               stop_connection_reason = stop_reason,
               dmps = paste(cdmps[dmr_dmps_inds], collapse = ',')
             )
-            names(new_dmr) <- gsub("pval_adj",pval_col,names(new_dmr), fixed=T)
+            names(new_dmr) <- gsub("pval_adj",pval_col,names(new_dmr), fixed=TRUE)
             if (dmp_group_col != "_DUMMY_DMP_GROUP_COL_") {
               new_dmr[[dmp_group_col]] <- dmp_group
             }
@@ -1243,11 +1283,11 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   extended_dmrs$id <- paste0(extended_dmrs$chr, ":", extended_dmrs$start, "-", extended_dmrs$end)
   extended_dmrs <- makeGRangesFromDataFrame(
     extended_dmrs,
-    keep.extra.columns = T,
-    ignore.strand = T,
+    keep.extra.columns = TRUE,
+    ignore.strand = TRUE,
     seqnames.field = "chr",
     seqinfo = Seqinfo(genome = genome),
-    na.rm=T
+    na.rm=TRUE
   )
 
   if (verbose)
@@ -1311,7 +1351,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
   ne_dmrs_cols_to_keep <- colnames(dmrs)
   ne_dmrs_cols_to_keep <- c("start_dmp", "end_dmp", ne_dmrs_cols_to_keep[! ne_dmrs_cols_to_keep %in% colnames(extended_dmrs)])
   dmrs <- merge(extended_dmrs, dmrs[,ne_dmrs_cols_to_keep], by=c("start_dmp", "end_dmp"))
-  dmrs <- dmrs[str_order(dmrs[, "id"], numeric = T), ]
+  dmrs <- dmrs[str_order(dmrs[, "id"], numeric = TRUE), ]
   if (!is.null(output_prefix)) {
     dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
     if (verbose)
@@ -1333,7 +1373,7 @@ findDMRsFromDMPs <- function(beta_file=NULL,
 
   gc()
   GenomicRanges::makeGRangesFromDataFrame(dmrs, 
-                                            keep_extra_columns = T,
+                                            keep_extra_columns = TRUE,
                                             seqinfo = Seqinfo(genome = genome),
-                                            na_rm=T)
+                                            na_rm=TRUE)
 }

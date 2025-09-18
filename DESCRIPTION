@@ -66,8 +66,8 @@ Additional_repositories:
 Config/testthat/edition: 3
 Collate:
     'data.R'
-    'utils.r'
-    'dmrs_finder_from_dmps.r'
-    'find_dmrs_from_dmps.r'
+    'utils.R'
+    'dmrs_finder_from_dmps.R'
+    'find_dmrs_from_dmps.R'
     'DMRSegal-package.R'
     'zzz.R'
