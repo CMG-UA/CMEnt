@@ -1102,18 +1102,20 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
     # Set up progress tracking for DMP connection
     chromosomes <- unique(dmps_locs$chr)
-    n_chromosomes <- length(chromosomes)
 
     # Set up future plan for parallel processing
-    if (!identical(njobs, 1L)) {
+    if (njobs < 0) {
+        njobs <- future::availableCores() + njobs
+    }
+    if (njobs > 1) {
         if (.Platform$OS.type == "unix") {
             if (verbose) {
-                message("Using multicore parallelization on unix OS with", njobs, " workers")
+                message("Using multicore parallelization on unix OS with ", njobs, " workers")
             }
             future::plan(future::multicore, workers = njobs)
         } else {
             if (verbose) {
-                message("Using multisession parallelization on non-unix OS with", njobs, " workers")
+                message("Using multisession parallelization on non-unix OS with ", njobs, " workers")
             }
             future::plan(future::multisession, workers = njobs)
         }
@@ -1473,7 +1475,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         )
         close(gz)
     }
-    future::plan(sequential)
+    future::plan(future::sequential)
     if (verbose) message("Done.")
     invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
         keep.extra.columns = TRUE,

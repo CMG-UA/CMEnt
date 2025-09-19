@@ -21,9 +21,9 @@ library(minfiData)  # Contains example 450k array data
 library(microbenchmark)
 library(ggplot2)
 library(progressr)
-
 # Configure progressr for RStudio
-options(progressr.handlers = progressr::handler_rstudio)
+# progressr::handlers(global = TRUE)
+handlers("rstudio")
 ```
 
 ## Load and Prepare Data
@@ -121,7 +121,7 @@ dmrs_segal <- findDMRsFromDMPs(
     sample_group_col = "group",
     min_dmps = 2,
     min_cpgs = 3,
-    njobs = 1,
+    njobs = 4,
     verbose = TRUE
 )
 ```
