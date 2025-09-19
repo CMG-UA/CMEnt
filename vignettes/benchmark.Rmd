@@ -23,8 +23,7 @@ library(ggplot2)
 library(progressr)
 
 # Configure progressr for RStudio
-# This ensures progress bars are displayed properly in RStudio
-progressr::handlers("progress")
+options(progressr.handlers = progressr::handler_rstudio)
 ```
 
 ## Load and Prepare Data

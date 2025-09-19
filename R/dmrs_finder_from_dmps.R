@@ -1107,17 +1107,26 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     # Set up future plan for parallel processing
     if (!identical(njobs, 1L)) {
         if (.Platform$OS.type == "unix") {
+            if (verbose) {
+                message("Using multicore parallelization on unix OS with", njobs, " workers")
+            }
             future::plan(future::multicore, workers = njobs)
         } else {
+            if (verbose) {
+                message("Using multisession parallelization on non-unix OS with", njobs, " workers")
+            }
             future::plan(future::multisession, workers = njobs)
         }
     } else {
+        if (verbose) {
+            message("Using sequential processing (njobs=1)")
+        }
         future::plan(future::sequential)
     }
 
     # Use progressr for cross-platform progress reporting
     if (verbose) {
-        p <- progressr::progressor(steps = n_chromosomes)
+        p_con <- progressr::progressor(steps = nrow(dmps_locs))
     }
 
     ret <- future.apply::future_lapply(chromosomes, function(chr) {
@@ -1131,10 +1140,6 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         corr_pval <- 1
         dmr_dmps_inds <- c()
 
-        # Update progress for this chromosome
-        if (verbose && exists("p")) {
-            p()
-        }
         for (i in seq_len(nrow(cdmps_beta))) {
             reg_dmr <- FALSE
             dmr_dmps_inds <- c(dmr_dmps_inds, i)
@@ -1256,6 +1261,10 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                 corr_pval <- 1
                 dmr_dmps_inds <- c()
             }
+            if (verbose && exists("p_con")) {
+                p_con()
+            }
+
         }
 
         rownames(dmrs) <- seq_along(dmrs[, 1])
@@ -1464,6 +1473,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         )
         close(gz)
     }
+    future::plan(sequential)
     if (verbose) message("Done.")
     invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
         keep.extra.columns = TRUE,
