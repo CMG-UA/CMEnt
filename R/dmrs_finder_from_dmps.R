@@ -580,9 +580,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         if (sum(sample_groups == g) < 3) {
             next
         }
-        op <- options(warn = 2)$warn
         corr_ret <- try(corr.test(site1_beta[sample_groups == g], site2_beta[sample_groups == g], ci = FALSE))
-        options(warn = op)
         if (inherits(corr_ret, "try-error")) {
             if (extreme_verbosity) {
                 message(".testConnectivity: Error occurred in corr.test while processing the following:")
@@ -591,7 +589,6 @@ sortBetaFileByCoordinates <- function(beta_file,
                 message("sample_groups:", paste(sample_groups, collapse = ","))
                 message("max_pval_corrected:", max_pval_corrected)
                 message("Error message:", corr_ret)
-                if (interactive()) browser()
             }
             return(list(FALSE, pval, delta_beta, failing = g, reason = "error occurred"))
         }
@@ -1108,14 +1105,14 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         njobs <- future::availableCores() + njobs
     }
     if (njobs > 1) {
-        if (.Platform$OS.type == "unix") {
+        if (future::availableCores("multicore") > 1L) {
             if (verbose) {
-                message("Using multicore parallelization on unix OS with ", njobs, " workers")
+                message("Using multicore parallelization with ", njobs, " workers")
             }
             future::plan(future::multicore, workers = njobs)
         } else {
             if (verbose) {
-                message("Using multisession parallelization on non-unix OS with ", njobs, " workers")
+                message("Using multisession parallelization with ", njobs, " workers")
             }
             future::plan(future::multisession, workers = njobs)
         }
@@ -1130,7 +1127,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (verbose) {
         p_con <- progressr::progressor(steps = nrow(dmps_locs))
     }
-
+    op <- options(warn = 2)$warn
     ret <- future.apply::future_lapply(chromosomes, function(chr) {
         m <- dmps_locs$chr == chr
         cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
@@ -1273,6 +1270,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         dmrs[, "chr"] <- chr
         dmrs
     })
+    options(warn = op)
 
     if (inherits(ret[[1]], "try-error")) {
         stop(ret)
@@ -1329,7 +1327,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (verbose) {
         p_dmr <- progressr::progressor(steps = n_dmrs)
     }
-
+    op <- options(warn = 2)$warn
     ret <- future.apply::future_lapply(split(ungrouped_dmrs, seq_along(ungrouped_dmrs[, 1])), function(dmr) {
         ret <- .expandDMRs(
             dmr = dmr,
@@ -1353,6 +1351,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
         ret
     })
+    options(warn = op)
 
     if (inherits(ret, "try-error")) {
         stop(ret)
@@ -1477,9 +1476,10 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
     future::plan(future::sequential)
     if (verbose) message("Done.")
-    invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
-        keep.extra.columns = TRUE,
-        seqinfo = Seqinfo(genome = genome),
-        na.rm = TRUE
-    ))
+    # invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
+    #     keep.extra.columns = TRUE,
+    #     seqinfo = Seqinfo(genome = genome),
+    #     na.rm = TRUE
+    # ))
+    return(dmrs)
 }

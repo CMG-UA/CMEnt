@@ -1,8 +1,6 @@
-# Benchmarking DMRSegal against other DMR detection tools
-# 
-# This notebook compares DMRSegal with other popular DMR detection tools using 
-# real-world methylation data. We'll use a small subset of the colon cancer dataset
-# from the minfiData package, which contains tumor vs normal samples.
+## Benchmarking DMRSegal against other DMR detection tools
+
+This notebook compares DMRSegal with other popular DMR detection tools using real-world methylation data. We'll use a small subset of the colon cancer dataset from the minfiData package, which contains tumor vs normal samples.
 
 ## Setup
 
@@ -21,6 +19,7 @@ library(minfiData)  # Contains example 450k array data
 library(microbenchmark)
 library(ggplot2)
 library(progressr)
+options("future.debug"=T)
 # Configure progressr for RStudio
 # progressr::handlers(global = TRUE)
 handlers("rstudio")
@@ -62,7 +61,7 @@ pheno$casecontrol <- pheno$status == "cancer"
 ```{r get_dmps}
 # Create design matrix for all methods to use consistently
 design <- model.matrix(~pheno$status)
-colnames(design) <- c("Intercept", "StatusCancer")
+
 
 # Get probe locations from annotation
 ann450k <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
@@ -113,17 +112,17 @@ write.table(
     row.names = TRUE
 )
 
-# Find DMRs using DMRSegal
 dmrs_segal <- findDMRsFromDMPs(
-    beta_file = beta_file,
-    dmps_tsv_file = dmps_file,
-    pheno = pheno,
-    sample_group_col = "group",
-    min_dmps = 2,
-    min_cpgs = 3,
-    njobs = 4,
-    verbose = TRUE
-)
+      beta_file = beta_file,
+      dmps_tsv_file = dmps_file,
+      pheno = pheno,
+      sample_group_col = "group",
+      min_dmps = 2,
+      min_cpgs = 3,
+      njobs = 8,
+      verbose = TRUE
+    )
+
 ```
 
 ### DMRcate
@@ -132,93 +131,33 @@ dmrs_segal <- findDMRsFromDMPs(
 # DMRcate uses the same mset and design matrix as other methods
 M <- getM(mset)
 
-# Fit the same design matrix we created above
-fit <- limma::lmFit(M, design)
-fit <- limma::eBayes(fit)
+myannotation<-cpg.annotate("array", M,what="M", arraytype="450K", analysis.type="differential", design=design,coef=2,fdr = 0.05)
 
 # Run DMRcate with the same p-value cutoff we used for DMPs
-dmrcate_results <- dmrcate(fit, C = as.matrix(design[,2]), pcutoff = 0.1)
-dmrs_dmrcate <- extractRanges(dmrcate_results)
+
+dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000)
+dmrs_dmrcate <- extractRanges(dmrcate_results, genome='hg19')
 ```
 
 ### bumphunter
 
 ```{r bumphunter}
 # bumphunter uses the same mset and design matrix as other methods
-# Convert to a matrix format that bumphunter expects
-beta_mat <- getBeta(mset)
-
+gmSet <- preprocessQuantile(mset)
 # Run bumphunter with the same design matrix
 bumphunter_results <- bumphunter(
-    beta_mat,
+    gmSet,
     design = design,
     coef = 2,  # Use the cancer vs normal coefficient
-    cutoff = 0.1,  # Use same significance threshold
+    cutoff = 0.05,  # Use same significance threshold
     B = 1000,  # Number of permutations
     type = "Beta"
 )
 ```
 
-## Performance Comparison
-
-```{r prepare_benchmark_data}
-# Prepare data matrices for benchmarking (reuse the same data across methods)
-M <- getM(mset)  # M-values for DMRcate
-beta_mat <- getBeta(mset)  # Beta values for bumphunter
-```
-
-```{r benchmark}
-# Function wrappers for benchmarking
-run_dmrsegal <- function() {
-    findDMRsFromDMPs(
-        beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
-        pheno = pheno,
-        sample_group_col = "group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        njobs = 1,
-        verbose = FALSE
-    )
-}
-
-run_dmrcate <- function() {
-    # Use the same M and design matrices as in the main analysis
-    fit <- limma::lmFit(M, design)
-    fit <- limma::eBayes(fit)
-    dmrcate_results <- dmrcate(fit, C = as.matrix(design[,2]), pcutoff = 0.1)
-    extractRanges(dmrcate_results)
-}
-
-run_bumphunter <- function() {
-    # Use the same beta_mat and design as in the main analysis
-    bumphunter(
-        beta_mat,
-        design = design,
-        coef = 2,
-        cutoff = 0.1,
-        B = 100,  # Reduced for benchmarking
-        type = "Beta"
-    )
-}
-
-# Run benchmark
-bench <- microbenchmark(
-    DMRSegal = run_dmrsegal(),
-    DMRcate = run_dmrcate(),
-    bumphunter = run_bumphunter(),
-    times = 5
-)
-
-# Plot results
-autoplot(bench) +
-    ggtitle("DMR Detection Method Performance") +
-    theme_minimal()
-```
-
 ## Results Comparison
 
-All three methods now use the same underlying dataset (mset), same phenotype data (pheno), same design matrix (design), and comparable significance thresholds (p < 0.1) for fair comparison.
+All three methods now use the same underlying dataset (mset), same phenotype data (pheno), same design matrix (design), and comparable significance thresholds (p \< 0.1) for fair comparison.
 
 ```{r compare_results}
 # Function to get DMR stats
@@ -295,28 +234,25 @@ unlink(c(beta_file, dmps_file))
 
 This benchmark analysis compares DMRSegal with two popular DMR detection methods (DMRcate and bumphunter) using the same underlying methylation dataset for fair comparison. All methods use:
 
-- Same methylation data (MsetEx subset)
-- Same phenotype information (cancer vs normal)
-- Same design matrix (model.matrix(~pheno$status))
-- Comparable significance thresholds (p < 0.1)
+-   Same methylation data (MsetEx subset)
+-   Same phenotype information (cancer vs normal)
+-   Same design matrix (model.matrix(\~pheno\$status))
+-   Comparable significance thresholds (p \< 0.1)
 
 Key findings:
 
-1. **Performance:**
-   - Runtime comparison between methods
-   - Memory usage patterns
-   
-2. **Results:**
-   - Number of DMRs detected by each method
-   - DMR width distributions
-   - Overlap between methods
-   
-3. **Methodological Differences:**
-   - DMRSegal: DMP-based region expansion approach
-   - DMRcate: Gaussian kernel smoothing approach  
-   - bumphunter: Bootstrap-based bump finding
-   
-4. **Practical Considerations:**
-   - DMRSegal's advantage: can work with pre-computed DMPs
-   - Trade-offs between sensitivity and specificity
-   - Use case recommendations based on data availability
+1.  **Performance:**
+    -   Runtime comparison between methods
+    -   Memory usage patterns
+2.  **Results:**
+    -   Number of DMRs detected by each method
+    -   DMR width distributions
+    -   Overlap between methods
+3.  **Methodological Differences:**
+    -   DMRSegal: DMP-based region expansion approach
+    -   DMRcate: Gaussian kernel smoothing approach\
+    -   bumphunter: Bootstrap-based bump finding
+4.  **Practical Considerations:**
+    -   DMRSegal's advantage: can work with pre-computed DMPs
+    -   Trade-offs between sensitivity and specificity
+    -   Use case recommendations based on data availability
