@@ -125,11 +125,11 @@
     stopifnot(ncol(subset_samplesheet) != 0)
     stopifnot(nrow(subset_samplesheet) != 0)
     .log_info(
-            "Read samplesheet head:\n\t",
-            paste(capture.output(print(
-                head(subset_samplesheet)
-            )), collapse = "\n\t")
-        )
+        "Read samplesheet head:\n\t",
+        paste(capture.output(print(
+            head(subset_samplesheet)
+        )), collapse = "\n\t")
+    )
     if (!is.null(sample_group_col)) {
         if (!is.null(sample_group_control)) {
             subset_samplesheet[, "casecontrol"] <- 1
@@ -158,10 +158,14 @@
 })
 
 .fmt_dur <- function(start_time) {
-    if (is.null(start_time)) return("")
+    if (is.null(start_time)) {
+        return("")
+    }
     secs <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-    if (is.na(secs)) return("")
-    if (secs < 60) sprintf(" (took %.2fs)", secs) else sprintf(" (took %dm %02ds)", floor(secs/60), round(secs %% 60))
+    if (is.na(secs)) {
+        return("")
+    }
+    if (secs < 60) sprintf(" (took %.2fs)", secs) else sprintf(" (took %dm %02ds)", floor(secs / 60), round(secs %% 60))
 }
 
 .has_ansi <- function() {
@@ -170,7 +174,9 @@
 
 .col <- function(x, col = c("cyan", "green", "yellow", "blue")) {
     col <- match.arg(col)
-    if (!.has_ansi()) return(x)
+    if (!.has_ansi()) {
+        return(x)
+    }
     switch(col,
         cyan   = cli::col_cyan(x),
         green  = cli::col_green(x),
@@ -182,40 +188,46 @@
 #' Internal logging helpers using cli
 #' @keywords internal
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
-     if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
-     msg <- paste0(..., collapse = "")
-     lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep='')
-     cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
-     invisible()
+    if (getOption("DMRSegal.verbose", 1) < level) {
+        return(invisible())
+    }
+    msg <- paste0(..., collapse = "")
+    lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep = "")
+    cli::cli_inform(paste(lead, msg), .envir = .envir)
+    invisible()
 }
 
 #' @keywords internal
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    cli::cli_warn(paste0(lead, " ", msg), .envir = .envir)
+    cli::cli_warn(paste(lead, msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
+    if (getOption("DMRSegal.verbose", 1) < level) {
+        return(invisible())
+    }
     dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
-    lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep='')
-    cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
+    lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep = "")
+    cli::cli_inform(paste(lead, msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
 .log_step <- function(title, ..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
+    if (getOption("DMRSegal.verbose", 1) < level) {
+        return(invisible())
+    }
     .dmrsegal_log_env$last_step_time[level:max(1, length(.dmrsegal_log_env$last_step_time))] <- Sys.time()
     subtitle <- paste0(..., collapse = "")
     header <- title
     if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
-    lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep='')
-    cli::cli_inform(paste0(lead, " ", header), .envir = .envir)
+    lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
+    cli::cli_inform(paste(lead, header), .envir = .envir)
     invisible()
 }
 
