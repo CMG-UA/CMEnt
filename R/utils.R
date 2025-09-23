@@ -151,6 +151,33 @@
     subset_samplesheet
 }
 
+# Lightweight styled logging helpers -----------------------------------------
+
+#' Internal logging helpers using cli
+#' @keywords internal
+.log_info <- function(..., .envir = parent.frame()) {
+    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(cli::format_message(paste0("{symbol info} ", paste0(..., collapse = ""))), .envir = .envir)
+    invisible()
+}
+
+#' @keywords internal
+.log_warn <- function(..., .envir = parent.frame()) {
+    cli::cli_warn(cli::format_message(paste0("{symbol warning} ", paste0(..., collapse = ""))), .envir = .envir)
+    invisible()
+}
+
+#' @keywords internal
+.log_success <- function(..., .envir = parent.frame()) {
+    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(cli::format_message(paste0("{symbol tick} ", paste0(..., collapse = ""))), .envir = .envir)
+    invisible()
+}
+
+#' @keywords internal
+.log_step <- function(title, ..., .envir = parent.frame()) {
+    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(list(cli::format_message(paste0("{symbol arrow_right} ", title)), paste0(..., collapse = "")), .envir = .envir)
+    invisible()
+}
+
 .processSamplesheet <- function(args,
                                 subset = NULL) {
     suppressWarnings(suppressMessages({
