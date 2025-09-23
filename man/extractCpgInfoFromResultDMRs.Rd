@@ -12,8 +12,7 @@ extractCpgInfoFromResultDMRs(
   sorted_locs,
   output_prefix = NULL,
   tabix_file = NULL,
-  njobs = 1,
-  verbose = FALSE
+  njobs = 1
 )
 }
 \arguments{
@@ -31,7 +30,9 @@ extractCpgInfoFromResultDMRs(
 
 \item{tabix_file}{Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)}
 
-\item{parallel_cores}{Integer. Number of cores for parallel processing (default: 1)}
+\item{njobs}{Integer. Number of cores for parallel processing (default: 1)}
+
+\item{verbose}{Logical. Whether to print progress messages (default: FALSE)}
 }
 \value{
 A data frame containing detailed CpG information for each DMR
@@ -45,11 +46,11 @@ site within the DMR regions.
 \dontrun{
 # Extract CpG info from DMR results
 cpg_info <- extractCpgInfoFromResultDMRs(
-  dmrs = dmr_results,
-  beta_file = "sorted_beta.txt",
-  beta_row_names = row_names,
-  beta_col_names = col_names,
-  sorted_locs = genomic_locations
+    dmrs = dmr_results,
+    beta_file = "sorted_beta.txt",
+    beta_row_names = row_names,
+    beta_col_names = col_names,
+    sorted_locs = genomic_locations
 )
 }
 

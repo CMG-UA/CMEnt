@@ -7,8 +7,7 @@
                              subset = NULL,
                              max_samples = NULL,
                              max_case_samples = NULL,
-                             max_control_samples = NULL,
-                             verbose = TRUE) {
+                             max_control_samples = NULL) {
     require(stringr)
     require(data.table)
 
@@ -125,14 +124,12 @@
     ]
     stopifnot(ncol(subset_samplesheet) != 0)
     stopifnot(nrow(subset_samplesheet) != 0)
-    if (verbose) {
-        message(
+    .log_info(
             "Read samplesheet head:\n\t",
             paste(capture.output(print(
                 head(subset_samplesheet)
             )), collapse = "\n\t")
         )
-    }
     if (!is.null(sample_group_col)) {
         if (!is.null(sample_group_control)) {
             subset_samplesheet[, "casecontrol"] <- 1
@@ -156,11 +153,9 @@
 # Internal state for timing steps
 .dmrsegal_log_env <- local({
     e <- new.env(parent = emptyenv())
-    e$last_step_time <- NULL
+    e$last_step_time <- list()
     e
 })
-
-.fmt_time <- function(t = Sys.time()) format(t, "%H:%M:%S")
 
 .fmt_dur <- function(start_time) {
     if (is.null(start_time)) return("")
@@ -186,40 +181,40 @@
 
 #' Internal logging helpers using cli
 #' @keywords internal
- .log_info <- function(..., .envir = parent.frame()) {
-     if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
-     msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""))
-     lead <- .col(cli::symbol$info, "blue")
+.log_info <- function(..., .envir = parent.frame(), level = 1) {
+     if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
+     msg <- paste0(..., collapse = "")
+     lead <- paste0(rep("\t", level - 1), .col(cli::symbol$info, "blue"))
      cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
      invisible()
 }
 
 #' @keywords internal
 .log_warn <- function(..., .envir = parent.frame()) {
-    msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""))
+    msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
     cli::cli_warn(paste0(lead, " ", msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
-.log_success <- function(..., .envir = parent.frame()) {
-    if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
-    dur <- .fmt_dur(.dmrsegal_log_env$last_step_time)
-    msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""), dur)
-    lead <- .col(cli::symbol$tick, "green")
+.log_success <- function(..., .envir = parent.frame(), level = 1) {
+    if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
+    dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
+    msg <- paste0(paste0(..., collapse = ""), dur)
+    lead <- paste0(rep("\t", level - 1), .col(cli::symbol$tick, "green"))
     cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
-.log_step <- function(title, ..., .envir = parent.frame()) {
-    if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
-    .dmrsegal_log_env$last_step_time <- Sys.time()
+.log_step <- function(title, ..., .envir = parent.frame(), level = 1) {
+    if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
+    .dmrsegal_log_env$last_step_time[level:max(1, length(.dmrsegal_log_env$last_step_time))] <- Sys.time()
     subtitle <- paste0(..., collapse = "")
-    header <- paste0("[", .fmt_time(.dmrsegal_log_env$last_step_time), "] ", title)
+    header <- title
     if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
-    lead <- .col(cli::symbol$arrow_right, "cyan")
+    lead <- paste0(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"))
     cli::cli_inform(paste0(lead, " ", header), .envir = .envir)
     invisible()
 }
@@ -263,7 +258,7 @@
         subset = subset,
         max_samples = max_samples,
         max_case_samples = max_case_samples,
-        max_control_samples = max_control_samples,
+        max_control_samples = max_control_samples
     )
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret

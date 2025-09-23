@@ -6,13 +6,11 @@
 #' @export
 findDMRsFromDMPsCLI <- function(args) {
     pheno <- .processSamplesheet(args)$samplesheet
-
-    if (args$verbose) {
-        message(
+    options("DMRSegal.verbose" = args$verbose)
+    .log_info(
             "Head of parsed phenotype:\n\t",
             paste(capture.output(print(head(pheno))), collapse = "\n\t")
         )
-    }
 
     if (!is.null(args$beta) && !is.null(args$tabix)) {
         stop("Either beta or tabix must be provided, not both.")
@@ -45,16 +43,14 @@ findDMRsFromDMPsCLI <- function(args) {
         njobs = args$njobs,
         verbose = args$verbose,
         beta_row_names_file = args$beta_row_names_file,
-        dmps_beta_file = args$dmps_beta_file,
         pheno = pheno
     )
 
-    if (args$verbose) {
-        message(
+    .log_info(
             "Input arguments (without the phenotype): \n\t",
             paste(paste(names(input_args), input_args, sep = ": "), collapse = "\n\t")
         )
-    }
+    
 
     invisible(do.call(findDMRsFromDMPs, input_args))
 }

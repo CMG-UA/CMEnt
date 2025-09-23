@@ -28,7 +28,7 @@ chromosome and position to ensure proper genomic ordering.
 # Get sorted locations for 450K array
 locs_450k <- getSortedGenomicLocs("450K")
 
-# Get sorted locations for EPIC array  
+# Get sorted locations for EPIC array
 locs_epic <- getSortedGenomicLocs("EPIC")
 }
 

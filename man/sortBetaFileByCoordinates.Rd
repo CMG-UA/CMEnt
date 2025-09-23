@@ -9,7 +9,6 @@ sortBetaFileByCoordinates(
   output_file = NULL,
   array = c("450K", "EPIC"),
   genomic_locs = NULL,
-  verbose = TRUE,
   overwrite = FALSE
 )
 }
@@ -20,9 +19,11 @@ sortBetaFileByCoordinates(
 
 \item{array}{Character. Array platform type, either "450K" or "EPIC" (default: "450K")}
 
-\item{verbose}{Logical. Whether to print progress messages (default: TRUE)}
+\item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)}
 
 \item{overwrite}{Logical. Whether to overwrite existing output file (default: FALSE)}
+
+\item{verbose}{Logical. Whether to print progress messages (default: TRUE)}
 }
 \value{
 Character. Path to the sorted output file
@@ -47,15 +48,15 @@ The function performs the following steps:
 \dontrun{
 # Sort a beta file for 450K array
 sorted_file <- sortBetaFileByCoordinates(
-  beta_file = "unsorted_beta.txt",
-  output_file = "sorted_beta.txt",
-  array = "450K"
+    beta_file = "unsorted_beta.txt",
+    output_file = "sorted_beta.txt",
+    array = "450K"
 )
 
 # Sort an EPIC array beta file with default output name
 sorted_file <- sortBetaFileByCoordinates(
-  beta_file = "epic_beta.txt",
-  array = "EPIC"
+    beta_file = "epic_beta.txt",
+    array = "EPIC"
 )
 }
 

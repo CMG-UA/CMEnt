@@ -5,17 +5,14 @@
 \alias{.getBetaColNamesAndInds}
 \title{Find Differentially Methylated Regions (DMRs) from Pre-computed DMPs}
 \usage{
-.getBetaColNamesAndInds(
-  beta_file,
-  beta_col_names = NULL,
-  is_tabix = FALSE
-)
+.getBetaColNamesAndInds(beta_file, beta_col_names = NULL, is_tabix = FALSE)
 
 findDMRsFromDMPs(
   beta_file = NULL,
   dmps_tsv_file = NULL,
   pheno = NULL,
   dmps_tsv_id_col = NULL,
+  dmp_groups_info = NULL,
   pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
   dmp_group_col = NULL,
@@ -33,9 +30,8 @@ findDMRsFromDMPs(
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = future::availableCores(),
-  verbose = FALSE,
+  verbose = 1,
   beta_row_names_file = NULL,
-  dmps_beta_file = NULL,
   tabix_file = NULL
 )
 }
@@ -45,6 +41,10 @@ findDMRsFromDMPs(
 \item{dmps_tsv_file}{Character. Path to the DMPs TSV file.}
 
 \item{pheno}{Data frame. Phenotype data.}
+
+\item{dmps_tsv_id_col}{Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.}
+
+\item{dmp_groups_info}{Named list. Required when \code{dmps_tsv_id_col} is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.}
 
 \item{pval_col}{Character. Column name for p-values in the DMPs file. Default is "pval_adj".}
 
@@ -62,7 +62,7 @@ findDMRsFromDMPs(
 
 \item{array}{Character. Type of array used ("450K" or "EPIC"). Default is "450K".}
 
-\item{genome}{Reference genome, "hg19" or "hg38" (default: c("hg19", "hg38"))}
+\item{genome}{Character. Genome version ("hg19" or "hg38"). Default is "hg19".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
 
@@ -74,19 +74,17 @@ findDMRsFromDMPs(
 
 \item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
 
-\item{ignored_sample_groups}{Sample groups to ignore during analysis (default: NULL)}
+\item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
 
-\item{output_prefix}{Character. Identifier for the output files. Default is NULL.}
+\item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{verbose}{Logical. Whether to print detailed messages. Default is FALSE.}
+\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
-\item{beta_row_names_file}{Optional file with beta value row names (default: NULL)}
+\item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
-\item{dmps_beta_file}{Optional separate beta file for DMPs (default: NULL)}
-
-\item{tabix_file}{Path to tabix-indexed beta values file (alternative to beta_file, default: NULL)}
+\item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta_file must be provided. Default is NULL.}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:
@@ -129,13 +127,14 @@ data(example_pheno)
 # Write beta values to file
 beta_file <- tempfile(fileext = ".txt")
 write.table(cbind(ID = rownames(example_beta), example_beta),
-            file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE)
+    file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE
+)
 
 # Find DMRs
 dmrs <- findDMRsFromDMPs(
-  beta_file = beta_file,
-  dmps_tsv_file = example_dmps,
-  pheno = example_pheno
+    beta_file = beta_file,
+    dmps_tsv_file = example_dmps,
+    pheno = example_pheno
 )
 }
 

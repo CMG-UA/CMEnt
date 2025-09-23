@@ -18,8 +18,7 @@ test_that("Package handles 450k probes", {
         pheno = test_data$pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1,
-        min_cpgs = 0,
-        verbose = TRUE
+        min_cpgs = 0
     )
 
     expect_s4_class(result, "GRanges")
@@ -38,8 +37,7 @@ test_that("Package handles EPIC probes", {
         sample_group_col = "Sample_Group",
         array = "EPIC",
         min_dmps = 1,
-        min_cpgs = 0,
-        verbose = TRUE
+        min_cpgs = 0
     )
 
     expect_s4_class(result, "GRanges")
