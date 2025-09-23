@@ -21,6 +21,8 @@ library(progressr)
 # Configure progressr for RStudio
 # progressr::handlers(global = TRUE)
 handlers("rstudio")
+benchmark_output_dir <- "benchmark_data"
+dir.create(benchmark_output_dir, showWarnings=FALSE)
 ```
 
 ## Load and Prepare Data
@@ -81,74 +83,88 @@ sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
 ### DMRSegal
 
 ```{r dmrsegal}
-# Write beta values to temp file
-beta_file <- tempfile(fileext = ".txt")
-beta_mat <- getBeta(mset)
-
-
-write.table(
-    cbind(ID = rownames(beta_mat), beta_mat),
-    file = beta_file,
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-)
-
-beta_file <- sortBetaFileByCoordinates(beta_file, overwrite=TRUE)
-
-# Write DMPs to temp file
-dmps_file <- tempfile(fileext = ".txt")
-write.table(
-    sig_dmps,
-    file = dmps_file,
-    sep = "\t",
-    quote = FALSE,
-    row.names = TRUE
-)
-
-dmrs_segal <- findDMRsFromDMPs(
-      beta_file = beta_file,
-      dmps_tsv_file = dmps_file,
-      pheno = pheno,
-      sample_group_col = "group",
-      min_dmps = 2,
-      min_cpgs = 3,
-      njobs = 4,
-      verbose = 1
-    )
+dmrsegal_file <- file.path(benchmark_output_dir,"dmrs.dmrsegal.rds")
+if (!file.exists(dmrsegal_file)){
+  # Write beta values to temp file
+  beta_file <- tempfile(fileext = ".txt")
+  beta_mat <- getBeta(mset)
+  
+  
+  write.table(
+      cbind(ID = rownames(beta_mat), beta_mat),
+      file = beta_file,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+  )
+  
+  beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite=TRUE)
+  
+  # Write DMPs to temp file
+  dmps_file <- tempfile(fileext = ".txt")
+  write.table(
+      sig_dmps,
+      file = dmps_file,
+      sep = "\t",
+      quote = FALSE,
+      row.names = TRUE
+  )
+  
+  dmrs_segal <- DMRSegal::findDMRsFromDMPs(
+        beta_file = beta_file,
+        dmps_tsv_file = dmps_file,
+        pheno = pheno,
+        sample_group_col = "group",
+        min_dmps = 2,
+        min_cpgs = 3,
+        njobs = 4,
+        verbose = 3
+      )
+  saveRDS(dmrs_segal, dmrsegal_file)
+  # Remove temporary files
+  unlink(c(beta_file, dmps_file))
+}
 
 ```
 
 ### DMRcate
 
 ```{r dmrcate}
-# DMRcate uses the same mset and design matrix as other methods
-M <- getM(mset)
-
-myannotation<-cpg.annotate("array", M,what="M", arraytype="450K", analysis.type="differential", design=design,coef=2,fdr = 0.05)
-
-# Run DMRcate with the same p-value cutoff we used for DMPs
-
-dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000)
-dmrs_dmrcate <- extractRanges(dmrcate_results, genome='hg19')
+dmrcate_file <- file.path(benchmark_output_dir,"dmrs.dmrcate.rds")
+if (!file.exists(dmrcate_file)){
+  # DMRcate uses the same mset and design matrix as other methods
+  M <- getM(mset)
+  
+  myannotation<-cpg.annotate("array", M,what="M", arraytype="450K", analysis.type="differential", design=design,coef=2,fdr = 0.05)
+  
+  # Run DMRcate with the same p-value cutoff we used for DMPs
+  
+  dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000)
+  dmrs_dmrcate <- extractRanges(dmrcate_results, genome='hg19')
+  saveRDS(dmrs_dmrcate, dmrs_dmrcate)
+}
 ```
 
 ### bumphunter
 
 ```{r bumphunter}
-# bumphunter uses the same mset and design matrix as other methods
-gmSet <- preprocessQuantile(mset)
-# Run bumphunter with the same design matrix
-library(doParallel)
-registerDoParallel(cores = 4)
-bumphunter_results <- bumphunter(
-    gmSet,
-    design = design,
-    coef = 2,  # Use the cancer vs normal coefficient
-    cutoff = 0.05,  # Use same significance threshold
-    B = 1000,  # Number of permutations
-    type = "Beta"
-)
+bumphunter_file <- file.path(benchmark_output_dir,"dmrs.bumphunter.rds")
+if (!file.exists(bumphunter_file)){
+  # bumphunter uses the same mset and design matrix as other methods
+  gmSet <- preprocessQuantile(mset)
+  # Run bumphunter with the same design matrix
+  library(doParallel)
+  registerDoParallel(cores = 4)
+  bumphunter_results <- bumphunter(
+      gmSet,
+      design = design,
+      coef = 2,  # Use the cancer vs normal coefficient
+      cutoff = 0.05,  # Use same significance threshold
+      B = 1000,  # Number of permutations
+      type = "Beta"
+  )
+  saveRDS(bumphunter_results, bumphunter_file)
+}
 ```
 
 ## Results Comparison
@@ -165,7 +181,9 @@ get_dmr_stats <- function(dmrs, method) {
         Median_DMR_Width = median(width(dmrs))
     )
 }
-
+dmrs_segal <- readRDS(dmrsegal_file)
+dmrs_dmrcate <- readRDS(dmrcate_file)
+bumphunter_results <- readRDS(bumphunter_file)
 # Collect stats
 stats_list <- list(
     get_dmr_stats(dmrs_segal, "DMRSegal"),
@@ -217,13 +235,6 @@ pheatmap::pheatmap(
     main = "DMR Overlap Between Methods",
     display_numbers = TRUE
 )
-```
-
-## Clean Up
-
-```{r cleanup}
-# Remove temporary files
-unlink(c(beta_file, dmps_file))
 ```
 
 ## Conclusions

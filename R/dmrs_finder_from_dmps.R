@@ -578,6 +578,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     delta_beta <- NULL
     n_groups <- length(group_inds)
     if (n_groups == 0) {
+        browser()
         return(list(FALSE, NA_real_, NA_real_, reason = "no_groups"))
     }
 
@@ -591,6 +592,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         y <- site2_beta[idx]
         r <- suppressWarnings(stats::cor(x, y, use = "pairwise.complete.obs", method = "pearson"))
         if (is.na(r)) {
+            browser()
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na r"))
         }
         df <- sum(stats::complete.cases(x, y)) - 2L
@@ -600,6 +602,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         tstat <- r * sqrt(df / max(1e-12, 1 - r * r))
         p <- 2 * stats::pt(-abs(tstat), df = df)
         if (is.na(p)) {
+            browser()
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na pval"))
         }
         pval <- max(pval, p)
@@ -1091,6 +1094,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
     op <- options(warn = 2)$warn
     ret <- future.apply::future_lapply(chromosomes, function(chr) {
+        message('test')
         .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
 
         m <- dmps_locs$chr == chr
@@ -1130,7 +1134,9 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                     group_inds = group_inds,
                     max_pval = max_pval
                 )
-                .log_success("Connectivity test result: ", if (t[[1]]) "connected" else "not connected", " (pval=", signif(t[[2]], 3), ", delta_beta=", signif(t[[3]], 3), if (!is.null(t$failing)) paste0(", failing group: ", t$failing) else "", ")", level = 3)
+                fmt_p <- if (is.null(t[[2]]) || !is.numeric(t[[2]]) || length(t[[2]]) == 0L || is.na(t[[2]])) NA_character_ else as.character(signif(t[[2]], 3))
+                fmt_db <- if (is.null(t[[3]]) || !is.numeric(t[[3]]) || length(t[[3]]) == 0L || is.na(t[[3]])) NA_character_ else as.character(signif(t[[3]], 3))
+                .log_success("Connectivity test result: ", if (t[[1]]) "connected" else "not connected", " (pval=", fmt_p, ", delta_beta=", fmt_db, if (!is.null(t$failing)) paste0(", failing group: ", t$failing) else "", ")", level = 3)
 
                 corr_pval <- min(corr_pval, t[[2]])
 
