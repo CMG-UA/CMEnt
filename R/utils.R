@@ -184,7 +184,7 @@
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
      if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
      msg <- paste0(..., collapse = "")
-     lead <- paste0(rep("\t", level - 1), .col(cli::symbol$info, "blue"))
+     lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep='')
      cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
      invisible()
 }
@@ -202,7 +202,7 @@
     if (getOption("DMRSegal.verbose", 1) < level) return(invisible())
     dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
-    lead <- paste0(rep("\t", level - 1), .col(cli::symbol$tick, "green"))
+    lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep='')
     cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
     invisible()
 }
@@ -214,7 +214,7 @@
     subtitle <- paste0(..., collapse = "")
     header <- title
     if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
-    lead <- paste0(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"))
+    lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep='')
     cli::cli_inform(paste0(lead, " ", header), .envir = .envir)
     invisible()
 }

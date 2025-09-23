@@ -1090,14 +1090,18 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
     op <- options(warn = 2)$warn
     ret <- future.apply::future_lapply(chromosomes, function(chr) {
+        .log_step("Subsetting DMPs for chromosome ", chr, " ...", level=3)
+        
         m <- dmps_locs$chr == chr
         cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
         cdmps <- dmps[m]
         cdmps_beta <- dmps_beta[m, , drop = FALSE]
         cdmps_locs <- dmps_locs[m, , drop = FALSE]
+        .log_step("Transforming beta subset to matrix...", level=3)
         # Ensure plain numeric matrix to avoid per-iteration unlist()
         if (!is.matrix(cdmps_beta)) cdmps_beta <- as.matrix(cdmps_beta)
         storage.mode(cdmps_beta) <- "double"
+        .log_success("Beta subset transformed to matrix", level=3)
         # Collect rows and combine once (avoid repeated data.frame rbind)
         dmr_list <- vector("list", length = 128L)
         dmr_n <- 0L
@@ -1105,7 +1109,6 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         start_ind <- 1L
         corr_pval <- 1
         dmr_dmps_inds <- integer(0)
-
         for (i in seq_len(nrow(cdmps_beta))) {
             .log_info("Processing DMP ", i, " / ", nrow(cdmps_beta), " (chr ", chr, ")", level=3)
             reg_dmr <- FALSE
