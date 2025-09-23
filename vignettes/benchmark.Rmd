@@ -5,7 +5,7 @@ This notebook compares DMRSegal with other popular DMR detection tools using rea
 ## Setup
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 ```
 
 ## Load Required Libraries
@@ -16,10 +16,8 @@ library(DMRcate)
 library(bumphunter)
 library(DMRSegal)
 library(minfiData)  # Contains example 450k array data
-library(microbenchmark)
 library(ggplot2)
 library(progressr)
-options("future.debug"=T)
 # Configure progressr for RStudio
 # progressr::handlers(global = TRUE)
 handlers("rstudio")
@@ -83,10 +81,6 @@ sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
 ### DMRSegal
 
 ```{r dmrsegal}
-# The phenotype data is already created above in the data loading section
-# But let's rename the column to match our expected format
-
-
 # Write beta values to temp file
 beta_file <- tempfile(fileext = ".txt")
 beta_mat <- getBeta(mset)
@@ -119,7 +113,7 @@ dmrs_segal <- findDMRsFromDMPs(
       sample_group_col = "group",
       min_dmps = 2,
       min_cpgs = 3,
-      njobs = 8,
+      njobs = 4,
       verbose = TRUE
     )
 
@@ -145,6 +139,8 @@ dmrs_dmrcate <- extractRanges(dmrcate_results, genome='hg19')
 # bumphunter uses the same mset and design matrix as other methods
 gmSet <- preprocessQuantile(mset)
 # Run bumphunter with the same design matrix
+library(doParallel)
+registerDoParallel(cores = 4)
 bumphunter_results <- bumphunter(
     gmSet,
     design = design,

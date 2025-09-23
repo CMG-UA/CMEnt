@@ -352,7 +352,9 @@ sortBetaFileByCoordinates <- function(beta_file,
                         casecontrol = NULL,
                         tabix_file = NULL,
                         expansion_step = 500,
-                        expansion_relaxation = 0) {
+                        expansion_relaxation = 0,
+                        group_inds = NULL,
+                        extreme_verbosity = FALSE) {
     if (!is.null(beta_file)) {
         ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
     } else {
@@ -360,7 +362,6 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
 
     cols_inds <- ret$beta_col_inds
-    file_beta_col_names <- ret$file_beta_col_names
     beta_col_names <- ret$beta_col_names
     sorted_locs <- sorted_locs[beta_row_names, ]
 
@@ -391,21 +392,22 @@ sortBetaFileByCoordinates <- function(beta_file,
         start_site_ind <- start_site_ind + x - 1
         exp.step <- end_site_ind - start_site_ind + 1
         if (!is.null(beta_file)) {
-            upstream_betas <- fread(
+            upstream_betas <- data.table::fread(
                 file = beta_file,
                 skip = start_site_ind,
                 nrows = exp.step,
-                header = FALSE, data.table = FALSE,
-                colClasses = c("character", rep("numeric", length(file_beta_col_names)))
+                header = FALSE,
+                data.table = FALSE,
+                select = cols_inds,
+                showProgress = FALSE
             )
-            upstream_betas <- upstream_betas[, cols_inds]
         } else {
             upstream_region <- paste0(
                 sorted_locs[start_site_ind, "chr"], ":",
                 sorted_locs[start_site_ind, "pos"], "-",
                 sorted_locs[end_site_ind, "pos"] + 1
             )
-            upstream_betas <- try(tabix(
+            upstream_betas <- try(bedr::tabix(
                 upstream_region,
                 tabix_file,
                 check.valid = FALSE,
@@ -416,8 +418,13 @@ sortBetaFileByCoordinates <- function(beta_file,
                 upstream_stop_reason <- "error-reading-tabix"
                 break
             }
-            upstream_betas <- as.data.frame(sapply(upstream_betas[, beta_col_names], as.numeric))
+            upstream_betas <- as.matrix(data.frame(lapply(upstream_betas[, beta_col_names, drop = FALSE], as.numeric),
+                check.names = FALSE
+            ))
         }
+        # Ensure numeric matrix for fast indexing
+        if (!is.matrix(upstream_betas)) upstream_betas <- as.matrix(upstream_betas)
+        storage.mode(upstream_betas) <- "double"
         upstream_betas <- upstream_betas[rev(seq_len(nrow(upstream_betas))), , drop = FALSE]
         if (nrow(upstream_betas) == 1) {
             upstream_stop_reason <- "end-of-input"
@@ -427,13 +434,13 @@ sortBetaFileByCoordinates <- function(beta_file,
         exp_relax_counter <- 0
         while (TRUE) {
             corr_ret <- .testConnectivity(
-                site1_beta = unlist(upstream_betas[i, ]),
-                site2_beta = unlist(upstream_betas[i + 1, ]),
-                sample_groups = sample_groups,
+                site1_beta = upstream_betas[i, ],
+                site2_beta = upstream_betas[i + 1, ],
+                group_inds = group_inds,
                 casecontrol = casecontrol,
                 max_pval = max_pval,
                 min_delta_beta = min_cpg_delta_beta,
-                extreme_verbosity = TRUE
+                extreme_verbosity = extreme_verbosity
             )
             if (!corr_ret[[1]]) {
                 if (exp_relax_counter < expansion_relaxation) {
@@ -487,22 +494,22 @@ sortBetaFileByCoordinates <- function(beta_file,
             break
         }
         if (!is.null(beta_file)) {
-            downstream_betas <- fread(
+            downstream_betas <- data.table::fread(
                 file = beta_file,
                 skip = start_site_ind,
                 nrows = expansion_step - x + 1,
                 header = FALSE,
                 data.table = FALSE,
-                colClasses = c("character", rep("numeric", length(file_beta_col_names)))
+                select = cols_inds,
+                showProgress = FALSE
             )
-            downstream_betas <- downstream_betas[, cols_inds]
         } else {
             downstream_region <- paste0(
                 sorted_locs[start_site_ind, "chr"], ":",
                 sorted_locs[start_site_ind, "pos"], "-",
                 sorted_locs[end_site_ind, "pos"]
             )
-            downstream_betas <- try(tabix(
+            downstream_betas <- try(bedr::tabix(
                 downstream_region,
                 tabix_file,
                 check.valid = FALSE,
@@ -513,8 +520,12 @@ sortBetaFileByCoordinates <- function(beta_file,
                 downstream_stop_reason <- "error-reading-tabix"
                 break
             }
-            downstream_betas <- as.data.frame(sapply(downstream_betas[, beta_col_names], as.numeric))
+            downstream_betas <- as.matrix(data.frame(lapply(downstream_betas[, beta_col_names, drop = FALSE], as.numeric),
+                check.names = FALSE
+            ))
         }
+        if (!is.matrix(downstream_betas)) downstream_betas <- as.matrix(downstream_betas)
+        storage.mode(downstream_betas) <- "double"
 
         i <- 1
         exp_relax_counter <- 0
@@ -522,7 +533,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             corr_ret <- .testConnectivity(
                 site1_beta = unlist(downstream_betas[i, ]),
                 site2_beta = unlist(downstream_betas[i + 1, ]),
-                sample_groups = sample_groups,
+                group_inds = group_inds,
                 max_pval = max_pval,
                 casecontrol = casecontrol,
                 min_delta_beta = min_cpg_delta_beta
@@ -571,32 +582,39 @@ sortBetaFileByCoordinates <- function(beta_file,
     dmr
 }
 
-.testConnectivity <- function(site1_beta, site2_beta, sample_groups, max_pval, casecontrol = NULL, min_delta_beta = 0, extreme_verbosity = FALSE) {
+.testConnectivity <- function(
+    site1_beta, site2_beta, group_inds,
+    max_pval, casecontrol = NULL, min_delta_beta = 0,
+    extreme_verbosity = FALSE) {
     pval <- 0
     delta_beta <- NULL
+    n_groups <- length(group_inds)
+    if (n_groups == 0) {
+        return(list(FALSE, NA_real_, NA_real_, reason = "no_groups"))
+    }
 
-    max_pval_corrected <- max_pval / length(unique(sample_groups)) # Bonferroni correction
-    for (g in levels(sample_groups)) {
-        if (sum(sample_groups == g) < 3) {
-            next
+    # Bonferroni correction by number of groups
+    max_pval_corrected <- max_pval / n_groups
+
+    for (g in names(group_inds)) {
+        idx <- group_inds[[g]]
+        if (length(idx) < 3) next
+        x <- site1_beta[idx]
+        y <- site2_beta[idx]
+        r <- suppressWarnings(stats::cor(x, y, use = "pairwise.complete.obs", method = "pearson"))
+        if (is.na(r)) {
+            return(list(FALSE, pval, delta_beta, failing = g, reason = "na r"))
         }
-        corr_ret <- try(corr.test(site1_beta[sample_groups == g], site2_beta[sample_groups == g], ci = FALSE))
-        if (inherits(corr_ret, "try-error")) {
-            if (extreme_verbosity) {
-                message(".testConnectivity: Error occurred in corr.test while processing the following:")
-                message("casecontrol:", paste(casecontrol, collapse = ","))
-                message("site2_beta:", paste(site2_beta, collapse = ","))
-                message("sample_groups:", paste(sample_groups, collapse = ","))
-                message("max_pval_corrected:", max_pval_corrected)
-                message("Error message:", corr_ret)
-            }
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "error occurred"))
+        df <- sum(stats::complete.cases(x, y)) - 2L
+        if (df < 1) {
+            return(list(FALSE, pval, delta_beta, failing = g, reason = "df<1"))
         }
-        r <- max(pval, corr_ret$p)
-        if (is.null(r) || is.na(r)) {
+        tstat <- r * sqrt(df / max(1e-12, 1 - r * r))
+        p <- 2 * stats::pt(-abs(tstat), df = df)
+        if (is.na(p)) {
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na pval"))
         }
-        pval <- r
+        pval <- max(pval, p)
         if (pval > max_pval_corrected) {
             return(list(FALSE, pval, delta_beta, failing = g, reason = "pval>max_pval (corrected)"))
         }
@@ -604,23 +622,18 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (!is.null(casecontrol) && (min_delta_beta > 0)) {
         if (length(casecontrol) != length(site2_beta)) {
             if (extreme_verbosity) {
-                message(".testConnectivity: Error occurred while computing delta beta for the following:")
-                message("casecontrol:", paste(casecontrol, collapse = ","))
-                message("site2_beta:", paste(site2_beta, collapse = ","))
-                message("sample_groups:", paste(sample_groups, collapse = ","))
-                message("max_pval_corrected:", max_pval_corrected)
+                message(".testConnectivity: casecontrol length mismatch: ", length(casecontrol), " vs ", length(site2_beta))
             }
-            stop(paste0(
-                "The provided casecontrol vector has length", length(casecontrol),
-                " while the site2_beta has length ", length(site2_beta)
-            ))
+            stop("casecontrol length mismatch")
         }
-        delta_beta <- mean(site2_beta[casecontrol == 1], na.rm = TRUE) - mean(site2_beta[casecontrol == 0], na.rm = TRUE)
-        if (is.null(delta_beta) || is.na(delta_beta) || (abs(delta_beta) < min_delta_beta)) {
+        delta_beta <- mean(site2_beta[casecontrol == 1], na.rm = TRUE) -
+            mean(site2_beta[casecontrol == 0], na.rm = TRUE)
+        if (is.na(delta_beta) || (abs(delta_beta) < min_delta_beta)) {
             return(list(FALSE, pval, delta_beta, reason = "delta_beta<min_delta_beta"))
         }
     }
-    return(list(TRUE, pval, delta_beta))
+
+    list(TRUE, pval, delta_beta)
 }
 
 #' Extract CpG Information from DMR Results
@@ -910,10 +923,10 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         }
     }
     if (!is.null(beta_row_names_file) && file.exists(beta_row_names_file)) {
-        if (verbose) message("Reading beta file row names from beta row names file ", beta_row_names_file, "..")
+        if (verbose) message("Reading row names from beta row names file ", beta_row_names_file, "..")
         beta_row_names <- unlist(read.table(beta_row_names_file, header = FALSE, comment.char = "", quote = ""))
     } else {
-        if (verbose) message("Reading beta file row names from beta file..")
+        if (verbose) message("Reading row names from beta file..")
         if (!is.null(beta_file)) {
             beta_row_names <- unlist(fread(
                 file = beta_file,
@@ -955,8 +968,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
     pheno <- pheno[beta_col_names, ]
     sample_groups <- factor(pheno[beta_col_names, sample_group_col])
-
-
+    group_inds <- split(seq_along(sample_groups), sample_groups)
+    case_mask <- pheno[beta_col_names, casecontrol_col] == 1
 
     if (verbose) {
         message("Reordering DMPs based on location..")
@@ -1134,10 +1147,16 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         cdmps <- dmps[m]
         cdmps_beta <- dmps_beta[m, , drop = FALSE]
         cdmps_locs <- dmps_locs[m, , drop = FALSE]
-        dmrs <- data.frame()
-        start_ind <- 1
+        # Ensure plain numeric matrix to avoid per-iteration unlist()
+        if (!is.matrix(cdmps_beta)) cdmps_beta <- as.matrix(cdmps_beta)
+        storage.mode(cdmps_beta) <- "double"
+        # Collect rows and combine once (avoid repeated data.frame rbind)
+        dmr_list <- vector("list", length = 128L)
+        dmr_n <- 0L
+
+        start_ind <- 1L
         corr_pval <- 1
-        dmr_dmps_inds <- c()
+        dmr_dmps_inds <- integer(0)
 
         for (i in seq_len(nrow(cdmps_beta))) {
             reg_dmr <- FALSE
@@ -1150,13 +1169,11 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                 stop_condition <- TRUE
                 stop_reason <- "exceeded max distance"
             }
-            if (stop_condition) {
-                reg_dmr <- TRUE
-            } else {
+            if (!stop_condition) {
                 t <- .testConnectivity(
                     site1_beta = unlist(cdmps_beta[i, ]),
                     site2_beta = unlist(cdmps_beta[i + 1, ]),
-                    sample_groups = sample_groups,
+                    group_inds = group_inds,
                     max_pval = max_pval
                 )
 
@@ -1166,6 +1183,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                     reg_dmr <- TRUE
                     stop_reason <- t$reason
                 }
+            } else {
+                reg_dmr <- TRUE
             }
             if (reg_dmr) {
                 for (dmp_group in unique(cdmps_tsv[, dmp_group_col])) {
@@ -1243,30 +1262,19 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                     if (dmp_group_col != "_DUMMY_DMP_GROUP_COL_") {
                         new_dmr[[dmp_group_col]] <- dmp_group
                     }
-                    tryCatch(
-                        {
-                            dmrs <- rbind(dmrs, new_dmr)
-                        },
-                        error = function(e) {
-                            message("Error in rbind: ", e)
-                            message("New DMR: \n\t", paste(paste(colnames(new_dmr), unlist(new_dmr), sep = ": "), collapse = "\n\t"))
-                            message("Existing DMRs: \n\t", paste(capture.output(print(dmrs)), collapse = "\n\t"))
-                            if (interactive()) browser()
-                        }
-                    )
+                    dmr_n <- dmr_n + 1L
+                    if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
+                    dmr_list[[dmr_n]] <- new_dmr
                 }
 
                 start_ind <- i + 1
                 corr_pval <- 1
-                dmr_dmps_inds <- c()
+                dmr_dmps_inds <- integer(0)
             }
-            if (verbose && exists("p_con")) {
-                p_con()
-            }
-
+            if (verbose && exists("p_con")) p_con()
         }
-
-        rownames(dmrs) <- seq_along(dmrs[, 1])
+        dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
+        if (nrow(dmrs)) rownames(dmrs) <- seq_len(nrow(dmrs))
         dmrs[, "chr"] <- chr
         dmrs
     })
@@ -1331,24 +1339,20 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     ret <- future.apply::future_lapply(split(ungrouped_dmrs, seq_along(ungrouped_dmrs[, 1])), function(dmr) {
         ret <- .expandDMRs(
             dmr = dmr,
-            sample_groups = sample_groups,
+            sample_groups = NULL,
+            grop_inds = group_inds,
             max_pval = max_pval,
             tabix_file = tabix_file,
             beta_file = beta_file,
             beta_row_names = beta_row_names,
             beta_col_names = beta_col_names,
-            casecontrol = pheno[, casecontrol_col],
+            casecontrol = case_mask,
             expansion_step = expansion_step,
             expansion_relaxation = expansion_relaxation,
             min_cpg_delta_beta = min_cpg_delta_beta,
             sorted_locs = sorted_locs
         )
-
-        # Update progress for this DMR
-        if (verbose && exists("p_dmr")) {
-            p_dmr()
-        }
-
+        if (verbose && exists("p_dmr")) p_dmr()
         ret
     })
     options(warn = op)
