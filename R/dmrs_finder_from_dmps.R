@@ -1079,12 +1079,12 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             .log_info("Using multisession parallelization with ", njobs, " workers")
             future::plan(future::multisession, workers = njobs)
         }
+        on.exit(future::plan(future::sequential), add = TRUE)
     } else {
         .log_info("Using sequential processing (njobs=1)")
         future::plan(future::sequential)
     }
     .log_info("Future planning complete", level = 1)
-
     # Use progressr for cross-platform progress reporting
     if (verbose > 0) {
         p_con <- progressr::progressor(steps = nrow(dmps_locs))
@@ -1421,7 +1421,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         close(gz)
         .log_success("DMRs saved.")
     }
-    future::plan(future::sequential)
+    
+    
     # invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
     #     keep.extra.columns = TRUE,
     #     seqinfo = Seqinfo(genome = genome),
