@@ -86,7 +86,6 @@
 #' @importFrom utils txtProgressBar setTxtProgressBar
 #' @importFrom rtracklayer import.chain
 #' @importFrom GenomeInfoDb Seqinfo
-#' @importFrom stats sd
 #' @importFrom utils write.table read.table
 #' @importFrom tools file_ext file_path_sans_ext
 #' @import IlluminaHumanMethylation450kanno.ilmn12.hg19
@@ -1216,8 +1215,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                         end_dmp_pos = cdmps_locs[i, "pos"],
                         dmps_num = length(dmr_dmps_inds),
                         delta_beta = mean(abs(dmr_dmps_tsv[, "delta_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "delta_beta"]))),
-                        delta_beta_sd = sd(dmr_dmps_tsv[, "delta_beta"]),
-                        delta_beta_se = sd(dmr_dmps_tsv[, "delta_beta"]) / sqrt(length(dmr_dmps_inds)),
+                        delta_beta_sd = stats::sd(dmr_dmps_tsv[, "delta_beta"]),
+                        delta_beta_se = stats::sd(dmr_dmps_tsv[, "delta_beta"]) / sqrt(length(dmr_dmps_inds)),
                         delta_beta_min = min(dmr_dmps_tsv[, "delta_beta"]),
                         delta_beta_max = max(dmr_dmps_tsv[, "delta_beta"]),
                         delta_beta_start = dmr_dmps_tsv[1, "delta_beta"],
@@ -1226,8 +1225,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                         cases_beta = mean(abs(dmr_dmps_tsv[, "cases_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "cases_beta"]))),
                         cases_beta_max = max(dmr_dmps_tsv[, "cases_beta"]),
                         cases_beta_min = min(dmr_dmps_tsv[, "cases_beta"]),
-                        cases_beta_sd = sd(dmr_dmps_tsv[, "cases_beta"]),
-                        cases_beta_se = sd(dmr_dmps_tsv[, "cases_beta"]) / sqrt(length(dmr_dmps_inds)),
+                        cases_beta_sd = stats::sd(dmr_dmps_tsv[, "cases_beta"]),
+                        cases_beta_se = stats::sd(dmr_dmps_tsv[, "cases_beta"]) / sqrt(length(dmr_dmps_inds)),
                         cases_beta_start = dmr_dmps_tsv[1, "cases_beta"],
                         cases_beta_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "cases_beta"],
                         cases_beta_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "cases_beta"],
@@ -1240,8 +1239,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                         controls_beta = mean(abs(dmr_dmps_tsv[, "controls_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "controls_beta"]))),
                         controls_beta_max = max(dmr_dmps_tsv[, "controls_beta"]),
                         controls_beta_min = min(dmr_dmps_tsv[, "controls_beta"]),
-                        controls_beta_sd = sd(dmr_dmps_tsv[, "controls_beta"]),
-                        controls_beta_se = sd(dmr_dmps_tsv[, "controls_beta"]) / sqrt(length(dmr_dmps_inds)),
+                        controls_beta_sd = stats::sd(dmr_dmps_tsv[, "controls_beta"]),
+                        controls_beta_se = stats::sd(dmr_dmps_tsv[, "controls_beta"]) / sqrt(length(dmr_dmps_inds)),
                         controls_beta_start = dmr_dmps_tsv[1, "controls_beta"],
                         controls_beta_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "controls_beta"],
                         controls_beta_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "controls_beta"],

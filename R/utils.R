@@ -153,28 +153,74 @@
 
 # Lightweight styled logging helpers -----------------------------------------
 
+# Internal state for timing steps
+.dmrsegal_log_env <- local({
+    e <- new.env(parent = emptyenv())
+    e$last_step_time <- NULL
+    e
+})
+
+.fmt_time <- function(t = Sys.time()) format(t, "%H:%M:%S")
+
+.fmt_dur <- function(start_time) {
+    if (is.null(start_time)) return("")
+    secs <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+    if (is.na(secs)) return("")
+    if (secs < 60) sprintf(" (took %.2fs)", secs) else sprintf(" (took %dm %02ds)", floor(secs/60), round(secs %% 60))
+}
+
+.has_ansi <- function() {
+    isFALSE(nzchar(Sys.getenv("NO_COLOR"))) && cli::num_ansi_colors() > 1L
+}
+
+.col <- function(x, col = c("cyan", "green", "yellow", "blue")) {
+    col <- match.arg(col)
+    if (!.has_ansi()) return(x)
+    switch(col,
+        cyan   = cli::col_cyan(x),
+        green  = cli::col_green(x),
+        yellow = cli::col_yellow(x),
+        blue   = cli::col_blue(x)
+    )
+}
+
 #' Internal logging helpers using cli
 #' @keywords internal
-.log_info <- function(..., .envir = parent.frame()) {
-    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(cli::format_message(paste0("{symbol info} ", paste0(..., collapse = ""))), .envir = .envir)
-    invisible()
+ .log_info <- function(..., .envir = parent.frame()) {
+     if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
+     msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""))
+     lead <- .col(cli::symbol$info, "blue")
+     cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
+     invisible()
 }
 
 #' @keywords internal
 .log_warn <- function(..., .envir = parent.frame()) {
-    cli::cli_warn(cli::format_message(paste0("{symbol warning} ", paste0(..., collapse = ""))), .envir = .envir)
+    msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""))
+    lead <- .col(cli::symbol$warning, "yellow")
+    cli::cli_warn(paste0(lead, " ", msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
 .log_success <- function(..., .envir = parent.frame()) {
-    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(cli::format_message(paste0("{symbol tick} ", paste0(..., collapse = ""))), .envir = .envir)
+    if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
+    dur <- .fmt_dur(.dmrsegal_log_env$last_step_time)
+    msg <- paste0("[", .fmt_time(), "] ", paste0(..., collapse = ""), dur)
+    lead <- .col(cli::symbol$tick, "green")
+    cli::cli_inform(paste0(lead, " ", msg), .envir = .envir)
     invisible()
 }
 
 #' @keywords internal
 .log_step <- function(title, ..., .envir = parent.frame()) {
-    if (isTRUE(getOption("DMRSegal.verbose", TRUE))) cli::cli_inform(list(cli::format_message(paste0("{symbol arrow_right} ", title)), paste0(..., collapse = "")), .envir = .envir)
+    if (!isTRUE(getOption("DMRSegal.verbose", TRUE))) return(invisible())
+    .dmrsegal_log_env$last_step_time <- Sys.time()
+    subtitle <- paste0(..., collapse = "")
+    header <- paste0("[", .fmt_time(.dmrsegal_log_env$last_step_time), "] ", title)
+    if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
+    lead <- .col(cli::symbol$arrow_right, "cyan")
+    cli::cli_inform(paste0(lead, " ", header), .envir = .envir)
     invisible()
 }
 
