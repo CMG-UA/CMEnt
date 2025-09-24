@@ -344,10 +344,9 @@ sortBetaFileByCoordinates <- function(beta_file,
     beta_col_names <- ret$beta_col_names
     sorted_locs <- sorted_locs[beta_row_names, ]
 
-    dmr_start <- dmr['start_dmp']
-    dmr_end <- dmr['end_dmp']
-    dmr_start_ind <- tryCatch(which(beta_row_names == dmr_start), error=function(e) { print(beta_row_names); print(dmr_start)})
-
+    dmr_start <- dmr["start_dmp"]
+    dmr_end <- dmr["end_dmp"]
+    dmr_start_ind <- which(beta_row_names == dmr_start)
     if (length(dmr_start_ind) == 0) {
         stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
     }
@@ -361,7 +360,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             break
         }
         start_site_ind <- max(0, end_site_ind - expansion_step) + 1
-        x <- tryCatch(which(sorted_locs[start_site_ind:end_site_ind, "chr"] == dmr['chr']), error = function(e) { print(start_site_ind); print(end_site_ind); print(dmr['chr'])})
+        x <- which(sorted_locs[start_site_ind:end_site_ind, "chr"] == dmr["chr"])
         if (length(x) == 0) {
             upstream_stop_reason <- "end-of-input"
             break
@@ -458,7 +457,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             break
         }
         end_site_ind <- min(start_site_ind + expansion_step, length(beta_row_names))
-        x <- which(rev(sorted_locs[start_site_ind:end_site_ind, "chr"]) == dmr['chr'])
+        x <- which(rev(sorted_locs[start_site_ind:end_site_ind, "chr"]) == dmr["chr"])
         if (length(x) == 0) {
             downstream_stop_reason <- "end-of-input"
             downstream_exp <- start_site_ind - 1
@@ -543,12 +542,12 @@ sortBetaFileByCoordinates <- function(beta_file,
             stop("BUG: start_site_ind < prev_start_site_ind during downstream expansion. start_site_ind: ", start_site_ind, " prev_start_site_ind: ", prev_start_site_ind, " expansion_step: ", expansion_step, " x: ", x)
         }
     }
-    dmr['start_cpg'] <- beta_row_names[upstream_exp]
-    dmr['end_cpg'] <- beta_row_names[downstream_exp]
-    dmr['start'] <- sorted_locs[dmr['start_cpg'], "pos"]
-    dmr['end'] <- sorted_locs[dmr['end_cpg'], "pos"]
-    dmr['downstream_cpg_expansion_stop_reason'] <- downstream_stop_reason
-    dmr['upstream_cpg_expansion_stop_reason'] <- upstream_stop_reason
+    dmr["start_cpg"] <- beta_row_names[upstream_exp]
+    dmr["end_cpg"] <- beta_row_names[downstream_exp]
+    dmr["start"] <- sorted_locs[dmr["start_cpg"], "pos"]
+    dmr["end"] <- sorted_locs[dmr["end_cpg"], "pos"]
+    dmr["downstream_cpg_expansion_stop_reason"] <- downstream_stop_reason
+    dmr["upstream_cpg_expansion_stop_reason"] <- upstream_stop_reason
 
     dmr
 }
@@ -584,7 +583,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         if (is.na(tstat)) {
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na tstat"))
         }
-        p <- -2 *  expm1(pt(abs(tstat),df=df,log.p=TRUE))
+        p <- -2 * expm1(pt(abs(tstat), df = df, log.p = TRUE))
         if (is.na(p)) {
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na pval"))
         }
@@ -1075,7 +1074,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         p_con <- progressr::progressor(steps = nrow(dmps_locs))
     }
     .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-    
+
     ret <- future.apply::future_lapply(
         X = chromosomes,
         FUN = function(chr) {
