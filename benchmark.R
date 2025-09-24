@@ -1,27 +1,15 @@
-## Benchmarking DMRSegal against other DMR detection tools
-
-This notebook compares DMRSegal with other popular DMR detection tools using real-world methylation data. We'll use a small subset of the colon cancer dataset from the minfiData package, which contains tumor vs normal samples.
-
-## Setup
-
-```{r setup, include=FALSE}
+## ----setup, include=FALSE------------------------------------------------------------------------------------------------------
 knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
-```
 
-## Load Required Libraries
 
-```{r load_libraries}
+## ----load_libraries------------------------------------------------------------------------------------------------------------
 library(progressr)
 # Configure progressr for RStudio
 benchmark_output_dir <- "benchmark_data"
 dir.create(benchmark_output_dir, showWarnings=FALSE)
-```
 
-## Load and Prepare Data
 
-We'll use a subset of the colon cancer dataset from minfiData MsetEx to keep the example manageable.
-
-```{r load_data}
+## ----load_data-----------------------------------------------------------------------------------------------------------------
 library(minfi)
 # Get sample type information from MsetEx
 sample_types <- pData(minfiData::MsetEx)$Sample_Group
@@ -44,11 +32,9 @@ pheno <- data.frame(
 )
 pheno$group <- pheno$status
 pheno$casecontrol <- pheno$status == "cancer"
-```
 
-## Get DMPs using minfi
 
-```{r get_dmps}
+## ----get_dmps------------------------------------------------------------------------------------------------------------------
 # Create design matrix for all methods to use consistently
 design <- model.matrix(~pheno$status)
 
@@ -62,13 +48,9 @@ dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
 # Filter significant DMPs
 sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
-```
 
-## Run DMR Detection Methods
 
-### DMRSegal
-
-```{r dmrsegal}
+## ----dmrsegal------------------------------------------------------------------------------------------------------------------
 
 dmrsegal_file <- file.path(benchmark_output_dir,"dmrs.dmrsegal.rds")
 if (!file.exists(dmrsegal_file)){
@@ -97,15 +79,16 @@ if (!file.exists(dmrsegal_file)){
       quote = FALSE,
       row.names = TRUE
   )
-  option(future.debug = TRUE)
+  # option(future.debug = TRUE)
   dmrs_segal <- DMRSegal::findDMRsFromDMPs(
         beta_file = beta_file,
         dmps_tsv_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
+        max_pval = 0.1,
         min_dmps = 2,
         min_cpgs = 3,
-        njobs = 1,
+        njobs = 8,
         verbose = 3
       )
   saveRDS(dmrs_segal, dmrsegal_file)
@@ -116,11 +99,9 @@ if (!file.exists(dmrsegal_file)){
 
 
 
-```
 
-### DMRcate
 
-```{r dmrcate}
+## ----dmrcate-------------------------------------------------------------------------------------------------------------------
 dmrcate_file <- file.path(benchmark_output_dir,"dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)){
   
@@ -137,11 +118,9 @@ if (!file.exists(dmrcate_file)){
   saveRDS(dmrs_dmrcate, dmrs_dmrcate)
   detach("package:DMRcate", unload=TRUE)
 }
-```
 
-### bumphunter
 
-```{r bumphunter}
+## ----bumphunter----------------------------------------------------------------------------------------------------------------
 bumphunter_file <- file.path(benchmark_output_dir,"dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)){
   
@@ -162,13 +141,9 @@ if (!file.exists(bumphunter_file)){
   saveRDS(bumphunter_results, bumphunter_file)
   detach("package:bumphunter", unload=TRUE)
 }
-```
 
-## Results Comparison
 
-All three methods now use the same underlying dataset (mset), same phenotype data (pheno), same design matrix (design), and comparable significance thresholds (p \< 0.1) for fair comparison.
-
-```{r compare_results}
+## ----compare_results-----------------------------------------------------------------------------------------------------------
 # Function to get DMR stats
 get_dmr_stats <- function(dmrs, method) {
     data.frame(
@@ -191,11 +166,9 @@ stats_list <- list(
 # Combine stats
 results_comparison <- do.call(rbind, stats_list)
 knitr::kable(results_comparison)
-```
 
-## DMR Overlap Analysis
 
-```{r overlap}
+## ----overlap-------------------------------------------------------------------------------------------------------------------
 # Convert all results to GRanges
 gr_segal <- dmrs_segal
 gr_dmrcate <- dmrs_dmrcate
@@ -232,31 +205,4 @@ pheatmap::pheatmap(
     main = "DMR Overlap Between Methods",
     display_numbers = TRUE
 )
-```
 
-## Conclusions
-
-This benchmark analysis compares DMRSegal with two popular DMR detection methods (DMRcate and bumphunter) using the same underlying methylation dataset for fair comparison. All methods use:
-
--   Same methylation data (MsetEx subset)
--   Same phenotype information (cancer vs normal)
--   Same design matrix (model.matrix(\~pheno\$status))
--   Comparable significance thresholds (p \< 0.1)
-
-Key findings:
-
-1.  **Performance:**
-    -   Runtime comparison between methods
-    -   Memory usage patterns
-2.  **Results:**
-    -   Number of DMRs detected by each method
-    -   DMR width distributions
-    -   Overlap between methods
-3.  **Methodological Differences:**
-    -   DMRSegal: DMP-based region expansion approach
-    -   DMRcate: Gaussian kernel smoothing approach\
-    -   bumphunter: Bootstrap-based bump finding
-4.  **Practical Considerations:**
-    -   DMRSegal's advantage: can work with pre-computed DMPs
-    -   Trade-offs between sensitivity and specificity
-    -   Use case recommendations based on data availability

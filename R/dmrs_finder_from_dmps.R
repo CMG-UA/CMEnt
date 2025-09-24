@@ -1081,7 +1081,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         }
         on.exit(future::plan(future::sequential), add = TRUE)
     } else {
-        .log_info("Using sequential processing (njobs=1)")
+        .log_info("Using sequential process ing (njobs=1)")
         future::plan(future::sequential)
     }
     # Use progressr for cross-platform progress reporting
@@ -1089,11 +1089,11 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         p_con <- progressr::progressor(steps = nrow(dmps_locs))
     }
     .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-    op <- options(warn = 2)$warn
+    
     ret <- future.apply::future_lapply(
-        future.packages = character(0),
         X = chromosomes,
         FUN = function(chr) {
+            op <- options(warn = 2)$warn
             .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
 
             m <- dmps_locs$chr == chr
@@ -1134,8 +1134,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                         max_pval = max_pval
                     )
                     fmt_p <- if (is.null(t[[2]]) || !is.numeric(t[[2]]) || length(t[[2]]) == 0L || is.na(t[[2]])) NA_character_ else as.character(signif(t[[2]], 3))
-                    fmt_db <- if (is.null(t[[3]]) || !is.numeric(t[[3]]) || length(t[[3]]) == 0L || is.na(t[[3]])) NA_character_ else as.character(signif(t[[3]], 3))
-                    .log_success("Connectivity test result: ", if (t[[1]]) "connected" else "not connected", " (pval=", fmt_p, ", delta_beta=", fmt_db, if (!is.null(t$failing)) paste0(", failing group: ", t$failing) else "", ")", level = 3)
+                    .log_success("Connectivity test result: ", if (t[[1]]) "connected" else "not connected", " (pval=", fmt_p, ", reason=", t$reason, if (!is.null(t$failing)) paste0(", failing group: ", t$failing) else "", ")", level = 3)
 
                     corr_pval <- min(corr_pval, t[[2]])
 
@@ -1237,9 +1236,10 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             if (nrow(dmrs)) rownames(dmrs) <- seq_len(nrow(dmrs))
             dmrs[, "chr"] <- chr
             dmrs
+             options(warn = op)
         }
     )
-    options(warn = op)
+   
 
     if (inherits(ret[[1]], "try-error")) {
         stop(ret)
@@ -1287,11 +1287,11 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = n_dmrs)
     }
-    op <- options(warn = 2)$warn
+    
     ret <- future.apply::future_lapply(
         X = split(ungrouped_dmrs, seq_along(ungrouped_dmrs[, 1])),
-        future.packages = character(0),
         FUN = function(dmr) {
+            op <- options(warn = 2)$warn
             ret <- .expandDMRs(
                 dmr = dmr,
                 group_inds = group_inds,
@@ -1306,11 +1306,12 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                 min_cpg_delta_beta = min_cpg_delta_beta,
                 sorted_locs = sorted_locs
             )
+            options(warn = op)
             if (verbose > 0 && exists("p_ext")) p_ext()
             ret
         }
     )
-    options(warn = op)
+    
 
     if (inherits(ret, "try-error")) {
         stop(ret)

@@ -152,9 +152,7 @@
 
 # Internal state for timing steps
 .dmrsegal_log_env <- local({
-    print('defining log env')
     e <- new.env(parent = emptyenv())
-    print('defined new env')
     e$last_step_time <- list()
     e
 })
