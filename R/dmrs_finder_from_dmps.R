@@ -1222,8 +1222,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
             if (nrow(dmrs)) rownames(dmrs) <- seq_len(nrow(dmrs))
             dmrs[, "chr"] <- chr
+            options(warn = op)
             dmrs
-             options(warn = op)
         }
     )
    

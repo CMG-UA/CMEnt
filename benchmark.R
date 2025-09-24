@@ -87,8 +87,8 @@ if (!file.exists(dmrsegal_file)){
         sample_group_col = "group",
         min_dmps = 2,
         min_cpgs = 3,
-        njobs = 8,
-        verbose = 3
+        njobs = 16,
+        verbose = 2
       )
   saveRDS(dmrs_segal, dmrsegal_file)
   # Remove temporary files
