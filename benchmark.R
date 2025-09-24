@@ -85,7 +85,7 @@ if (!file.exists(dmrsegal_file)){
         dmps_tsv_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
-        min_dmps = 2,
+        min_dmps = 1,
         min_cpgs = 3,
         njobs = 8,
         verbose = 2
@@ -122,23 +122,21 @@ if (!file.exists(dmrcate_file)){
 ## ----bumphunter----------------------------------------------------------------------------------------------------------------
 bumphunter_file <- file.path(benchmark_output_dir,"dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)){
-  
   library(bumphunter)
   # bumphunter uses the same mset and design matrix as other methods
-  gmSet <- ratioConvert(mset)
   # Run bumphunter with the same design matrix
   library(doParallel)
   registerDoParallel(cores = 4)
+  gmSet <- preprocessQuantile(mset)
   bumphunter_results <- bumphunter(
       gmSet,
       design = design,
-      coef = 2,  # Use the cancer vs normal coefficient
-      cutoff = 0.05,  # Use same significance threshold
-      B = 10,  # Number of permutations
+      pickCutoff = TRUE,
+      B = 100,  # Number of permutations
       type = "Beta"
   )
-  saveRDS(bumphunter_results, bumphunter_file)
-  detach("package:bumphunter", unload=TRUE)
+  dmrs_bumphunter <- makeGRangesFromDataFrame(bumphunter_results$table)
+  saveRDS(dmrs_bumphunter, bumphunter_file)
 }
 
 
@@ -154,12 +152,12 @@ get_dmr_stats <- function(dmrs, method) {
 }
 dmrs_segal <- readRDS(dmrsegal_file)
 dmrs_dmrcate <- readRDS(dmrcate_file)
-bumphunter_results <- readRDS(bumphunter_file)
+dmrs_bumphunter <- readRDS(bumphunter_file)
 # Collect stats
 stats_list <- list(
     get_dmr_stats(dmrs_segal, "DMRSegal"),
     get_dmr_stats(dmrs_dmrcate, "DMRcate"),
-    get_dmr_stats(bumphunter_results$table, "bumphunter")
+    get_dmr_stats(dmrs_bumphunter, "bumphunter")
 )
 
 # Combine stats
@@ -171,13 +169,7 @@ knitr::kable(results_comparison)
 # Convert all results to GRanges
 gr_segal <- dmrs_segal
 gr_dmrcate <- dmrs_dmrcate
-gr_bumphunter <- GRanges(
-    seqnames = bumphunter_results$table$chr,
-    ranges = IRanges(
-        start = bumphunter_results$table$start,
-        end = bumphunter_results$table$end
-    )
-)
+gr_bumphunter <- dmrs_bumphunter
 
 # Find overlaps
 overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
@@ -187,9 +179,9 @@ overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter)
 # Create overlap matrix
 overlap_matrix <- matrix(
     c(
-        length(gr_segal), overlap_segal_dmrcate, overlap_segal_bumphunter,
-        overlap_segal_dmrcate, length(gr_dmrcate), overlap_dmrcate_bumphunter,
-        overlap_segal_bumphunter, overlap_dmrcate_bumphunter, length(gr_bumphunter)
+        1, overlap_segal_dmrcate / length(gr_segal), overlap_segal_bumphunter / length(gr_segal),
+        overlap_segal_dmrcate/length(gr_dmrcate), 1, overlap_dmrcate_bumphunter / length(gr_dmrcate),
+        overlap_segal_bumphunter/length(gr_bumphunter), overlap_dmrcate_bumphunter / length(gr_bumphunter), 1
     ),
     nrow = 3,
     dimnames = list(
@@ -202,6 +194,6 @@ overlap_matrix <- matrix(
 pheatmap::pheatmap(
     overlap_matrix,
     main = "DMR Overlap Between Methods",
-    display_numbers = TRUE
+    display_numbers = TRUE, cluster_rows=F, cluster_cols=F
 )
 

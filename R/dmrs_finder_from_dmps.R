@@ -553,9 +553,9 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 .testConnectivity <- function(
-    site1_beta, site2_beta, group_inds,
-    max_pval, casecontrol = NULL, min_delta_beta = 0,
-    extreme_verbosity = FALSE) {
+        site1_beta, site2_beta, group_inds,
+        max_pval, casecontrol = NULL, min_delta_beta = 0,
+        extreme_verbosity = FALSE) {
     pval <- 0
     delta_beta <- NULL
     n_groups <- length(group_inds)
@@ -784,6 +784,12 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                              verbose = 1,
                              beta_row_names_file = NULL,
                              tabix_file = NULL) {
+    try(
+        {
+            progressr::handlers(global = TRUE)
+            on.exit(progressr::handlers(global = FALSE), add = TRUE)
+        }
+    )
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
@@ -1077,6 +1083,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
     ret <- future.apply::future_lapply(
         X = chromosomes,
+        future.scheduling = ceiling(length(chromosomes) / njobs),
         FUN = function(chr) {
             op <- options(warn = 2)$warn
             .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
@@ -1278,6 +1285,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         X = ungrouped_dmrs,
         MARGIN = 1,
         simplify = FALSE,
+        future.scheduling = ceiling(n_dmrs / njobs),
         FUN = function(dmr) {
             op <- options(warn = 2)$warn
             ret <- .expandDMRs(
