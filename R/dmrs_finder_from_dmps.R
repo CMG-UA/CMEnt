@@ -275,19 +275,10 @@ sortBetaFileByCoordinates <- function(beta_file,
         }
         sub <- full[idx, , drop = FALSE]
         if (nrow(sub) == 0) {
-            if (interactive()) browser()
             stop("None of the provided sites exist in the read beta file")
         }
         sub <- apply(sub, 2, as.numeric)
-
-        tryCatch(
-            {
-                rownames(sub) <- sites
-            },
-            error = function(e) {
-                if (interactive()) browser()
-            }
-        )
+        rownames(sub) <- sites
         nas_per_row <- apply(sub, 1, function(r) sum(is.na(r)))
         if (any(nas_per_row == ncol(sub))) {
             warning("All-NA beta rows detected for sites: ", paste(names(nas_per_row)[nas_per_row == ncol(sub)], collapse = ","))
@@ -554,14 +545,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         }
     }
     dmr$start_cpg <- beta_row_names[upstream_exp]
-    tryCatch(
-        {
-            dmr$end_cpg <- beta_row_names[downstream_exp]
-        },
-        error = function(e) {
-            if (interactive()) browser()
-        }
-    )
+    dmr$end_cpg <- beta_row_names[downstream_exp]
     dmr$start <- sorted_locs[dmr$start_cpg, "pos"]
     dmr$end <- sorted_locs[dmr$end_cpg, "pos"]
     dmr$downstream_cpg_expansion_stop_reason <- downstream_stop_reason
@@ -1248,6 +1232,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         stop(ret)
     }
     dmrs <- do.call(rbind, ret)
+    .log_info("Initial DMRs formed (pre-filtering): ", nrow(dmrs), level = 1)
+    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
     dmrs <- dmrs[dmrs$dmps_num >= min_dmps, , drop = FALSE]
     if (nrow(dmrs) == 0) {
         .log_warn("No DMRs remain after filtering based on connected DMP number.")
