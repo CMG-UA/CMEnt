@@ -85,7 +85,6 @@ if (!file.exists(dmrsegal_file)){
         dmps_tsv_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
-        max_pval = 0.1,
         min_dmps = 2,
         min_cpgs = 3,
         njobs = 8,
@@ -115,7 +114,7 @@ if (!file.exists(dmrcate_file)){
   
   dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000)
   dmrs_dmrcate <- extractRanges(dmrcate_results, genome='hg19')
-  saveRDS(dmrs_dmrcate, dmrs_dmrcate)
+  saveRDS(dmrs_dmrcate, dmrcate_file)
   detach("package:DMRcate", unload=TRUE)
 }
 

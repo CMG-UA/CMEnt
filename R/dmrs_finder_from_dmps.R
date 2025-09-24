@@ -598,7 +598,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             return(list(FALSE, pval, delta_beta, failing = g, reason = "df<1"))
         }
         tstat <- r * sqrt(df / max(1e-12, 1 - r * r))
-        p <- 2 * stats::pt(-abs(tstat), df = df)
+        p <- -2 *  expm1(pt(abs(tstat),(df-2),log.p=TRUE))
         if (is.na(p)) {
             return(list(FALSE, pval, delta_beta, failing = g, reason = "na pval"))
         }
