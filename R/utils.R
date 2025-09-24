@@ -152,7 +152,9 @@
 
 # Internal state for timing steps
 .dmrsegal_log_env <- local({
+    print('defining log env')
     e <- new.env(parent = emptyenv())
+    print('defined new env')
     e$last_step_time <- list()
     e
 })
@@ -193,7 +195,7 @@
     }
     msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep = "")
-    cli::cli_inform(paste(lead, msg), .envir = .envir)
+    cat(paste(lead, msg, '\n'), file = stderr())
     invisible()
 }
 
@@ -201,7 +203,7 @@
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    cli::cli_warn(paste(lead, msg), .envir = .envir)
+    cat(paste(lead, msg, '\n'), file = stderr())
     invisible()
 }
 
@@ -213,7 +215,7 @@
     dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep = "")
-    cli::cli_inform(paste(lead, msg), .envir = .envir)
+    cat(paste(lead, msg, '\n'), file = stderr())
     invisible()
 }
 
@@ -227,7 +229,7 @@
     header <- title
     if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
-    cli::cli_inform(paste(lead, header), .envir = .envir)
+    cat(paste(lead, header, '\n'), file = stderr())
     invisible()
 }
 
