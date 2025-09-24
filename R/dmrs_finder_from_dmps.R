@@ -344,10 +344,9 @@ sortBetaFileByCoordinates <- function(beta_file,
     beta_col_names <- ret$beta_col_names
     sorted_locs <- sorted_locs[beta_row_names, ]
 
-    dmr_start <- dmr$start_dmp
-
-    dmr_end <- dmr$end_dmp
-    dmr_start_ind <- which(beta_row_names == dmr_start)
+    dmr_start <- dmr['start_dmp']
+    dmr_end <- dmr['end_dmp']
+    dmr_start_ind <- tryCatch(which(beta_row_names == dmr_start), error=function(e) { print(beta_row_names); print(dmr_start)})
 
     if (length(dmr_start_ind) == 0) {
         stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
@@ -362,7 +361,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             break
         }
         start_site_ind <- max(0, end_site_ind - expansion_step) + 1
-        x <- which(sorted_locs[start_site_ind:end_site_ind, "chr"] == dmr$chr)
+        x <- tryCatch(which(sorted_locs[start_site_ind:end_site_ind, "chr"] == dmr['chr']), error = function(e) { print(start_site_ind); print(end_site_ind); print(dmr['chr'])})
         if (length(x) == 0) {
             upstream_stop_reason <- "end-of-input"
             break
@@ -459,7 +458,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             break
         }
         end_site_ind <- min(start_site_ind + expansion_step, length(beta_row_names))
-        x <- which(rev(sorted_locs[start_site_ind:end_site_ind, "chr"]) == dmr$chr)
+        x <- which(rev(sorted_locs[start_site_ind:end_site_ind, "chr"]) == dmr['chr'])
         if (length(x) == 0) {
             downstream_stop_reason <- "end-of-input"
             downstream_exp <- start_site_ind - 1
@@ -544,12 +543,12 @@ sortBetaFileByCoordinates <- function(beta_file,
             stop("BUG: start_site_ind < prev_start_site_ind during downstream expansion. start_site_ind: ", start_site_ind, " prev_start_site_ind: ", prev_start_site_ind, " expansion_step: ", expansion_step, " x: ", x)
         }
     }
-    dmr$start_cpg <- beta_row_names[upstream_exp]
-    dmr$end_cpg <- beta_row_names[downstream_exp]
-    dmr$start <- sorted_locs[dmr$start_cpg, "pos"]
-    dmr$end <- sorted_locs[dmr$end_cpg, "pos"]
-    dmr$downstream_cpg_expansion_stop_reason <- downstream_stop_reason
-    dmr$upstream_cpg_expansion_stop_reason <- upstream_stop_reason
+    dmr['start_cpg'] <- beta_row_names[upstream_exp]
+    dmr['end_cpg'] <- beta_row_names[downstream_exp]
+    dmr['start'] <- sorted_locs[dmr['start_cpg'], "pos"]
+    dmr['end'] <- sorted_locs[dmr['end_cpg'], "pos"]
+    dmr['downstream_cpg_expansion_stop_reason'] <- downstream_stop_reason
+    dmr['upstream_cpg_expansion_stop_reason'] <- upstream_stop_reason
 
     dmr
 }
@@ -1226,12 +1225,11 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             dmrs
         }
     )
-   
 
     if (inherits(ret[[1]], "try-error")) {
         stop(ret)
     }
-    dmrs <- do.call(rbind, ret)
+    dmrs <- as.data.frame(do.call(rbind, ret))
     .log_info("Initial DMRs formed (pre-filtering): ", nrow(dmrs), level = 1)
     .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
     dmrs <- dmrs[dmrs$dmps_num >= min_dmps, , drop = FALSE]
@@ -1276,9 +1274,11 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = n_dmrs)
     }
-    
-    ret <- future.apply::future_lapply(
-        X = split(ungrouped_dmrs, seq_along(ungrouped_dmrs[, 1])),
+
+    ret <- future.apply::future_apply(
+        X = ungrouped_dmrs,
+        MARGIN = 1,
+        simplify = FALSE,
         FUN = function(dmr) {
             op <- options(warn = 2)$warn
             ret <- .expandDMRs(
@@ -1300,12 +1300,18 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             ret
         }
     )
-    
+
 
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
-    extended_dmrs <- do.call(rbind, ret)
+    extended_dmrs <- as.data.frame(do.call(rbind, ret))
+    extended_dmrs$end <- as.numeric(extended_dmrs$end)
+    extended_dmrs$start <- as.numeric(extended_dmrs$start)
+    extended_dmrs$start_dmp_pos <- as.numeric(extended_dmrs$start_dmp_pos)
+    extended_dmrs$end_dmp_pos <- as.numeric(extended_dmrs$end_dmp_pos)
+    extended_dmrs$dmps_num <- as.numeric(extended_dmrs$dmps_num)
+    extended_dmrs$corr_pval <- as.numeric(extended_dmrs$corr_pval)
 
     end_less_than_start <- extended_dmrs$end - extended_dmrs$start < 0
 
@@ -1421,12 +1427,9 @@ findDMRsFromDMPs <- function(beta_file = NULL,
         close(gz)
         .log_success("DMRs saved.")
     }
-
-
-    # invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
-    #     keep.extra.columns = TRUE,
-    #     seqinfo = Seqinfo(genome = genome),
-    #     na.rm = TRUE
-    # ))
-    return(dmrs)
+    invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
+        keep.extra.columns = TRUE,
+        seqinfo = Seqinfo(genome = genome),
+        na.rm = TRUE
+    ))
 }
