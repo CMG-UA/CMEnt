@@ -14,7 +14,7 @@ statistical significance and biological relevance of methylation changes.
 \section{Main Functions}{
 
 \itemize{
-\item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
+\item \code{\link{findDMRsFromSeeds}}: The main function for identifying DMRs
 }
 }
 

@@ -80,9 +80,9 @@ if (!file.exists(dmrsegal_file)){
       row.names = TRUE
   )
   # option(future.debug = TRUE)
-  dmrs_segal <- DMRSegal::findDMRsFromDMPs(
+  dmrs_segal <- DMRSegal::findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 1,

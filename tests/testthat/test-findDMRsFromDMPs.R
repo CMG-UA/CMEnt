@@ -32,9 +32,9 @@ test_that("DMR finding works correctly with nearby DMPs", {
     write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Find DMRs
-    result <- findDMRsFromDMPs(
+    result <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -83,9 +83,9 @@ test_that("DMR finding respects distance threshold", {
     write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Test with different distance thresholds
-    result_200 <- findDMRsFromDMPs(
+    result_200 <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -93,9 +93,9 @@ test_that("DMR finding respects distance threshold", {
         max.lookup.dist = 200
     )
 
-    result_100 <- findDMRsFromDMPs(
+    result_100 <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -138,9 +138,9 @@ test_that("DMR finding handles edge cases", {
     write.table(single_dmp, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Should not find DMRs with single DMP
-    result <- findDMRsFromDMPs(
+    result <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -169,9 +169,9 @@ test_that("DMR finding handles edge cases", {
 
     write.table(multi_chr_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
-    result <- findDMRsFromDMPs(
+    result <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -188,6 +188,6 @@ test_that("DMR finding handles edge cases", {
     unlink(c(beta_file, dmps_file))
 })
 
-test_that("findDMRsFromDMPs works with tabix input", {
+test_that("findDMRsFromSeeds works with tabix input", {
     skip("Tabix tests require external setup")
 })

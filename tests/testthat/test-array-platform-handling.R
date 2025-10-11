@@ -12,9 +12,9 @@ test_that("Package handles 450k probes", {
     test_data <- create_test_data(platform = "450k")
 
     # Should work with 450k annotations
-    result <- findDMRsFromDMPs(
+    result <- findDMRsFromSeeds(
         beta_file = test_data$beta_file,
-        dmps_tsv_file = test_data$dmps_file,
+        dmps_file = test_data$dmps_file,
         pheno = test_data$pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1,
@@ -30,9 +30,9 @@ test_that("Package handles EPIC probes", {
     test_data <- create_test_data(platform = "EPIC")
 
     # Should work with EPIC annotations
-    result <- findDMRsFromDMPs(
+    result <- findDMRsFromSeeds(
         beta_file = test_data$beta_file,
-        dmps_tsv_file = test_data$dmps_file,
+        dmps_file = test_data$dmps_file,
         pheno = test_data$pheno,
         sample_group_col = "Sample_Group",
         array = "EPIC",

@@ -30,7 +30,7 @@ create_test_data <- function(n_dmps = 100, n_cpgs = 10000, n_connections = 20, n
     sel_ids <- sample(all_ids, n_cpgs)
     # Sort selected IDs by genomic position to satisfy function precondition
     sel_locs <- locs[sel_ids, , drop = FALSE]
-    # Use the same ordering logic as findDMRsFromDMPs (stringr::str_order with numeric=TRUE
+    # Use the same ordering logic as findDMRsFromSeeds (stringr::str_order with numeric=TRUE
     # on a combined chr:pos key) so that the beta file passes the internal
     # sorted-by-position precondition check.
     ord <- stringr::str_order(paste0(sel_locs$chr, ":", sel_locs$pos), numeric = TRUE)

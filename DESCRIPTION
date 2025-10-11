@@ -69,7 +69,7 @@ Config/testthat/edition: 3
 Collate:
     'data.R'
     'utils.R'
-    'dmrs_finder_from_dmps.R'
-    'find_dmrs_from_dmps.R'
+    'dmrs_finder_from_seeds.R'
+    'find_dmrs_from_seeds.R'
     'DMRSegal-package.R'
     'zzz.R'

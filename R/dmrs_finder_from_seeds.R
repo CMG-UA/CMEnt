@@ -1,6 +1,6 @@
 #' Find Differentially Methylated Regions (DMRs) from Pre-computed DMPs
 #'
-#' @name findDMRsFromDMPs
+#' @name findDMRsFromSeeds
 #' @description This function identifies Differentially Methylated Regions (DMRs) from pre-computed
 #' Differentially Methylated Positions (DMPs) using a correlation-based approach. It expands
 #' significant DMPs into regions, considering both statistical significance and biological
@@ -16,7 +16,7 @@
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
 #'
 #' @param beta_file Path to the methylation beta values file or a data matrix with beta values
-#' @param dmps_tsv_file Path to the pre-computed DMPs file or a data frame with DMPs
+#' @param dmps_file Path to the pre-computed DMPs file or a data frame with DMPs
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
@@ -64,9 +64,9 @@
 #' )
 #'
 #' # Find DMRs
-#' dmrs <- findDMRsFromDMPs(
+#' dmrs <- findDMRsFromSeeds(
 #'     beta_file = beta_file,
-#'     dmps_tsv_file = example_dmps,
+#'     dmps_file = example_dmps,
 #'     pheno = example_pheno
 #' )
 #' }
@@ -133,7 +133,7 @@
 #' Sort Beta File by Genomic Coordinates
 #'
 #' @description This helper function sorts a methylation beta values file by genomic coordinates
-#' (chromosome and position) as required by the findDMRsFromDMPs function. The function reads
+#' (chromosome and position) as required by the findDMRsFromSeeds function. The function reads
 #' the beta file, sorts the CpG sites according to their genomic positions using array annotation,
 #' and writes the sorted data to a new file.
 #'
@@ -257,7 +257,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     return(output_file)
 }
 
-.subsetBeta <- function(beta_file,
+.subsetBetaFile <- function(beta_file,
                         sites,
                         beta_row_names = NULL,
                         beta_col_names = NULL) {
@@ -330,18 +330,23 @@ sortBetaFileByCoordinates <- function(beta_file,
                         min_cpg_delta_beta = 0,
                         casecontrol = NULL,
                         tabix_file = NULL,
+                        beta_data_in_memory = NULL,
                         expansion_step = 500,
                         expansion_relaxation = 0,
                         group_inds = NULL,
                         extreme_verbosity = FALSE) {
-    if (!is.null(beta_file)) {
+    if (!is.null(beta_data_in_memory)) {
+        # Using in-memory data - no need to get column indices from file
+        # beta_col_names are already validated
+    } else if (!is.null(beta_file)) {
         ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
+        beta_col_names <- ret$beta_col_names
+        cols_inds <- ret$beta_col_inds
     } else {
         ret <- .getBetaColNamesAndInds(tabix_file, beta_col_names, is_tabix = TRUE)
+        beta_col_names <- ret$beta_col_names
+        cols_inds <- ret$beta_col_inds
     }
-
-    cols_inds <- ret$beta_col_inds
-    beta_col_names <- ret$beta_col_names
     sorted_locs <- sorted_locs[beta_row_names, ]
 
     dmr_start <- dmr["start_dmp"]
@@ -368,7 +373,13 @@ sortBetaFileByCoordinates <- function(beta_file,
         x <- x[[1]]
         start_site_ind <- start_site_ind + x - 1
         exp.step <- end_site_ind - start_site_ind + 1
-        if (!is.null(beta_file)) {
+        
+        if (!is.null(beta_data_in_memory)) {
+            # Fast in-memory subsetting
+            row_indices <- start_site_ind:end_site_ind
+            upstream_betas <- as.matrix(beta_data_in_memory[row_indices, beta_col_names, drop = FALSE])
+            storage.mode(upstream_betas) <- "double"
+        } else if (!is.null(beta_file)) {
             upstream_betas <- data.table::fread(
                 file = beta_file,
                 skip = start_site_ind,
@@ -470,7 +481,13 @@ sortBetaFileByCoordinates <- function(beta_file,
             downstream_exp <- start_site_ind - 1
             break
         }
-        if (!is.null(beta_file)) {
+        
+        if (!is.null(beta_data_in_memory)) {
+            # Fast in-memory subsetting
+            row_indices <- start_site_ind:end_site_ind
+            downstream_betas <- as.matrix(beta_data_in_memory[row_indices, beta_col_names, drop = FALSE])
+            storage.mode(downstream_betas) <- "double"
+        } else if (!is.null(beta_file)) {
             downstream_betas <- data.table::fread(
                 file = beta_file,
                 skip = start_site_ind,
@@ -497,7 +514,7 @@ sortBetaFileByCoordinates <- function(beta_file,
                 downstream_stop_reason <- "error-reading-tabix"
                 break
             }
-            downstream_betas <- as.matrix(data.frame(lapply(downstream_betas[, beta_col_names, drop = FALSE], as.numeric),
+            downstream_betas <- as.matrix(data.frame(lapply(downstream_betas [, beta_col_names, drop = FALSE], as.numeric),
                 check.names = FALSE
             ))
         }
@@ -614,7 +631,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' identified DMRs, providing beta values and additional metadata for each CpG
 #' site within the DMR regions.
 #'
-#' @param dmrs GRanges object containing DMR results from findDMRsFromDMPs
+#' @param dmrs GRanges object containing DMR results from findDMRsFromSeeds
 #' @param beta_file Character. Path to the methylation beta values file
 #' @param beta_row_names Character vector. Row names for beta values
 #' @param beta_col_names Character vector. Column names for beta values
@@ -687,7 +704,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
     .log_step("Saving constituent CpG betas", dmrs_beta_file, " ...")
 
     if (!is.null(beta_file)) {
-        dmrs_beta <- .subsetBeta(beta_file,
+        dmrs_beta <- .subsetBetaFile(beta_file,
             dmrs_sites,
             beta_row_names = beta_row_names,
             beta_col_names = beta_col_names
@@ -731,7 +748,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' This function identifies DMRs from a given set of DMPs and a beta value file.
 #'
 #' @param beta_file Character. Path to the beta value file. Either this or tabix_file must be provided.
-#' @param dmps_tsv_file Character. Path to the DMPs TSV file.
+#' @param dmps_file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
@@ -758,8 +775,8 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #'
 #' @return Data frame of identified DMRs.
 #' @export
-findDMRsFromDMPs <- function(beta_file = NULL,
-                             dmps_tsv_file = NULL,
+findDMRsFromSeeds <- function(beta_file = NULL,
+                             dmps_file = NULL,
                              pheno = NULL,
                              dmps_tsv_id_col = NULL,
                              dmp_groups_info = NULL,
@@ -807,8 +824,8 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
-    if (is.null(dmps_tsv_file) || is.null(pheno)) {
-        stop("dmps_tsv_file and pheno parameters are required")
+    if (is.null(dmps_file) || is.null(pheno)) {
+        stop("dmps_file and pheno parameters are required")
     }
     if (is.null(beta_file) && is.null(tabix_file)) {
         stop("Either beta_file or tabix_file parameter is required")
@@ -828,7 +845,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (!is.null(tabix_file)) {
         stopifnot(file.exists(tabix_file))
     }
-    stopifnot(file.exists(dmps_tsv_file))
+    stopifnot(file.exists(dmps_file))
     stopifnot(casecontrol_col %in% colnames(pheno))
     stopifnot(sample_group_col %in% colnames(pheno))
     if (is.null(ignored_sample_groups)) {
@@ -846,31 +863,71 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
 
     # Auto-convert beta file to tabix if tabix is not provided and tools are available
+    # But first, check if beta file is small enough to load entirely into memory
+    beta_file_in_memory <- NULL
     if (!is.null(beta_file) && is.null(tabix_file)) {
-        .log_step("Checking for tabix conversion opportunity...")
-        sorted_locs <- getSortedGenomicLocs(array = array)
+        # Check file size and estimate memory requirements
+        file_size_mb <- file.info(beta_file)$size / (1024^2)
         
-        # Attempt conversion - will use cache directory by default
-        converted_tabix <- convertBetaToTabix(
-            beta_file = beta_file,
-            sorted_locs = sorted_locs,
-            output_file = NULL,  # Use cache directory
-            verbose = verbose > 0
-        )
+        # Get available memory (rough estimate)
+        # Use a conservative threshold: load into memory if file < 500 MB
+        # This assumes ~2-3x expansion in memory (text -> numeric matrix)
+        memory_threshold_mb <- 500
         
-        if (!is.null(converted_tabix)) {
-            .log_success("Beta file converted to tabix format for improved performance")
-            tabix_file <- converted_tabix
-            beta_file <- NULL  # Avoid using beta_file further downstream
+        if (file_size_mb < memory_threshold_mb) {
+            .log_step("Beta file is small (", round(file_size_mb, 1), " MB). Loading into memory for faster access...")
+            
+            beta_file_in_memory <- tryCatch({
+                temp_data <- data.table::fread(
+                    beta_file,
+                    header = TRUE,
+                    data.table = FALSE,
+                    showProgress = verbose > 1
+                )
+                
+                # Set rownames from first column
+                rownames(temp_data) <- temp_data[[1]]
+                temp_data <- temp_data[, -1, drop = FALSE]
+                
+                .log_success("Beta file loaded into memory (", nrow(temp_data), 
+                           " CpGs x ", ncol(temp_data), " samples)")
+                
+                temp_data
+            }, error = function(e) {
+                .log_warn("Failed to load beta file into memory: ", e$message, ". Will use alternative method.")
+                NULL
+            })
         } else {
-            .log_info("Continuing with standard beta file (tabix conversion not available)")
+            .log_step("Beta file is large (", round(file_size_mb, 1), 
+                     " MB). Checking for tabix conversion opportunity...")
+        }
+        
+        # If file wasn't loaded into memory, try tabix conversion
+        if (is.null(beta_file_in_memory)) {
+            sorted_locs <- getSortedGenomicLocs(array = array)
+            
+            # Attempt conversion - will use cache directory by default
+            converted_tabix <- convertBetaToTabix(
+                beta_file = beta_file,
+                sorted_locs = sorted_locs,
+                output_file = NULL,  # Use cache directory
+                verbose = verbose > 0
+            )
+            
+            if (!is.null(converted_tabix)) {
+                .log_success("Beta file converted to tabix format for improved performance")
+                tabix_file <- converted_tabix
+                beta_file <- NULL  # Avoid using beta_file further downstream
+            } else {
+                .log_info("Continuing with standard beta file (tabix conversion not available)")
+            }
         }
     }
 
     .log_step("Preparing inputs...")
     .log_step("Reading DMP tsv..", level = 2)
     dmps_tsv <- try(read.table(
-        dmps_tsv_file,
+        dmps_file,
         header = TRUE,
         sep = "\t",
         check.names = FALSE,
@@ -1022,8 +1079,17 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     if (!is.null(output_prefix)) {
         dmps_beta_output_file <- paste0(output_prefix, "dmps_beta.tsv.gz")
     }
-    if (!is.null(beta_file)) {
-        dmps_beta <- .subsetBeta(beta_file,
+    
+    # Use in-memory beta data if available, otherwise use file-based methods
+    if (!is.null(beta_file_in_memory)) {
+        # Fast in-memory subsetting
+        .log_step("Subsetting from in-memory beta data...", level = 2)
+        dmps_beta <- beta_file_in_memory[dmps, beta_col_names, drop = FALSE]
+        # Ensure numeric matrix
+        dmps_beta <- apply(dmps_beta, 2, as.numeric)
+        rownames(dmps_beta) <- dmps
+    } else if (!is.null(beta_file)) {
+        dmps_beta <- .subsetBetaFile(beta_file,
             dmps,
             beta_row_names = beta_row_names,
             beta_col_names = beta_col_names
@@ -1329,6 +1395,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                 max_pval = max_pval,
                 tabix_file = tabix_file,
                 beta_file = beta_file,
+                beta_data_in_memory = beta_file_in_memory,
                 beta_row_names = beta_row_names,
                 beta_col_names = beta_col_names,
                 casecontrol = case_mask,

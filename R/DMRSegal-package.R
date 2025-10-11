@@ -7,7 +7,7 @@
 #'
 #' @section Main Functions:
 #' \itemize{
-#'   \item \code{\link{findDMRsFromDMPs}}: The main function for identifying DMRs
+#'   \item \code{\link{findDMRsFromSeeds}}: The main function for identifying DMRs
 #' }
 #'
 #' @section Input Data:

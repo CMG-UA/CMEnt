@@ -2,8 +2,8 @@
 
 export(.getBetaColNamesAndInds)
 export(extractCpgInfoFromResultDMRs)
-export(findDMRsFromDMPs)
-export(findDMRsFromDMPsCLI)
+export(findDMRsFromSeeds)
+export(findDMRsFromSeedsCLI)
 export(getSortedGenomicLocs)
 export(orderByLoc)
 export(sortBetaFileByCoordinates)

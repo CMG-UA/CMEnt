@@ -19,9 +19,9 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     write.table(dmps_epic, file = test_epic$dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Run DMR finding for 450k
-    result_450k <- findDMRsFromDMPs(
+    result_450k <- findDMRsFromSeeds(
         beta_file = test_450k$beta_file,
-        dmps_tsv_file = test_450k$dmps_file,
+        dmps_file = test_450k$dmps_file,
         pheno = test_450k$pheno,
         sample_group_col = "Sample_Group",
         array = "450K",
@@ -30,9 +30,9 @@ test_that("DMR finding works with both 450k and EPIC array platforms", {
     )
 
     # Run DMR finding for EPIC
-    result_epic <- findDMRsFromDMPs(
+    result_epic <- findDMRsFromSeeds(
         beta_file = test_epic$beta_file,
-        dmps_tsv_file = test_epic$dmps_file,
+        dmps_file = test_epic$dmps_file,
         pheno = test_epic$pheno,
         sample_group_col = "Sample_Group",
         array = "EPIC",

@@ -4,7 +4,7 @@
 #' @param args Argument list from optparse containing command line parameters
 #' @return None, outputs results to files
 #' @export
-findDMRsFromDMPsCLI <- function(args) {
+findDMRsFromSeedsCLI <- function(args) {
     pheno <- .processSamplesheet(args)$samplesheet
     options("DMRSegal.verbose" = args$verbose)
     .log_info(
@@ -19,11 +19,11 @@ findDMRsFromDMPsCLI <- function(args) {
         stop("Either beta or tabix must be provided.")
     }
 
-    # Prepare arguments for findDMRsFromDMPs
+    # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta_file = args$beta,
         tabix_file = args$tabix,
-        dmps_tsv_file = args$dmps_tsv_file,
+        dmps_file = args$dmps_file,
         pval_col = args$pval_col,
         sample_group_col = args$sample_group_col,
         dmp_group_col = args$dmp_group_col,
@@ -52,5 +52,5 @@ findDMRsFromDMPsCLI <- function(args) {
         )
     
 
-    invisible(do.call(findDMRsFromDMPs, input_args))
+    invisible(do.call(findDMRsFromSeeds, input_args))
 }

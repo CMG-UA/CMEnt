@@ -5,7 +5,7 @@ library(DMRSegal)
 option_list <- list(
     make_option(c("--beta"), default = NULL, help = "The beta file, with row names the CpGs. Required if tabix not provided"), 
     make_option(c("--tabix"), default = NULL, help = "The tabix bed.gz file, with the corresponding index in the same directory. Required if beta not provided"), 
-    make_option("--dmps_tsv_file", help = "The dmps tsv file, with row names the DMPs."),
+    make_option("--dmps_file", help = "The dmps tsv file, with row names the DMPs."),
     make_option("--pval_col", default = "pval_adj", help = "The p-value column in the dmps tsv file, defaults to 'pval_adj'"),
     make_option("--min_dmps", default = 1, type = "integer", help = "The minimum supporting DMPs per DMR, defaults to 1"),
     make_option("--min_adj_dmps", default = 1, type = "integer", help = "The minimum adjacent DMPs per DMR, defaults to 1"),
@@ -37,4 +37,4 @@ option_list <- list(
 )
 parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)
-DMRSegal::findDMRsFromDMPsCLI(args)
+DMRSegal::findDMRsFromSeedsCLI(args)

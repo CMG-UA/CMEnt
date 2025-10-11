@@ -27,10 +27,10 @@ test_that("DMR finding works with tabix files", {
     write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Run with tabix file
-    result_tabix <- findDMRsFromDMPs(
+    result_tabix <- findDMRsFromSeeds(
         tabix_file = beta_bgz_file,
         beta_file = NULL,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = test_data$pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -38,9 +38,9 @@ test_that("DMR finding works with tabix files", {
     )
 
     # Run with regular file for comparison
-    result_regular <- findDMRsFromDMPs(
+    result_regular <- findDMRsFromSeeds(
         beta_file = test_data$beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = test_data$pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -57,9 +57,9 @@ test_that("DMR finding works with tabix files", {
 
     # Test tabix specific features
     # Test querying specific regions
-    region_result <- findDMRsFromDMPs(
+    region_result <- findDMRsFromSeeds(
         tabix_file = beta_bgz_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = test_data$pheno,
         sample_group_col = "group",
         min_dmps = 2,

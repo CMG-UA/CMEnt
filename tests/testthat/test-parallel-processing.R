@@ -21,9 +21,9 @@ test_that("Parallel processing produces same results as sequential", {
     write.table(dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = FALSE)
 
     # Run with single core
-    result_single <- findDMRsFromDMPs(
+    result_single <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -32,9 +32,9 @@ test_that("Parallel processing produces same results as sequential", {
     )
 
     # Run with multiple cores
-    result_parallel <- findDMRsFromDMPs(
+    result_parallel <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_tsv_file = dmps_file,
+        dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 2,
