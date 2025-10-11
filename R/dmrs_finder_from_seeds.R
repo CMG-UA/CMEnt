@@ -433,7 +433,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             first_fail_run <- fail_runs[[1]]
             # Calculate the index in the original vector
             fail_start_idx <- sum(consecutive_fails$lengths[seq_len(first_fail_run - 1)]) + 1
-            upstream_exp <- end_site_ind - fail_start_idx + 1 + expansion_relaxation
+            upstream_exp <- end_site_ind - fail_start_idx + 1
             upstream_stop_reason <- corr_ret$reason[fail_start_idx]
             break
         }
@@ -886,7 +886,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param casecontrol_col Character. Column name for case-control information in the phenotype data. Default is "casecontrol".
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
-#' @param expansion_relaxation Numeric. Maximum number of intermittent CpGs allowed to not be significanly correlated, to increase the extended DMR size. Default is 0.
+#' @param expansion_relaxation Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.
 #' @param array Character. Type of array used ("450K" or "EPIC"). Default is "450K".
 #' @param genome Character. Genome version ("hg19" or "hg38"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
