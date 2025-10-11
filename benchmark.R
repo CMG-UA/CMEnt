@@ -4,7 +4,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 
 ## ----load_libraries------------------------------------------------------------------------------------------------------------
 library(progressr)
-# Configure progressr for RStudio
+progressr::handlers(global = TRUE)
 benchmark_output_dir <- "benchmark_data"
 dir.create(benchmark_output_dir, showWarnings=FALSE)
 
