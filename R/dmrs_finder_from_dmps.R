@@ -552,10 +552,9 @@ sortBetaFileByCoordinates <- function(beta_file,
     dmr
 }
 
-.testConnectivity <- function(
-        site1_beta, site2_beta, group_inds,
-        max_pval, casecontrol = NULL, min_delta_beta = 0,
-        extreme_verbosity = FALSE) {
+.testConnectivity <- function(site1_beta, site2_beta, group_inds,
+                              max_pval, casecontrol = NULL, min_delta_beta = 0,
+                              extreme_verbosity = FALSE) {
     pval <- 0
     delta_beta <- NULL
     n_groups <- length(group_inds)
@@ -784,12 +783,27 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                              verbose = 1,
                              beta_row_names_file = NULL,
                              tabix_file = NULL) {
+    # Clean up any zombie processes on exit
+    includes <- "#include <sys/wait.h>"
+    code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
+    wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
+    on.exit(wait(), add = TRUE)
+    # Setup progressr handlers
+    cp_handler <- progressr::handlers()
     try(
         {
             progressr::handlers(global = TRUE)
             on.exit(progressr::handlers(global = FALSE), add = TRUE)
-        }
+        },
+        silent = TRUE
     )
+    try(
+        {
+            progressr::handlers("cli")
+        },
+        silent = TRUE
+    )
+    on.exit(progressr::handlers(cp_handler), add = TRUE)
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
@@ -829,6 +843,28 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     } else {
         output_dir <- NULL
         output_prefix <- NULL
+    }
+
+    # Auto-convert beta file to tabix if tabix is not provided and tools are available
+    if (!is.null(beta_file) && is.null(tabix_file)) {
+        .log_step("Checking for tabix conversion opportunity...")
+        sorted_locs <- getSortedGenomicLocs(array = array)
+        
+        # Attempt conversion - will use cache directory by default
+        converted_tabix <- convertBetaToTabix(
+            beta_file = beta_file,
+            sorted_locs = sorted_locs,
+            output_file = NULL,  # Use cache directory
+            verbose = verbose > 0
+        )
+        
+        if (!is.null(converted_tabix)) {
+            .log_success("Beta file converted to tabix format for improved performance")
+            tabix_file <- converted_tabix
+            beta_file <- NULL  # Avoid using beta_file further downstream
+        } else {
+            .log_info("Continuing with standard beta file (tabix conversion not available)")
+        }
     }
 
     .log_step("Preparing inputs...")
@@ -897,7 +933,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     } else {
         .log_step("Reading row names from beta file...", level = 2)
         if (!is.null(beta_file)) {
-            beta_row_names <- unlist(fread(
+            beta_row_names <- unlist(data.table::fread(
                 file = beta_file,
                 select = 1,
                 sep = "\t",
@@ -906,7 +942,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
                 nThread = njobs
             ))
         } else {
-            beta_row_names <- unlist(fread(
+            beta_row_names <- unlist(data.table::fread(
                 file = tabix_file,
                 select = 4,
                 sep = "\t",
@@ -993,7 +1029,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
             beta_col_names = beta_col_names
         )
     } else {
-        dmps_beta <- tabix(as.data.frame(dmps_locs[, c("chr", "start", "end")]),
+        dmps_beta <- bedr::tabix(as.data.frame(dmps_locs[, c("chr", "start", "end")]),
             tabix_file,
             verbose = verbose
         )
@@ -1083,7 +1119,6 @@ findDMRsFromDMPs <- function(beta_file = NULL,
 
     ret <- future.apply::future_lapply(
         X = chromosomes,
-        future.scheduling = ceiling(length(chromosomes) / njobs),
         FUN = function(chr) {
             op <- options(warn = 2)$warn
             .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
@@ -1436,7 +1471,7 @@ findDMRsFromDMPs <- function(beta_file = NULL,
     }
     invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
         keep.extra.columns = TRUE,
-        seqinfo = Seqinfo(genome = genome),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     ))
 }

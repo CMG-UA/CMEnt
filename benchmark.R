@@ -171,29 +171,67 @@ gr_segal <- dmrs_segal
 gr_dmrcate <- dmrs_dmrcate
 gr_bumphunter <- dmrs_bumphunter
 
+# IoU metric
+iou <- function(gr1, gr2) {
+    intersection <- sum(width(GenomicRanges::intersect(gr1, gr2)))
+    union <- sum(width(GenomicRanges::union(gr1, gr2)))
+    if (union == 0) return(0)
+    intersection / union
+}
+
 # Find overlaps
 overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
 overlap_segal_bumphunter <- length(subsetByOverlaps(gr_segal, gr_bumphunter))
 overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter))
+iou_segal_dmrcate <- iou(gr_segal, gr_dmrcate)
+iou_segal_bumphunter <- iou(gr_segal, gr_bumphunter)
+iou_dmrcate_bumphunter <- iou(gr_dmrcate, gr_bumphunter)
 
 # Create overlap matrix
-overlap_matrix <- matrix(
+overlap_matrix <- t(matrix(
     c(
-        1, overlap_segal_dmrcate / length(gr_segal), overlap_segal_bumphunter / length(gr_segal),
-        overlap_segal_dmrcate/length(gr_dmrcate), 1, overlap_dmrcate_bumphunter / length(gr_dmrcate),
-        overlap_segal_bumphunter/length(gr_bumphunter), overlap_dmrcate_bumphunter / length(gr_bumphunter), 1
+        length(gr_segal), overlap_segal_dmrcate, overlap_segal_bumphunter,
+        iou_segal_dmrcate, length(gr_dmrcate), overlap_dmrcate_bumphunter,
+        iou_segal_bumphunter, iou_dmrcate_bumphunter, length(gr_bumphunter)
     ),
     nrow = 3,
     dimnames = list(
         c("DMRSegal", "DMRcate", "bumphunter"),
         c("DMRSegal", "DMRcate", "bumphunter")
     )
-)
+))
 
-# Plot heatmap
-pheatmap::pheatmap(
-    overlap_matrix,
-    main = "DMR Overlap Between Methods",
-    display_numbers = TRUE, cluster_rows=F, cluster_cols=F
-)
+library(ggplot2)
+library(tidyverse)
+library(ggnewscale)
 
+mat_long <- as.data.frame(overlap_matrix) %>%
+  rownames_to_column("row") %>%
+  pivot_longer(-row, names_to = "col", values_to = "value")
+mat_long <- mat_long %>%
+  mutate(row = factor(row, levels = rownames(overlap_matrix)),
+         col = factor(col, levels = colnames(overlap_matrix)))
+
+plot_data = mat_long %>%
+  mutate(triangle =
+    case_when(as.numeric(col) < as.numeric(row) ~ 'Lower',
+     as.numeric(col) > as.numeric(row) ~ 'Upper',
+        TRUE ~ 'Diag')) %>%
+  group_split(triangle)
+
+
+ggplot() +
+  geom_tile(data=plot_data[[1]], aes(x=col, y=row, fill=value)) +
+  scale_fill_gradient(low = "white", high = "blue", name = "Counts") +
+
+  new_scale_fill() +  # Part of ggnewscale, allows multiple fill scales
+  # Lower triangle heatmap with a green color scale
+  geom_tile(data = plot_data[[2]], aes(x=col, y=row, fill=value)) +
+  scale_fill_gradient(low = "white", high = "green", name = "Iou") +
+    new_scale_fill() +
+    # Upper triangle heatmap with a red color scale
+    geom_tile(data = plot_data[[3]], aes(x=col, y=row, fill=value)) +
+    scale_fill_gradient(low = "white", high = "red", name = "Overlap") +
+    scale_x_discrete(limits=rev) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))

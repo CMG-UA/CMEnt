@@ -41,6 +41,7 @@ Imports:
     stringr,
     future,
     future.apply,
+    inline,
     progressr,
     minfi,
     bedr,
@@ -61,7 +62,7 @@ Suggests:
     microbenchmark,
     minfiData,
     ggplot2,
-    pheatmap
+    ggnewscale
 Additional_repositories: 
     https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3
