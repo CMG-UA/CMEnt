@@ -16,13 +16,7 @@ sample_types <- pData(minfiData::MsetEx)$Sample_Group
 sample_types[sample_types == "GroupA"] <- 'normal'
 sample_types[sample_types == "GroupB"] <- 'cancer'
 sample_groups <- factor(sample_types, levels = c("normal", "cancer"))
-
-# Subset to a smaller set for the example (3 cancer, 3 normal)
-set.seed(123)
-samples_per_group <- 3
-cancer_idx <- sample(which(sample_groups == "cancer"), samples_per_group)
-normal_idx <- sample(which(sample_groups == "normal"), samples_per_group)
-selected_samples <- c(cancer_idx, normal_idx)
+selected_samples <- seq_along(sample_groups)
 
 # Create the final subset - MsetEx is already preprocessed
 mset <- minfiData::MsetEx[, selected_samples]
@@ -39,7 +33,7 @@ pheno$casecontrol <- pheno$status == "cancer"
 design <- model.matrix(~pheno$status)
 
 # Find DMPs using limma
-dmps <- dmpFinder(getBeta(mset), 
+dmps <- dmpFinder(mset, 
                   pheno = pheno$status,
                   type = "categorical")
 dmps <- dmps[!is.na(dmps$pval),]
@@ -47,7 +41,7 @@ dmps <- dmps[!is.na(dmps$pval),]
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
 # Filter significant DMPs
-sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
+sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
 
 
 ## ----dmrsegal------------------------------------------------------------------------------------------------------------------
@@ -127,7 +121,7 @@ if (!file.exists(bumphunter_file)){
   # Run bumphunter with the same design matrix
   library(doParallel)
   registerDoParallel(cores = 4)
-  gmSet <- preprocessQuantile(mset)
+  gmSet <- mapToGenome(mset)
   bumphunter_results <- bumphunter(
       gmSet,
       design = design,

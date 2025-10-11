@@ -357,7 +357,6 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     end_site_ind <- dmr_start_ind[[1]]
     upstream_exp <- end_site_ind
-    upstream_stop_found <- FALSE
     while (TRUE) {
         if (end_site_ind < 0) {
             upstream_stop_reason <- "end-of-input"
@@ -410,45 +409,32 @@ sortBetaFileByCoordinates <- function(beta_file,
                 check.names = FALSE
             ))
         }
-        # Ensure numeric matrix for fast indexing
-        if (!is.matrix(upstream_betas)) upstream_betas <- as.matrix(upstream_betas)
-        storage.mode(upstream_betas) <- "double"
-        upstream_betas <- upstream_betas[rev(seq_len(nrow(upstream_betas))), , drop = FALSE]
         if (nrow(upstream_betas) == 1) {
             upstream_stop_reason <- "end-of-input"
             break
         }
-        i <- 1
-        exp_relax_counter <- 0
-        while (TRUE) {
-            corr_ret <- .testConnectivity(
-                site1_beta = upstream_betas[i, ],
-                site2_beta = upstream_betas[i + 1, ],
-                group_inds = group_inds,
-                casecontrol = casecontrol,
-                max_pval = max_pval,
-                min_delta_beta = min_cpg_delta_beta,
-                extreme_verbosity = extreme_verbosity
-            )
-            if (!corr_ret[[1]]) {
-                if (exp_relax_counter < expansion_relaxation) {
-                    exp_relax_counter <- exp_relax_counter + 1
-                } else {
-                    upstream_exp <- end_site_ind - i + 1 - exp_relax_counter
-                    upstream_stop_found <- TRUE
-                    upstream_stop_reason <- corr_ret$reason
-                    exp_relax_counter <- 0
-                    break
-                }
-            } else {
-                exp_relax_counter <- 0
-            }
-            i <- i + 1
-            if (i == nrow(upstream_betas)) {
-                break
-            }
-        }
-        if (upstream_stop_found) {
+        # Ensure numeric matrix for fast indexing
+        if (!is.matrix(upstream_betas)) upstream_betas <- as.matrix(upstream_betas)
+        storage.mode(upstream_betas) <- "double"
+        upstream_betas_reversed <- upstream_betas[rev(seq_len(nrow(upstream_betas))), , drop = FALSE]
+
+        corr_ret <- .testConnectivityBatch(
+            sites_beta = upstream_betas_reversed,
+            group_inds = group_inds,
+            casecontrol = casecontrol,
+            max_pval = max_pval,
+            min_delta_beta = min_cpg_delta_beta
+        )
+        # find consecutive FALSE counts in connected
+        consecutive_fails <- rle(!corr_ret$connected)
+        # pick the first run of FALSE with length > expansion_relaxation
+        fail_runs <- which(consecutive_fails$values & consecutive_fails$lengths > expansion_relaxation)
+        if (length(fail_runs) > 0) {
+            first_fail_run <- fail_runs[[1]]
+            # Calculate the index in the original vector
+            fail_start_idx <- sum(consecutive_fails$lengths[seq_len(first_fail_run - 1)]) + 1
+            upstream_exp <- end_site_ind - fail_start_idx + 1 + expansion_relaxation
+            upstream_stop_reason <- corr_ret$reason[fail_start_idx]
             break
         }
         end_site_ind <- end_site_ind - expansion_step
@@ -460,7 +446,6 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     start_site_ind <- dmr_end_ind[[1]]
     downstream_exp <- start_site_ind
-    downstream_stop_found <- FALSE
     while (TRUE) {
         if (start_site_ind > length(beta_row_names)) {
             downstream_stop_reason <- "end-of-input"
@@ -521,36 +506,23 @@ sortBetaFileByCoordinates <- function(beta_file,
         if (!is.matrix(downstream_betas)) downstream_betas <- as.matrix(downstream_betas)
         storage.mode(downstream_betas) <- "double"
 
-        i <- 1
-        exp_relax_counter <- 0
-        while (TRUE) {
-            corr_ret <- .testConnectivity(
-                site1_beta = unlist(downstream_betas[i, ]),
-                site2_beta = unlist(downstream_betas[i + 1, ]),
-                group_inds = group_inds,
-                max_pval = max_pval,
-                casecontrol = casecontrol,
-                min_delta_beta = min_cpg_delta_beta
-            )
-            if (!corr_ret[[1]]) {
-                if (exp_relax_counter < expansion_relaxation) {
-                    exp_relax_counter <- exp_relax_counter + 1
-                } else {
-                    downstream_exp <- start_site_ind + i - 1 + exp_relax_counter
-                    downstream_stop_found <- TRUE
-                    downstream_stop_reason <- corr_ret$reason
-                    exp_relax_counter <- 0
-                    break
-                }
-            } else {
-                exp_relax_counter <- 0
-            }
-            i <- i + 1
-            if (i == nrow(downstream_betas)) {
-                break
-            }
-        }
-        if (downstream_stop_found) {
+        corr_ret <- .testConnectivityBatch(
+            sites_beta = downstream_betas,
+            group_inds = group_inds,
+            casecontrol = casecontrol,
+            max_pval = max_pval,
+            min_delta_beta = min_cpg_delta_beta
+        )
+        # find consecutive FALSE counts in connected
+        consecutive_fails <- rle(!corr_ret$connected)
+        # pick the first run of FALSE with length > expansion_relaxation
+        fail_runs <- which(consecutive_fails$values & consecutive_fails$lengths > expansion_relaxation)
+        if (length(fail_runs) > 0) {
+            first_fail_run <- fail_runs[[1]]
+            # Calculate the index in the original vector
+            fail_start_idx <- sum(consecutive_fails$lengths[seq_len(first_fail_run - 1)]) + 1
+            downstream_exp <- start_site_ind + fail_start_idx - 1
+            downstream_stop_reason <- corr_ret$reason[fail_start_idx]
             break
         }
         prev_start_site_ind <- start_site_ind
@@ -623,6 +595,162 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
 
     list(TRUE, pval, delta_beta)
+}
+
+#' Vectorized connectivity testing for consecutive site pairs, given their beta values
+#' 
+#' @param sites_beta Matrix where each row is a site's beta values across samples
+#' @param group_inds List of sample indices for each group
+#' @param max_pval Maximum p-value threshold
+#' @param casecontrol Optional case/control indicator vector
+#' @param min_delta_beta Minimum delta beta threshold
+#' @param max_lookup_dist Maximum distance between consecutive sites
+#' @param sites_locs Data frame with chr and pos columns for each site
+#' 
+#' @return Data frame with columns: connected, pval, delta_beta, reason, failing_group, stop_reason
+.testConnectivityBatch <- function(sites_beta, group_inds, max_pval, 
+                                   casecontrol = NULL, min_delta_beta = 0,
+                                   max_lookup_dist = NULL, sites_locs = NULL) {
+    n_sites <- nrow(sites_beta)
+    if (n_sites < 2) {
+        return(data.frame(
+            connected = logical(0),
+            pval = numeric(0),
+            delta_beta = numeric(0),
+            reason = character(0),
+            failing_group = character(0),
+            stop_reason = character(0)
+        ))
+    }
+    
+    n_pairs <- n_sites - 1
+    n_groups <- length(group_inds)
+    max_pval_corrected <- max_pval / n_groups
+    
+    # Initialize result vectors
+    connected <- rep(TRUE, n_pairs)
+    pvals <- rep(0, n_pairs)
+    delta_betas <- rep(NA_real_, n_pairs)
+    reasons <- rep("", n_pairs)
+    failing_groups <- rep("", n_pairs)
+    stop_reasons <- rep("", n_pairs)
+    
+    # Check distance condition if provided (vectorized)
+    if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
+        dists <- sites_locs$pos[2:n_sites] - sites_locs$pos[1:n_pairs]
+        exceeded_dist <- dists > max_lookup_dist
+        connected[exceeded_dist] <- FALSE
+        stop_reasons[exceeded_dist] <- "exceeded max distance"
+    }
+    
+    # Fully vectorized correlation testing for each group
+    for (g in names(group_inds)) {
+        idx <- group_inds[[g]]
+        if (length(idx) < 3) next
+        
+        # Get data for this group - subset columns
+        group_beta <- sites_beta[, idx, drop = FALSE]
+        
+        # Extract consecutive pairs matrices
+        x_mat <- group_beta[1:n_pairs, , drop = FALSE]  # Sites i
+        y_mat <- group_beta[2:n_sites, , drop = FALSE]  # Sites i+1
+        
+        # Compute means for each pair (vectorized)
+        x_means <- rowMeans(x_mat, na.rm = TRUE)
+        y_means <- rowMeans(y_mat, na.rm = TRUE)
+        
+        # Center the data
+        x_centered <- x_mat - x_means
+        y_centered <- y_mat - y_means
+        
+        # Compute sum of products (numerator of correlation)
+        # Only for pairs that are still connected
+        sum_xy <- rowSums(x_centered * y_centered, na.rm = TRUE)
+        sum_x2 <- rowSums(x_centered^2, na.rm = TRUE)
+        sum_y2 <- rowSums(y_centered^2, na.rm = TRUE)
+        
+        # Compute correlations (fully vectorized)
+        cors <- sum_xy / sqrt(sum_x2 * sum_y2)
+        
+        # Compute degrees of freedom (vectorized)
+        # Count non-NA pairs for each row
+        valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
+        n_valid <- rowSums(valid_pairs)
+        dfs <- n_valid - 2L
+        
+        # Identify failures (vectorized logical operations)
+        na_r <- is.na(cors) & connected
+        connected[na_r] <- FALSE
+        reasons[na_r] <- "na r"
+        failing_groups[na_r] <- g
+        
+        low_df <- (dfs < 1) & connected
+        connected[low_df] <- FALSE
+        reasons[low_df] <- "df<1"
+        failing_groups[low_df] <- g
+        
+        # Compute t-statistics (vectorized)
+        tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
+        
+        na_tstat <- is.na(tstats) & connected
+        connected[na_tstat] <- FALSE
+        reasons[na_tstat] <- "na tstat"
+        failing_groups[na_tstat] <- g
+        
+        # Compute p-values (vectorized)
+        ps <- -2 * expm1(pt(abs(tstats), df = dfs, log.p = TRUE))
+        ps[!connected] <- NA_real_  # Don't use p-values for disconnected pairs
+        
+        na_p <- is.na(ps) & connected
+        connected[na_p] <- FALSE
+        reasons[na_p] <- "na pval"
+        failing_groups[na_p] <- g
+        
+        # Update maximum p-values across groups (vectorized)
+        pvals <- pmax(pvals, ps, na.rm = TRUE)
+        
+        # Check p-value threshold (vectorized)
+        exceed_pval <- (pvals > max_pval_corrected) & connected
+        connected[exceed_pval] <- FALSE
+        reasons[exceed_pval] <- "pval>max_pval (corrected)"
+        failing_groups[exceed_pval] <- g
+    }
+    
+    # Vectorized delta beta check if needed
+    if (!is.null(casecontrol) && min_delta_beta > 0) {
+        # Extract site2 beta values for all pairs
+        site2_beta_mat <- sites_beta[2:n_sites, , drop = FALSE]
+        
+        # Vectorized mean computation across case/control
+        case_means <- rowMeans(site2_beta_mat[, casecontrol == 1, drop = FALSE], na.rm = TRUE)
+        control_means <- rowMeans(site2_beta_mat[, casecontrol == 0, drop = FALSE], na.rm = TRUE)
+        delta_betas <- case_means - control_means
+        
+        # Check threshold (vectorized)
+        low_delta <- (is.na(delta_betas) | abs(delta_betas) < min_delta_beta) & connected
+        connected[low_delta] <- FALSE
+        reasons[low_delta] <- "delta_beta<min_delta_beta"
+    }
+    ret <- data.frame(
+        connected = connected,
+        pval = pvals,
+        delta_beta = delta_betas,
+        reason = reasons,
+        failing_group = failing_groups,
+        stop_reason = stop_reasons,
+        stringsAsFactors = FALSE
+    )
+    # prepend true for first site (no pair)
+    ret <- rbind(data.frame(
+        connected = TRUE,
+        pval = NA_real_,
+        delta_beta = NA_real_,
+        reason = "",
+        failing_group = "",
+        stop_reason = "",
+        stringsAsFactors = FALSE
+    ), ret)
+    ret
 }
 
 #' Extract CpG Information from DMR Results
@@ -1060,7 +1188,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     dmps <- dmps[orderByLoc(dmps, genomic_locs = sorted_locs)]
     .log_step("Validating beta file sorting by position...", level = 2)
 
-    if (is.null(beta.file_in_memory)) {
+    if (is.null(beta_file_in_memory)) {
         # Do not sort large beta files, just validate they are sorted
         if (!all(beta_row_names[orderByLoc(beta_row_names, genomic_locs = sorted_locs)] == beta_row_names)) {
             stop("Provided beta file is not sorted by position!")
