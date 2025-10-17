@@ -740,16 +740,6 @@ sortBetaFileByCoordinates <- function(beta_file,
         stop_reason = stop_reasons,
         stringsAsFactors = FALSE
     )
-    # prepend true for first site (no pair)
-    ret <- rbind(data.frame(
-        connected = TRUE,
-        pval = NA_real_,
-        delta_beta = NA_real_,
-        reason = "",
-        failing_group = "",
-        stop_reason = "",
-        stringsAsFactors = FALSE
-    ), ret)
     ret
 }
 
@@ -879,10 +869,10 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param dmps_file Character. Path to the DMPs TSV file.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
-#' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
 #' @param pval_col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param dmp_group_col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
+#' @param dmp_groups_info Named list. Required when `dmp_group_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
 #' @param casecontrol_col Character. Column name for case-control information in the phenotype data. Default is "casecontrol".
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
@@ -907,10 +897,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                              dmps_file = NULL,
                              pheno = NULL,
                              dmps_tsv_id_col = NULL,
-                             dmp_groups_info = NULL,
                              pval_col = "pval_adj",
                              sample_group_col = "Sample_Group",
                              dmp_group_col = NULL,
+                             dmp_groups_info = NULL,
                              casecontrol_col = "casecontrol",
                              min_cpg_delta_beta = 0,
                              expansion_step = 500,
@@ -1309,7 +1299,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     ret <- progressr::with_progress({
         if (verbose > 0) {
-            p_con <- progressr::progressor(steps = nrow(dmps_locs))
+            p_con <- progressr::progressor(steps = length(chromosomes))
         }
         future.apply::future_lapply(
             X = chromosomes,

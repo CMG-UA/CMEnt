@@ -33,10 +33,11 @@ pheno$casecontrol <- pheno$status == "cancer"
 design <- model.matrix(~pheno$status)
 
 # Find DMPs using limma
-dmps <- dmpFinder(mset, 
+dmps <- dmpFinder(mset,
                   pheno = pheno$status,
-                  type = "categorical")
-dmps <- dmps[!is.na(dmps$pval),]
+                  type = "categorical",
+                  shrinkVar = TRUE)
+dmps <- dmps[!is.na(dmps$pval), ]
 # Add delta beta to dmps results
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
@@ -74,6 +75,8 @@ if (!file.exists(dmrsegal_file)){
       row.names = TRUE
   )
   # option(future.debug = TRUE)
+  library(profvis)
+profvis({
   dmrs_segal <- DMRSegal::findDMRsFromSeeds(
         beta_file = beta_file,
         dmps_file = dmps_file,
@@ -84,6 +87,7 @@ if (!file.exists(dmrsegal_file)){
         njobs = 1,
         verbose = 2
       )
+})
   saveRDS(dmrs_segal, dmrsegal_file)
   # Remove temporary files
   unlink(c(beta_file, dmps_file))
@@ -121,9 +125,10 @@ if (!file.exists(bumphunter_file)){
   # Run bumphunter with the same design matrix
   library(doParallel)
   registerDoParallel(cores = 4)
-  gmSet <- mapToGenome(mset)
+  grset <- preprocessQuantile(mset)
+  
   bumphunter_results <- bumphunter(
-      gmSet,
+      grset,
       design = design,
       pickCutoff = TRUE,
       B = 100,  # Number of permutations

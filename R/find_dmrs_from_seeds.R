@@ -18,15 +18,29 @@ findDMRsFromSeedsCLI <- function(args) {
     if (is.null(args$beta) && is.null(args$tabix)) {
         stop("Either beta or tabix must be provided.")
     }
+    if (!is.null(args$dmp_group_col)){
+        if (is.null(args$dmp_groups_tsv)){
+            stop("dmp_groups_tsv must be provided when dmp_group_col is given.")
+        }
+        dmps_groups_info <- read.table(args$dmp_groups_tsv,
+                                      header = FALSE,
+                                      sep = "\t",
+                                      stringsAsFactors = FALSE)
+        samples <- strsplit(dmps_groups_info[, 2], ",")
+        dmp_groups_info <- setNames(samples, dmps_groups_info[, 1])
+        dmp_groups_info <- as.list(dmp_groups_info)
+    }
 
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta_file = args$beta,
         tabix_file = args$tabix,
         dmps_file = args$dmps_file,
+        dmps_tsv_id_col = NULL,
         pval_col = args$pval_col,
         sample_group_col = args$sample_group_col,
         dmp_group_col = args$dmp_group_col,
+        dmp_groups_info = dmp_groups_info,
         casecontrol_col = args$casecontrol_col,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
         expansion_step = args$expansion_step,

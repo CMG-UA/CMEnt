@@ -16,6 +16,7 @@ option_list <- list(
     make_option("--expansion_step", default = 500, type = "integer", help = "The DMR expansion step in bp, defaults to 500"),
     make_option("--expansion_relaxation", default = 0, type = "double", help = "Relaxation parameter for region expansion, defaults to 0"),
     make_option("--dmp_group_col", default = NULL, help = "Column in DMPs file for grouping DMPs"),
+    make_option("--dmp_groups_tsv", default = NULL, help = "TSV file for DMP groups information, required if dmp_group_col is given, two columns: group_id<tab>sample1,sample2,..."),
     make_option("--casecontrol_col", default = "casecontrol", help = "Column in pheno for case/control status"),
     make_option("--array", default = "450K", help = "Array platform: 450K or EPIC"),
     make_option("--genome", default = "hg19", help = "Reference genome: hg19 or hg38"),
