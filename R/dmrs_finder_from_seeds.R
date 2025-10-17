@@ -334,7 +334,8 @@ sortBetaFileByCoordinates <- function(beta_file,
                         expansion_step = 500,
                         expansion_relaxation = 0,
                         group_inds = NULL,
-                        extreme_verbosity = FALSE) {
+                        extreme_verbosity = FALSE,
+                        aggfun = mean) {
     if (!is.null(beta_data_in_memory)) {
         # Using in-memory data - no need to get column indices from file
         # beta_col_names are already validated
@@ -423,7 +424,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             group_inds = group_inds,
             casecontrol = casecontrol,
             max_pval = max_pval,
-            min_delta_beta = min_cpg_delta_beta
+            min_delta_beta = min_cpg_delta_beta,
+            aggfun = aggfun
         )
         # find consecutive FALSE counts in connected
         consecutive_fails <- rle(!corr_ret$connected)
@@ -511,7 +513,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             group_inds = group_inds,
             casecontrol = casecontrol,
             max_pval = max_pval,
-            min_delta_beta = min_cpg_delta_beta
+            min_delta_beta = min_cpg_delta_beta,
+            aggfun = aggfun
         )
         # find consecutive FALSE counts in connected
         consecutive_fails <- rle(!corr_ret$connected)
@@ -543,7 +546,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
 .testConnectivity <- function(site1_beta, site2_beta, group_inds,
                               max_pval, casecontrol = NULL, min_delta_beta = 0,
-                              extreme_verbosity = FALSE) {
+                              extreme_verbosity = FALSE, aggfun = mean) {
     pval <- 0
     delta_beta <- NULL
     n_groups <- length(group_inds)
@@ -587,8 +590,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             }
             stop("casecontrol length mismatch")
         }
-        delta_beta <- mean(site2_beta[casecontrol == 1], na.rm = TRUE) -
-            mean(site2_beta[casecontrol == 0], na.rm = TRUE)
+        delta_beta <- aggfun(site2_beta[casecontrol == 1], na.rm = TRUE) -
+            aggfun(site2_beta[casecontrol == 0], na.rm = TRUE)
         if (is.na(delta_beta) || (abs(delta_beta) < min_delta_beta)) {
             return(list(FALSE, pval, delta_beta, reason = "delta_beta<min_delta_beta"))
         }
@@ -610,7 +613,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' @return Data frame with columns: connected, pval, delta_beta, reason, failing_group, stop_reason
 .testConnectivityBatch <- function(sites_beta, group_inds, max_pval, 
                                    casecontrol = NULL, min_delta_beta = 0,
-                                   max_lookup_dist = NULL, sites_locs = NULL) {
+                                   max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean) {
     n_sites <- nrow(sites_beta)
     if (n_sites < 2) {
         return(data.frame(
@@ -722,10 +725,10 @@ sortBetaFileByCoordinates <- function(beta_file,
         site2_beta_mat <- sites_beta[2:n_sites, , drop = FALSE]
         
         # Vectorized mean computation across case/control
-        case_means <- rowMeans(site2_beta_mat[, casecontrol == 1, drop = FALSE], na.rm = TRUE)
-        control_means <- rowMeans(site2_beta_mat[, casecontrol == 0, drop = FALSE], na.rm = TRUE)
-        delta_betas <- case_means - control_means
-        
+        case_betas <- apply(site2_beta_mat[, casecontrol == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        control_betas <- apply(site2_beta_mat[, casecontrol == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        delta_betas <- case_betas - control_betas
+
         # Check threshold (vectorized)
         low_delta <- (is.na(delta_betas) | abs(delta_betas) < min_delta_beta) & connected
         connected[low_delta] <- FALSE
@@ -884,6 +887,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
 #' @param min_adj_dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
+#' @param aggfun Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
@@ -912,6 +916,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                              min_dmps = 1,
                              min_adj_dmps = 1,
                              min_cpgs = 50,
+                             aggfun = c("median", "mean"),
                              ignored_sample_groups = NULL,
                              output_prefix = NULL,
                              njobs = future::availableCores(),
@@ -923,6 +928,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
     wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
     on.exit(wait(), add = TRUE)
+
     # Setup progressr handlers if not already set
     cp_handler <- progressr::handlers()
     if (length(cp_handler) == 0 && verbose > 0) {
@@ -940,6 +946,11 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     if (is.null(beta_file) && is.null(tabix_file)) {
         stop("Either beta_file or tabix_file parameter is required")
     }
+    aggfun <- match.arg(aggfun)
+    aggfun <- switch(aggfun,
+        median = stats::median,
+        mean = mean
+    )
     stopifnot(!is.null(max_pval))
     stopifnot(!is.null(min_dmps))
     stopifnot(!is.null(min_cpgs))
@@ -1230,16 +1241,16 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             beta_mask <- rep(TRUE, nrow(dmps_beta))
         }
         group_beta_subset <- dmps_beta[beta_mask, , drop = FALSE]
-        case_means <- rowMeans(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], na.rm = TRUE)
-        control_means <- rowMeans(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], na.rm = TRUE)
+        cases_beta <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        controls_beta <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         case_sd <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, sd, na.rm = TRUE)
         control_sd <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, sd, na.rm = TRUE)
         cases_num <- rowSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
         controls_num <- rowSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
         dmps_tsv[group_mask, "cases_num"] <- cases_num[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "controls_num"] <- controls_num[dmps_tsv[group_mask, dmps_tsv_id_col]]
-        dmps_tsv[group_mask, "cases_beta"] <- case_means[dmps_tsv[group_mask, dmps_tsv_id_col]]
-        dmps_tsv[group_mask, "controls_beta"] <- control_means[dmps_tsv[group_mask, dmps_tsv_id_col]]
+        dmps_tsv[group_mask, "cases_beta"] <- cases_beta[dmps_tsv[group_mask, dmps_tsv_id_col]]
+        dmps_tsv[group_mask, "controls_beta"] <- controls_beta[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "cases_beta_sd"] <- case_sd[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "controls_beta_sd"] <- control_sd[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "delta_beta"] <- dmps_tsv[group_mask, "cases_beta"] - dmps_tsv[group_mask, "controls_beta"]
@@ -1299,11 +1310,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     # Use progressr for cross-platform progress reporting
     .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
 
-    ret <- progressr::with_progress({
-        if (verbose > 0) {
+    if (verbose > 0) {
             p_con <- progressr::progressor(steps = nrow(dmps_locs))
         }
-        future.apply::future_lapply(
+    ret <- future.apply::future_lapply(
             X = chromosomes,
             FUN = function(chr) {
                 op <- options(warn = 2)$warn
@@ -1311,6 +1321,15 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
                 m <- dmps_locs$chr == chr
                 cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
+                unique_groups <- unique(cdmps_tsv[, dmp_group_col])
+                seed_group_inds <- split(seq_len(nrow(cdmps_tsv)), cdmps_tsv[, dmp_group_col])
+                gdmps_tsv_list <- list()
+                for (dmp_group in unique_groups) {
+                    gdmps_tsv_list[[dmp_group]] <- cdmps_tsv[
+                        seed_group_inds[[dmp_group]],, drop = FALSE
+                    ]
+                    rownames(gdmps_tsv_list[[dmp_group]]) <- gdmps_tsv_list[[dmp_group]][, dmps_tsv_id_col]
+                }
                 cdmps <- dmps[m]
                 cdmps_beta <- dmps_beta[m, , drop = FALSE]
                 cdmps_locs <- dmps_locs[m, , drop = FALSE]
@@ -1344,7 +1363,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                             site1_beta = unlist(cdmps_beta[i, ]),
                             site2_beta = unlist(cdmps_beta[i + 1, ]),
                             group_inds = group_inds,
-                            max_pval = max_pval
+                            max_pval = max_pval,
+                            aggfun = aggfun,
                         )
                         fmt_p <- if (is.null(t[[2]]) || !is.numeric(t[[2]]) || length(t[[2]]) == 0L || is.na(t[[2]])) NA_character_ else as.character(signif(t[[2]], 3))
                         .log_success("Connectivity test result: ", if (t[[1]]) "connected" else "not connected", " (pval=", fmt_p, ", reason=", t$reason, if (!is.null(t$failing)) paste0(", failing group: ", t$failing) else "", ")", level = 3)
@@ -1359,12 +1379,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                         reg_dmr <- TRUE
                     }
                     if (reg_dmr) {
-                        for (dmp_group in unique(cdmps_tsv[, dmp_group_col])) {
-                            gdmps_tsv <- cdmps_tsv[
-                                (cdmps_tsv[, dmp_group_col] == dmp_group),
-                            ]
-                            rownames(gdmps_tsv) <- gdmps_tsv[, dmps_tsv_id_col] # here there must be unique CpGs in `dmp` column
-
+                        .log_step("Registering DMR from DMP ", start_ind, " to DMP ", i, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[i, "pos"], ")", level = 3)
+                        for (dmp_group in unique_groups) {
+                            gdmps_tsv <- gdmps_tsv_list[[dmp_group]]
                             dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = FALSE]
                             dmr_dmps_tsv[, "controls_beta"] <- dmr_dmps_tsv[, "cases_beta"] - dmr_dmps_tsv[, "delta_beta"]
                             for (num.col in c("cases_num", "controls_num")) {
@@ -1378,59 +1395,26 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                                 }
                             }
 
-                            new_dmr <- data.frame(
+                            new_dmr <- list(
                                 chr = chr,
                                 start_dmp = cdmps[[start_ind]],
                                 end_dmp = cdmps[[i]],
                                 start_dmp_pos = cdmps_locs[start_ind, "pos"],
                                 end_dmp_pos = cdmps_locs[i, "pos"],
                                 dmps_num = length(dmr_dmps_inds),
-                                delta_beta = mean(abs(dmr_dmps_tsv[, "delta_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "delta_beta"]))),
+                                delta_beta = aggfun(abs(dmr_dmps_tsv[, "delta_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "delta_beta"]))),
                                 delta_beta_sd = stats::sd(dmr_dmps_tsv[, "delta_beta"]),
-                                delta_beta_se = stats::sd(dmr_dmps_tsv[, "delta_beta"]) / sqrt(length(dmr_dmps_inds)),
                                 delta_beta_min = min(dmr_dmps_tsv[, "delta_beta"]),
                                 delta_beta_max = max(dmr_dmps_tsv[, "delta_beta"]),
-                                delta_beta_start = dmr_dmps_tsv[1, "delta_beta"],
-                                delta_beta_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "delta_beta"],
-                                delta_beta_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "delta_beta"],
-                                cases_beta = mean(abs(dmr_dmps_tsv[, "cases_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "cases_beta"]))),
-                                cases_beta_max = max(dmr_dmps_tsv[, "cases_beta"]),
-                                cases_beta_min = min(dmr_dmps_tsv[, "cases_beta"]),
-                                cases_beta_sd = stats::sd(dmr_dmps_tsv[, "cases_beta"]),
-                                cases_beta_se = stats::sd(dmr_dmps_tsv[, "cases_beta"]) / sqrt(length(dmr_dmps_inds)),
-                                cases_beta_start = dmr_dmps_tsv[1, "cases_beta"],
-                                cases_beta_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "cases_beta"],
-                                cases_beta_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "cases_beta"],
-                                cases_beta_dmps_sd = mean(dmr_dmps_tsv[, "cases_beta_sd"]),
-                                cases_beta_dmps_sd_max = max(dmr_dmps_tsv[, "cases_beta_sd"]),
-                                cases_beta_dmps_sd_min = min(dmr_dmps_tsv[, "cases_beta_sd"]),
-                                cases_beta_dmps_sd_start = dmr_dmps_tsv[1, "cases_beta_sd"],
-                                cases_beta_dmps_sd_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "cases_beta_sd"],
-                                cases_beta_dmps_sd_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "cases_beta_sd"],
-                                controls_beta = mean(abs(dmr_dmps_tsv[, "controls_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "controls_beta"]))),
-                                controls_beta_max = max(dmr_dmps_tsv[, "controls_beta"]),
-                                controls_beta_min = min(dmr_dmps_tsv[, "controls_beta"]),
-                                controls_beta_sd = stats::sd(dmr_dmps_tsv[, "controls_beta"]),
-                                controls_beta_se = stats::sd(dmr_dmps_tsv[, "controls_beta"]) / sqrt(length(dmr_dmps_inds)),
-                                controls_beta_start = dmr_dmps_tsv[1, "controls_beta"],
-                                controls_beta_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "controls_beta"],
-                                controls_beta_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "controls_beta"],
-                                controls_beta_dmps_sd = mean(dmr_dmps_tsv[, "controls_beta_sd"]),
-                                controls_beta_dmps_sd_max = max(dmr_dmps_tsv[, "controls_beta_sd"]),
-                                controls_beta_dmps_sd_min = min(dmr_dmps_tsv[, "controls_beta_sd"]),
-                                controls_beta_dmps_sd_start = dmr_dmps_tsv[1, "controls_beta_sd"],
-                                controls_beta_dmps_sd_mid = dmr_dmps_tsv[ceiling(nrow(dmr_dmps_tsv) / 2), "controls_beta_sd"],
-                                controls_beta_dmps_sd_end = dmr_dmps_tsv[nrow(dmr_dmps_tsv), "controls_beta_sd"],
+                                cases_beta = aggfun(abs(dmr_dmps_tsv[, "cases_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "cases_beta"]))),
+                                controls_beta = aggfun(abs(dmr_dmps_tsv[, "controls_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "controls_beta"]))),
                                 cases_num = min(dmr_dmps_tsv[, "cases_num"]),
                                 controls_num = min(dmr_dmps_tsv[, "controls_num"]),
                                 corr_pval = corr_pval,
-                                dmps_pval_adj = mean(dmr_dmps_tsv[, pval_col]),
-                                dmps_pval_adj_min = min(dmr_dmps_tsv[, pval_col]),
-                                dmps_pval_adj_max = max(dmr_dmps_tsv[, pval_col]),
                                 stop_connection_reason = stop_reason,
                                 dmps = paste(cdmps[dmr_dmps_inds], collapse = ",")
                             )
-                            names(new_dmr) <- gsub("pval_adj", pval_col, names(new_dmr), fixed = TRUE)
+                            new_dmr[[pval_col]] <- aggfun(dmr_dmps_tsv[, pval_col])
                             if (dmp_group_col != "_DUMMY_DMP_GROUP_COL_") {
                                 new_dmr[[dmp_group_col]] <- dmp_group
                             }
@@ -1438,7 +1422,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                             if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
                             dmr_list[[dmr_n]] <- new_dmr
                         }
-
+                        .log_success("DMR registered.",
+                                     level = 3)
                         start_ind <- i + 1
                         corr_pval <- 1
                         dmr_dmps_inds <- integer(0)
@@ -1451,8 +1436,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 options(warn = op)
                 dmrs
             }
-        )
-    })
+    )
+    
 
     if (inherits(ret[[1]], "try-error")) {
         stop(ret)
@@ -1500,18 +1485,17 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(ungrouped_dmrs)
 
-    ret <- progressr::with_progress({
-        if (verbose > 0) {
+    if (verbose > 0) {
             p_ext <- progressr::progressor(steps = n_dmrs)
         }
-        future.apply::future_apply(
+    ret <- future.apply::future_apply(
             X = ungrouped_dmrs,
             MARGIN = 1,
             simplify = FALSE,
             future.scheduling = ceiling(n_dmrs / njobs),
             FUN = function(dmr) {
                 op <- options(warn = 2)$warn
-                ret <- .expandDMRs(
+                x <- .expandDMRs(
                     dmr = dmr,
                     group_inds = group_inds,
                     max_pval = max_pval,
@@ -1524,14 +1508,14 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                     expansion_step = expansion_step,
                     expansion_relaxation = expansion_relaxation,
                     min_cpg_delta_beta = min_cpg_delta_beta,
-                    sorted_locs = sorted_locs
+                    sorted_locs = sorted_locs,
+                    aggfun = aggfun
                 )
                 options(warn = op)
                 if (verbose > 0 && exists("p_ext")) p_ext()
-                ret
+                x
         }
     )
-    })
 
 
     if (inherits(ret, "try-error")) {
