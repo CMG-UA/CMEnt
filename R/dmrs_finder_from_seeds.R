@@ -1234,8 +1234,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         control_means <- rowMeans(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], na.rm = TRUE)
         case_sd <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, sd, na.rm = TRUE)
         control_sd <- apply(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, sd, na.rm = TRUE)
-        dmps_tsv[group_mask, "cases_num"] <- colSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
-        dmps_tsv[group_mask, "controls_num"] <- colSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
+        cases_num <- rowSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
+        controls_num <- rowSums(!is.na(group_beta_subset[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
+        dmps_tsv[group_mask, "cases_num"] <- cases_num[dmps_tsv[group_mask, dmps_tsv_id_col]]
+        dmps_tsv[group_mask, "controls_num"] <- controls_num[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "cases_beta"] <- case_means[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "controls_beta"] <- control_means[dmps_tsv[group_mask, dmps_tsv_id_col]]
         dmps_tsv[group_mask, "cases_beta_sd"] <- case_sd[dmps_tsv[group_mask, dmps_tsv_id_col]]
