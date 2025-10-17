@@ -1339,7 +1339,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                         stop_reason <- "exceeded max distance"
                     }
                     if (!stop_condition) {
-                        .log_step("Testing connectivity between DMP ", i, " and DMP ", i + 1, " ...", level = 3)
+                        .log_step("Testing connectivity between DMP ", i, " and DMP ", i + 1, " (distance: ", round((cdmps_locs[i + 1, "pos"] - cdmps_locs[i, "pos"])/1000), "kb)", level = 3)
                         t <- .testConnectivity(
                             site1_beta = unlist(cdmps_beta[i, ]),
                             site2_beta = unlist(cdmps_beta[i + 1, ]),
