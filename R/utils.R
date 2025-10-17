@@ -437,7 +437,9 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     if (is.na(secs)) {
         return("")
     }
-    if (secs < 60) sprintf(" (took %.2fs)", secs) else sprintf(" (took %dm %02ds)", floor(secs / 60), round(secs %% 60))
+    if (secs < 1) sprintf(" (took %.2fms)", secs * 1000)
+    else if (secs < 0.001) sprintf(" (took %.2fμs)", secs * 1000000)
+    else if (secs < 60) sprintf(" (took %.2fs)", secs) else sprintf(" (took %dm %02ds)", floor(secs / 60), round(secs %% 60))
 }
 
 .has_ansi <- function() {
@@ -490,16 +492,14 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 }
 
 #' @keywords internal
-.log_step <- function(title, ..., .envir = parent.frame(), level = 1) {
+.log_step <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("DMRSegal.verbose", 1) < level) {
         return(invisible())
     }
     .dmrsegal_log_env$last_step_time[level:max(1, length(.dmrsegal_log_env$last_step_time))] <- Sys.time()
-    subtitle <- paste0(..., collapse = "")
-    header <- title
-    if (nzchar(subtitle)) header <- paste0(header, ": ", subtitle)
+    msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
-    cat(paste(lead, header, '\n'), file = stderr())
+    cat(paste(lead, msg, '\n'), file = stderr())
     invisible()
 }
 

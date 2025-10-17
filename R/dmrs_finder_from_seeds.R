@@ -1301,7 +1301,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     ret <- progressr::with_progress({
         if (verbose > 0) {
-            p_con <- progressr::progressor(steps = length(chromosomes))
+            p_con <- progressr::progressor(steps = nrow(dmps_locs))
         }
         future.apply::future_lapply(
             X = chromosomes,

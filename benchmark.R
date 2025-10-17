@@ -85,7 +85,7 @@ profvis({
         min_dmps = 1,
         min_cpgs = 3,
         njobs = 1,
-        verbose = 2
+        verbose = 3
       )
 })
   saveRDS(dmrs_segal, dmrsegal_file)
