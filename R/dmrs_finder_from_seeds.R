@@ -930,12 +930,17 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     on.exit(wait(), add = TRUE)
 
     # Setup progressr handlers if not already set
-    cp_handler <- progressr::handlers()
-    if (length(cp_handler) == 0 && verbose > 0) {
-        # No handlers set, enable default cli handler
-        progressr::handlers(global = TRUE)
-        progressr::handlers("cli")
-        on.exit(progressr::handlers(global = FALSE), add = TRUE)
+    current_handlers <- progressr::handlers(global = NA)
+    handler_names <- vapply(current_handlers, function(h) attr(h, "name"), character(1))
+
+    if (length(handler_names) == 1L && identical(handler_names, "handler_txtprogressbar")) {
+    progressr::handlers(progressr::handler_progress(
+        format = ":message :bar :percent | elapsed: :elapsed | eta: :eta",
+        clear = FALSE,
+        show_after = 0
+    ))
+    progressr::handlers(global = TRUE)
+    on.exit(progressr::handlers(global = FALSE), add = TRUE)
     }
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
