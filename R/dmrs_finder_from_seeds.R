@@ -333,6 +333,7 @@ sortBetaFileByCoordinates <- function(beta_file,
                         beta_data_in_memory = NULL,
                         expansion_step = 500,
                         expansion_relaxation = 0,
+                        max_lookup_dist = 1e7,
                         group_inds = NULL,
                         extreme_verbosity = FALSE,
                         aggfun = mean) {
@@ -425,6 +426,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             casecontrol = casecontrol,
             max_pval = max_pval,
             min_delta_beta = min_cpg_delta_beta,
+            max_lookup_dist = max_lookup_dist,
+            sites_locs = sorted_locs[start_site_ind:end_site_ind, ],
             aggfun = aggfun
         )
         # find consecutive FALSE counts in connected
@@ -514,6 +517,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             casecontrol = casecontrol,
             max_pval = max_pval,
             min_delta_beta = min_cpg_delta_beta,
+            max_lookup_dist = max_lookup_dist,
+            sites_locs = sorted_locs[start_site_ind:end_site_ind, ],
             aggfun = aggfun
         )
         # find consecutive FALSE counts in connected
@@ -655,7 +660,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         group_beta <- sites_beta[, idx, drop = FALSE]
 
         # Extract consecutive pairs matrices
-        x_mat <- group_beta[1:n_pairs, , drop = FALSE] # Sites i
+        x_mat <- group_beta[1:(n_sites - 1), , drop = FALSE] # Sites i
         y_mat <- group_beta[2:n_sites, , drop = FALSE] # Sites i+1
 
         # Compute means for each pair (vectorized)
@@ -667,7 +672,6 @@ sortBetaFileByCoordinates <- function(beta_file,
         y_centered <- y_mat - y_means
 
         # Compute sum of products (numerator of correlation)
-        # Only for pairs that are still connected
         sum_xy <- rowSums(x_centered * y_centered, na.rm = TRUE)
         sum_x2 <- rowSums(x_centered^2, na.rm = TRUE)
         sum_y2 <- rowSums(y_centered^2, na.rm = TRUE)
@@ -1358,6 +1362,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 sites_beta = cdmps_beta,
                 group_inds = group_inds,
                 casecontrol = case_mask,
+                max_lookup_dist = max_lookup_dist,
+                sites_locs = cdmps_locs,
                 max_pval = max_pval,
                 aggfun = aggfun
             )
@@ -1455,18 +1461,11 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     }
     cases_num <- dmrs$cases_num
     controls_num <- dmrs$controls_num
-    cases_sd_dmps_methylation <- dmrs$cases_beta_sd
-    controls_sd_dmps_methylation <- dmrs$controls_beta_sd
     if (anyNA(c(cases_num, controls_num))) {
         .log_warn("NAs introduced while coercing cases_num / controls_num to numeric; replacing NAs with 1 to avoid division errors.")
         cases_num[is.na(cases_num)] <- 1
         controls_num[is.na(controls_num)] <- 1
     }
-
-    pooled_sd <- sqrt(((cases_num - 1) * cases_sd_dmps_methylation^2 + (controls_num - 1) * controls_sd_dmps_methylation^2) / (cases_num + controls_num - 2))
-    pooled_sd[pooled_sd < 1e-7] <- 1e-7
-    dmrs$cohensd <- dmrs$delta_beta / pooled_sd
-
 
     if (dmp_group_col %in% colnames(dmrs)) {
         ungrouped_dmrs <- dmrs[

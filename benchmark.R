@@ -82,7 +82,7 @@ profvis({
         dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
-        min_dmps = 1,
+        min_dmps = 2,
         min_cpgs = 3,
         njobs = 1,
         verbose = 2
