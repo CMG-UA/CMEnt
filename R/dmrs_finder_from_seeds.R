@@ -224,7 +224,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (length(missing_from_annotation) > 0) {
         stop(
             "Found ", length(missing_from_annotation), " CpG sites in beta file that are not in ",
-            array, " annotation.First 5 missing: ", paste(head(missing_from_annotation, 5), collapse = ", ")
+            array, " annotation. First 5 missing: ", paste(head(missing_from_annotation, 5), collapse = ", ")
         )
     }
 

@@ -28,8 +28,8 @@
 #' @param beta_file Character. Path to the input beta values file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'pos' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
-#' @param array Character. Array platform type, either "450K" or "EPIC". Only used if
-#'   sorted_locs is NULL (default: "450K")
+#' @param array Character. Array platform type. Only used if  sorted_locs is NULL (default: "450K")
+#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
 #' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
 #'   directory in tempdir() with hash-based naming (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
@@ -72,14 +72,13 @@
 #' }
 #'
 #' @export
-convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", "EPIC"),
+convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = "450K", genome = "hg19",
                                output_file = NULL,
                                chunk_size = 50000,
                                verbose = TRUE) {
     # Get sorted locations if not provided
     if (is.null(sorted_locs)) {
-        array <- match.arg(array)
-        sorted_locs <- getSortedGenomicLocs(array = array)
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
     # Check if tabix/bgzip are available
     tabix_available <- tryCatch(
@@ -570,65 +569,23 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     ret
 }
 
-#' Get Array Annotation
-#'
-#' @description Internal function to retrieve Illumina methylation array annotations
-#'  Dynamically queries available annotations and caches results.
-#'
-#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm38")
-#'
-#' @return The annotation object containing Locations and other metadata
-#'
-#' @keywords internal
-.getArrayAnnotation <- function(array = "", genome = "hg19") {
-    pkg_name <- NULL
-    if (tolower(array) == "450k") {
-        pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-    } else if (tolower(array) == "epic") {
-        pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
-    } else if (tolower(array) == "epicv2") {
-        pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
-    } else if (tolower(array) == "27k") {
-        pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
-    } else if (tolower(genome) == "mm10" || tolower(genome) == "mm38") {
-        pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
-        if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            if (!require(devtools)) install.packages("devtools")
-            devtools::install_github(pkg_name)
-        }
-    }
-    if (is.null(pkg_name)) {
-        stop("Unsupported array/genome combination: ", array, "/", genome)
-    }
-    if (!requireNamespace(pkg_name, quietly = TRUE)) {
-        message("Installing required annotation package: ", pkg_name)
-        BiocManager::install(pkg_name)
-    }
-
-    pkg_env <- loadNamespace(pkg_name)
-    pkg_env
-}
-
-#' Get Sorted Genomic Locations for Array Platform
+#' Get Sorted Array Locations
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
-#' methylation array platform. Supports any array type available in AnnotationHub
-#' including 450K, EPIC, EPICv2, 27K, and others.
+#' methylation array platform and genome version. Performs liftOver if necessary.
+#' The function caches the results.
 #'
-#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K")
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default: "hg19"
-#' @param annotation_id Character. Optional specific AnnotationHub ID to use instead
-#'   of array/genome combination. Use listAvailableAnnotations() to find IDs.
-#'
-#' @return A data frame containing sorted genomic locations with columns:
+#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")
+#' 
+#' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 #' \itemize{
 #'   \item chr: Chromosome
 #'   \item pos: Genomic position
 #'   \item start: Start position (same as pos)
 #'   \item end: End position (pos + 1)
 #' }
-#'
+#' 
 #' @examples
 #' \dontrun{
 #' # Get sorted locations for 450K array (hg19)
@@ -639,37 +596,84 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 #'
 #' # Get sorted locations for EPICv2 array
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
-#'
-#' # Use a specific annotation ID
-#' locs_specific <- getSortedGenomicLocs(annotation_id = "AH5086")
-#'
-#' # List all available annotations first
-#' avail <- listAvailableAnnotations()
 #' }
-#'
 #' @export
-getSortedGenomicLocs <- function(array = NULL, genome = "hg19") {
-    anno <- .getArrayAnnotation(array, genome)
-    locs <- minfi::getLocations(anno)
+getSortedGenomicLocs <- function(array = "450K", genome = "hg19") {
+    array <- tolower(array)
+    genome <- tolower(genome)
+    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(path.expand("~"), ".cache", "DMRSegal", "annotations"))
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    cache_file <- file.path(cache_dir, paste0(array, "_", genome, "_locations.rds"))
+    if (file.exists(cache_file)) {
+        locs <- readRDS(cache_file)
+        return(locs)
+    }
+    pkg_name <- NULL
+    if (genome %in% c("hg19", "hg38")) {
+        if (array == "450k") {
+            pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
+        } else if (array == "epic") {
+            pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
+        } else if (array == "epicv2") {
+            pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
+        } else if (array == "27k") {
+            pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
+        }
+    } else if (genome %in% c("mm10", "mm39")) {
+        pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
+        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+            if (!require(devtools)) install.packages("devtools")
+            devtools::install_github(pkg_name)
+        }
+    }
+    if (is.null(pkg_name)) {
+        stop("Unsupported array/genome combination: ", array, "/", genome)
+    }
+    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        .log_info("Installing required annotation package: ", pkg_name)
+        BiocManager::install(pkg_name)
+    }
+    locs <- minfi::getLocations(pkg_name)
+    if (genome == "mm39") {
+        path <- system.file(package = "liftOver", "extdata", "mm10ToMm39.over.chain")
+        chain <- rtracklayer::import.chain(path)
+        locs <- rtracklayer::liftOver(locs, chain)
+    }
+    if (genome == "hg38") {
+        if (tolower(array) != "epicv2") {
+            path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
+            chain <- rtracklayer::import.chain(system.file(
+                "extdata",
+                "hg19ToHg38.over.chain",
+            ))
+            locs <- rtracklayer::liftOver(locs, chain)
+        }
+    } else {
+        if (tolower(array) == "epicv2") {
+            path <- system.file(package = "liftOver", "extdata", "hg38toHg19.over.chain")
+            chain <- rtracklayer::import.chain(path)
+            locs <- rtracklayer::liftOver(locs, chain)
+        }
+    }
+    locs <- sort(locs)
+    locs <- as.data.frame(locs)
+    colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
+    if (!"pos" %in% colnames(locs)) {
+        locs[, "pos"] <- locs[, "start"]
+    }
+    if (!"start" %in% colnames(locs)) {
+        locs[, "start"] <- locs[, "pos"]
+    }
+    if (!"end" %in% colnames(locs)) {
+        locs[, "end"] <- locs[, "pos"] + 1
+    }
+    saveRDS(locs, cache_file)
 
-    if (is.null(locs)) {
-        stop("Could not extract Locations from annotation object for array=", array, " genome=", genome)
-    }
-
-    # Ensure we have required columns
-    if (!all(c("chr", "pos") %in% colnames(locs))) {
-        stop("Locations object missing required columns 'chr' and 'pos'")
-    }
-
-    sorted_locs <- locs[str_order(paste0(sorted_locs[, "chr"], ":", locs[, "pos"]), numeric = TRUE), ]
-    if (!"start" %in% colnames(sorted_locs)) {
-        sorted_locs[, "start"] <- sorted_locs[, "pos"]
-    }
-    if (!"end" %in% colnames(sorted_locs)) {
-        sorted_locs[, "end"] <- sorted_locs[, "pos"] + 1
-    }
-    sorted_locs
+    locs
 }
+
 
 #' Order Indices by Genomic Location
 #'
