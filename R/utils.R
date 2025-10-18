@@ -729,11 +729,7 @@ orderByLoc <- function(x,
 #' @param genome Character. Genome version to use for sequence extraction.
 #'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
 #'
-#' @return A list with two elements:
-#' \itemize{
-#'   \item dmrs: GRanges object with the (possibly lifted-over) DMR coordinates
-#'   \item sequences: Character vector containing DNA sequences for each DMR
-#' }
+#' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
 #' The function uses genome-appropriate BSgenome packages:
@@ -754,15 +750,13 @@ orderByLoc <- function(x,
 #' @examples
 #' \dontrun{
 #' # Extract sequences for DMRs
-#' result <- getDMRSequences(dmrs, "hg19")
-#' sequences <- result$sequences
-#' updated_dmrs <- result$dmrs
+#' sequences <- getDMRSequences(dmrs, "hg19")
 #'
 #' # Use with hg38 (will perform liftOver from hg19)
-#' result_hg38 <- getDMRSequences(dmrs, "hg38")
+#' sequences_hg38 <- getDMRSequences(dmrs, "hg38")
 #'
 #' # Calculate GC content
-#' gc_content <- sapply(result$sequences, function(s) {
+#' gc_content <- sapply(sequences, function(s) {
 #'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 #' })
 #' }
@@ -790,24 +784,13 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
         loadNamespace(pkg_name)
     }
 
-    if (genome == "hg38") {
-        path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
-        chain <- rtracklayer::import.chain(path)
-        dmrs <- rtracklayer::liftOver(dmrs, chain)
-    }
-    if (genome == "mm39") {
-        path <- system.file(package = "liftOver", "extdata", "mm10ToMm39.over.chain")
-        chain <- rtracklayer::import.chain(path)
-        dmrs <- rtracklayer::liftOver(dmrs, chain)
-    }
-
     seq_db <- getExportedValue(pkg_name, pkg_name)
     sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
     # Convert sequences to character vector if needed
     if (is.list(sequences)) {
         sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
     }
-    list(dmrs = dmrs, sequences = sequences)
+    sequences
 }
 
 #' Annotate DMRs with Gene Information
