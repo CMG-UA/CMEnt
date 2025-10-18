@@ -582,7 +582,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 #' @return The annotation object containing Locations and other metadata
 #'
 #' @keywords internal
-.getArrayAnnotation <- function(array = "", genome = "hg19", annotation_id = NULL) {
+.getArrayAnnotation <- function(array = "", genome = "hg19") {
     pkg_name <- NULL
     if (tolower(array) == "450k" && tolower(genome) == "hg19") {
         pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
@@ -594,8 +594,10 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
         pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
     } else if (tolower(genome) == "mm10") {
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
-        if (!require(devtools)) install.packages("devtools")
-        devtools::install_github(pkg_name)
+        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+            if (!require(devtools)) install.packages("devtools")
+            devtools::install_github(pkg_name)
+        }
     }
     if (is.null(pkg_name)) {
         stop("Unsupported array/genome combination: ", array, "/", genome)
@@ -650,61 +652,20 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 #' }
 #'
 #' @export
-getSortedGenomicLocs <- function(array = NULL, genome = "hg19", annotation_id = NULL) {
-    if (is.null(annotation_id) && is.null(array)) {
-        stop("Either 'array' or 'annotation_id' must be provided")
-    }
+getSortedGenomicLocs <- function(array = NULL, genome = "hg19") {
+    anno <- .getArrayAnnotation(array, genome)
+    locs <- get("Locations", anno)
 
-    anno <- .getArrayAnnotation(array, genome, annotation_id)
-
-    # Extract Locations - try multiple approaches
-    sorted_locs <- NULL
-
-    # Method 1: Try minfi::getLocations for IlluminaMethylationAnnotation objects
-    if (requireNamespace("minfi", quietly = TRUE) && methods::is(anno, "IlluminaMethylationAnnotation")) {
-        tryCatch(
-            {
-                locs_gr <- minfi::getLocations(anno)
-                if (methods::is(locs_gr, "GRanges")) {
-                    sorted_locs <- as.data.frame(locs_gr)
-                    colnames(sorted_locs)[colnames(sorted_locs) == "seqnames"] <- "chr"
-                    colnames(sorted_locs)[colnames(sorted_locs) == "start"] <- "pos"
-                    sorted_locs$end <- sorted_locs$pos + 1
-                    rownames(sorted_locs) <- names(locs_gr)
-                }
-            },
-            error = function(e) {
-                # Continue to next method
-            }
-        )
-    }
-
-    # Method 2: Direct access to Locations slot/element
-    if (is.null(sorted_locs)) {
-        if (methods::isS4(anno) && methods::slotNames(anno) %in% "Locations") {
-            sorted_locs <- methods::slot(anno, "Locations")
-        } else if (is.list(anno) && "Locations" %in% names(anno)) {
-            sorted_locs <- anno$Locations
-        }
-    }
-
-    # Method 3: Try accessing annotation data from package namespace
-    if (is.null(sorted_locs) && is.environment(anno)) {
-        if (exists("Locations", anno)) {
-            sorted_locs <- get("Locations", anno)
-        }
-    }
-
-    if (is.null(sorted_locs)) {
+    if (is.null(locs)) {
         stop("Could not extract Locations from annotation object for array=", array, " genome=", genome)
     }
 
     # Ensure we have required columns
-    if (!all(c("chr", "pos") %in% colnames(sorted_locs))) {
+    if (!all(c("chr", "pos") %in% colnames(locs))) {
         stop("Locations object missing required columns 'chr' and 'pos'")
     }
 
-    sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = TRUE), ]
+    sorted_locs <- locs[str_order(paste0(sorted_locs[, "chr"], ":", locs[, "pos"]), numeric = TRUE), ]
     if (!"start" %in% colnames(sorted_locs)) {
         sorted_locs[, "start"] <- sorted_locs[, "pos"]
     }
@@ -814,6 +775,10 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
         message("Installing required annotation package: ", pkg_name)
         BiocManager::install(pkg_name)
     }
+    # Load the BSgenome package
+    if (!isNamespaceLoaded(pkg_name)) {
+        loadNamespace(pkg_name)
+    }
 
     if (genome == "hg38") {
         path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
@@ -826,7 +791,7 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
         dmrs <- rtracklayer::liftOver(dmrs, chain)
     }
 
-    seq_db <- get(pkg_name, envir = asNamespace(pkg_name))
+    seq_db <- getExportedValue(pkg_name, pkg_name)
     sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
     # Convert sequences to character vector if needed
     if (is.list(sequences)) {
@@ -934,10 +899,13 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     .log_step("Loading gene annotations for ", genome, "...", level = 1)
 
-    # Load TxDb
-    txdb <- get(sub("^.*\\.", "", txdb_pkg),
-        envir = asNamespace(txdb_pkg)
-    )
+    # Load TxDb namespace
+    if (!isNamespaceLoaded(txdb_pkg)) {
+        loadNamespace(txdb_pkg)
+    }
+    
+    # Load TxDb - the main object has the same name as the package
+    txdb <- getExportedValue(txdb_pkg, txdb_pkg)
 
     # Get genes and promoters
     genes <- GenomicFeatures::genes(txdb)
@@ -953,10 +921,13 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     promoter_overlaps <- GenomicRanges::findOverlaps(dmrs, promoters)
     gene_body_overlaps <- GenomicRanges::findOverlaps(dmrs, genes)
 
-    # Get gene symbols
-    orgdb <- get(sub("^.*\\.", "", orgdb_pkg),
-        envir = asNamespace(orgdb_pkg)
-    )
+    # Load org.db namespace
+    if (!isNamespaceLoaded(orgdb_pkg)) {
+        loadNamespace(orgdb_pkg)
+    }
+    
+    # Get gene symbols - the main object has the same name as the package
+    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
 
     # Extract Entrez IDs
     promoter_entrez <- names(promoters)[S4Vectors::subjectHits(promoter_overlaps)]

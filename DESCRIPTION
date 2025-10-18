@@ -49,6 +49,7 @@ Imports:
     AnnotationDbi,
     GenomicFeatures,
 Suggests: 
+    devtools,
     knitr,
     rmarkdown,
     BiocStyle,
