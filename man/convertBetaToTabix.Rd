@@ -7,8 +7,8 @@
 convertBetaToTabix(
   beta_file,
   sorted_locs = NULL,
-  array = "450K",
-  genome = "hg19",
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39"),
   output_file = NULL,
   chunk_size = 50000,
   verbose = TRUE
@@ -20,7 +20,7 @@ convertBetaToTabix(
 \item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'pos' columns.
 If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)}
 
-\item{array}{Character. Array platform type. Only used if  sorted_locs is NULL (default: "450K")}
+\item{array}{Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")}
 
 \item{genome}{Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")}
 

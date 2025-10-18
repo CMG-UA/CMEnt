@@ -7,8 +7,8 @@
 sortBetaFileByCoordinates(
   beta_file,
   output_file = NULL,
-  array = "450K",
-  genome = "hg19",
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39"),
   genomic_locs = NULL,
   overwrite = FALSE
 )

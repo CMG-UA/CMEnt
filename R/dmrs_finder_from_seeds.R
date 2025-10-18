@@ -881,13 +881,6 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
     on.exit(wait(), add = TRUE)
 
-    progressr::handlers(progressr::handler_progress(
-        format = ":message :bar :percent | elapsed: :elapsed | eta: :eta",
-        clear = FALSE,
-        show_after = 0
-    ))
-    progressr::handlers(global = TRUE)
-
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
@@ -1267,143 +1260,141 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     }
     # Use progressr for cross-platform progress reporting
     .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-    ret <- progressr::with_progress({
-        if (verbose > 0) {
-            p_con <- progressr::progressor(steps = length(chromosomes))
-        }
-        future.apply::future_lapply(
-            X = chromosomes,
-            FUN = function(chr) {
-                op <- options(warn = 2)$warn
-                .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
 
-                m <- dmps_locs$chr == chr
-                cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
-                unique_groups <- unique(cdmps_tsv[, dmp_group_col])
-                seed_group_inds <- split(seq_len(nrow(cdmps_tsv)), cdmps_tsv[, dmp_group_col])
-                gdmps_tsv_list <- list()
-                for (dmp_group in unique_groups) {
-                    gdmps_tsv_list[[dmp_group]] <- cdmps_tsv[
-                        seed_group_inds[[dmp_group]], ,
-                        drop = FALSE
-                    ]
-                    rownames(gdmps_tsv_list[[dmp_group]]) <- gdmps_tsv_list[[dmp_group]][, dmps_tsv_id_col]
-                }
-                cdmps <- dmps[m]
-                cdmps_beta <- dmps_beta[m, , drop = FALSE]
-                cdmps_locs <- dmps_locs[m, , drop = FALSE]
-                .log_step("Transforming beta subset to matrix...", level = 3)
-                # Ensure plain numeric matrix to avoid per-iteration unlist()
-                if (!is.matrix(cdmps_beta)) cdmps_beta <- as.matrix(cdmps_beta)
-                storage.mode(cdmps_beta) <- "double"
-                .log_success("Beta subset transformed to matrix", level = 3)
-                # Collect rows and combine once (avoid repeated data.frame rbind)
-                dmr_list <- vector("list", length = 128L)
-                dmr_n <- 0L
+    if (verbose > 0) {
+        p_con <- progressr::progressor(steps = length(chromosomes))
+    }
+    ret <- future.apply::future_lapply(
+        X = chromosomes,
+        FUN = function(chr) {
+            op <- options(warn = 2)$warn
+            .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
 
-                start_ind <- 1L
-                corr_pval <- 1
-                dmr_dmps_inds <- integer(0)
-                .log_step("Testing DMP connectivity on chromosome ", chr, " ...", level = 3)
-                corr_ret <- .testConnectivityBatch(
-                    sites_beta = cdmps_beta,
-                    group_inds = group_inds,
-                    casecontrol = case_mask,
-                    max_lookup_dist = max_lookup_dist,
-                    sites_locs = cdmps_locs,
-                    max_pval = max_pval,
-                    aggfun = aggfun
-                )
-                stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
-                if (verbose >= 3) {
-                    dir.create("debug", showWarnings = FALSE)
-                    write.table(corr_ret,
-                        file = paste0("debug/dmp_connectivity_chr", chr, ".tsv"),
-                        sep = "\t",
-                        row.names = FALSE,
-                        col.names = TRUE,
-                        quote = FALSE
-                    )
-                }
-                .log_success("DMP connectivity tested.", level = 3)
-                breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
-                for (bp_ind in seq_len(length(breakpoints) - 1)) {
-                    start_ind <- breakpoints[bp_ind]
-                    end_ind <- breakpoints[bp_ind + 1]
-                    if (end_ind - start_ind < min_dmps) {
-                        .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind, " < ", min_dmps, ").", level = 3)
-                        next
-                    }
-                    .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
-                    dmr_dmps_inds <- seq.int(start_ind, end_ind - 1)
-                    if (end_ind == start_ind) {
-                        corr_pval <- NA
-                    } else {
-                        corr_pval <- aggfun(corr_ret$pval[dmr_dmps_inds[-length(dmr_dmps_inds)]], na.rm = TRUE)
-                    }
-                    if (end_ind < nrow(cdmps_beta) - 1) {
-                        stop_reason <- corr_ret$reason[[end_ind]]
-                    } else {
-                        stop_reason <- "end of chromosome"
-                    }
-                    for (dmp_group in unique_groups) {
-                        gdmps_tsv <- gdmps_tsv_list[[dmp_group]]
-                        dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = FALSE]
-                        for (num.col in c("cases_num", "controls_num")) {
-                            if (!num.col %in% colnames(dmr_dmps_tsv)) {
-                                dmr_dmps_tsv[, num.col] <- sum(!is.na(dmr_dmps_tsv[, "cases_beta"]))
-                            }
-                        }
-                        for (opt.col in c("cases_beta_sd", "controls_beta_sd")) {
-                            if (!opt.col %in% colnames(dmr_dmps_tsv)) {
-                                dmr_dmps_tsv[, opt.col] <- NA
-                            }
-                        }
-                        new_dmr <- list(
-                            chr = chr,
-                            start_dmp = cdmps[[start_ind]],
-                            end_dmp = cdmps[[end_ind]],
-                            start_dmp_pos = cdmps_locs[start_ind, "pos"],
-                            end_dmp_pos = cdmps_locs[end_ind, "pos"],
-                            dmps_num = length(dmr_dmps_inds),
-                            delta_beta = aggfun(abs(dmr_dmps_tsv[, "delta_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "delta_beta"]))),
-                            delta_beta_sd = stats::sd(dmr_dmps_tsv[, "delta_beta"]),
-                            delta_beta_min = min(dmr_dmps_tsv[, "delta_beta"]),
-                            delta_beta_max = max(dmr_dmps_tsv[, "delta_beta"]),
-                            cases_beta = aggfun(abs(dmr_dmps_tsv[, "cases_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "cases_beta"]))),
-                            controls_beta = aggfun(abs(dmr_dmps_tsv[, "controls_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "controls_beta"]))),
-                            cases_num = min(dmr_dmps_tsv[, "cases_num"]),
-                            controls_num = min(dmr_dmps_tsv[, "controls_num"]),
-                            corr_pval = corr_pval,
-                            stop_connection_reason = stop_reason,
-                            dmps = paste(cdmps[dmr_dmps_inds], collapse = ",")
-                        )
-                        new_dmr[[pval_col]] <- aggfun(dmr_dmps_tsv[, pval_col])
-                        if (dmp_group_col != "_DUMMY_DMP_GROUP_COL_") {
-                            new_dmr[[dmp_group_col]] <- dmp_group
-                        }
-                        dmr_n <- dmr_n + 1L
-                        if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
-                        dmr_list[[dmr_n]] <- new_dmr
-                        # Register the new DMR
-                        dmr_list[[length(dmr_list) + 1]] <- new_dmr
-                    }
-                    .log_success("DMR registered.",
-                        level = 3
-                    )
-                }
-                if (verbose > 0 && exists("p_con")) p_con()
-                dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
-                if (nrow(dmrs)) {
-                    rownames(dmrs) <- seq_len(nrow(dmrs))
-                    dmrs[, "chr"] <- chr
-                }
-                options(warn = op)
-                dmrs
+            m <- dmps_locs$chr == chr
+            cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
+            unique_groups <- unique(cdmps_tsv[, dmp_group_col])
+            seed_group_inds <- split(seq_len(nrow(cdmps_tsv)), cdmps_tsv[, dmp_group_col])
+            gdmps_tsv_list <- list()
+            for (dmp_group in unique_groups) {
+                gdmps_tsv_list[[dmp_group]] <- cdmps_tsv[
+                    seed_group_inds[[dmp_group]], ,
+                    drop = FALSE
+                ]
+                rownames(gdmps_tsv_list[[dmp_group]]) <- gdmps_tsv_list[[dmp_group]][, dmps_tsv_id_col]
             }
-        )
-    })
+            cdmps <- dmps[m]
+            cdmps_beta <- dmps_beta[m, , drop = FALSE]
+            cdmps_locs <- dmps_locs[m, , drop = FALSE]
+            .log_step("Transforming beta subset to matrix...", level = 3)
+            # Ensure plain numeric matrix to avoid per-iteration unlist()
+            if (!is.matrix(cdmps_beta)) cdmps_beta <- as.matrix(cdmps_beta)
+            storage.mode(cdmps_beta) <- "double"
+            .log_success("Beta subset transformed to matrix", level = 3)
+            # Collect rows and combine once (avoid repeated data.frame rbind)
+            dmr_list <- vector("list", length = 128L)
+            dmr_n <- 0L
 
+            start_ind <- 1L
+            corr_pval <- 1
+            dmr_dmps_inds <- integer(0)
+            .log_step("Testing DMP connectivity on chromosome ", chr, " ...", level = 3)
+            corr_ret <- .testConnectivityBatch(
+                sites_beta = cdmps_beta,
+                group_inds = group_inds,
+                casecontrol = case_mask,
+                max_lookup_dist = max_lookup_dist,
+                sites_locs = cdmps_locs,
+                max_pval = max_pval,
+                aggfun = aggfun
+            )
+            stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
+            if (verbose >= 3) {
+                dir.create("debug", showWarnings = FALSE)
+                write.table(corr_ret,
+                    file = paste0("debug/dmp_connectivity_chr", chr, ".tsv"),
+                    sep = "\t",
+                    row.names = FALSE,
+                    col.names = TRUE,
+                    quote = FALSE
+                )
+            }
+            .log_success("DMP connectivity tested.", level = 3)
+            breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
+            for (bp_ind in seq_len(length(breakpoints) - 1)) {
+                start_ind <- breakpoints[bp_ind]
+                end_ind <- breakpoints[bp_ind + 1]
+                if (end_ind - start_ind < min_dmps) {
+                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind, " < ", min_dmps, ").", level = 3)
+                    next
+                }
+                .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
+                dmr_dmps_inds <- seq.int(start_ind, end_ind - 1)
+                if (end_ind == start_ind) {
+                    corr_pval <- NA
+                } else {
+                    corr_pval <- aggfun(corr_ret$pval[dmr_dmps_inds[-length(dmr_dmps_inds)]], na.rm = TRUE)
+                }
+                if (end_ind < nrow(cdmps_beta) - 1) {
+                    stop_reason <- corr_ret$reason[[end_ind]]
+                } else {
+                    stop_reason <- "end of chromosome"
+                }
+                for (dmp_group in unique_groups) {
+                    gdmps_tsv <- gdmps_tsv_list[[dmp_group]]
+                    dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = FALSE]
+                    for (num.col in c("cases_num", "controls_num")) {
+                        if (!num.col %in% colnames(dmr_dmps_tsv)) {
+                            dmr_dmps_tsv[, num.col] <- sum(!is.na(dmr_dmps_tsv[, "cases_beta"]))
+                        }
+                    }
+                    for (opt.col in c("cases_beta_sd", "controls_beta_sd")) {
+                        if (!opt.col %in% colnames(dmr_dmps_tsv)) {
+                            dmr_dmps_tsv[, opt.col] <- NA
+                        }
+                    }
+                    new_dmr <- list(
+                        chr = chr,
+                        start_dmp = cdmps[[start_ind]],
+                        end_dmp = cdmps[[end_ind]],
+                        start_dmp_pos = cdmps_locs[start_ind, "pos"],
+                        end_dmp_pos = cdmps_locs[end_ind, "pos"],
+                        dmps_num = length(dmr_dmps_inds),
+                        delta_beta = aggfun(abs(dmr_dmps_tsv[, "delta_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "delta_beta"]))),
+                        delta_beta_sd = stats::sd(dmr_dmps_tsv[, "delta_beta"]),
+                        delta_beta_min = min(dmr_dmps_tsv[, "delta_beta"]),
+                        delta_beta_max = max(dmr_dmps_tsv[, "delta_beta"]),
+                        cases_beta = aggfun(abs(dmr_dmps_tsv[, "cases_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "cases_beta"]))),
+                        controls_beta = aggfun(abs(dmr_dmps_tsv[, "controls_beta"])) * sign(sum(sign(dmr_dmps_tsv[, "controls_beta"]))),
+                        cases_num = min(dmr_dmps_tsv[, "cases_num"]),
+                        controls_num = min(dmr_dmps_tsv[, "controls_num"]),
+                        corr_pval = corr_pval,
+                        stop_connection_reason = stop_reason,
+                        dmps = paste(cdmps[dmr_dmps_inds], collapse = ",")
+                    )
+                    new_dmr[[pval_col]] <- aggfun(dmr_dmps_tsv[, pval_col])
+                    if (dmp_group_col != "_DUMMY_DMP_GROUP_COL_") {
+                        new_dmr[[dmp_group_col]] <- dmp_group
+                    }
+                    dmr_n <- dmr_n + 1L
+                    if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
+                    dmr_list[[dmr_n]] <- new_dmr
+                    # Register the new DMR
+                    dmr_list[[length(dmr_list) + 1]] <- new_dmr
+                }
+                .log_success("DMR registered.",
+                    level = 3
+                )
+            }
+            if (verbose > 0 && exists("p_con")) p_con()
+            dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
+            if (nrow(dmrs)) {
+                rownames(dmrs) <- seq_len(nrow(dmrs))
+                dmrs[, "chr"] <- chr
+            }
+            options(warn = op)
+            dmrs
+        }
+    )
 
 
     if (inherits(ret[[1]], "try-error")) {
@@ -1442,40 +1433,39 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     .log_step("Expanding DMRs on neighborhood CpGs..", level = 1)
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(ungrouped_dmrs)
-    ret <- progressr::with_progress({
-        if (verbose > 0) {
-            p_ext <- progressr::progressor(steps = n_dmrs)
+
+    if (verbose > 0) {
+        p_ext <- progressr::progressor(steps = n_dmrs)
+    }
+    ret <- future.apply::future_apply(
+        X = ungrouped_dmrs,
+        MARGIN = 1,
+        simplify = FALSE,
+        future.scheduling = ceiling(n_dmrs / njobs),
+        FUN = function(dmr) {
+            op <- options(warn = 2)$warn
+            x <- .expandDMRs(
+                dmr = dmr,
+                group_inds = group_inds,
+                max_pval = max_pval,
+                tabix_file = tabix_file,
+                beta_file = beta_file,
+                beta_data_in_memory = beta_file_in_memory,
+                beta_row_names = beta_row_names,
+                beta_col_names = beta_col_names,
+                casecontrol = case_mask,
+                expansion_step = expansion_step,
+                expansion_relaxation = expansion_relaxation,
+                min_cpg_delta_beta = min_cpg_delta_beta,
+                sorted_locs = sorted_locs,
+                max_lookup_dist = max_lookup_dist,
+                aggfun = aggfun
+            )
+            options(warn = op)
+            if (verbose > 0 && exists("p_ext")) p_ext()
+            x
         }
-        future.apply::future_apply(
-            X = ungrouped_dmrs,
-            MARGIN = 1,
-            simplify = FALSE,
-            future.scheduling = ceiling(n_dmrs / njobs),
-            FUN = function(dmr) {
-                op <- options(warn = 2)$warn
-                x <- .expandDMRs(
-                    dmr = dmr,
-                    group_inds = group_inds,
-                    max_pval = max_pval,
-                    tabix_file = tabix_file,
-                    beta_file = beta_file,
-                    beta_data_in_memory = beta_file_in_memory,
-                    beta_row_names = beta_row_names,
-                    beta_col_names = beta_col_names,
-                    casecontrol = case_mask,
-                    expansion_step = expansion_step,
-                    expansion_relaxation = expansion_relaxation,
-                    min_cpg_delta_beta = min_cpg_delta_beta,
-                    sorted_locs = sorted_locs,
-                    max_lookup_dist = max_lookup_dist,
-                    aggfun = aggfun
-                )
-                options(warn = op)
-                if (verbose > 0 && exists("p_ext")) p_ext()
-                x
-            }
-        )
-    })
+    )
 
 
     if (inherits(ret, "try-error")) {

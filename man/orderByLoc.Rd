@@ -4,7 +4,12 @@
 \alias{orderByLoc}
 \title{Order Indices by Genomic Location}
 \usage{
-orderByLoc(x, array = "450K", genome = "hg19", genomic_locs = NULL)
+orderByLoc(
+  x,
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genomic_locs = NULL
+)
 }
 \arguments{
 \item{x}{Character or integer vector. Indices or identifiers to be ordered}

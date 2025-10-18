@@ -4,7 +4,10 @@
 \alias{getSortedGenomicLocs}
 \title{Get Sorted Array Locations}
 \usage{
-getSortedGenomicLocs(array = "450K", genome = "hg19")
+getSortedGenomicLocs(
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39")
+)
 }
 \arguments{
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome}

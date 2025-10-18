@@ -13,11 +13,7 @@ getDMRSequences(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"))
 Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")}
 }
 \value{
-A list with two elements:
-\itemize{
-\item dmrs: GRanges object with the (possibly lifted-over) DMR coordinates
-\item sequences: Character vector containing DNA sequences for each DMR
-}
+A Character vector containing DNA sequences for each DMR
 }
 \description{
 Retrieves the DNA sequences corresponding to genomic regions
@@ -34,25 +30,19 @@ The function uses genome-appropriate BSgenome packages:
 \item mm39: BSgenome.Mmusculus.UCSC.mm39
 }
 
-For hg38 and mm39, the function performs liftOver from hg19 and mm10
-respectively before sequence extraction. The lifted-over coordinates are
-returned in the \code{dmrs} element of the result list.
-
 If the required BSgenome package is not installed, the function will
 attempt to install it automatically using BiocManager.
 }
 \examples{
 \dontrun{
 # Extract sequences for DMRs
-result <- getDMRSequences(dmrs, "hg19")
-sequences <- result$sequences
-updated_dmrs <- result$dmrs
+sequences <- getDMRSequences(dmrs, "hg19")
 
 # Use with hg38 (will perform liftOver from hg19)
-result_hg38 <- getDMRSequences(dmrs, "hg38")
+sequences_hg38 <- getDMRSequences(dmrs, "hg38")
 
 # Calculate GC content
-gc_content <- sapply(result$sequences, function(s) {
+gc_content <- sapply(sequences, function(s) {
     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 })
 }

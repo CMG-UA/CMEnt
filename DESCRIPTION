@@ -42,7 +42,7 @@ Imports:
     future,
     future.apply,
     inline,
-    progressr,
+    progressr (== 0.16.0),
     minfi,
     bedr,
     AnnotationHub,

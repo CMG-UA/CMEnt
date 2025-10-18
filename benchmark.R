@@ -75,7 +75,10 @@ if (!file.exists(dmrsegal_file)){
       row.names = TRUE
   )
   # option(future.debug = TRUE)
-  dmrs_segal <- DMRSegal::findDMRsFromSeeds(
+  library(progressr)
+  progressr::handlers('cli')
+
+  dmrs_segal <- progressr::with_progress(DMRSegal::findDMRsFromSeeds(
         beta_file = beta_file,
         dmps_file = dmps_file,
         pheno = pheno,
@@ -83,10 +86,10 @@ if (!file.exists(dmrsegal_file)){
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation=1,
+        expansion_relaxation = 5,
         njobs = 1,
         verbose = 2
-      )
+      ))
   saveRDS(dmrs_segal, dmrsegal_file)
   # Remove temporary files
   unlink(c(beta_file, dmps_file))
@@ -190,10 +193,6 @@ overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
 overlap_segal_bumphunter <- length(subsetByOverlaps(gr_segal, gr_bumphunter))
 overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter))
 # Calculate intersection over smallest width
-intersection_segal_dmrcate <- intersection(gr_segal, gr_dmrcate) / smallest_width(gr_segal, gr_dmrcate)
-intersection_segal_bumphunter <- intersection(gr_segal, gr_bumphunter) / smallest_width(gr_segal, gr_bumphunter)
-intersection_dmrcate_bumphunter <- intersection(gr_dmrcate, gr_bumphunter) / smallest_width(gr_dmrcate, gr_bumphunter)
-
 
 iou_segal_dmrcate <- iou(gr_segal, gr_dmrcate)
 iou_segal_bumphunter <- iou(gr_segal, gr_bumphunter)
