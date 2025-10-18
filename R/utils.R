@@ -570,29 +570,28 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     ret
 }
 
-#' Get Array Annotation from AnnotationHub
+#' Get Array Annotation
 #'
 #' @description Internal function to retrieve Illumina methylation array annotations
-#' from AnnotationHub. Dynamically queries available annotations and caches results.
+#'  Dynamically queries available annotations and caches results.
 #'
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10")
-#' @param annotation_id Character. Optional specific AnnotationHub ID to use
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm38")
 #'
 #' @return The annotation object containing Locations and other metadata
 #'
 #' @keywords internal
 .getArrayAnnotation <- function(array = "", genome = "hg19") {
     pkg_name <- NULL
-    if (tolower(array) == "450k" && tolower(genome) == "hg19") {
+    if (tolower(array) == "450k") {
         pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-    } else if (tolower(array) == "epic" && tolower(genome) == "hg19") {
+    } else if (tolower(array) == "epic") {
         pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
-    } else if (tolower(array) == "epicv2" && tolower(genome) == "hg38") {
+    } else if (tolower(array) == "epicv2") {
         pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
-    } else if (tolower(array) == "27k" && tolower(genome) == "hg19") {
+    } else if (tolower(array) == "27k") {
         pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
-    } else if (tolower(genome) == "mm10") {
+    } else if (tolower(genome) == "mm10" || tolower(genome) == "mm38") {
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             if (!require(devtools)) install.packages("devtools")
@@ -608,10 +607,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     }
 
     pkg_env <- loadNamespace(pkg_name)
-    # Most annotation packages export an object with the same name
-    if (exists(pkg_name, pkg_env)) {
-        return(get(pkg_name, pkg_env))
-    }
+    pkg_env
 }
 
 #' Get Sorted Genomic Locations for Array Platform
@@ -654,7 +650,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 #' @export
 getSortedGenomicLocs <- function(array = NULL, genome = "hg19") {
     anno <- .getArrayAnnotation(array, genome)
-    locs <- get("Locations", anno)
+    locs <- minfi::getLocations(anno)
 
     if (is.null(locs)) {
         stop("Could not extract Locations from annotation object for array=", array, " genome=", genome)
@@ -797,7 +793,7 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
     if (is.list(sequences)) {
         sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
     }
-    list(dmrs=dmrs, sequences=sequences)
+    list(dmrs = dmrs, sequences = sequences)
 }
 
 #' Annotate DMRs with Gene Information
@@ -903,7 +899,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     if (!isNamespaceLoaded(txdb_pkg)) {
         loadNamespace(txdb_pkg)
     }
-    
+
     # Load TxDb - the main object has the same name as the package
     txdb <- getExportedValue(txdb_pkg, txdb_pkg)
 
@@ -925,7 +921,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     if (!isNamespaceLoaded(orgdb_pkg)) {
         loadNamespace(orgdb_pkg)
     }
-    
+
     # Get gene symbols - the main object has the same name as the package
     orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
 
