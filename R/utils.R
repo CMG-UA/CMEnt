@@ -493,7 +493,7 @@ convertBetaToTabix <- function(beta_file,
     }
     msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep = "")
-    cat(paste(lead, msg, "\n"), file = stderr())
+    message(paste(lead, msg))
     invisible()
 }
 
@@ -501,7 +501,7 @@ convertBetaToTabix <- function(beta_file,
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    cat(paste(lead, msg, "\n"), file = stderr())
+    message(paste(lead, msg))
     invisible()
 }
 
@@ -513,7 +513,7 @@ convertBetaToTabix <- function(beta_file,
     dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep = "")
-    cat(paste(lead, msg, "\n"), file = stderr())
+    message(paste(lead, msg))
     invisible()
 }
 
@@ -525,7 +525,7 @@ convertBetaToTabix <- function(beta_file,
     .dmrsegal_log_env$last_step_time[level:max(1, length(.dmrsegal_log_env$last_step_time))] <- Sys.time()
     msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
-    cat(paste(lead, msg, "\n"), file = stderr())
+    message(paste(lead, msg))
     invisible()
 }
 
