@@ -5,12 +5,7 @@
 #' @return None, outputs results to files
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
-    pheno <- .processSamplesheet(args)$samplesheet
     options("DMRSegal.verbose" = args$verbose)
-    .log_info(
-            "Head of parsed phenotype:\n\t",
-            paste(capture.output(print(head(pheno))), collapse = "\n\t")
-        )
 
     if (!is.null(args$beta) && !is.null(args$tabix)) {
         stop("Either beta or tabix must be provided, not both.")
@@ -18,18 +13,24 @@ findDMRsFromSeedsCLI <- function(args) {
     if (is.null(args$beta) && is.null(args$tabix)) {
         stop("Either beta or tabix must be provided.")
     }
-    if (!is.null(args$dmp_group_col)){
-        if (is.null(args$dmp_groups_tsv)){
+    if (!is.null(args$dmp_group_col)) {
+        if (is.null(args$dmp_groups_tsv)) {
             stop("dmp_groups_tsv must be provided when dmp_group_col is given.")
         }
         dmps_groups_info <- read.table(args$dmp_groups_tsv,
-                                      header = FALSE,
-                                      sep = "\t",
-                                      stringsAsFactors = FALSE)
+            header = FALSE,
+            sep = "\t",
+            stringsAsFactors = FALSE
+        )
         samples <- strsplit(dmps_groups_info[, 2], ",")
         dmp_groups_info <- setNames(samples, dmps_groups_info[, 1])
         dmp_groups_info <- as.list(dmp_groups_info)
     }
+    pheno <- .processSamplesheet(args)$samplesheet
+    .log_info(
+        "Head of parsed phenotype:\n\t",
+        paste(capture.output(print(head(pheno))), collapse = "\n\t")
+    )
 
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
@@ -61,10 +62,10 @@ findDMRsFromSeedsCLI <- function(args) {
     )
 
     .log_info(
-            "Input arguments (without the phenotype): \n\t",
-            paste(paste(names(input_args), input_args, sep = ": "), collapse = "\n\t")
-        )
-    
+        "Input arguments (without the phenotype): \n\t",
+        paste(paste(names(input_args), input_args, sep = ": "), collapse = "\n\t")
+    )
+
 
     invisible(do.call(findDMRsFromSeeds, input_args))
 }
