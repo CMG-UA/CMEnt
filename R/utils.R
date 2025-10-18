@@ -597,7 +597,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
         if (!require(devtools)) install.packages("devtools")
         devtools::install_github(pkg_name)
     }
-    if (pkg_name == NULL) {
+    if (is.null(pkg_name)) {
         stop("Unsupported array/genome combination: ", array, "/", genome)
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
