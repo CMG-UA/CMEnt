@@ -555,62 +555,6 @@ sortBetaFileByCoordinates <- function(beta_file,
     dmr
 }
 
-.testConnectivity <- function(site1_beta, site2_beta, group_inds,
-                              max_pval, casecontrol = NULL, min_delta_beta = 0,
-                              extreme_verbosity = FALSE, aggfun = mean) {
-    pval <- 0
-    delta_beta <- NULL
-    n_groups <- length(group_inds)
-    if (n_groups == 0) {
-        return(list(FALSE, NA_real_, NA_real_, reason = "no_groups"))
-    }
-
-    # Bonferroni correction by number of groups
-    max_pval_corrected <- max_pval / n_groups
-
-    for (g in names(group_inds)) {
-        idx <- group_inds[[g]]
-        if (length(idx) < 3) next
-        x <- site1_beta[idx]
-        y <- site2_beta[idx]
-        r <- suppressWarnings(stats::cor(x, y, use = "pairwise.complete.obs", method = "pearson"))
-        if (is.na(r)) {
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "na r"))
-        }
-        df <- sum(stats::complete.cases(x, y)) - 2L
-        if (df < 1) {
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "df<1"))
-        }
-        tstat <- r * sqrt(df / max(1e-12, 1 - r * r))
-        if (is.na(tstat)) {
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "na tstat"))
-        }
-        p <- -2 * expm1(pt(abs(tstat), df = df, log.p = TRUE))
-        if (is.na(p)) {
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "na pval"))
-        }
-        pval <- max(pval, p)
-        if (pval > max_pval_corrected) {
-            return(list(FALSE, pval, delta_beta, failing = g, reason = "pval>max_pval (corrected)"))
-        }
-    }
-    if (!is.null(casecontrol) && (min_delta_beta > 0)) {
-        if (length(casecontrol) != length(site2_beta)) {
-            if (extreme_verbosity) {
-                message(".testConnectivity: casecontrol length mismatch: ", length(casecontrol), " vs ", length(site2_beta))
-            }
-            stop("casecontrol length mismatch")
-        }
-        delta_beta <- aggfun(site2_beta[casecontrol == 1], na.rm = TRUE) -
-            aggfun(site2_beta[casecontrol == 0], na.rm = TRUE)
-        if (is.na(delta_beta) || (abs(delta_beta) < min_delta_beta)) {
-            return(list(FALSE, pval, delta_beta, reason = "delta_beta<min_delta_beta"))
-        }
-    }
-
-    list(TRUE, pval, delta_beta)
-}
-
 #' Vectorized connectivity testing for consecutive site pairs, given their beta values
 #'
 #' @param sites_beta Matrix where each row is a site's beta values across samples
