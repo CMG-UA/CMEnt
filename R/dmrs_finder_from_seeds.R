@@ -626,8 +626,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             pval = numeric(0),
             delta_beta = numeric(0),
             reason = character(0),
-            failing_group = character(0),
-            stop_reason = character(0)
+            failing_group = character(0)
         ))
     }
 
@@ -641,14 +640,13 @@ sortBetaFileByCoordinates <- function(beta_file,
     delta_betas <- rep(NA_real_, n_pairs)
     reasons <- rep("", n_pairs)
     failing_groups <- rep("", n_pairs)
-    stop_reasons <- rep("", n_pairs)
 
     # Check distance condition if provided (vectorized)
     if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
         dists <- sites_locs$pos[2:n_sites] - sites_locs$pos[1:(n_sites - 1)]
         exceeded_dist <- dists > max_lookup_dist
         connected[exceeded_dist] <- FALSE
-        stop_reasons[exceeded_dist] <- "exceeded max distance"
+        reasons[exceeded_dist] <- "exceeded max distance"
     }
 
     # Fully vectorized correlation testing for each group
@@ -723,7 +721,13 @@ sortBetaFileByCoordinates <- function(beta_file,
         reasons[exceed_pval] <- "pval>max_pval (corrected)"
         failing_groups[exceed_pval] <- g
     }
-
+    ret <- data.frame(
+        connected = connected,
+        pval = pvals,
+        reason = reasons,
+        failing_group = failing_groups,
+        stringsAsFactors = FALSE
+    )
     # Vectorized delta beta check if needed
     if (!is.null(casecontrol) && min_delta_beta > 0) {
         # Extract site2 beta values for all pairs
@@ -738,16 +742,9 @@ sortBetaFileByCoordinates <- function(beta_file,
         low_delta <- (is.na(delta_betas) | abs(delta_betas) < min_delta_beta) & connected
         connected[low_delta] <- FALSE
         reasons[low_delta] <- "delta_beta<min_delta_beta"
+        ret[["delta_beta"]] <- delta_betas
     }
-    ret <- data.frame(
-        connected = connected,
-        pval = pvals,
-        delta_beta = delta_betas,
-        reason = reasons,
-        failing_group = failing_groups,
-        stop_reason = stop_reasons,
-        stringsAsFactors = FALSE
-    )
+
     ret
 }
 
@@ -1368,6 +1365,16 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 aggfun = aggfun
             )
             stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
+            if (verbose >= 3) {
+                dir.create("debug", showWarnings = FALSE)
+                write.table(corr_ret,
+                    file = paste0("debug/dmp_connectivity_chr", chr, ".tsv"),
+                    sep = "\t",
+                    row.names = FALSE,
+                    col.names = TRUE,
+                    quote = FALSE
+                )
+            }
             .log_success("DMP connectivity tested.", level = 3)
             breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
 
@@ -1505,6 +1512,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 expansion_relaxation = expansion_relaxation,
                 min_cpg_delta_beta = min_cpg_delta_beta,
                 sorted_locs = sorted_locs,
+                max_lookup_dist = max_lookup_dist,
                 aggfun = aggfun
             )
             options(warn = op)
