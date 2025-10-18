@@ -1512,7 +1512,11 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     extended_dmrs$sup_cpgs_num <- extended_dmrs$end_ind - extended_dmrs$start_ind + 1
 
     extended_dmrs$id <- paste0(extended_dmrs$chr, ":", extended_dmrs$start, "-", extended_dmrs$end)
-    extended_dmrs <- GenomicRanges::makeGRangesFromDataFrame(
+    .log_success("Extended DMRs formed: ", length(extended_dmrs), level = 1)
+
+    .log_step("Finding GC content of DMRs..", level = 1)
+
+    extended_dmrs_ranges <- GenomicRanges::makeGRangesFromDataFrame(
         extended_dmrs,
         keep.extra.columns = TRUE,
         ignore.strand = TRUE,
@@ -1520,11 +1524,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     )
-    .log_success("Extended DMRs formed: ", length(extended_dmrs), level = 1)
-
-    .log_step("Finding GC content of DMRs..", level = 1)
-
-    sequences <- getDMRSequences(extended_dmrs, genome)
+    sequences <- getDMRSequences(extended_dmrs_ranges, genome)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "GC")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
 
