@@ -603,7 +603,7 @@ convertBetaToTabix <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #' }
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
     array <- match.arg(array)
     genome <- match.arg(genome)
     array <- tolower(array)

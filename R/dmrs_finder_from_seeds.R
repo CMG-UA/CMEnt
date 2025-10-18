@@ -1580,7 +1580,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     .log_step("Finding GC content of DMRs..", level = 1)
 
-    ret <- getDMRSequences(genome, extended_dmrs)
+    ret <- getDMRSequences(extended_dmrs, genome)
     extended_dmrs_lifted_over <- ret$dmrs
     sequences <- ret$sequences
     extended_dmrs_lifted_over <- as.data.frame(extended_dmrs_lifted_over)
