@@ -740,10 +740,6 @@ orderByLoc <- function(x,
 #'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
 #' }
 #'
-#' For hg38 and mm39, the function performs liftOver from hg19 and mm10
-#' respectively before sequence extraction. The lifted-over coordinates are
-#' returned in the `dmrs` element of the result list.
-#'
 #' If the required BSgenome package is not installed, the function will
 #' attempt to install it automatically using BiocManager.
 #'

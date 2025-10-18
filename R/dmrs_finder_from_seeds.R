@@ -1581,10 +1581,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     .log_step("Finding GC content of DMRs..", level = 1)
 
     sequences <- getDMRSequences(extended_dmrs, genome)
-    extended_dmrs_lifted_over$cpgs_num <- stringr::str_count(sequences, "GC")
-    extended_dmrs <- merge(extended_dmrs, extended_dmrs_lifted_over[, c("id", "cpgs_num")], by = "id")
+    extended_dmrs$cpgs_num <- stringr::str_count(sequences, "GC")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
-
 
     extended_dmrs[extended_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
 
