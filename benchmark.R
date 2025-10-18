@@ -84,6 +84,8 @@ profvis({
         sample_group_col = "group",
         min_dmps = 2,
         min_cpgs = 3,
+        max_lookup_dist = 1000,
+        expansion_relaxation=1,
         njobs = 1,
         verbose = 2
       )
@@ -170,6 +172,14 @@ gr_segal <- dmrs_segal
 gr_dmrcate <- dmrs_dmrcate
 gr_bumphunter <- dmrs_bumphunter
 
+intersection <- function(gr1, gr2) {
+    sum(width(GenomicRanges::intersect(gr1, gr2)))
+}
+
+smallest_width <- function(gr1, gr2) {
+    pmin(sum(width(gr1)), sum(width(gr2)))
+}
+
 # IoU metric
 iou <- function(gr1, gr2) {
     intersection <- sum(width(GenomicRanges::intersect(gr1, gr2)))
@@ -182,6 +192,12 @@ iou <- function(gr1, gr2) {
 overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
 overlap_segal_bumphunter <- length(subsetByOverlaps(gr_segal, gr_bumphunter))
 overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter))
+# Calculate intersection over smallest width
+intersection_segal_dmrcate <- intersection(gr_segal, gr_dmrcate) / smallest_width(gr_segal, gr_dmrcate)
+intersection_segal_bumphunter <- intersection(gr_segal, gr_bumphunter) / smallest_width(gr_segal, gr_bumphunter)
+intersection_dmrcate_bumphunter <- intersection(gr_dmrcate, gr_bumphunter) / smallest_width(gr_dmrcate, gr_bumphunter)
+
+
 iou_segal_dmrcate <- iou(gr_segal, gr_dmrcate)
 iou_segal_bumphunter <- iou(gr_segal, gr_bumphunter)
 iou_dmrcate_bumphunter <- iou(gr_dmrcate, gr_bumphunter)
@@ -234,3 +250,5 @@ ggplot() +
     scale_x_discrete(limits=rev) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(file.path(benchmark_output_dir,"dmr_overlap_heatmap.png"), width=6, height=5)

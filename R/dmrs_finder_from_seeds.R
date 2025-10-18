@@ -28,7 +28,7 @@
 #' @param expansion_step Distance in bp to expand regions during search (default: 500)
 #' @param expansion_relaxation Relaxation parameter for region expansion (default: 0)
 #' @param array Array platform, either "450K" or "EPIC" (default: c("450K", "EPIC"))
-#' @param genome Reference genome, "hg19" or "hg38" (default: c("hg19", "hg38"))
+#' @param genome Reference genome, "hg19" or "hg38" (default: c("hg19", "hg38", "mm10"))
 #' @param max_pval Maximum p-value threshold for DMPs (default: 0.05)
 #' @param max_lookup_dist Maximum distance for region expansion in bp (default: 10000)
 #' @param min_dmps Minimum number of DMPs required per region (default: 1)
@@ -48,6 +48,8 @@
 #'   \item mean_delta_beta: Mean methylation difference
 #'   \item max_delta_beta: Maximum methylation difference
 #'   \item min_pval: Minimum p-value of DMPs in region
+#'   \item promoter_genes: Gene symbols with promoters overlapping the DMR (comma-separated)
+#'   \item gene_body_genes: Gene symbols with gene bodies overlapping the DMR (comma-separated)
 #' }
 #'
 #' @examples
@@ -71,7 +73,7 @@
 #' )
 #' }
 #'
-#' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame
+#' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame findOverlaps
 #' @importFrom future.apply future_lapply
 #' @importFrom future availableCores
 #' @importFrom progressr progressor
@@ -87,8 +89,9 @@
 #' @importFrom GenomeInfoDb Seqinfo
 #' @importFrom utils write.table read.table
 #' @importFrom tools file_ext file_path_sans_ext
-#' @import IlluminaHumanMethylation450kanno.ilmn12.hg19
-#' @import IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+#' @importFrom GenomicFeatures genes promoters
+#' @importFrom AnnotationDbi mapIds
+#' @importFrom S4Vectors queryHits subjectHits
 #' @export
 
 # Helper functions for progress tracking with temporary files
@@ -139,7 +142,8 @@
 #'
 #' @param beta_file Character. Path to the input beta values file to be sorted
 #' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
-#' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
+#' @param array Character. Array platform type (default: "450K")
+#' @param genome Character. Genome version (default: "hg19")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
 #' @param verbose Logical. Whether to print progress messages (default: TRUE)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
@@ -174,11 +178,11 @@
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
-                                      array = c("450K", "EPIC"),
+                                      array = "450K",
+                                      genome = "hg19",
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
     # Validate inputs
-    array <- match.arg(array)
     if (!file.exists(beta_file)) {
         stop("Beta file does not exist: ", beta_file)
     }
@@ -210,7 +214,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
-        sorted_locs <- getSortedGenomicLocs(array = array)
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 
 
@@ -882,8 +886,8 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param expansion_relaxation Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.
-#' @param array Character. Type of array used ("450K" or "EPIC"). Default is "450K".
-#' @param genome Character. Genome version ("hg19" or "hg38"). Default is "hg19".
+#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
@@ -911,8 +915,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               min_cpg_delta_beta = 0,
                               expansion_step = 500,
                               expansion_relaxation = 0,
-                              array = c("450K", "EPIC"),
-                              genome = c("hg19", "hg38"),
+                              array = "450K",
+                              genome = "hg19",
                               max_pval = 0.05,
                               max_lookup_dist = 10000,
                               min_dmps = 1,
@@ -1033,7 +1037,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
         # If file wasn't loaded into memory, try tabix conversion
         if (is.null(beta_file_in_memory)) {
-            sorted_locs <- getSortedGenomicLocs(array = array)
+            sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
 
             # Attempt conversion - will use cache directory by default
             converted_tabix <- convertBetaToTabix(
@@ -1172,8 +1176,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             paste(colnames(dmps_tsv), collapse = ",")
         )
     }
-    sorted_locs <- getSortedGenomicLocs(array = array)
-    dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genomic_locs = sorted_locs), , drop = FALSE]
+    sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+    dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genome = genome, genomic_locs = sorted_locs), , drop = FALSE]
 
     dmps <- unique(dmps_tsv[, dmps_tsv_id_col])
     # Filter DMPs not present in array annotation first (prevents NA logical indices later)
@@ -1194,18 +1198,18 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         missing_in_beta <- dmps[!(dmps %in% beta_row_names)]
         stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing_in_beta, collapse = ","))
     }
-    dmps <- dmps[orderByLoc(dmps, genomic_locs = sorted_locs)]
+    dmps <- dmps[orderByLoc(dmps, genome = genome, genomic_locs = sorted_locs)]
     .log_step("Validating beta file sorting by position...", level = 2)
 
     if (is.null(beta_file_in_memory)) {
         # Do not sort large beta files, just validate they are sorted
-        if (!all(beta_row_names[orderByLoc(beta_row_names, genomic_locs = sorted_locs)] == beta_row_names)) {
+        if (!all(beta_row_names[orderByLoc(beta_row_names, genome = genome, genomic_locs = sorted_locs)] == beta_row_names)) {
             stop("Provided beta file is not sorted by position!")
         }
     } else {
         # Sort in-memory beta data if available
-        beta_file_in_memory <- beta_file_in_memory[orderByLoc(rownames(beta_file_in_memory), genomic_locs = sorted_locs), , drop = FALSE]
-        rownames(beta_file_in_memory) <- beta_row_names[orderByLoc(beta_row_names, genomic_locs = sorted_locs)]
+        beta_file_in_memory <- beta_file_in_memory[orderByLoc(rownames(beta_file_in_memory), genome = genome, genomic_locs = sorted_locs), , drop = FALSE]
+        rownames(beta_file_in_memory) <- beta_row_names[orderByLoc(beta_row_names, genome = genome, genomic_locs = sorted_locs)]
     }
 
     .log_step("Subsetting beta matrix for DMPs...", level = 2)
@@ -1377,12 +1381,15 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             }
             .log_success("DMP connectivity tested.", level = 3)
             breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
-
             for (bp_ind in seq_len(length(breakpoints) - 1)) {
                 start_ind <- breakpoints[bp_ind]
                 end_ind <- breakpoints[bp_ind + 1]
-                .log_step("Registering ", bp_ind, "/", (length(breakpoints)-1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
-                dmr_dmps_inds <- seq.int(start_ind, end_ind)
+                if (end_ind - start_ind < min_dmps) {
+                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind, " < ", min_dmps, ").", level = 3)
+                    next
+                }
+                .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
+                dmr_dmps_inds <- seq.int(start_ind, end_ind - 1)
                 if (end_ind == start_ind) {
                     corr_pval <- NA
                 } else {
@@ -1436,13 +1443,15 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                     dmr_list[[length(dmr_list) + 1]] <- new_dmr
                 }
                 .log_success("DMR registered.",
-                        level = 3
-                    )
+                    level = 3
+                )
             }
             if (verbose > 0 && exists("p_con")) p_con()
             dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
-            if (nrow(dmrs)) rownames(dmrs) <- seq_len(nrow(dmrs))
-            dmrs[, "chr"] <- chr
+            if (nrow(dmrs)) {
+                rownames(dmrs) <- seq_len(nrow(dmrs))
+                dmrs[, "chr"] <- chr
+            }
             options(warn = op)
             dmrs
         }
@@ -1453,9 +1462,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         stop(ret)
     }
     dmrs <- as.data.frame(do.call(rbind, ret))
-    .log_info("Initial DMRs formed (pre-filtering): ", nrow(dmrs), level = 1)
     .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
-    dmrs <- dmrs[dmrs$dmps_num >= min_dmps, , drop = FALSE]
     if (nrow(dmrs) == 0) {
         .log_warn("No DMRs remain after filtering based on connected DMP number.")
         if (!is.null(output_prefix)) {
@@ -1571,24 +1578,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     .log_step("Finding GC content of DMRs..", level = 1)
 
-    if (genome == "hg19") {
-        library(BSgenome.Hsapiens.UCSC.hg19)
-        hsapiens <- BSgenome.Hsapiens.UCSC.hg19
-        extended_dmrs_lifted_over <- extended_dmrs
-    } else if (genome == "hg38") {
-        library(BSgenome.Hsapiens.UCSC.hg38)
-        hsapiens <- BSgenome.Hsapiens.UCSC.hg38
-        library(rtracklayer)
-        path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
-        chain <- import.chain(path)
-        extended_dmrs_lifted_over <- liftOver(extended_dmrs, chain)
-    }
-
-    sequences <- getSeq(hsapiens, extended_dmrs_lifted_over, as.character = TRUE)
-    # Convert sequences to character vector if needed
-    if (is.list(sequences)) {
-        sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
-    }
+    ret <- getDMRSequences(genome, extended_dmrs)
+    extended_dmrs_lifted_over <- ret$dmrs
+    sequences <- ret$sequences
     extended_dmrs_lifted_over <- as.data.frame(extended_dmrs_lifted_over)
     extended_dmrs_lifted_over$cpgs_num <- stringr::str_count(sequences, "GC")
     extended_dmrs <- merge(extended_dmrs, extended_dmrs_lifted_over[, c("id", "cpgs_num")], by = "id")
@@ -1631,6 +1623,14 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     dmrs <- dmrs[stringr::str_order(dmrs[, "id"], numeric = TRUE), ]
     .log_success("Merging done.", level = 2)
     .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
+    dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
+        dmrs,
+        keep.extra.columns = TRUE,
+        seqnames.field = "chr",
+        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
+        na.rm = TRUE
+    )
+
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..")
@@ -1647,9 +1647,5 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         close(gz)
         .log_success("DMRs saved.")
     }
-    invisible(GenomicRanges::makeGRangesFromDataFrame(dmrs,
-        keep.extra.columns = TRUE,
-        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
-        na.rm = TRUE
-    ))
+    invisible(dmrs_granges)
 }

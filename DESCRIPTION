@@ -45,9 +45,9 @@ Imports:
     progressr,
     minfi,
     bedr,
-    BSgenome.Hsapiens.UCSC.hg19,
-    IlluminaHumanMethylation450kanno.ilmn12.hg19,
-    IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+    AnnotationHub,
+    AnnotationDbi,
+    GenomicFeatures,
 Suggests: 
     knitr,
     rmarkdown,
@@ -62,7 +62,17 @@ Suggests:
     microbenchmark,
     minfiData,
     ggplot2,
-    ggnewscale
+    ggnewscale,
+    TxDb.Hsapiens.UCSC.hg19.knownGene,
+    TxDb.Hsapiens.UCSC.hg38.knownGene,
+    TxDb.Mmusculus.UCSC.mm10.knownGene,
+    TxDb.Mmusculus.UCSC.mm39.knownGene,
+    BSgenome.Hsapiens.UCSC.hg19,
+    BSgenome.Hsapiens.UCSC.hg38,
+    BSgenome.Mmusculus.UCSC.mm10,
+    BSgenome.Mmusculus.UCSC.mm39,
+    org.Hs.eg.db,
+    org.Mm.eg.db
 Additional_repositories: 
     https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3

@@ -12,21 +12,22 @@ findDMRsFromSeeds(
   dmps_file = NULL,
   pheno = NULL,
   dmps_tsv_id_col = NULL,
-  dmp_groups_info = NULL,
   pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
   dmp_group_col = NULL,
+  dmp_groups_info = NULL,
   casecontrol_col = "casecontrol",
   min_cpg_delta_beta = 0,
   expansion_step = 500,
   expansion_relaxation = 0,
-  array = c("450K", "EPIC"),
-  genome = c("hg19", "hg38"),
+  array = "450K",
+  genome = "hg19",
   max_pval = 0.05,
   max_lookup_dist = 10000,
   min_dmps = 1,
   min_adj_dmps = 1,
   min_cpgs = 50,
+  aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = future::availableCores(),
@@ -44,13 +45,13 @@ findDMRsFromSeeds(
 
 \item{dmps_tsv_id_col}{Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.}
 
-\item{dmp_groups_info}{Named list. Required when \code{dmps_tsv_id_col} is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.}
-
 \item{pval_col}{Character. Column name for p-values in the DMPs file. Default is "pval_adj".}
 
 \item{sample_group_col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
 
 \item{dmp_group_col}{Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.}
+
+\item{dmp_groups_info}{Named list. Required when \code{dmp_group_col} is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.}
 
 \item{casecontrol_col}{Character. Column name for case-control information in the phenotype data. Default is "casecontrol".}
 
@@ -58,11 +59,11 @@ findDMRsFromSeeds(
 
 \item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 
-\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significanly correlated, to increase the extended DMR size. Default is 0.}
+\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.}
 
-\item{array}{Character. Type of array used ("450K" or "EPIC"). Default is "450K".}
+\item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.}
 
-\item{genome}{Character. Genome version ("hg19" or "hg38"). Default is "hg19".}
+\item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
 
@@ -73,6 +74,8 @@ findDMRsFromSeeds(
 \item{min_adj_dmps}{Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.}
 
 \item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+
+\item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
 
 \item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
 
@@ -94,6 +97,8 @@ A GRanges object containing identified DMRs with metadata columns:
 \item mean_delta_beta: Mean methylation difference
 \item max_delta_beta: Maximum methylation difference
 \item min_pval: Minimum p-value of DMPs in region
+\item promoter_genes: Gene symbols with promoters overlapping the DMR (comma-separated)
+\item gene_body_genes: Gene symbols with gene bodies overlapping the DMR (comma-separated)
 }
 
 Data frame of identified DMRs.

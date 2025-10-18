@@ -284,6 +284,8 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     )
 }
 
+
+
 .readSamplesheet <- function(samplesheet_file,
                              samplesheet_file_sep,
                              sample_group_col,
@@ -568,13 +570,58 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
     ret
 }
 
+#' Get Array Annotation from AnnotationHub
+#'
+#' @description Internal function to retrieve Illumina methylation array annotations
+#' from AnnotationHub. Dynamically queries available annotations and caches results.
+#'
+#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10")
+#' @param annotation_id Character. Optional specific AnnotationHub ID to use
+#'
+#' @return The annotation object containing Locations and other metadata
+#'
+#' @keywords internal
+.getArrayAnnotation <- function(array = "", genome = "hg19", annotation_id = NULL) {
+    pkg_name <- NULL
+    if (tolower(array) == "450k" && tolower(genome) == "hg19") {
+        pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
+    } else if (tolower(array) == "epic" && tolower(genome) == "hg19") {
+        pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
+    } else if (tolower(array) == "epicv2" && tolower(genome) == "hg38") {
+        pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
+    } else if (tolower(array) == "27k" && tolower(genome) == "hg19") {
+        pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
+    } else if (tolower(genome) == "mm10") {
+        pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
+        if (!require(devtools)) install.packages("devtools")
+        devtools::install_github(pkg_name)
+    }
+    if (pkg_name == NULL) {
+        stop("Unsupported array/genome combination: ", array, "/", genome)
+    }
+    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        message("Installing required annotation package: ", pkg_name)
+        BiocManager::install(pkg_name)
+    }
+
+    pkg_env <- loadNamespace(pkg_name)
+    # Most annotation packages export an object with the same name
+    if (exists(pkg_name, pkg_env)) {
+        return(get(pkg_name, pkg_env))
+    }
+}
+
 #' Get Sorted Genomic Locations for Array Platform
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
-#' methylation array platform (450K or EPIC). The locations are sorted by
-#' chromosome and position to ensure proper genomic ordering.
+#' methylation array platform. Supports any array type available in AnnotationHub
+#' including 450K, EPIC, EPICv2, 27K, and others.
 #'
-#' @param array Character. Array platform type, either "450K" or "EPIC"
+#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K")
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default: "hg19"
+#' @param annotation_id Character. Optional specific AnnotationHub ID to use instead
+#'   of array/genome combination. Use listAvailableAnnotations() to find IDs.
 #'
 #' @return A data frame containing sorted genomic locations with columns:
 #' \itemize{
@@ -586,25 +633,84 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = c("450K", 
 #'
 #' @examples
 #' \dontrun{
-#' # Get sorted locations for 450K array
+#' # Get sorted locations for 450K array (hg19)
 #' locs_450k <- getSortedGenomicLocs("450K")
 #'
-#' # Get sorted locations for EPIC array
-#' locs_epic <- getSortedGenomicLocs("EPIC")
+#' # Get sorted locations for EPIC array with hg38
+#' locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
+#'
+#' # Get sorted locations for EPICv2 array
+#' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
+#'
+#' # Use a specific annotation ID
+#' locs_specific <- getSortedGenomicLocs(annotation_id = "AH5086")
+#'
+#' # List all available annotations first
+#' avail <- listAvailableAnnotations()
 #' }
 #'
 #' @export
-getSortedGenomicLocs <- function(array) {
-    if (array == "450K") {
-        sorted_locs <- IlluminaHumanMethylation450kanno.ilmn12.hg19::Locations
-    } else if (array == "EPIC") {
-        sorted_locs <- IlluminaHumanMethylationEPICanno.ilm10b4.hg19::Locations
-    } else {
-        stop("Unknown array type: ", array)
+getSortedGenomicLocs <- function(array = NULL, genome = "hg19", annotation_id = NULL) {
+    if (is.null(annotation_id) && is.null(array)) {
+        stop("Either 'array' or 'annotation_id' must be provided")
     }
+
+    anno <- .getArrayAnnotation(array, genome, annotation_id)
+
+    # Extract Locations - try multiple approaches
+    sorted_locs <- NULL
+
+    # Method 1: Try minfi::getLocations for IlluminaMethylationAnnotation objects
+    if (requireNamespace("minfi", quietly = TRUE) && methods::is(anno, "IlluminaMethylationAnnotation")) {
+        tryCatch(
+            {
+                locs_gr <- minfi::getLocations(anno)
+                if (methods::is(locs_gr, "GRanges")) {
+                    sorted_locs <- as.data.frame(locs_gr)
+                    colnames(sorted_locs)[colnames(sorted_locs) == "seqnames"] <- "chr"
+                    colnames(sorted_locs)[colnames(sorted_locs) == "start"] <- "pos"
+                    sorted_locs$end <- sorted_locs$pos + 1
+                    rownames(sorted_locs) <- names(locs_gr)
+                }
+            },
+            error = function(e) {
+                # Continue to next method
+            }
+        )
+    }
+
+    # Method 2: Direct access to Locations slot/element
+    if (is.null(sorted_locs)) {
+        if (methods::isS4(anno) && methods::slotNames(anno) %in% "Locations") {
+            sorted_locs <- methods::slot(anno, "Locations")
+        } else if (is.list(anno) && "Locations" %in% names(anno)) {
+            sorted_locs <- anno$Locations
+        }
+    }
+
+    # Method 3: Try accessing annotation data from package namespace
+    if (is.null(sorted_locs) && is.environment(anno)) {
+        if (exists("Locations", anno)) {
+            sorted_locs <- get("Locations", anno)
+        }
+    }
+
+    if (is.null(sorted_locs)) {
+        stop("Could not extract Locations from annotation object for array=", array, " genome=", genome)
+    }
+
+    # Ensure we have required columns
+    if (!all(c("chr", "pos") %in% colnames(sorted_locs))) {
+        stop("Locations object missing required columns 'chr' and 'pos'")
+    }
+
     sorted_locs <- sorted_locs[str_order(paste0(sorted_locs[, "chr"], ":", sorted_locs[, "pos"]), numeric = TRUE), ]
-    sorted_locs[, "start"] <- sorted_locs[, "pos"]
-    sorted_locs[, "end"] <- sorted_locs[, "pos"] + 1
+    if (!"start" %in% colnames(sorted_locs)) {
+        sorted_locs[, "start"] <- sorted_locs[, "pos"]
+    }
+    if (!"end" %in% colnames(sorted_locs)) {
+        sorted_locs[, "end"] <- sorted_locs[, "pos"] + 1
+    }
     sorted_locs
 }
 
@@ -616,6 +722,7 @@ getSortedGenomicLocs <- function(array) {
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
 #' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
+#' @param genome Character. Genome version, either "hg19" or "hg38" (default: "hg19")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #'
@@ -628,14 +735,287 @@ getSortedGenomicLocs <- function(array) {
 #' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
 #'
 #' # Order using pre-computed genomic locations
-#' locs <- getSortedGenomicLocs("EPIC")
+#' locs <- getSortedGenomicLocs("EPIC", "hg38")
 #' ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
 #' }
 #'
 #' @export
-orderByLoc <- function(x, array = "450K", genomic_locs = NULL) {
+orderByLoc <- function(x, array = "450K", genome = "hg19", genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
-        genomic_locs <- getSortedGenomicLocs(array)
+        genomic_locs <- getSortedGenomicLocs(array, genome)
     }
     str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
+}
+
+#' Extract DNA Sequences for DMRs
+#'
+#' @description Retrieves the DNA sequences corresponding to genomic regions
+#' specified in a GRanges object. This function is useful for extracting the
+#' actual DNA sequence of identified DMRs for downstream analyses such as
+#' motif finding or sequence composition analysis.
+#'
+#' @param dmrs GRanges object containing genomic coordinates of DMRs
+#' @param genome Character. Genome version to use for sequence extraction.
+#'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
+#'
+#' @return A list with two elements:
+#' \itemize{
+#'   \item dmrs: GRanges object with the (possibly lifted-over) DMR coordinates
+#'   \item sequences: Character vector containing DNA sequences for each DMR
+#' }
+#'
+#' @details
+#' The function uses genome-appropriate BSgenome packages:
+#' \itemize{
+#'   \item hg19: BSgenome.Hsapiens.UCSC.hg19
+#'   \item hg38: BSgenome.Hsapiens.UCSC.hg38
+#'   \item mm10: BSgenome.Mmusculus.UCSC.mm10
+#'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
+#' }
+#'
+#' For hg38 and mm39, the function performs liftOver from hg19 and mm10
+#' respectively before sequence extraction. The lifted-over coordinates are
+#' returned in the `dmrs` element of the result list.
+#'
+#' If the required BSgenome package is not installed, the function will
+#' attempt to install it automatically using BiocManager.
+#'
+#' @examples
+#' \dontrun{
+#' # Extract sequences for DMRs
+#' result <- getDMRSequences(dmrs, "hg19")
+#' sequences <- result$sequences
+#' updated_dmrs <- result$dmrs
+#'
+#' # Use with hg38 (will perform liftOver from hg19)
+#' result_hg38 <- getDMRSequences(dmrs, "hg38")
+#'
+#' # Calculate GC content
+#' gc_content <- sapply(result$sequences, function(s) {
+#'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
+#' })
+#' }
+#'
+#' @importFrom BSgenome getSeq
+#' @importFrom rtracklayer import.chain liftOver
+#' @export
+getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
+    genome <- match.arg(genome)
+    if (genome == "hg19") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
+    } else if (genome == "hg38") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
+    } else if (genome == "mm10") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
+    } else if (genome == "mm39") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+    }
+    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        message("Installing required annotation package: ", pkg_name)
+        BiocManager::install(pkg_name)
+    }
+
+    if (genome == "hg38") {
+        path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
+        chain <- rtracklayer::import.chain(path)
+        dmrs <- rtracklayer::liftOver(dmrs, chain)
+    }
+    if (genome == "mm39") {
+        path <- system.file(package = "liftOver", "extdata", "mm10ToMm39.over.chain")
+        chain <- rtracklayer::import.chain(path)
+        dmrs <- rtracklayer::liftOver(dmrs, chain)
+    }
+
+    seq_db <- get(pkg_name, envir = asNamespace(pkg_name))
+    sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
+    # Convert sequences to character vector if needed
+    if (is.list(sequences)) {
+        sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
+    }
+    list(dmrs=dmrs, sequences=sequences)
+}
+
+#' Annotate DMRs with Gene Information
+#'
+#' @description Annotates DMRs with overlapping gene promoters and gene bodies
+#' using TxDb annotations. For each DMR, identifies genes whose promoters or
+#' gene bodies overlap with the DMR coordinates.
+#'
+#' @param dmrs Dataframe or GRanges object containing DMR coordinates
+#' @param genome Character. Genome version to use for gene annotation.
+#'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
+#' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
+#'   define promoter region (default: 2000)
+#' @param promoter_downstream Integer. Number of base pairs downstream of TSS
+#'   to define promoter region (default: 200)
+#'
+#' @return The input Dataframe/GRanges object with additional metadata columns:
+#' \itemize{
+#'   \item promoter_genes: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
+#'   \item gene_body_genes: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+#' }
+#'
+#' @details
+#' The function uses genome-appropriate TxDb packages:
+#' \itemize{
+#'   \item hg19: TxDb.Hsapiens.UCSC.hg19.knownGene
+#'   \item hg38: TxDb.Hsapiens.UCSC.hg38.knownGene
+#'   \item mm10: TxDb.Mmusculus.UCSC.mm10.knownGene
+#'   \item mm39: TxDb.Mmusculus.UCSC.mm39.knownGene
+#' }
+#'
+#' Gene symbols are retrieved from the appropriate org.*.eg.db package.
+#' Multiple overlapping genes are concatenated with commas.
+#'
+#' @examples
+#' \dontrun{
+#' # Annotate DMRs with gene information
+#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
+#'
+#' # Use custom promoter definition
+#' dmrs_annotated <- annotateDMRsWithGenes(
+#'     dmrs,
+#'     genome = "hg38",
+#'     promoter_upstream = 5000,
+#'     promoter_downstream = 1000
+#' )
+#' }
+#'
+#' @export
+annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
+                                  promoter_upstream = 2000,
+                                  promoter_downstream = 200) {
+    dmrs_df_provided <- is.data.frame(dmrs)
+    if (dmrs_df_provided) {
+        dmrs <- GenomicRanges::makeGRangesFromDataFrame(dmrs,
+            keep.extra.columns = TRUE,
+            seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
+            na.rm = TRUE
+        )
+    }
+    # Select appropriate TxDb and org.db based on genome
+    txdb_pkg <- switch(genome,
+        "hg19" = "TxDb.Hsapiens.UCSC.hg19.knownGene",
+        "hg38" = "TxDb.Hsapiens.UCSC.hg38.knownGene",
+        "mm10" = "TxDb.Mmusculus.UCSC.mm10.knownGene",
+        "mm39" = "TxDb.Mmusculus.UCSC.mm39.knownGene",
+        stop("Unsupported genome: ", genome, ". Supported: hg19, hg38, mm10, mm39")
+    )
+
+    orgdb_pkg <- switch(genome,
+        "hg19" = "org.Hs.eg.db",
+        "hg38" = "org.Hs.eg.db",
+        "mm10" = "org.Mm.eg.db",
+        "mm39" = "org.Mm.eg.db",
+        stop("Unsupported genome: ", genome)
+    )
+
+    # Load required packages
+    if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
+        stop(
+            "Package '", txdb_pkg, "' is required but not installed. Please install it with:\n",
+            "  BiocManager::install('", txdb_pkg, "')"
+        )
+    }
+
+    if (!requireNamespace(orgdb_pkg, quietly = TRUE)) {
+        stop(
+            "Package '", orgdb_pkg, "' is required but not installed. Please install it with:\n",
+            "  BiocManager::install('", orgdb_pkg, "')"
+        )
+    }
+
+    if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
+        stop(
+            "Package 'GenomicFeatures' is required but not installed. Please install it with:\n",
+            "  BiocManager::install('GenomicFeatures')"
+        )
+    }
+
+    .log_step("Loading gene annotations for ", genome, "...", level = 1)
+
+    # Load TxDb
+    txdb <- get(sub("^.*\\.", "", txdb_pkg),
+        envir = asNamespace(txdb_pkg)
+    )
+
+    # Get genes and promoters
+    genes <- GenomicFeatures::genes(txdb)
+    promoters <- GenomicFeatures::promoters(txdb,
+        upstream = promoter_upstream,
+        downstream = promoter_downstream
+    )
+
+    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 1)
+    .log_step("Finding overlaps with promoters and gene bodies...", level = 1)
+
+    # Find overlaps
+    promoter_overlaps <- GenomicRanges::findOverlaps(dmrs, promoters)
+    gene_body_overlaps <- GenomicRanges::findOverlaps(dmrs, genes)
+
+    # Get gene symbols
+    orgdb <- get(sub("^.*\\.", "", orgdb_pkg),
+        envir = asNamespace(orgdb_pkg)
+    )
+
+    # Extract Entrez IDs
+    promoter_entrez <- names(promoters)[S4Vectors::subjectHits(promoter_overlaps)]
+    gene_body_entrez <- names(genes)[S4Vectors::subjectHits(gene_body_overlaps)]
+
+    # Convert Entrez IDs to symbols
+    promoter_symbols <- AnnotationDbi::mapIds(orgdb,
+        keys = promoter_entrez,
+        column = "SYMBOL",
+        keytype = "ENTREZID",
+        multiVals = "first"
+    )
+
+    gene_body_symbols <- AnnotationDbi::mapIds(orgdb,
+        keys = gene_body_entrez,
+        column = "SYMBOL",
+        keytype = "ENTREZID",
+        multiVals = "first"
+    )
+
+    # Initialize annotation columns
+    n_dmrs <- length(dmrs)
+    dmrs$promoter_genes <- rep(NA_character_, n_dmrs)
+    dmrs$gene_body_genes <- rep(NA_character_, n_dmrs)
+
+    # Aggregate gene symbols for each DMR
+    if (length(promoter_overlaps) > 0) {
+        promoter_by_dmr <- split(
+            promoter_symbols[as.character(promoter_entrez)],
+            S4Vectors::queryHits(promoter_overlaps)
+        )
+
+        for (i in names(promoter_by_dmr)) {
+            idx <- as.integer(i)
+            genes_vec <- unique(na.omit(promoter_by_dmr[[i]]))
+            if (length(genes_vec) > 0) {
+                dmrs$promoter_genes[idx] <- paste(genes_vec, collapse = ",")
+            }
+        }
+    }
+
+    if (length(gene_body_overlaps) > 0) {
+        gene_body_by_dmr <- split(
+            gene_body_symbols[as.character(gene_body_entrez)],
+            S4Vectors::queryHits(gene_body_overlaps)
+        )
+
+        for (i in names(gene_body_by_dmr)) {
+            idx <- as.integer(i)
+            genes_vec <- unique(na.omit(gene_body_by_dmr[[i]]))
+            if (length(genes_vec) > 0) {
+                dmrs$gene_body_genes[idx] <- paste(genes_vec, collapse = ",")
+            }
+        }
+    }
+    if (dmrs_df_provided) {
+        dmrs <- as.data.frame(dmrs)
+        colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
+    }
+    .log_success("Gene annotation complete", level = 1)
+    return(dmrs)
 }
