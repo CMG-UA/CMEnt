@@ -700,9 +700,10 @@ sortBetaFileByCoordinates <- function(beta_file,
         reasons[na_tstat] <- "na tstat"
         failing_groups[na_tstat] <- g
 
-        # Compute p-values (vectorized)
-        ps <- -2 * expm1(pt(abs(tstats), df = dfs, log.p = TRUE))
-        ps[!connected] <- NA_real_ # Don't use p-values for disconnected pairs
+        # Compute p-values (vectorized), only for the non-na and connected tstats
+        finite_tstat_and_connected <- !is.na(tstats) & connected
+        ps <- rep(NA_real_, n_pairs)
+        ps[finite_tstat_and_connected] <- -2 * expm1(pt(abs(tstats[finite_tstat_and_connected]), df = dfs[finite_tstat_and_connected], log.p = TRUE))
 
         na_p <- is.na(ps) & connected
         connected[na_p] <- FALSE
@@ -1360,18 +1361,24 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 max_pval = max_pval,
                 aggfun = aggfun
             )
+            stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
             .log_success("DMP connectivity tested.", level = 3)
             breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
+
             for (bp_ind in seq_len(length(breakpoints) - 1)) {
                 start_ind <- breakpoints[bp_ind]
                 end_ind <- breakpoints[bp_ind + 1]
-                .log_step("Registering DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
+                .log_step("Registering ", bp_ind, "/", (length(breakpoints)-1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
                 dmr_dmps_inds <- seq.int(start_ind, end_ind)
-                corr_pval <- aggfun(corr_ret$pvals[dmr_dmps_inds[-length(dmr_dmps_inds)]], na.rm = TRUE)
-                if (end_ind > length(cdmps)) {
-                    stop_reason <- "end of chromosome"
+                if (end_ind == start_ind) {
+                    corr_pval <- NA
                 } else {
+                    corr_pval <- aggfun(corr_ret$pval[dmr_dmps_inds[-length(dmr_dmps_inds)]], na.rm = TRUE)
+                }
+                if (end_ind < nrow(cdmps_beta) - 1) {
                     stop_reason <- corr_ret$reason[[end_ind]]
+                } else {
+                    stop_reason <- "end of chromosome"
                 }
                 for (dmp_group in unique_groups) {
                     gdmps_tsv <- gdmps_tsv_list[[dmp_group]]
