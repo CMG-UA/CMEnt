@@ -28,7 +28,7 @@
 #' @param beta_file Character. Path to the input beta values file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'pos' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
-#' @param array Character. Array platform type. Only used if  sorted_locs is NULL (default: "450K")
+#' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
 #' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
 #' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
 #'   directory in tempdir() with hash-based naming (default: NULL)
@@ -72,10 +72,15 @@
 #' }
 #'
 #' @export
-convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = "450K", genome = "hg19",
+convertBetaToTabix <- function(beta_file,
+                               sorted_locs = NULL,
+                               array = c("450K", "27K", "EPIC", "EPICv2"),
+                               genome = c("hg19", "hg38", "mm10", "mm39"),
                                output_file = NULL,
                                chunk_size = 50000,
                                verbose = TRUE) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
     # Get sorted locations if not provided
     if (is.null(sorted_locs)) {
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -577,7 +582,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = "450K", ge
 #'
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")
-#' 
+#'
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 #' \itemize{
 #'   \item chr: Chromosome
@@ -585,7 +590,7 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = "450K", ge
 #'   \item start: Start position (same as pos)
 #'   \item end: End position (pos + 1)
 #' }
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' # Get sorted locations for 450K array (hg19)
@@ -598,7 +603,9 @@ convertBetaToTabix <- function(beta_file, sorted_locs = NULL, array = "450K", ge
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #' }
 #' @export
-getSortedGenomicLocs <- function(array = "450K", genome = "hg19") {
+getSortedGenomicLocs <- function(array = c("450K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
     array <- tolower(array)
     genome <- tolower(genome)
     cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(path.expand("~"), ".cache", "DMRSegal", "annotations"))
@@ -701,7 +708,10 @@ getSortedGenomicLocs <- function(array = "450K", genome = "hg19") {
 #' }
 #'
 #' @export
-orderByLoc <- function(x, array = "450K", genome = "hg19", genomic_locs = NULL) {
+orderByLoc <- function(x,
+                       array = c("450K", "27K", "EPIC", "EPICv2"),
+                       genome = c("hg19", "hg38", "mm10", "mm39"),
+                       genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }

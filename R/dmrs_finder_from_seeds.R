@@ -178,10 +178,12 @@
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
-                                      array = "450K",
-                                      genome = "hg19",
+                                      array = c("450K", "27K", "EPIC", "EPICv2"),
+                                      genome = c("hg19", "hg38", "mm10", "mm39"),
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
     # Validate inputs
     if (!file.exists(beta_file)) {
         stop("Beta file does not exist: ", beta_file)
@@ -915,8 +917,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               min_cpg_delta_beta = 0,
                               expansion_step = 500,
                               expansion_relaxation = 0,
-                              array = "450K",
-                              genome = "hg19",
+                              array = c("450K", "27K", "EPIC", "EPICv2"),
+                              genome = c("hg19", "hg38", "mm10", "mm39"),
                               max_pval = 0.05,
                               max_lookup_dist = 10000,
                               min_dmps = 1,
