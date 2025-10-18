@@ -75,8 +75,6 @@ if (!file.exists(dmrsegal_file)){
       row.names = TRUE
   )
   # option(future.debug = TRUE)
-  library(profvis)
-profvis({
   dmrs_segal <- DMRSegal::findDMRsFromSeeds(
         beta_file = beta_file,
         dmps_file = dmps_file,
@@ -89,7 +87,6 @@ profvis({
         njobs = 1,
         verbose = 2
       )
-})
   saveRDS(dmrs_segal, dmrsegal_file)
   # Remove temporary files
   unlink(c(beta_file, dmps_file))

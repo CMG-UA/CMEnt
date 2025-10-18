@@ -1525,7 +1525,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         na.rm = TRUE
     )
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
-    extended_dmrs$cpgs_num <- stringr::str_count(sequences, "GC")
+    extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
 
     extended_dmrs[extended_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
@@ -1540,7 +1540,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         " out of ",
         nrow(extended_dmrs),
         " with at least ",
-        min_dmps,
+        min_adj_dmps,
         " (adjusted) supporting DMPs and ",
         min_cpgs,
         " contained CpGs.",
