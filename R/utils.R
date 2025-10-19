@@ -921,7 +921,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!"end" %in% colnames(locs)) {
         locs[, "end"] <- locs[, "pos"] + 1
     }
-    locs[locs[,"end"] == locs[,"start"], "end"] <- locs[locs[,"end"] == locs[,"start"], "end"] + 1
+    locs[locs[,"end"] == locs[,"start"], "end"] <- locs[locs[,"end"] == locs[,"start"], "start"] + 1
     saveRDS(locs, cache_file)
 
     locs
