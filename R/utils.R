@@ -550,8 +550,8 @@ convertBetaToTabix <- function(beta_file,
             # Create temporary BED file for writing chunks
             temp_bed <- tempfile(fileext = ".bed")
 
-            # Write header to temp BED file
-            bed_header <- c("chr", "start", "end", "name", col_names[-1])
+            # Write header to temp BED file with 6 mandatory BED columns
+            bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
             writeLines(paste(bed_header, collapse = "\t"), temp_bed)
 
             # Process file in chunks to avoid memory issues
@@ -588,14 +588,17 @@ convertBetaToTabix <- function(beta_file,
                 common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
 
                 if (length(common_cpgs) > 0) {
-                    # Create BED format for this chunk
+                    # Create BED format for this chunk with 6 mandatory columns
                     bed_chunk <- sorted_locs[common_cpgs, c("chr", "pos"), drop = FALSE]
                     bed_chunk$start <- bed_chunk$pos
                     bed_chunk$end <- bed_chunk$pos + 1
                     bed_chunk$name <- rownames(bed_chunk)
-                    bed_chunk <- bed_chunk[, c("chr", "start", "end", "name")]
+                    bed_chunk$id <- '.'  # Required BED column
+                    bed_chunk$score <- 0  # Required BED column
+                    bed_chunk$strand <- "*"  # Required BED column
+                    bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
-                    # Add beta values
+                    # Add beta values as additional columns
                     beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
                     bed_chunk <- cbind(bed_chunk, beta_subset)
 
@@ -650,7 +653,7 @@ convertBetaToTabix <- function(beta_file,
             if (verbose) {
                 .log_step("Creating tabix index...", level = 2)
             }
-            tabix_cmd <- sprintf("tabix -p bed %s", shQuote(output_file))
+            tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
             system(tabix_cmd)
 
             # Clean up temp files

@@ -65,6 +65,7 @@ Suggests:
     BiocStyle,
     SummarizedExperiment,
     testthat (>= 3.0.0),
+    mockery,
     covr,
     DMRcate,
     bumphunter,

@@ -342,6 +342,10 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                     self$tabix_file,
                     verbose = self$verbose > 1
                 )
+                # Remove BED columns (chr, start, end, name, score, strand) to get only beta values
+                # Columns 1-6 are BED format, 7+ are beta values
+                beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]
+                
                 if (!is.null(col_names)) {
                     beta_subset <- as.data.frame(sapply(beta_subset[, col_names, drop = FALSE], as.numeric))
                 } else {
