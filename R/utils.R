@@ -592,10 +592,9 @@ convertBetaToTabix <- function(beta_file,
                     bed_chunk <- sorted_locs[common_cpgs, c("chr", "pos"), drop = FALSE]
                     bed_chunk$start <- bed_chunk$pos
                     bed_chunk$end <- bed_chunk$pos + 1
-                    bed_chunk$name <- rownames(bed_chunk)
-                    bed_chunk$id <- '.'  # Required BED column
-                    bed_chunk$score <- 0  # Required BED column
-                    bed_chunk$strand <- "*"  # Required BED column
+                    bed_chunk$id <- rownames(bed_chunk)
+                    bed_chunk$score <- 0 
+                    bed_chunk$strand <- "*"
                     bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
                     # Add beta values as additional columns
@@ -753,7 +752,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         )
     }
 
-    .log_step("Reading beta file", beta_file)
+    .log_step("Reading beta file", beta_file, level = 1)
     # Read the beta file
     beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRSegal.verbose", 1) > 1)
 
@@ -761,7 +760,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     cpg_ids <- beta_data[[1]]
     beta_values <- beta_data[, -1, drop = FALSE]
     rownames(beta_values) <- cpg_ids
-    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples")
+    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples", level = 1)
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
@@ -797,7 +796,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         stringsAsFactors = FALSE
     )
 
-    .log_step("Writing sorted beta file", output_file)
+    .log_step("Writing sorted beta file", output_file, level=2)
 
     # Write sorted file
     data.table::fwrite(
