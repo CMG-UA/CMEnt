@@ -337,15 +337,16 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             } else {
                 .log_step("Subsetting from tabix file..", level = 2)
                 locs <- private$get_sorted_locs()[row_names, , drop = FALSE]
+                regions <- locs[, c("chr", "start", "end")]
+                regions[, "chr"] <- as.character(regions[, "chr"])
                 beta_subset <- bedr::tabix(
-                    as.data.frame(locs[, c("chr", "start", "end")]),
+                    regions,
                     self$tabix_file,
-                    verbose = self$verbose > 1
+                    self$verbose > 1
                 )
                 # Remove BED columns (chr, start, end, name, score, strand) to get only beta values
                 # Columns 1-6 are BED format, 7+ are beta values
                 beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]
-                
                 if (!is.null(col_names)) {
                     beta_subset <- as.data.frame(sapply(beta_subset[, col_names, drop = FALSE], as.numeric))
                 } else {

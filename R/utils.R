@@ -593,7 +593,7 @@ convertBetaToTabix <- function(beta_file,
                     bed_chunk$start <- bed_chunk$pos
                     bed_chunk$end <- bed_chunk$pos + 1
                     bed_chunk$id <- rownames(bed_chunk)
-                    bed_chunk$score <- 0 
+                    bed_chunk$score <- 0
                     bed_chunk$strand <- "*"
                     bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
@@ -921,6 +921,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!"end" %in% colnames(locs)) {
         locs[, "end"] <- locs[, "pos"] + 1
     }
+    locs[locs[,"end"] == locs[,"start"], "end"] <- locs[locs[,"end"] == locs[,"start"], "end"] + 1
     saveRDS(locs, cache_file)
 
     locs

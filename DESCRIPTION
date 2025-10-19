@@ -65,6 +65,7 @@ Suggests:
     BiocStyle,
     SummarizedExperiment,
     testthat (>= 3.0.0),
+    lazytest,
     mockery,
     covr,
     DMRcate,
@@ -85,6 +86,8 @@ Suggests:
     BSgenome.Mmusculus.UCSC.mm39,
     org.Hs.eg.db,
     org.Mm.eg.db
+Remotes:
+    cynkra/lazytest
 Additional_repositories: 
     https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3
