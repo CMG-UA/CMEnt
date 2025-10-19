@@ -2,10 +2,26 @@
 % Please edit documentation in R/dmrs_finder_from_seeds.R
 \name{findDMRsFromSeeds}
 \alias{findDMRsFromSeeds}
-\alias{.getBetaColNamesAndInds}
+\alias{.expandDMRs}
 \title{Find Differentially Methylated Regions (DMRs) from Pre-computed DMPs}
 \usage{
-.getBetaColNamesAndInds(beta_file, beta_col_names = NULL, is_tabix = FALSE)
+.expandDMRs(
+  dmr,
+  beta_file_handler,
+  beta_row_names,
+  beta_col_names,
+  sorted_locs,
+  max_pval,
+  min_cpg_delta_beta = 0,
+  casecontrol = NULL,
+  min_cpgs = 3,
+  expansion_step = 500,
+  expansion_relaxation = 0,
+  max_lookup_dist = 1e+07,
+  group_inds = NULL,
+  extreme_verbosity = FALSE,
+  aggfun = mean
+)
 
 findDMRsFromSeeds(
   beta_file = NULL,
@@ -31,12 +47,27 @@ findDMRsFromSeeds(
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = future::availableCores(),
+  memory_threshold_mb = 500,
   verbose = 1,
   beta_row_names_file = NULL,
   tabix_file = NULL
 )
 }
 \arguments{
+\item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
+
+\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
+
+\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+
+\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
+
+\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.}
+
+\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
+
+\item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
+
 \item{beta_file}{Character. Path to the beta value file. Either this or tabix_file must be provided.}
 
 \item{dmps_file}{Character. Path to the DMPs TSV file.}
@@ -55,33 +86,21 @@ findDMRsFromSeeds(
 
 \item{casecontrol_col}{Character. Column name for case-control information in the phenotype data. Default is "casecontrol".}
 
-\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
-
-\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
-
-\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.}
-
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.}
 
 \item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".}
 
-\item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
-
-\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
-
 \item{min_dmps}{Numeric. Minimum number of connected DMPs in a DMR. Default is 1.}
 
 \item{min_adj_dmps}{Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.}
-
-\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
-
-\item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
 
 \item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
 
 \item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
+
+\item{memory_threshold_mb}{Numeric. Memory threshold in MB for loading beta files. Default is 500.}
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
@@ -92,13 +111,17 @@ findDMRsFromSeeds(
 \value{
 A GRanges object containing identified DMRs with metadata columns:
 \itemize{
-\item n_cpgs: Number of CpGs in the region
-\item n_dmps: Number of DMPs in the region
-\item mean_delta_beta: Mean methylation difference
-\item max_delta_beta: Maximum methylation difference
-\item min_pval: Minimum p-value of DMPs in region
-\item promoter_genes: Gene symbols with promoters overlapping the DMR (comma-separated)
-\item gene_body_genes: Gene symbols with gene bodies overlapping the DMR (comma-separated)
+\item cpgs_num: Number of CpGs in the region
+\item dmps_num: Number of DMPs in the region
+\item delta_beta: Mean methylation difference (aggregated using the specified aggregation function)
+\item delta_beta_min: Minimum methylation difference
+\item delta_beta_max: Maximum methylation difference
+\item delta_beta_sd: Standard deviation of methylation differences
+\item pval_adj: Adjusted p-value (if available in DMPs file)
+\item cases_beta: Mean beta value in cases
+\item controls_beta: Mean beta value in controls
+\item start_dmp: ID of the first DMP in the region
+\item end_dmp: ID of the last DMP in the region
 }
 
 Data frame of identified DMRs.

@@ -1,15 +1,50 @@
-## ----setup, include=FALSE------------------------------------------------------------------------------------------------------
-knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
+---
+title: "Benchmarking DMRSegal Against Other Methods"
+author: "DMRSegal Package"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Benchmarking DMRSegal Against Other Methods}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = TRUE,
+  message = TRUE,
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 150
+)
+```
 
-## ----load_libraries------------------------------------------------------------------------------------------------------------
+## Introduction
+
+This vignette demonstrates how DMRSegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `minfiData` package to run all three methods and compare their results in terms of:
+
+- Number of DMRs detected
+- DMR size distribution
+- Overlap between methods
+- Selectivity and sensitivity metrics
+
+## Setup
+
+First, we'll set up the necessary directories and load required libraries:
+
+```{r load_libraries}
 library(progressr)
 progressr::handlers(global = TRUE)
 benchmark_output_dir <- "benchmark_data"
 dir.create(benchmark_output_dir, showWarnings = FALSE)
+```
 
+## Loading and Preparing Data
 
-## ----load_data-----------------------------------------------------------------------------------------------------------------
+We'll use the example methylation dataset from the `minfiData` package, which contains both normal and cancer samples:
+
+```{r load_data}
 library(minfi)
 # Get sample type information from MsetEx
 sample_types <- pData(minfiData::MsetEx)$Sample_Group
@@ -26,9 +61,13 @@ pheno <- data.frame(
 )
 pheno$group <- pheno$status
 pheno$casecontrol <- pheno$status == "cancer"
+```
 
+## Finding Differentially Methylated Positions (DMPs)
 
-## ----get_dmps------------------------------------------------------------------------------------------------------------------
+Before running DMR detection, we need to identify individual DMPs. All methods will use the same DMP set for consistency:
+
+```{r get_dmps}
 # Create design matrix for all methods to use consistently
 design <- model.matrix(~status, data = pheno)
 colnames(design) <- c("Intercept", "cancer_vs_normal")
@@ -40,22 +79,25 @@ dmps <- suppressWarnings(dmpFinder(mset,
   shrinkVar = TRUE
 ))
 dmps <- dmps[!is.na(dmps$pval), ]
-# Add delta beta to dmps results
+# Add adjusted p-value to dmps results
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
 # Filter significant DMPs
 sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
+cat(sprintf("Found %d significant DMPs (FDR < 0.05)\n", nrow(sig_dmps)))
+```
 
+## Running DMRSegal
 
-## ----dmrsegal------------------------------------------------------------------------------------------------------------------
+DMRSegal uses a seed-based approach, starting from significant DMPs and extending them into coherent regions:
 
+```{r dmrsegal}
 dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
 if (!file.exists(dmrsegal_file)) {
   library(DMRSegal)
   # Write beta values to temp file
   beta_file <- tempfile(fileext = ".txt")
   beta_mat <- getBeta(mset)
-
 
   write.table(
     cbind(ID = rownames(beta_mat), beta_mat),
@@ -76,7 +118,7 @@ if (!file.exists(dmrsegal_file)) {
     quote = FALSE,
     row.names = TRUE
   )
-  # option(future.debug = TRUE)
+
   library(progressr)
   progressr::handlers("cli")
 
@@ -97,30 +139,36 @@ if (!file.exists(dmrsegal_file)) {
   unlink(c(beta_file, dmps_file))
   detach("package:DMRSegal", unload = TRUE)
 }
+```
 
+## Running DMRcate
 
+DMRcate is a popular method that uses Gaussian kernel smoothing to identify DMRs:
 
-
-
-## ----dmrcate-------------------------------------------------------------------------------------------------------------------
+```{r dmrcate}
 dmrcate_file <- file.path(benchmark_output_dir, "dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)) {
   library(DMRcate)
   # DMRcate uses the same mset and design matrix as other methods
   M <- getM(mset)
 
-  myannotation <- cpg.annotate("array", M, what = "M", arraytype = "450K", analysis.type = "differential", design = design, coef = 2, fdr = 0.05)
+  myannotation <- cpg.annotate("array", M, what = "M", arraytype = "450K", 
+                                analysis.type = "differential", design = design, 
+                                coef = 2, fdr = 0.05)
 
   # Run DMRcate with the same p-value cutoff we used for DMPs
-
   dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000)
   dmrs_dmrcate <- extractRanges(dmrcate_results, genome = "hg19")
   saveRDS(dmrs_dmrcate, dmrcate_file)
   detach("package:DMRcate", unload = TRUE)
 }
+```
 
+## Running bumphunter
 
-## ----bumphunter----------------------------------------------------------------------------------------------------------------
+bumphunter uses permutation-based testing to identify regions with consistent methylation differences:
+
+```{r bumphunter}
 bumphunter_file <- file.path(benchmark_output_dir, "dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
   library(bumphunter)
@@ -140,9 +188,13 @@ if (!file.exists(bumphunter_file)) {
   dmrs_bumphunter <- makeGRangesFromDataFrame(bumphunter_results$table)
   saveRDS(dmrs_bumphunter, bumphunter_file)
 }
+```
 
+## Comparing Results
 
-## ----compare_results-----------------------------------------------------------------------------------------------------------
+Now let's load all results and compare them:
+
+```{r compare_results}
 # Function to get DMR stats
 get_dmr_stats <- function(dmrs, method) {
   data.frame(
@@ -168,11 +220,14 @@ stats_list <- list(
 
 # Combine stats
 results_comparison <- do.call(rbind, stats_list)
-print("Basic DMR Statistics:")
-knitr::kable(results_comparison, digits = 2)
+knitr::kable(results_comparison, digits = 2, caption = "Basic DMR Statistics")
+```
 
+## Overlap Analysis
 
-## ----overlap-------------------------------------------------------------------------------------------------------------------
+Let's examine how the DMRs from different methods overlap:
+
+```{r overlap}
 # Convert all results to GRanges
 gr_segal <- dmrs_segal
 gr_dmrcate <- dmrs_dmrcate
@@ -269,9 +324,14 @@ overlap_comparison <- data.frame(
   )
 )
 
-print("\nDetailed Overlap Analysis:")
-knitr::kable(overlap_comparison, digits = 2)
+knitr::kable(overlap_comparison, digits = 2, caption = "Detailed Overlap Analysis")
+```
 
+## Similarity Metrics
+
+We can quantify the similarity between methods using IoU (Intersection over Union) and Jaccard index:
+
+```{r similarity_metrics}
 # Create IoU and Jaccard comparison
 similarity_metrics <- data.frame(
   Method_Pair = c(
@@ -291,9 +351,14 @@ similarity_metrics <- data.frame(
   )
 )
 
-print("\nSimilarity Metrics:")
-knitr::kable(similarity_metrics, digits = 4)
+knitr::kable(similarity_metrics, digits = 4, caption = "Similarity Metrics")
+```
 
+## Specificity Analysis
+
+Let's analyze how specific DMRSegal is compared to other methods:
+
+```{r specificity}
 # Analyze specificity of DMRSegal
 specificity_analysis <- data.frame(
   Metric = c(
@@ -316,11 +381,14 @@ specificity_analysis <- data.frame(
   )
 )
 
-print("\nDMRSegal Specificity Analysis:")
-knitr::kable(specificity_analysis)
+knitr::kable(specificity_analysis, caption = "DMRSegal Specificity Analysis")
+```
 
+## Quality and Selectivity Metrics
 
-## ----quality_metrics-----------------------------------------------------------------------------------------------------------
+Finally, let's examine quality metrics that highlight DMRSegal's selective approach:
+
+```{r quality_metrics}
 # Additional quality metrics for DMRSegal's selective approach
 
 # Calculate the "capture rate" - what fraction of other methods' DMRs does DMRSegal capture
@@ -345,8 +413,15 @@ capture_metrics <- data.frame(
   )
 )
 
-print("\nQuality and Selectivity Metrics:")
-knitr::kable(capture_metrics, digits = 2)
+knitr::kable(capture_metrics, digits = 2, caption = "Quality and Selectivity Metrics")
+```
+
+## Visualizations
+
+Let's create some visualizations to better understand the differences between methods:
+
+```{r visualizations, message=FALSE}
+library(ggplot2)
 
 # Create visualization comparing method characteristics
 method_chars <- data.frame(
@@ -372,8 +447,10 @@ p1 <- ggplot(method_chars, aes(x = Method, y = Value, fill = Method)) +
     legend.position = "none"
   )
 
-ggsave(file.path(benchmark_output_dir, "method_comparison_bars.png"), plot = p1, width = 8, height = 5)
+print(p1)
+```
 
+```{r dmr_width_distribution}
 # Create box plot comparing DMR widths
 width_data <- data.frame(
   Method = c(
@@ -397,14 +474,35 @@ p2 <- ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
     legend.position = "none"
   )
 
-ggsave(file.path(benchmark_output_dir, "dmr_width_distribution.png"), plot = p2, width = 8, height = 5)
+print(p2)
+```
 
-print("\nSummary:")
+## Summary
+
+```{r summary, echo=FALSE, results='asis'}
 cat(sprintf(
-  "DMRSegal found %d DMRs compared to %d (DMRcate) and %d (Bumphunter)\n",
+  "- DMRSegal found **%d DMRs** compared to **%d (DMRcate)** and **%d (Bumphunter)**\n",
   length(gr_segal), length(gr_dmrcate), length(gr_bumphunter)
 ))
-cat(sprintf("%.1f%% of DMRSegal DMRs overlap with DMRcate\n", pct_segal_in_dmrcate))
-cat(sprintf("%.1f%% of DMRSegal DMRs overlap with Bumphunter\n", pct_segal_in_bumphunter))
-cat(sprintf("DMRSegal is %.1fx more selective than DMRcate\n", length(gr_dmrcate) / length(gr_segal)))
-cat(sprintf("DMRSegal is %.1fx more selective than Bumphunter\n", length(gr_bumphunter) / length(gr_segal)))
+cat(sprintf("- **%.1f%%** of DMRSegal DMRs overlap with DMRcate\n", pct_segal_in_dmrcate))
+cat(sprintf("- **%.1f%%** of DMRSegal DMRs overlap with Bumphunter\n", pct_segal_in_bumphunter))
+cat(sprintf("- DMRSegal is **%.1fx more selective** than DMRcate\n", length(gr_dmrcate) / length(gr_segal)))
+cat(sprintf("- DMRSegal is **%.1fx more selective** than Bumphunter\n", length(gr_bumphunter) / length(gr_segal)))
+```
+
+## Interpretation
+
+DMRSegal's seed-based approach results in:
+
+1. **Higher selectivity**: DMRSegal identifies fewer, more confident DMRs compared to other methods
+2. **Focused regions**: The DMRs tend to be more compact and centered around strong differential methylation signals
+3. **Good overlap with other methods**: A substantial proportion of DMRSegal DMRs are validated by other methods
+4. **Complementary approach**: Some DMRSegal-specific regions may represent high-confidence findings missed by smoothing-based approaches
+
+These characteristics make DMRSegal particularly useful when you need high-confidence DMR calls or want to prioritize regions for follow-up validation.
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

@@ -34,6 +34,7 @@ Imports:
     methods,
     stats,
     utils,
+    tools,
     data.table,
     psych,
     cli,
@@ -48,6 +49,14 @@ Imports:
     AnnotationHub,
     AnnotationDbi,
     GenomicFeatures,
+    GenomeInfoDb,
+    rtracklayer,
+    BSgenome,
+    R6,
+    ggplot2,
+    dplyr,
+    readr,
+    reshape2
 Suggests: 
     devtools,
     knitr,
@@ -55,15 +64,14 @@ Suggests:
     BiocStyle,
     testthat (>= 3.0.0),
     covr,
-    readr,
-    dplyr,
     DMRcate,
     bumphunter,
     ExperimentHub,
     microbenchmark,
     minfiData,
-    ggplot2,
     ggnewscale,
+    patchwork,
+    gridExtra,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     TxDb.Mmusculus.UCSC.mm10.knownGene,
@@ -80,7 +88,9 @@ Config/testthat/edition: 3
 Collate:
     'data.R'
     'utils.R'
+    'beta_file_handler.R'
     'dmrs_finder_from_seeds.R'
     'find_dmrs_from_seeds.R'
     'DMRSegal-package.R'
+    'plot_dmrs.R'
     'zzz.R'

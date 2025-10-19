@@ -18,274 +18,109 @@
     )
 }
 
-#' Convert Beta File to Tabix-Indexed Format
-#'
-#' @description Converts a methylation beta values file to a tabix-indexed BED format
-#' for faster random access during DMR analysis. The function uses a memory-efficient
-#' chunk-based approach to handle large files and automatically uses a cache directory
-#' to avoid redundant conversions of the same beta file.
-#'
-#' @param beta_file Character. Path to the input beta values file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'pos' columns.
-#'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
-#' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
-#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
-#' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
-#'   directory in tempdir() with hash-based naming (default: NULL)
-#' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
-#' @param verbose Logical. Whether to print progress messages (default: TRUE)
 
-#' @return Character. Path to the created tabix file, or NULL if conversion failed
-#'
-#' @details
-#' The function performs the following steps:
-#' \enumerate{
-#'   \item Checks if tabix and bgzip tools are available in the system PATH
-#'   \item Computes a hash of the input beta file for cache lookup
-#'   \item Checks if a cached tabix file exists; if so, returns it immediately
-#'   \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
-#'   \item Converts beta values to BED format with genomic coordinates
-#'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
-#'   \item Saves to cache directory for future reuse
-#' }
-#'
-#' The chunk-based processing ensures that even very large beta files (millions of CpGs)
-#' can be converted without running out of memory. The cache directory is located at
-#' \code{tempdir()/DMRSegal_tabix_cache/} and persists for the duration of the R session.
-#' Files are named based on the MD5 hash of the input beta file, ensuring that identical
-#' files reuse the same cached version.
-#'
-#' @examples
-#' \dontrun{
-#' # Convert a beta file to tabix format
-#' tabix_file <- convertBetaToTabix(
-#'     beta_file = "methylation_beta.txt",
-#'     array = "450K"
-#' )
-#'
-#' # Use custom output location
-#' tabix_file <- convertBetaToTabix(
-#'     beta_file = "methylation_beta.txt",
-#'     output_file = "my_custom_location.bed.gz",
-#'     array = "EPIC"
-#' )
-#' }
-#'
-#' @export
-convertBetaToTabix <- function(beta_file,
-                               sorted_locs = NULL,
-                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = c("hg19", "hg38", "mm10", "mm39"),
-                               output_file = NULL,
-                               chunk_size = 50000,
-                               verbose = TRUE) {
-    array <- match.arg(array)
-    genome <- match.arg(genome)
-    # Get sorted locations if not provided
-    if (is.null(sorted_locs)) {
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+
+.getBetaColNamesAndInds <- function(beta_file, beta_col_names = NULL, is_tabix = FALSE) {
+    if (endsWith(beta_file, "gz")) {
+        conn <- gzfile(beta_file, "r")
+    } else {
+        conn <- file(beta_file, "r")
     }
-    # Check if tabix/bgzip are available
-    tabix_available <- tryCatch(
-        {
-            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
-            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
-            TRUE
-        },
-        error = function(e) FALSE,
-        warning = function(w) FALSE
+    file_beta_col_names <- scan(conn,
+        sep = "\t",
+        what = character(),
+        nlines = 1,
+        quiet = TRUE
     )
-
-    if (!tabix_available) {
-        if (verbose) {
-            .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
-        }
-        return(NULL)
+    close(conn)
+    if (is_tabix) {
+        file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
     }
-
-    # Set default output file name - use cache directory
-    if (is.null(output_file)) {
-        # Create cache directory in temp folder
-        cache_dir <- file.path(tempdir(), "DMRSegal_tabix_cache")
-        dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-
-        # Compute hash of beta file
-        beta_hash <- .getFileHash(beta_file)
-
-        # Create cache filename based on hash
-        output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
-
-        # Check if tabix file already exists in cache
-        if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-            if (verbose) {
-                .log_info("Using cached tabix file: ", basename(output_file))
-            }
-            return(output_file)
-        }
-    }
-
-    if (verbose) {
-        .log_step("Converting beta file to tabix format...")
-    }
-
-    tryCatch(
-        {
-            # Read header to get column names
-            if (verbose) {
-                .log_step("Reading beta file header...", level = 2)
-            }
-
-            header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
-            header_line <- readLines(header_conn, n = 1)
-            close(header_conn)
-            col_names <- strsplit(header_line, "\t")[[1]]
-
-            # Get total number of rows for progress tracking
-            if (verbose) {
-                .log_step("Counting rows in beta file...", level = 2)
-            }
-
-            # Count lines efficiently
-            if (endsWith(beta_file, ".gz")) {
-                n_lines <- as.numeric(system(sprintf("zcat %s | wc -l", shQuote(beta_file)), intern = TRUE))
-            } else {
-                n_lines <- as.numeric(system(sprintf("wc -l < %s", shQuote(beta_file)), intern = TRUE))
-            }
-            n_rows <- n_lines - 1 # Exclude header
-
-            if (verbose) {
-                .log_info("Processing ", n_rows, " CpG sites...", level = 2)
-            }
-
-            # Create temporary BED file for writing chunks
-            temp_bed <- tempfile(fileext = ".bed")
-
-            # Write header to temp BED file
-            bed_header <- c("chr", "start", "end", "name", col_names[-1])
-            writeLines(paste(bed_header, collapse = "\t"), temp_bed)
-
-            # Process file in chunks to avoid memory issues
-
-            skip_rows <- 1 # Start after header
-            rows_processed <- 0
-
-            while (rows_processed < n_rows) {
-                if (verbose && getOption("DMRSegal.verbose", 1) > 1) {
-                    .log_info("Processing rows ", rows_processed + 1, " to ",
-                        min(rows_processed + chunk_size, n_rows), "...",
-                        level = 3
-                    )
-                }
-
-                # Read chunk
-                chunk_data <- data.table::fread(
-                    beta_file,
-                    header = FALSE,
-                    skip = skip_rows,
-                    nrows = chunk_size,
-                    data.table = FALSE,
-                    showProgress = FALSE
-                )
-
-                if (nrow(chunk_data) == 0) break
-
-                # Set column names
-                colnames(chunk_data) <- col_names
-
-                cpg_ids <- chunk_data[[1]]
-
-                # Match with genomic locations
-                common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
-
-                if (length(common_cpgs) > 0) {
-                    # Create BED format for this chunk
-                    bed_chunk <- sorted_locs[common_cpgs, c("chr", "pos"), drop = FALSE]
-                    bed_chunk$start <- bed_chunk$pos
-                    bed_chunk$end <- bed_chunk$pos + 1
-                    bed_chunk$name <- rownames(bed_chunk)
-                    bed_chunk <- bed_chunk[, c("chr", "start", "end", "name")]
-
-                    # Add beta values
-                    beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
-                    bed_chunk <- cbind(bed_chunk, beta_subset)
-
-                    # Append to temp BED file
-                    data.table::fwrite(
-                        bed_chunk,
-                        file = temp_bed,
-                        sep = "\t",
-                        quote = FALSE,
-                        row.names = FALSE,
-                        col.names = FALSE,
-                        append = TRUE
-                    )
-                }
-
-                rows_processed <- rows_processed + nrow(chunk_data)
-                skip_rows <- skip_rows + nrow(chunk_data)
-            }
-
-            if (verbose) {
-                .log_success("Processed ", rows_processed, " rows", level = 2)
-            }
-
-            # Check if any data was written
-            if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
-                if (verbose) {
-                    .log_warn("No common CpGs found between beta file and genomic locations")
-                }
-                unlink(temp_bed)
-                return(NULL)
-            }
-
-            # Sort, compress with bgzip, and index with tabix
-            if (verbose) {
-                .log_step("Sorting BED file...", level = 2)
-            }
-            temp_sorted <- tempfile(fileext = ".bed")
-            sort_cmd <- sprintf(
-                "(head -n 1 %s && tail -n +2 %s | sort -k1,1 -k2,2n) > %s",
-                shQuote(temp_bed), shQuote(temp_bed), shQuote(temp_sorted)
+    if (is.null(beta_col_names)) {
+        beta_col_names <- file_beta_col_names[-1]
+        cols_inds <- seq(2, length(beta_col_names))
+    } else {
+        cols_inds <- match(beta_col_names, file_beta_col_names)
+        cols_inds <- cols_inds[!is.na(cols_inds), drop = FALSE]
+        if (length(cols_inds) == 0) {
+            stop(
+                "Beta file does not contain any phenotype rownames ",
+                "as column name. First 5 supplied phenotype rownames: ",
+                paste(beta_col_names[seq_len(min(5, length(beta_col_names)))], sep = ",")
             )
-            system(sort_cmd)
-
-            # Compress with bgzip
-            if (verbose) {
-                .log_step("Compressing with bgzip...", level = 2)
-            }
-            bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
-            system(bgzip_cmd)
-
-            # Index with tabix
-            if (verbose) {
-                .log_step("Creating tabix index...", level = 2)
-            }
-            tabix_cmd <- sprintf("tabix -p bed %s", shQuote(output_file))
-            system(tabix_cmd)
-
-            # Clean up temp files
-            unlink(temp_bed)
-            unlink(temp_sorted)
-
-            if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-                if (verbose) {
-                    .log_success("Tabix file created: ", output_file)
-                }
-                return(output_file)
-            } else {
-                if (verbose) {
-                    .log_warn("Failed to create tabix index")
-                }
-                NULL
-            }
-        },
-        error = function(e) {
-            if (verbose) {
-                .log_warn("Error converting to tabix: ", e$message)
-            }
-            NULL
         }
+        beta_col_names <- file_beta_col_names[cols_inds]
+    }
+    ret <- list(
+        beta_col_names = beta_col_names, beta_col_inds = cols_inds,
+        file_beta_col_names = file_beta_col_names[-1]
     )
+    invisible(ret)
+}
+
+
+
+.subsetBetaFile <- function(beta_file,
+                            sites,
+                            beta_row_names = NULL,
+                            beta_col_names = NULL) {
+    # Fallback simple subsetting path for small site sets (avoids scan/skip logic issues in tests)
+    if (length(sites) <= 5000) {
+        full <- data.table::fread(beta_file, header = TRUE, data.table = FALSE)
+        rn <- full[[1]]
+        full <- full[, -1, drop = FALSE]
+        rownames(full) <- rn
+        # Preserve only requested sites in order
+        idx <- match(sites, rn)
+        if (anyNA(idx)) {
+            missing <- sites[is.na(idx)]
+            stop("Internal error: requested CpG IDs not found in beta file during subsetting: ", paste(missing, collapse = ","))
+        }
+        sub <- full[idx, , drop = FALSE]
+        if (nrow(sub) == 0) {
+            stop("None of the provided sites exist in the read beta file")
+        }
+        sub <- apply(sub, 2, as.numeric)
+        rownames(sub) <- sites
+        nas_per_row <- apply(sub, 1, function(r) sum(is.na(r)))
+        if (any(nas_per_row == ncol(sub))) {
+            warning("All-NA beta rows detected for sites: ", paste(names(nas_per_row)[nas_per_row == ncol(sub)], collapse = ","))
+        }
+        return(sub)
+    }
+    if (is.null(beta_row_names)) {
+        beta_row_names <- unlist(data.table::fread(
+            file = beta_file,
+            select = 1,
+            header = TRUE,
+        ))
+    }
+
+    ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
+    beta_col_names <- ret$beta_col_names
+    cols_inds <- ret$beta_col_inds
+    sites_inds <- which(beta_row_names %in% sites)
+    sites_inds_steps <- diff(c(-1, sites_inds)) - 1
+    if (endsWith(beta_file, "gz")) {
+        conn <- gzfile(beta_file, "r")
+    } else {
+        conn <- file(beta_file, "r")
+    }
+    beta_sites <- lapply(sites_inds_steps, function(step) {
+        l <- scan(
+            conn,
+            what = character(),
+            skip = step,
+            nlines = 1,
+            quiet = TRUE
+        )
+        as.numeric(l[cols_inds])
+    })
+    close(conn)
+    beta_sites <- do.call(rbind, beta_sites)
+    rownames(beta_sites) <- sites
+    colnames(beta_sites) <- beta_col_names
+    beta_sites
 }
 
 
@@ -573,6 +408,413 @@ convertBetaToTabix <- function(beta_file,
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret
 }
+
+#' Convert Beta File to Tabix-Indexed Format
+#'
+#' @description Converts a methylation beta values file to a tabix-indexed BED format
+#' for faster random access during DMR analysis. The function uses a memory-efficient
+#' chunk-based approach to handle large files and automatically uses a cache directory
+#' to avoid redundant conversions of the same beta file.
+#'
+#' @param beta_file Character. Path to the input beta values file
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'pos' columns.
+#'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
+#' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
+#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
+#' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
+#'   directory in tempdir() with hash-based naming (default: NULL)
+#' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
+#' @param verbose Logical. Whether to print progress messages (default: TRUE)
+
+#' @return Character. Path to the created tabix file, or NULL if conversion failed
+#'
+#' @details
+#' The function performs the following steps:
+#' \enumerate{
+#'   \item Checks if tabix and bgzip tools are available in the system PATH
+#'   \item Computes a hash of the input beta file for cache lookup
+#'   \item Checks if a cached tabix file exists; if so, returns it immediately
+#'   \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
+#'   \item Converts beta values to BED format with genomic coordinates
+#'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
+#'   \item Saves to cache directory for future reuse
+#' }
+#'
+#' The chunk-based processing ensures that even very large beta files (millions of CpGs)
+#' can be converted without running out of memory. The cache directory is located at
+#' \code{tempdir()/DMRSegal_tabix_cache/} and persists for the duration of the R session.
+#' Files are named based on the MD5 hash of the input beta file, ensuring that identical
+#' files reuse the same cached version.
+#'
+#' @examples
+#' \dontrun{
+#' # Convert a beta file to tabix format
+#' tabix_file <- convertBetaToTabix(
+#'     beta_file = "methylation_beta.txt",
+#'     array = "450K"
+#' )
+#'
+#' # Use custom output location
+#' tabix_file <- convertBetaToTabix(
+#'     beta_file = "methylation_beta.txt",
+#'     output_file = "my_custom_location.bed.gz",
+#'     array = "EPIC"
+#' )
+#' }
+#'
+#' @export
+convertBetaToTabix <- function(beta_file,
+                               sorted_locs = NULL,
+                               array = c("450K", "27K", "EPIC", "EPICv2"),
+                               genome = c("hg19", "hg38", "mm10", "mm39"),
+                               output_file = NULL,
+                               chunk_size = 50000,
+                               njobs = 1,
+                               verbose = TRUE) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
+    # Get sorted locations if not provided
+    if (is.null(sorted_locs)) {
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+    }
+    # Check if tabix/bgzip are available
+    tabix_available <- tryCatch(
+        {
+            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
+            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
+            TRUE
+        },
+        error = function(e) FALSE,
+        warning = function(w) FALSE
+    )
+
+    if (!tabix_available) {
+        if (verbose) {
+            .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
+        }
+        return(NULL)
+    }
+
+    # Set default output file name - use cache directory
+    if (is.null(output_file)) {
+        # Create cache directory in temp folder
+        cache_dir <- getOption("DMRSegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "DMRSegal", "tabix_cache"))
+        if (!dir.exists(cache_dir)) {
+            dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+        }
+        # Compute hash of beta file
+        beta_hash <- .getFileHash(beta_file)
+
+        # Create cache filename based on hash
+        output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
+
+        # Check if tabix file already exists in cache
+        if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
+            if (verbose) {
+                .log_info("Using cached tabix file: ", basename(output_file))
+            }
+            return(output_file)
+        }
+    }
+
+    if (verbose) {
+        .log_step("Converting beta file to tabix format...")
+    }
+
+    tryCatch(
+        {
+            # Read header to get column names
+            if (verbose) {
+                .log_step("Reading beta file header...", level = 2)
+            }
+
+            header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
+            header_line <- readLines(header_conn, n = 1)
+            close(header_conn)
+            col_names <- strsplit(header_line, "\t")[[1]]
+
+            # Get total number of rows for progress tracking
+            if (verbose) {
+                .log_step("Counting rows in beta file...", level = 2)
+            }
+
+            # Count lines efficiently
+            if (endsWith(beta_file, ".gz")) {
+                n_lines <- as.numeric(system(sprintf("zcat %s | wc -l", shQuote(beta_file)), intern = TRUE))
+            } else {
+                n_lines <- as.numeric(system(sprintf("wc -l < %s", shQuote(beta_file)), intern = TRUE))
+            }
+            n_rows <- n_lines - 1 # Exclude header
+
+            if (verbose) {
+                .log_info("Processing ", n_rows, " CpG sites...", level = 2)
+            }
+
+            # Create temporary BED file for writing chunks
+            temp_bed <- tempfile(fileext = ".bed")
+
+            # Write header to temp BED file
+            bed_header <- c("chr", "start", "end", "name", col_names[-1])
+            writeLines(paste(bed_header, collapse = "\t"), temp_bed)
+
+            # Process file in chunks to avoid memory issues
+
+            skip_rows <- 1 # Start after header
+            rows_processed <- 0
+
+            while (rows_processed < n_rows) {
+                if (verbose && getOption("DMRSegal.verbose", 1) > 1) {
+                    .log_info("Processing rows ", rows_processed + 1, " to ",
+                        min(rows_processed + chunk_size, n_rows), "...",
+                        level = 3
+                    )
+                }
+
+                # Read chunk
+                chunk_data <- data.table::fread(
+                    beta_file,
+                    header = FALSE,
+                    skip = skip_rows,
+                    nrows = chunk_size,
+                    data.table = FALSE,
+                    showProgress = FALSE
+                )
+
+                if (nrow(chunk_data) == 0) break
+
+                # Set column names
+                colnames(chunk_data) <- col_names
+
+                cpg_ids <- chunk_data[[1]]
+
+                # Match with genomic locations
+                common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
+
+                if (length(common_cpgs) > 0) {
+                    # Create BED format for this chunk
+                    bed_chunk <- sorted_locs[common_cpgs, c("chr", "pos"), drop = FALSE]
+                    bed_chunk$start <- bed_chunk$pos
+                    bed_chunk$end <- bed_chunk$pos + 1
+                    bed_chunk$name <- rownames(bed_chunk)
+                    bed_chunk <- bed_chunk[, c("chr", "start", "end", "name")]
+
+                    # Add beta values
+                    beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
+                    bed_chunk <- cbind(bed_chunk, beta_subset)
+
+                    # Append to temp BED file
+                    data.table::fwrite(
+                        bed_chunk,
+                        file = temp_bed,
+                        sep = "\t",
+                        quote = FALSE,
+                        row.names = FALSE,
+                        col.names = FALSE,
+                        append = TRUE
+                    )
+                }
+
+                rows_processed <- rows_processed + nrow(chunk_data)
+                skip_rows <- skip_rows + nrow(chunk_data)
+            }
+
+            if (verbose) {
+                .log_success("Processed ", rows_processed, " rows", level = 2)
+            }
+
+            # Check if any data was written
+            if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
+                if (verbose) {
+                    .log_warn("No common CpGs found between beta file and genomic locations")
+                }
+                unlink(temp_bed)
+                return(NULL)
+            }
+
+            # Sort, compress with bgzip, and index with tabix
+            if (verbose) {
+                .log_step("Sorting BED file...", level = 2)
+            }
+            temp_sorted <- tempfile(fileext = ".bed")
+            sort_cmd <- sprintf(
+                "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -k1,1 -k2,2n) > %s",
+                shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
+            )
+            system(sort_cmd)
+
+            # Compress with bgzip
+            if (verbose) {
+                .log_step("Compressing with bgzip...", level = 2)
+            }
+            bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
+            system(bgzip_cmd)
+
+            # Index with tabix
+            if (verbose) {
+                .log_step("Creating tabix index...", level = 2)
+            }
+            tabix_cmd <- sprintf("tabix -p bed %s", shQuote(output_file))
+            system(tabix_cmd)
+
+            # Clean up temp files
+            unlink(temp_bed)
+            unlink(temp_sorted)
+
+            if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
+                if (verbose) {
+                    .log_success("Tabix file created: ", output_file)
+                }
+                return(output_file)
+            } else {
+                if (verbose) {
+                    .log_warn("Failed to create tabix index")
+                }
+                NULL
+            }
+        },
+        error = function(e) {
+            if (verbose) {
+                .log_warn("Error converting to tabix: ", e$message)
+            }
+            NULL
+        }
+    )
+}
+
+
+#' Sort Beta File by Genomic Coordinates
+#'
+#' @description This helper function sorts a methylation beta values file by genomic coordinates
+#' (chromosome and position) as required by the findDMRsFromSeeds function. The function reads
+#' the beta file, sorts the CpG sites according to their genomic positions using array annotation,
+#' and writes the sorted data to a new file.
+#'
+#' @param beta_file Character. Path to the input beta values file to be sorted
+#' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
+#' @param array Character. Array platform type (default: "450K")
+#' @param genome Character. Genome version (default: "hg19")
+#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
+#' @param verbose Logical. Whether to print progress messages (default: TRUE)
+#' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
+#'
+#' @return Character. Path to the sorted output file
+#'
+#' @details The function performs the following steps:
+#' \enumerate{
+#'   \item Reads the beta values file
+#'   \item Loads the appropriate array annotation (450K or EPIC)
+#'   \item Sorts CpG sites by genomic coordinates (chr:pos)
+#'   \item Writes the sorted data to a new file
+#'   \item Validates that the output is properly sorted
+#' }
+#' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
+#' 
+#' @examples
+#' \dontrun{
+#' # Sort a beta file for 450K array
+#' sorted_file <- sortBetaFileByCoordinates(
+#'     beta_file = "unsorted_beta.txt",
+#'     output_file = "sorted_beta.txt",
+#'     array = "450K"
+#' )
+#'
+#' # Sort an EPIC array beta file with default output name
+#' sorted_file <- sortBetaFileByCoordinates(
+#'     beta_file = "epic_beta.txt",
+#'     array = "EPIC"
+#' )
+#' }
+#'
+#' @export
+sortBetaFileByCoordinates <- function(beta_file,
+                                      output_file = NULL,
+                                      array = c("450K", "27K", "EPIC", "EPICv2"),
+                                      genome = c("hg19", "hg38", "mm10", "mm39"),
+                                      genomic_locs = NULL,
+                                      overwrite = FALSE) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
+    # Validate inputs
+    if (!file.exists(beta_file)) {
+        stop("Beta file does not exist: ", beta_file)
+    }
+
+    # Set default output file name
+    if (is.null(output_file)) {
+        file_ext <- tools::file_ext(beta_file)
+        file_base <- tools::file_path_sans_ext(beta_file)
+        output_file <- paste0(file_base, "_sorted.", file_ext)
+    }
+
+    # Check if output file exists
+    if (file.exists(output_file) && !overwrite) {
+        stop(
+            "Output file already exists: ", output_file,
+            ". Set overwrite=TRUE to overwrite or choose a different output_file name."
+        )
+    }
+
+    .log_step("Reading beta file", beta_file)
+    # Read the beta file
+    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRSegal.verbose", 1) > 1)
+
+    # Get row names (CpG IDs) from first column
+    cpg_ids <- beta_data[[1]]
+    beta_values <- beta_data[, -1, drop = FALSE]
+    rownames(beta_values) <- cpg_ids
+    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples")
+
+    sorted_locs <- genomic_locs
+    if (is.null(sorted_locs)) {
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+    }
+
+
+    # Find CpGs that are present in both the beta file and array annotation
+    common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
+    missing_from_annotation <- setdiff(cpg_ids, rownames(sorted_locs))
+    if (length(missing_from_annotation) > 0) {
+        stop(
+            "Found ", length(missing_from_annotation), " CpG sites in beta file that are not in ",
+            array, " annotation. First 5 missing: ", paste(head(missing_from_annotation, 5), collapse = ", ")
+        )
+    }
+
+    missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
+    if (length(missing_from_beta) > 0) {
+        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file")
+    }
+
+    final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
+
+    # Reorder beta values
+    sorted_beta_values <- beta_values[final_order, , drop = FALSE]
+
+    # Prepare output data frame
+    output_data <- data.frame(
+        ID = rownames(sorted_beta_values),
+        sorted_beta_values,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+    )
+
+    .log_step("Writing sorted beta file", output_file)
+
+    # Write sorted file
+    data.table::fwrite(
+        output_data,
+        file = output_file,
+        sep = "\t",
+        quote = FALSE,
+        row.names = FALSE,
+        col.names = TRUE
+    )
+
+    return(output_file)
+}
+
+
+
 
 #' Get Sorted Array Locations
 #'

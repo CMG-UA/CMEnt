@@ -6,19 +6,18 @@
 \usage{
 extractCpgInfoFromResultDMRs(
   dmrs,
-  beta_file = NULL,
+  beta_file_handler,
   beta_row_names,
   beta_col_names,
   sorted_locs,
   output_prefix = NULL,
-  tabix_file = NULL,
   njobs = 1
 )
 }
 \arguments{
 \item{dmrs}{GRanges object containing DMR results from findDMRsFromSeeds}
 
-\item{beta_file}{Character. Path to the methylation beta values file}
+\item{beta_file_handler}{BetaFileHandler object for the methylation beta values file}
 
 \item{beta_row_names}{Character vector. Row names for beta values}
 
@@ -28,9 +27,9 @@ extractCpgInfoFromResultDMRs(
 
 \item{output_prefix}{Character. Optional prefix for output files (default: NULL)}
 
-\item{tabix_file}{Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)}
-
 \item{njobs}{Integer. Number of cores for parallel processing (default: 1)}
+
+\item{tabix_file}{Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)}
 
 \item{verbose}{Logical. Whether to print progress messages (default: FALSE)}
 }
@@ -47,7 +46,7 @@ site within the DMR regions.
 # Extract CpG info from DMR results
 cpg_info <- extractCpgInfoFromResultDMRs(
     dmrs = dmr_results,
-    beta_file = "sorted_beta.txt",
+    beta_file_handler = beta_file_handler,
     beta_row_names = row_names,
     beta_col_names = col_names,
     sorted_locs = genomic_locations

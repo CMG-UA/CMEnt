@@ -11,6 +11,7 @@ convertBetaToTabix(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   output_file = NULL,
   chunk_size = 50000,
+  njobs = 1,
   verbose = TRUE
 )
 }

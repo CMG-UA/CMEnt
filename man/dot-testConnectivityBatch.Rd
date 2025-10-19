@@ -31,7 +31,7 @@
 \item{sites_locs}{Data frame with chr and pos columns for each site}
 }
 \value{
-Data frame with columns: connected, pval, delta_beta, reason, failing_group, stop_reason
+Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 }
 \description{
 Vectorized connectivity testing for consecutive site pairs, given their beta values
