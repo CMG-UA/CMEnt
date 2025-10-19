@@ -37,7 +37,7 @@
 #' @import GenomicRanges
 #' @import IRanges
 #' @import methods
-#' @importFrom stats p.adjust
-#' @importFrom utils read.table write.table
+#' @importFrom stats p.adjust na.omit pt setNames
+#' @importFrom utils read.table write.table capture.output head install.packages
 #' @importFrom data.table fread
 NULL

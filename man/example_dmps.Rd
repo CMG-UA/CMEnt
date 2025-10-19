@@ -9,17 +9,9 @@ A data frame with 1000 rows and the following columns:
 \describe{
 \item{chr}{Chromosome}
 \item{pos}{Genomic position}
-\item{dmp}{CpG ID}
 \item{pval}{Raw p-value from t-test}
 \item{pval_adj}{Benjamini-Hochberg adjusted p-value}
-\item{qval}{Q-value}
-\item{delta_beta}{Mean methylation difference (Case - Control)}
-\item{cases_beta}{Mean beta value in cases}
-\item{controls_beta}{Mean beta value in controls}
-\item{cases_beta_sd}{Standard deviation of beta values in cases}
-\item{controls_beta_sd}{Standard deviation of beta values in controls}
-\item{cases_num}{Number of case samples}
-\item{controls_num}{Number of control samples}
+\item{mean_diff}{Mean methylation difference (Case - Control)}
 }
 }
 \source{

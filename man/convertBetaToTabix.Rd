@@ -30,6 +30,8 @@ directory in tempdir() with hash-based naming (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk (default: 50000)}
 
+\item{njobs}{Integer. Number of parallel jobs for sorting (default: 1)}
+
 \item{verbose}{Logical. Whether to print progress messages (default: TRUE)}
 }
 \value{

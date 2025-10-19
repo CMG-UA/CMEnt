@@ -21,14 +21,13 @@ License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
+VignetteBuilder: knitr
 biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, 
     BiomedicalInformatics, Genetics, QualityControl, Preprocessing
 Depends:
     R (>= 4.3.0)
 Imports:
-    optparse,
     GenomicRanges,
-    SummarizedExperiment,
     S4Vectors,
     IRanges,
     methods,
@@ -38,7 +37,6 @@ Imports:
     data.table,
     psych,
     cli,
-    Rsamtools,
     stringr,
     future,
     future.apply,
@@ -46,7 +44,6 @@ Imports:
     progressr (== 0.16.0),
     minfi,
     bedr,
-    AnnotationHub,
     AnnotationDbi,
     GenomicFeatures,
     GenomeInfoDb,
@@ -58,10 +55,15 @@ Imports:
     readr,
     reshape2
 Suggests: 
+    AnnotationHub,
+    BiocManager,
     devtools,
     knitr,
+    optparse,
+    Rsamtools,
     rmarkdown,
     BiocStyle,
+    SummarizedExperiment,
     testthat (>= 3.0.0),
     covr,
     DMRcate,

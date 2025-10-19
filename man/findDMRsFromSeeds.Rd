@@ -2,27 +2,8 @@
 % Please edit documentation in R/dmrs_finder_from_seeds.R
 \name{findDMRsFromSeeds}
 \alias{findDMRsFromSeeds}
-\alias{.expandDMRs}
-\title{Find Differentially Methylated Regions (DMRs) from Pre-computed DMPs}
+\title{Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (DMPs)}
 \usage{
-.expandDMRs(
-  dmr,
-  beta_file_handler,
-  beta_row_names,
-  beta_col_names,
-  sorted_locs,
-  max_pval,
-  min_cpg_delta_beta = 0,
-  casecontrol = NULL,
-  min_cpgs = 3,
-  expansion_step = 500,
-  expansion_relaxation = 0,
-  max_lookup_dist = 1e+07,
-  group_inds = NULL,
-  extreme_verbosity = FALSE,
-  aggfun = mean
-)
-
 findDMRsFromSeeds(
   beta_file = NULL,
   dmps_file = NULL,
@@ -54,20 +35,6 @@ findDMRsFromSeeds(
 )
 }
 \arguments{
-\item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
-
-\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
-
-\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
-
-\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
-
-\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.}
-
-\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
-
-\item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
-
 \item{beta_file}{Character. Path to the beta value file. Either this or tabix_file must be provided.}
 
 \item{dmps_file}{Character. Path to the DMPs TSV file.}
@@ -86,13 +53,27 @@ findDMRsFromSeeds(
 
 \item{casecontrol_col}{Character. Column name for case-control information in the phenotype data. Default is "casecontrol".}
 
+\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
+
+\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
+
+\item{expansion_relaxation}{Numeric. Maximum number of intermittent CpGs allowed to not be significantly correlated, to increase the extended DMR size. Default is 0.}
+
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.}
 
 \item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".}
 
+\item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
+
+\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
+
 \item{min_dmps}{Numeric. Minimum number of connected DMPs in a DMR. Default is 1.}
 
 \item{min_adj_dmps}{Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.}
+
+\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+
+\item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
 
 \item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
 
@@ -109,61 +90,8 @@ findDMRsFromSeeds(
 \item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta_file must be provided. Default is NULL.}
 }
 \value{
-A GRanges object containing identified DMRs with metadata columns:
-\itemize{
-\item cpgs_num: Number of CpGs in the region
-\item dmps_num: Number of DMPs in the region
-\item delta_beta: Mean methylation difference (aggregated using the specified aggregation function)
-\item delta_beta_min: Minimum methylation difference
-\item delta_beta_max: Maximum methylation difference
-\item delta_beta_sd: Standard deviation of methylation differences
-\item pval_adj: Adjusted p-value (if available in DMPs file)
-\item cases_beta: Mean beta value in cases
-\item controls_beta: Mean beta value in controls
-\item start_dmp: ID of the first DMP in the region
-\item end_dmp: ID of the last DMP in the region
-}
-
 Data frame of identified DMRs.
 }
 \description{
-This function identifies Differentially Methylated Regions (DMRs) from pre-computed
-Differentially Methylated Positions (DMPs) using a correlation-based approach. It expands
-significant DMPs into regions, considering both statistical significance and biological
-relevance of methylation changes.
-
 This function identifies DMRs from a given set of DMPs and a beta value file.
-}
-\section{Important Note on Input Data}{
-
-Do not apply heavy filtering to your DMPs prior to using this function, particularly based on
-beta values or effect sizes. The function works by expanding regions around significant DMPs
-and connecting nearby CpGs into larger regions. Filtering out DMPs with smaller effect sizes
-may remove important CpGs that could serve as "bridges" to connect more significant DMPs into
-larger, biologically meaningful DMRs. For optimal results, include all statistically
-significant DMPs (e.g., adjusted p-value < 0.05) and let the function handle region expansion
-and filtering internally using the min_cpg_delta_beta parameter if needed.
-}
-
-\examples{
-\dontrun{
-# Load example data
-data(example_beta)
-data(example_dmps)
-data(example_pheno)
-
-# Write beta values to file
-beta_file <- tempfile(fileext = ".txt")
-write.table(cbind(ID = rownames(example_beta), example_beta),
-    file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE
-)
-
-# Find DMRs
-dmrs <- findDMRsFromSeeds(
-    beta_file = beta_file,
-    dmps_file = example_dmps,
-    pheno = example_pheno
-)
-}
-
 }

@@ -7,3 +7,11 @@
 ^CODE_OF_CONDUCT\.md$
 ^README\.Rmd$
 ^README\.html$
+^\.envrc$
+^\.here$
+^\.lintr$
+^benchmark\.R$
+^benchmark_data$
+^data-raw$
+^debug$
+^examples$

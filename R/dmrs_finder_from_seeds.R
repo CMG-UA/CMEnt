@@ -36,7 +36,9 @@
 #' @param min_cpgs Minimum number of CpGs required per region, existing in the array (default: 50)
 #' @param ignored_sample_groups Sample groups to ignore during analysis (default: NULL)
 #' @param output_prefix Optional identifier prefix for output files (default: NULL)
+#' @param aggfun Aggregation function for computing group means, either "median" or "mean" (default: c("median", "mean"))
 #' @param njobs Number of parallel jobs (default: detectCores())
+#' @param memory_threshold_mb Memory threshold in MB for switching between in-memory and file-based processing (default: 500)
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.
 #' @param beta_row_names_file Optional file with beta value row names (default: NULL)
 #' @param tabix_file Path to tabix-indexed beta values file (alternative to beta_file, default: NULL)
@@ -96,10 +98,9 @@
 #' @importFrom GenomicFeatures genes promoters
 #' @importFrom AnnotationDbi mapIds
 #' @importFrom S4Vectors queryHits subjectHits
-#' @export
 
-
-# Expand the identified dmrs to nearby CpG regions
+#' @keywords internal
+#' @noRd
 .expandDMRs <- function(dmr,
                         beta_file_handler,
                         beta_row_names,
@@ -328,8 +329,11 @@
 #' @param min_delta_beta Minimum delta beta threshold
 #' @param max_lookup_dist Maximum distance between consecutive sites
 #' @param sites_locs Data frame with chr and pos columns for each site
+#' @param aggfun Aggregation function for computing group means (default: mean)
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
+#' @keywords internal
+#' @noRd
 .testConnectivityBatch <- function(sites_beta, group_inds, max_pval,
                                    casecontrol = NULL, min_delta_beta = 0,
                                    max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean) {
@@ -474,9 +478,7 @@
 #' @param beta_col_names Character vector. Column names for beta values
 #' @param sorted_locs GRanges or data frame with sorted genomic locations
 #' @param output_prefix Character. Optional prefix for output files (default: NULL)
-#' @param tabix_file Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)
 #' @param njobs Integer. Number of cores for parallel processing (default: 1)
-#' @param verbose Logical. Whether to print progress messages (default: FALSE)
 #'
 #' @return A data frame containing detailed CpG information for each DMR
 #'

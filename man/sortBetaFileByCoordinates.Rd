@@ -25,8 +25,6 @@ sortBetaFileByCoordinates(
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)}
 
 \item{overwrite}{Logical. Whether to overwrite existing output file (default: FALSE)}
-
-\item{verbose}{Logical. Whether to print progress messages (default: TRUE)}
 }
 \value{
 Character. Path to the sorted output file

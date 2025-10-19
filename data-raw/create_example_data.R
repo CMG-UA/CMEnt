@@ -132,49 +132,22 @@ cat("Generated data with", nrow(example_data$beta), "CpGs and",
     ncol(example_data$beta), "samples\n")
 cat("First 5 CpG IDs:", paste(head(rownames(example_data$beta), 5), collapse = ", "), "\n")
 
-# Create output directory if needed
-if (!dir.exists("inst/extdata")) {
-    dir.create("inst/extdata", recursive = TRUE)
-}
-
-# Create beta matrix file
-beta_file <- "inst/extdata/example_beta.txt"
-write.table(
-    cbind(ID = rownames(example_data$beta), example_data$beta),
-    file = beta_file,
-    sep = "\t",
-    quote = FALSE,
-    row.names = FALSE
-)
-cat("Wrote beta file to", beta_file, "\n")
-
-# Create gzipped version
-if (file.exists(paste0(beta_file, ".gz"))) {
-    file.remove(paste0(beta_file, ".gz"))
-}
-system(paste("gzip -c", beta_file, ">", paste0(beta_file, ".gz")))
-cat("Created gzipped version:", paste0(beta_file, ".gz"), "\n")
-
-# Create data directory if needed
 if (!dir.exists("data")) {
     dir.create("data")
 }
 
-# Save R objects
 example_beta <- example_data$beta
 example_dmps <- example_data$dmps
 example_pheno <- example_data$pheno
-example_true_dmrs <- example_data$true_dmrs
 
 save(example_beta, file = "data/example_beta.rda", compress = "xz")
 save(example_dmps, file = "data/example_dmps.rda", compress = "xz")
 save(example_pheno, file = "data/example_pheno.rda", compress = "xz")
-save(example_true_dmrs, file = "data/example_true_dmrs.rda", compress = "xz")
 
 cat("\nSummary of generated data:\n")
 cat("- Beta matrix:", nrow(example_beta), "CpGs x", ncol(example_beta), "samples\n")
 cat("- DMPs:", nrow(example_dmps), "positions\n")
 cat("- Significant DMPs (adj.p < 0.05):", sum(example_dmps$pval_adj < 0.05), "\n")
 cat("- Phenotype data:", nrow(example_pheno), "samples\n")
-cat("- True DMRs:", nrow(example_true_dmrs), "regions\n")
 cat("\nAll example data files created successfully!\n")
+

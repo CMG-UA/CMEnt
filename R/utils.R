@@ -5,6 +5,7 @@
 #' @param file_path Path to the file
 #' @return MD5 hash string
 #' @keywords internal
+#' @noRd
 .getFileHash <- function(file_path) {
     tryCatch(
         {
@@ -135,9 +136,6 @@
                              max_samples = NULL,
                              max_case_samples = NULL,
                              max_control_samples = NULL) {
-    require(stringr)
-    require(data.table)
-
     ref <- read.table(
         samplesheet_file,
         header = TRUE,
@@ -295,7 +293,7 @@
     if (secs < 1) {
         sprintf(" (took %.2fms)", secs * 1000)
     } else if (secs < 0.001) {
-        sprintf(" (took %.2fμs)", secs * 1000000)
+        sprintf(" (took %.2f\u03bcs)", secs * 1000000)
     } else if (secs < 60) {
         sprintf(" (took %.2fs)", secs)
     } else {
@@ -322,6 +320,7 @@
 
 #' Internal logging helpers using cli
 #' @keywords internal
+#' @noRd
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("DMRSegal.verbose", 1) < level) {
         return(invisible())
@@ -366,9 +365,6 @@
 
 .processSamplesheet <- function(args,
                                 subset = NULL) {
-    suppressWarnings(suppressMessages({
-        require(stringr)
-    }))
     samplesheet_file <- args$samplesheet
     target_col <- args$target_col
     sample_group_col <- args$sample_group_col
@@ -424,8 +420,9 @@
 #' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
 #'   directory in tempdir() with hash-based naming (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
+#' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
 #' @param verbose Logical. Whether to print progress messages (default: TRUE)
-
+#'
 #' @return Character. Path to the created tabix file, or NULL if conversion failed
 #'
 #' @details
@@ -694,7 +691,6 @@ convertBetaToTabix <- function(beta_file,
 #' @param array Character. Array platform type (default: "450K")
 #' @param genome Character. Genome version (default: "hg19")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
-#' @param verbose Logical. Whether to print progress messages (default: TRUE)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
 #'
 #' @return Character. Path to the sorted output file
@@ -873,7 +869,9 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     } else if (genome %in% c("mm10", "mm39")) {
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            if (!require(devtools)) install.packages("devtools")
+            if (!requireNamespace("devtools", quietly = TRUE)) {
+                install.packages("devtools")
+            }
             devtools::install_github(pkg_name)
         }
     }
@@ -882,6 +880,9 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
         .log_info("Installing required annotation package: ", pkg_name)
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            install.packages("BiocManager")
+        }
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
@@ -1015,6 +1016,9 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
         message("Installing required annotation package: ", pkg_name)
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            install.packages("BiocManager")
+        }
         BiocManager::install(pkg_name)
     }
     # Load the BSgenome package

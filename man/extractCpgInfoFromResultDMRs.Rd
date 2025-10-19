@@ -28,10 +28,6 @@ extractCpgInfoFromResultDMRs(
 \item{output_prefix}{Character. Optional prefix for output files (default: NULL)}
 
 \item{njobs}{Integer. Number of cores for parallel processing (default: 1)}
-
-\item{tabix_file}{Character. Path to tabix-indexed beta file (alternative to beta_file, default: NULL)}
-
-\item{verbose}{Logical. Whether to print progress messages (default: FALSE)}
 }
 \value{
 A data frame containing detailed CpG information for each DMR

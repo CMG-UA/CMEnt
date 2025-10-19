@@ -12,3 +12,4 @@ Rules to follow:
 - Avoid adding comments to the code unless absolutely necessary for clarity.
 - Keep the documentation concise and to the point.
 - Always escape ! when running on terminal, to avoid history expansion issues.
+- Never make tests whose errors are skipped. The code should be robust enough to handle edge cases without skipping errors.
