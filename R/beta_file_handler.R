@@ -318,18 +318,14 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
 
             # Use in-memory beta data if available
             if (!is.null(self$beta_file_in_memory)) {
-                .log_step("Subsetting from in-memory beta data..", level = 2)
+                .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (is.null(col_names)) {
                     beta_subset <- self$beta_file_in_memory[row_names, , drop = FALSE]
                 } else {
                     beta_subset <- self$beta_file_in_memory[row_names, col_names, drop = FALSE]
                 }
-                # Ensure numeric matrix
-                beta_subset <- as.matrix(beta_subset)
-                storage.mode(beta_subset) <- "double"
-                rownames(beta_subset) <- row_names
             } else if (!is.null(self$beta_file)) {
-                .log_step("Subsetting from beta file..", level = 2)
+                .log_step("Subsetting from beta file..", level = 3)
                 beta_subset <- .subsetBetaFile(
                     self$beta_file,
                     row_names,
@@ -340,7 +336,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
             } else {
-                .log_step("Subsetting from tabix file..", level = 2)
+                .log_step("Subsetting from tabix file..", level = 3)
                 locs <- private$get_sorted_locs()[row_names, , drop = FALSE]
                 regions <- locs[, c("chr", "start", "end")]
                 regions[, "chr"] <- as.character(regions[, "chr"])
@@ -368,7 +364,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
 
             .log_success("Beta values subsetted: ", nrow(beta_subset),
                 " CpGs x ", ncol(beta_subset), " samples",
-                level = 2
+                level = 3
             )
             return(beta_subset)
         }

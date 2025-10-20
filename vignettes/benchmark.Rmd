@@ -141,7 +141,7 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
         pval_mode = "empirical",
         empirical_strategy = "auto",
         njobs = 1,
-        verbose = 3
+        verbose = 7
     ))
     saveRDS(dmrs_segal, dmrsegal_file)
     # Remove temporary files

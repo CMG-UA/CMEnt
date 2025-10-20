@@ -121,6 +121,7 @@
                         nperm = 200L,
                         mid_p = FALSE,
                         perm_seed = NULL) {
+    .log_step("Expanding DMR..", level=4)
     pval_mode <- match.arg(pval_mode)
     empirical_strategy <- match.arg(empirical_strategy)
     sorted_locs <- sorted_locs[beta_row_names, ]
@@ -138,6 +139,7 @@
 
 
     .check_upstream <- function(ustream_end_lookup_site_ind, exp_step) {
+        .log_step("Setting up..", level = 6)
         ustream_stop_reason <- NULL
         if (ustream_end_lookup_site_ind < 0) {
             ustream_stop_reason <- "end-of-input"
@@ -159,8 +161,10 @@
         }
         x <- x[[1]]
         ustream_start_lookup_site_ind <- ustream_start_lookup_site_ind + x - 1
+        .log_success("Setup done.", level=6)
+        .log_step("Getting beta values...", level=6)
         ustream_betas <- beta_file_handler$getBeta(row_names = rownames(sorted_locs)[ustream_start_lookup_site_ind:ustream_end_lookup_site_ind], col_names = beta_col_names)
-
+        .log_success("Beta values retrieved.", level=6)
         if (nrow(ustream_betas) == 1) {
             ustream_stop_reason <- "end-of-input"
             return(list(
@@ -168,11 +172,10 @@
                 ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
             ))
         }
-        # Ensure numeric matrix for fast indexing
-        if (!is.matrix(ustream_betas)) ustream_betas <- as.matrix(ustream_betas)
-        storage.mode(ustream_betas) <- "double"
+        .log_step("Preparing beta values...", level=6)
         ustream_betas_reversed <- ustream_betas[rev(seq_len(nrow(ustream_betas))), , drop = FALSE]
-
+        .log_success("Beta values prepared.", level=6)
+        .log_step("Testing connectivity...", level=6)
         corr_ret <- .testConnectivityBatch(
             sites_beta = ustream_betas_reversed,
             group_inds = group_inds,
@@ -188,6 +191,8 @@
             mid_p = mid_p,
             perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
         )
+        .log_success("Connectivity tested.", level=6)
+        .log_step("Analyzing connectivity results...", level=6)
         # find consecutive FALSE counts in connected
         consecutive_fails <- rle(!corr_ret$connected)
         # pick the first run of FALSE with length > expansion_relaxation
@@ -198,12 +203,15 @@
             fail_start_idx <- sum(consecutive_fails$lengths[seq_len(first_fail_run - 1)]) + 1
             ustream_exp <- ustream_end_lookup_site_ind - fail_start_idx + 1
             ustream_stop_reason <- corr_ret$reason[fail_start_idx]
+            .log_success("Connectivity results analyzed.", level=6)
+            .log_success("DMR expanded.", level=4)
             return(list(
                 ustream_end_lookup_site_ind = ustream_end_lookup_site_ind,
                 ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
             ))
         }
-
+        .log_success("DMR expanded.", level = 4)
+        .log_success("Connectivity results analyzed.", level=6)
         ustream_end_lookup_site_ind <- ustream_end_lookup_site_ind - exp_step
         ret <- list(
             ustream_end_lookup_site_ind = ustream_end_lookup_site_ind,
@@ -243,9 +251,6 @@
             ))
         }
         dstream_betas <- beta_file_handler$getBeta(row_names = rownames(sorted_locs)[dstream_start_lookup_site_ind:dstream_end_lookup_site_ind], col_names = beta_col_names)
-        if (!is.matrix(dstream_betas)) dstream_betas <- as.matrix(dstream_betas)
-        storage.mode(dstream_betas) <- "double"
-
         corr_ret <- .testConnectivityBatch(
             sites_beta = dstream_betas,
             group_inds = group_inds,
@@ -293,6 +298,7 @@
     dstream_start_lookup_site_ind <- dmr_end_ind[[1]]
     dstream_exp <- dstream_start_lookup_site_ind
     dstream_stop_reason <- NULL
+    
     t <- 0
     while (TRUE) {
         exp_step <- expansion_step
@@ -302,38 +308,49 @@
                 .log_info("DMR ", dmr["dmr_id"], " too short (", ccpgs, " CpGs). Expanding to reach min_cpgs=", min_cpgs, ".", level = 3)
                 exp_step <- min_cpgs - ccpgs + expansion_relaxation
             }
+            .log_info("Number of CpGs in DMR: ", ccpgs, level = 5)
+
         }
+        .log_info("Expansion step size: ", exp_step, " bp.", level = 5)
+        .log_step("Checking upstream expansion...", level = 5)
         if (is.null(ustream_stop_reason)) {
             res <- .check_upstream(ustream_end_lookup_site_ind, exp_step)
             ustream_end_lookup_site_ind <- res$ustream_end_lookup_site_ind
             ustream_stop_reason <- res$ustream_stop_reason
             ustream_exp <- res$ustream_exp
         }
+        .log_success("Upstream expansion checked.", level = 5)
+        .log_step("Checking downstream expansion...", level = 5)
         if (is.null(dstream_stop_reason)) {
             res <- .check_downstream(dstream_start_lookup_site_ind, exp_step)
             dstream_start_lookup_site_ind <- res$dstream_start_lookup_site_ind
             dstream_stop_reason <- res$dstream_stop_reason
             dstream_exp <- res$dstream_exp
         }
-        if (!is.null(ustream_stop_reason) && !is.null(dstream_stop_reason)) {
-            break
-        }
+
         if (t == 0) {
-            ccpgs <- dstream_exp - ustream_exp + 1
-            if (ccpgs < min_cpgs) {
+            new_ccpgs <- dstream_exp - ustream_exp + 1
+            .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs,  level = 5)
+            if (new_ccpgs < min_cpgs) {
                 ustream_stop_reason <- "min_cpgs_reached"
                 dstream_stop_reason <- "min_cpgs_reached"
             }
+
             t <- 1
         }
+        .log_success("Downstream expansion checked.", level = 5)
+        if (!is.null(ustream_stop_reason) && !is.null(dstream_stop_reason)) {
+            break
+        }
     }
+    .log_step("Finalizing expanded DMR ", dmr["dmr_id"], ".", level = 5)
     dmr["start_cpg"] <- beta_row_names[ustream_exp]
     dmr["end_cpg"] <- beta_row_names[dstream_exp]
     dmr["start"] <- sorted_locs[dmr["start_cpg"], "pos"]
     dmr["end"] <- sorted_locs[dmr["end_cpg"], "pos"]
     dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
-
+    .log_success("Expanded DMR finalized: ", dmr["dmr_id"], " (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
     dmr
 }
 
@@ -1152,6 +1169,16 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         }
         return(NULL)
     }
+    if (verbose >= 2) {
+        dir.create("debug", showWarnings = FALSE)
+        write.table(dmrs,
+            file = file.path("debug", "01_dmrs_from_connected_dmps.tsv"),
+            sep = "\t",
+            row.names = FALSE,
+            col.names = TRUE,
+            quote = FALSE
+        )
+    }
     cases_num <- dmrs$cases_num
     controls_num <- dmrs$controls_num
     if (anyNA(c(cases_num, controls_num))) {
@@ -1177,6 +1204,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = n_dmrs)
     }
+    .log_step("Expanding ", n_dmrs, " DMRs using up to ", njobs, " parallel jobs...", level = 2)
     ret <- future.apply::future_apply(
         X = ungrouped_dmrs,
         MARGIN = 1,
@@ -1211,8 +1239,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             x
         }
     )
+    .log_success("DMR expansion complete.", level = 2)
 
-
+    .log_step("Post-processing extended DMRs..", level = 2)
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
@@ -1250,6 +1279,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     extended_dmrs$sup_cpgs_num <- extended_dmrs$end_ind - extended_dmrs$start_ind + 1
 
     extended_dmrs$id <- paste0(extended_dmrs$chr, ":", extended_dmrs$start, "-", extended_dmrs$end)
+    
+    .log_success("Post-processing complete.", level = 2)
     .log_success("Extended DMRs formed: ", nrow(extended_dmrs), level = 1)
 
     .log_step("Finding GC content of DMRs..", level = 1)
@@ -1274,7 +1305,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     if (verbose >= 2) {
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
-            file = file.path("debug", "extended_dmrs_prior_filtering.tsv"),
+            file = file.path("debug", "02_extended_dmrs_prior_filtering.tsv"),
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
