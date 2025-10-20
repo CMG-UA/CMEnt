@@ -117,9 +117,12 @@
                         extreme_verbosity = FALSE,
                         aggfun = mean,
                         pval_mode = c("parametric", "empirical"),
-                        nperm = 0L,
+                        empirical_strategy = c("auto", "montecarlo"),
+                        nperm = 200L,
+                        mid_p = FALSE,
                         perm_seed = NULL) {
     pval_mode <- match.arg(pval_mode)
+    empirical_strategy <- match.arg(empirical_strategy)
     sorted_locs <- sorted_locs[beta_row_names, ]
 
     dmr_start <- dmr["start_dmp"]
@@ -180,7 +183,9 @@
             sites_locs = sorted_locs[ustream_start_lookup_site_ind:ustream_end_lookup_site_ind, ],
             aggfun = aggfun,
             pval_mode = pval_mode,
+            empirical_strategy = empirical_strategy,
             nperm = nperm,
+            mid_p = mid_p,
             perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
         )
         # find consecutive FALSE counts in connected
@@ -251,7 +256,9 @@
             sites_locs = sorted_locs[dstream_start_lookup_site_ind:dstream_end_lookup_site_ind, ],
             aggfun = aggfun,
             pval_mode = pval_mode,
+            empirical_strategy = empirical_strategy,
             nperm = nperm,
+            mid_p = mid_p,
             perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
         )
         # find consecutive FALSE counts in connected
@@ -341,7 +348,9 @@
 #' @param sites_locs Data frame with chr and pos columns for each site
 #' @param aggfun Aggregation function for computing group means (default: mean)
 #' @param pval_mode Character. "parametric" (default) for t-based p-values, or "empirical" for permutation-based p-values.
-#' @param nperm Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for rows with >=4 valid samples and falls back to parametric for rows with <=3; "montecarlo" forces Monte Carlo for all eligible rows.
+#' @param nperm Integer. Number of permutations when using empirical Monte Carlo. Default is 200.
+#' @param mid_p Logical. Use mid-p adjustment for empirical p-values (reduces tie conservatism). Default is FALSE.
 #' @param perm_seed Integer or NULL. RNG seed for reproducible permutations when pval_mode = "empirical". Default is NULL.
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
@@ -350,8 +359,11 @@
 .testConnectivityBatch <- function(sites_beta, group_inds, max_pval,
                                    casecontrol = NULL, min_delta_beta = 0,
                                    max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean,
-                                   pval_mode = c("parametric", "empirical"), nperm = 0L, perm_seed = NULL) {
+                                   pval_mode = c("parametric", "empirical"),
+                                   empirical_strategy = c("auto", "montecarlo"),
+                                   nperm = 200L, mid_p = FALSE, perm_seed = NULL) {
     pval_mode <- match.arg(pval_mode)
+    empirical_strategy <- match.arg(empirical_strategy)
     n_sites <- nrow(sites_beta)
     if (n_sites < 2) {
         return(data.frame(
@@ -389,10 +401,11 @@
 
         # Get data for this group - subset columns
         group_beta <- sites_beta[, idx, drop = FALSE]
+        group_m <- log(group_beta / (1 - group_beta + 1e-6) + 1e-6) # M-values transformation
 
         # Extract consecutive pairs matrices
-        x_mat <- group_beta[1:(n_sites - 1), , drop = FALSE] # Sites i
-        y_mat <- group_beta[2:n_sites, , drop = FALSE] # Sites i+1
+        x_mat <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i
+        y_mat <- group_m[2:n_sites, , drop = FALSE] # Sites i+1
 
         # Compute means for each pair (vectorized)
         x_means <- rowMeans(x_mat, na.rm = TRUE)
@@ -428,18 +441,26 @@
         failing_groups[low_df] <- g
 
         ps <- rep(NA_real_, n_pairs)
+        # Precompute parametric p-values as fallback when empirical is not feasible/resolved
+        tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
+        ps_parametric <- rep(NA_real_, n_pairs)
+        finite_tstat_mask <- !is.na(tstats)
+        valid_df_mask <- dfs >= 1L
+        finite_and_valid_df <- finite_tstat_mask & valid_df_mask
+        if (any(finite_and_valid_df)) {
+            ps_parametric[finite_and_valid_df] <- -2 * expm1(pt(abs(tstats[finite_and_valid_df]), df = dfs[finite_and_valid_df], log.p = TRUE))
+        }
+
         if (pval_mode == "parametric") {
             # Compute t-statistics (vectorized)
-            tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
-
             na_tstat <- is.na(tstats) & connected
             connected[na_tstat] <- FALSE
             reasons[na_tstat] <- "na tstat"
             failing_groups[na_tstat] <- g
 
             # Compute p-values (vectorized), only for the non-na and connected tstats
-            finite_tstat_and_connected <- !is.na(tstats) & connected
-            ps[finite_tstat_and_connected] <- -2 * expm1(pt(abs(tstats[finite_tstat_and_connected]), df = dfs[finite_tstat_and_connected], log.p = TRUE))
+            finite_tstat_and_connected <- finite_tstat_mask & connected
+            ps[finite_tstat_and_connected] <- ps_parametric[finite_tstat_and_connected]
         } else {
             # Empirical p-values via permutations of sample labels within group
             # Only compute for rows that are still connected and have finite cors
@@ -458,27 +479,44 @@
                         assign(".Random.seed", old_seed, envir = .GlobalEnv)
                     }
                 }, add = TRUE)
-                counts <- integer(n_pairs)
-                m <- ncol(group_beta)
-                if (nperm > 0L && m > 2L) {
+                counts_ge <- integer(n_pairs)
+                counts_eq <- integer(n_pairs)
+                # Number of samples in this group
+                m <- ncol(y_mat)
+                # Empirical strategy: auto -> fallback to parametric when n_valid <= 3 (impossible to get p < 0.05)
+                do_empirical <- mask
+                if (empirical_strategy == "auto") {
+                    do_empirical <- do_empirical & (n_valid >= 4L)
+                }
+                if (nperm > 0L && m > 2L && any(do_empirical)) {
                     for (b in seq_len(nperm)) {
+                        # Permute sample labels (columns) only for y; x remains fixed
                         perm <- sample.int(m, size = m, replace = FALSE)
-                        xp <- x_mat[, perm, drop = FALSE]
                         yp <- y_mat[, perm, drop = FALSE]
-
-                        xm <- rowMeans(xp, na.rm = TRUE)
                         ym <- rowMeans(yp, na.rm = TRUE)
-                        xc <- xp - xm
-                        yc <- yp - ym
-                        sxy <- rowSums(xc * yc, na.rm = TRUE)
-                        sx2 <- rowSums(xc^2, na.rm = TRUE)
+                        yc <- sweep(yp, 1L, ym, FUN = "-")
+                        sxy <- rowSums(x_centered * yc, na.rm = TRUE)
                         sy2 <- rowSums(yc^2, na.rm = TRUE)
-                        rperm <- sxy / sqrt(sx2 * sy2)
-                        comp_mask <- mask & is.finite(rperm)
-                        counts[comp_mask] <- counts[comp_mask] + (abs(rperm[comp_mask]) >= abs(cors[comp_mask]))
+                        rperm <- sxy / sqrt(sum_x2 * sy2)
+                        comp_mask <- do_empirical & is.finite(rperm)
+                        if (any(comp_mask)) {
+                            ap <- abs(rperm[comp_mask])
+                            ao <- abs(cors[comp_mask])
+                            counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
+                            counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
+                        }
                     }
                 }
-                ps[mask] <- (counts[mask] + 1) / (nperm + 1)
+                if (mid_p) {
+                    ps[do_empirical] <- (counts_ge[do_empirical] + 0.5 * counts_eq[do_empirical] + 1) / (nperm + 1)
+                } else {
+                    ps[do_empirical] <- (counts_ge[do_empirical] + counts_eq[do_empirical] + 1) / (nperm + 1)
+                }
+                # Fallback to parametric for rows where empirical was not applied (auto) or unavailable
+                fallback_mask <- mask & !do_empirical
+                if (any(fallback_mask)) {
+                    ps[fallback_mask] <- ps_parametric[fallback_mask]
+                }
             }
         }
 
@@ -677,7 +715,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               genome = c("hg19", "hg38", "mm10", "mm39"),
                               max_pval = 0.05,
                               pval_mode = c("parametric", "empirical"),
-                              nperm = 0L,
+                              empirical_strategy = c("auto", "montecarlo"),
+                              nperm = 200L,
+                              mid_p = FALSE,
                               perm_seed = NULL,
                               max_lookup_dist = 10000,
                               min_dmps = 1,
@@ -692,6 +732,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               beta_row_names_file = NULL,
                               tabix_file = NULL) {
     pval_mode <- match.arg(pval_mode)
+    empirical_strategy <- match.arg(empirical_strategy)
     # Clean up any zombie processes on exit
     includes <- "#include <sys/wait.h>"
     code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
@@ -958,6 +999,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     }
     ret <- future.apply::future_lapply(
         X = chromosomes,
+        future.seed=TRUE,
         FUN = function(chr) {
             op <- options(warn = 2)$warn
             .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
@@ -999,7 +1041,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 max_pval = max_pval,
                 aggfun = aggfun,
                 pval_mode = pval_mode,
+                empirical_strategy = empirical_strategy,
                 nperm = nperm,
+                mid_p = mid_p,
                 perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
             )
             stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
@@ -1019,7 +1063,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             for (bp_ind in seq_len(length(breakpoints))) {
                 end_ind <- breakpoints[bp_ind]
                 if (end_ind - start_ind + 1 < min_dmps) {
-                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind + 1, " < ", min_dmps, ").", level = 3)
+                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind + 1, " < ", min_dmps, ").", level = 4)
                     start_ind <- breakpoints[bp_ind] + 1
                     next
                 }
@@ -1137,6 +1181,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         X = ungrouped_dmrs,
         MARGIN = 1,
         simplify = FALSE,
+        future.seed=TRUE,
         future.scheduling = ceiling(n_dmrs / njobs),
         FUN = function(dmr) {
             op <- options(warn = 2)$warn
@@ -1156,7 +1201,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 max_lookup_dist = max_lookup_dist,
                 aggfun = aggfun,
                 pval_mode = pval_mode,
+                empirical_strategy = empirical_strategy,
                 nperm = nperm,
+                mid_p = mid_p,
                 perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
             )
             options(warn = op)
