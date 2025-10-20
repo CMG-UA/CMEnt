@@ -947,22 +947,23 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 )
             }
             .log_success("DMP connectivity tested.", level = 3)
-            breakpoints <- c(1, which(!corr_ret$connected), nrow(cdmps_beta))
-            for (bp_ind in seq_len(length(breakpoints) - 1)) {
-                start_ind <- breakpoints[bp_ind]
-                end_ind <- breakpoints[bp_ind + 1]
-                if (end_ind - start_ind < min_dmps) {
-                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind, " < ", min_dmps, ").", level = 3)
+            breakpoints <- c(which(!corr_ret$connected), nrow(cdmps_beta))
+            start_ind <- 1
+            for (bp_ind in seq_len(length(breakpoints))) {
+                end_ind <- breakpoints[bp_ind]
+                if (end_ind - start_ind + 1 < min_dmps) {
+                    .log_info("Skipping DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ") due to insufficient number of connected DMPs (", end_ind - start_ind + 1, " < ", min_dmps, ").", level = 3)
+                    start_ind <- breakpoints[bp_ind] + 1
                     next
                 }
                 .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from DMP ", start_ind, " to DMP ", end_ind, " (id: ", chr, ":", cdmps_locs[start_ind, "pos"], "-", cdmps_locs[end_ind, "pos"], ")", level = 3)
-                dmr_dmps_inds <- seq.int(start_ind, end_ind - 1)
+                dmr_dmps_inds <- seq.int(start_ind, end_ind)
                 if (end_ind == start_ind) {
                     corr_pval <- NA
                 } else {
                     corr_pval <- aggfun(corr_ret$pval[dmr_dmps_inds[-length(dmr_dmps_inds)]], na.rm = TRUE)
                 }
-                if (end_ind < nrow(cdmps_beta) - 1) {
+                if (end_ind < nrow(cdmps_beta)) {
                     stop_reason <- corr_ret$reason[[end_ind]]
                 } else {
                     stop_reason <- "end of chromosome"
@@ -1006,6 +1007,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                     dmr_n <- dmr_n + 1L
                     if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
                     dmr_list[[dmr_n]] <- new_dmr
+                    start_ind <- breakpoints[bp_ind] + 1
+
                 }
                 .log_success("DMR registered.",
                     level = 3

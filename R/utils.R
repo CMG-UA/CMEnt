@@ -888,26 +888,38 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
+    
+    chain_name <- NULL
+    from_genome <- NULL
     if (genome == "mm39") {
-        path <- system.file(package = "liftOver", "extdata", "mm10ToMm39.over.chain")
-        chain <- rtracklayer::import.chain(path)
-        locs <- rtracklayer::liftOver(locs, chain)
+        chain_name <- "mm10ToMm39.over.chain"
+        from_genome <- "mm10"
     }
     if (genome == "hg38") {
         if (tolower(array) != "epicv2") {
-            path <- system.file(package = "liftOver", "extdata", "hg19ToHg38.over.chain")
-            chain <- rtracklayer::import.chain(system.file(
-                "extdata",
-                "hg19ToHg38.over.chain",
-            ))
-            locs <- rtracklayer::liftOver(locs, chain)
+            chain_name <- "hg19ToHg38.over.chain"
+            from_genome <- "hg19"
         }
     } else {
         if (tolower(array) == "epicv2") {
-            path <- system.file(package = "liftOver", "extdata", "hg38toHg19.over.chain")
-            chain <- rtracklayer::import.chain(path)
-            locs <- rtracklayer::liftOver(locs, chain)
+            chain_name <- "hg38ToHg19.over.chain"
+            from_genome <- "hg38"
         }
+    }
+    if (!is.null(chain_name)) {
+        chain_file <- file.path(cache_dir, chain_name)
+        if (!file.exists(chain_file)) {
+            utils::download.file(
+                url = paste0("http://hgdownload.soe.ucsc.edu/goldenPath/",
+                             from_genome,
+                             "/liftOver/", chain_name, ".gz"),
+                destfile = paste0(chain_file, ".gz"),
+                mode = "wb"
+            )
+            R.utils::gunzip(paste0(chain_file, ".gz"), remove = FALSE)
+        }
+        chain <- rtracklayer::import.chain(chain_file)
+        locs <- rtracklayer::liftOver(locs, chain)
     }
     locs <- sort(locs)
     locs <- as.data.frame(locs)
@@ -1022,7 +1034,7 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
         if (!requireNamespace("BiocManager", quietly = TRUE)) {
             install.packages("BiocManager")
         }
-        BiocManager::install(pkg_name)
+        BiocManager::install(pkg_name, update = FALSE)
     }
     # Load the BSgenome package
     if (!isNamespaceLoaded(pkg_name)) {

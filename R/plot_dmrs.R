@@ -87,10 +87,6 @@ plotDMR <- function(dmrs,
     # Extract DMP IDs from the comma-separated string
     dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
 
-    # Get all CpGs in the extended region
-    start_ind <- dmr_data$start_ind
-    end_ind <- dmr_data$end_ind
-
     # Get DMP positions
     dmp_positions <- sorted_locs[dmp_ids, "pos"]
     start_dmp_pos <- dmr_data$start_dmp_pos
@@ -254,8 +250,8 @@ plotDMR <- function(dmrs,
     # Styling
     p <- p +
         ggplot2::scale_y_continuous(
-            breaks = c(0, 0.5, 1),
-            labels = c("Extended\nCpGs", "", "DMPs/DMR"),
+            breaks = c(0.5, 1),
+            labels = c("Extended\nCpGs", "DMPs/DMR"),
             limits = c(-0.1, 1.15)
         ) +
         ggplot2::labs(

@@ -13,9 +13,9 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
         #' @field tabix_file Path to tabix-indexed file
         tabix_file = NULL,
         #' @field genome Reference genome
-        genome = NULL,
+        genome = "hg19",
         #' @field array Array platform
-        array = NULL,
+        array = "450K",
         #' @field beta_file_in_memory In-memory beta data
         beta_file_in_memory = NULL,
         #' @field beta_row_names_file Path to row names file
@@ -23,11 +23,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
         #' @field sorted_locs Sorted genomic locations
         sorted_locs = NULL,
         #' @field verbose Verbosity level
-        verbose = NULL,
+        verbose = 0,
         #' @field memory_threshold_mb Memory threshold in MB
-        memory_threshold_mb = NULL,
+        memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
-        njobs = NULL,
+        njobs = 1,
 
         #' @description Create a new BetaFileHandler object
         #' @param beta_file Path to beta values file
@@ -50,6 +50,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             # Validate inputs
             if (is.null(beta_file) && is.null(tabix_file)) {
                 stop("Either beta_file or tabix_file must be provided")
+            }
+            if (!is.null(beta_file) && !file.exists(beta_file)) {
+                stop("Provided beta_file does not exist: ", beta_file)
+            } else if (!is.null(tabix_file) && !file.exists(tabix_file)) {
+                stop("Provided tabix_file does not exist: ", tabix_file)
             }
 
             array <- match.arg(array)
