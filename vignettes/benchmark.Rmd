@@ -128,7 +128,7 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
 
     library(progressr)
     progressr::handlers("cli")
-
+    # Use empirical p-value mode estimation, due to small sample size
     dmrs_segal <- progressr::with_progress(DMRSegal::findDMRsFromSeeds(
         beta_file = beta_file,
         dmps_file = dmps_file,
@@ -137,8 +137,10 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        max_pval = 0.1,
+        max_pval = 0.05,
         expansion_relaxation = 5,
+        pval_mode ="empirical",
+        nperm = 50,
         njobs = 1,
         verbose = 3
     ))

@@ -20,6 +20,9 @@ findDMRsFromSeeds(
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   max_pval = 0.05,
+  pval_mode = c("parametric", "empirical"),
+  nperm = 0L,
+  perm_seed = NULL,
   max_lookup_dist = 10000,
   min_dmps = 1,
   min_adj_dmps = 1,
@@ -64,6 +67,12 @@ findDMRsFromSeeds(
 \item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.}
+
+\item{pval_mode}{Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.}
+
+\item{nperm}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
+
+\item{perm_seed}{Integer or NULL. RNG seed for reproducibility when pval_mode = "empirical". Default is NULL.}
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.}
 

@@ -227,8 +227,8 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 31,
-        info = "Should find 31 DMRs as in benchmark.Rmd"
+    expect_equal(length(dmrs_segal), 5,
+        info = "Should find 5 DMRs as in benchmark.Rmd"
     )
     expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
@@ -810,4 +810,89 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     }
 
     unlink(c(beta_file, dmps_file))
+})
+
+test_that("findDMRsFromSeeds empirical p-value mode works", {
+    skip_if_not_installed("minfi")
+    skip_if_not_installed("minfiData")
+
+    library(minfi)
+
+    mset <- minfiData::MsetEx[1:3000, ]
+    beta_mat <- getBeta(mset)
+
+    pheno <- data.frame(
+        Sample_Group = pData(mset)$Sample_Group,
+        casecontrol = pData(mset)$Sample_Group == "GroupB",
+        row.names = colnames(mset)
+    )
+
+    beta_file <- tempfile(fileext = ".txt")
+    write.table(
+        cbind(ID = rownames(beta_mat), beta_mat),
+        file = beta_file,
+        sep = "\t",
+        quote = FALSE,
+        row.names = FALSE
+    )
+    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+
+    dmps <- suppressWarnings(dmpFinder(mset,
+        pheno = pheno$Sample_Group,
+        type = "categorical",
+        shrinkVar = TRUE
+    ))
+    dmps <- dmps[!is.na(dmps$pval), ]
+    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
+
+    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    if (nrow(sig_dmps) == 0) {
+        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
+    }
+    dmps_file <- create_test_dmps_file(sig_dmps)
+
+    dmrs_parametric <- findDMRsFromSeeds(
+        beta_file = beta_file,
+        dmps_file = dmps_file,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        expansion_relaxation = 5,
+        pval_mode = "parametric",
+        njobs = 1,
+        verbose = 0,
+        memory_threshold_mb = 500
+    )
+
+    dmrs_empirical <- findDMRsFromSeeds(
+        beta_file = beta_file,
+        dmps_file = dmps_file,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_dmps = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        expansion_relaxation = 5,
+        pval_mode = "empirical",
+        nperm = 50,
+        perm_seed = 12345,
+        njobs = 1,
+        verbose = 0,
+        memory_threshold_mb = 500
+    )
+
+    unlink(c(beta_file, dmps_file))
+
+    expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
+    expect_true(is.null(dmrs_empirical) || inherits(dmrs_empirical, "GRanges"))
+
+    if (!is.null(dmrs_parametric) && length(dmrs_parametric) > 0) {
+        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_parametric))))
+    }
+
+    if (!is.null(dmrs_empirical) && length(dmrs_empirical) > 0) {
+        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_empirical))))
+    }
 })

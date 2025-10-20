@@ -115,7 +115,11 @@
                         max_lookup_dist = 1e7,
                         group_inds = NULL,
                         extreme_verbosity = FALSE,
-                        aggfun = mean) {
+                        aggfun = mean,
+                        pval_mode = c("parametric", "empirical"),
+                        nperm = 0L,
+                        perm_seed = NULL) {
+    pval_mode <- match.arg(pval_mode)
     sorted_locs <- sorted_locs[beta_row_names, ]
 
     dmr_start <- dmr["start_dmp"]
@@ -174,7 +178,10 @@
             min_delta_beta = min_cpg_delta_beta,
             max_lookup_dist = max_lookup_dist,
             sites_locs = sorted_locs[ustream_start_lookup_site_ind:ustream_end_lookup_site_ind, ],
-            aggfun = aggfun
+            aggfun = aggfun,
+            pval_mode = pval_mode,
+            nperm = nperm,
+            perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
         )
         # find consecutive FALSE counts in connected
         consecutive_fails <- rle(!corr_ret$connected)
@@ -242,7 +249,10 @@
             min_delta_beta = min_cpg_delta_beta,
             max_lookup_dist = max_lookup_dist,
             sites_locs = sorted_locs[dstream_start_lookup_site_ind:dstream_end_lookup_site_ind, ],
-            aggfun = aggfun
+            aggfun = aggfun,
+            pval_mode = pval_mode,
+            nperm = nperm,
+            perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
         )
         # find consecutive FALSE counts in connected
         consecutive_fails <- rle(!corr_ret$connected)
@@ -330,13 +340,18 @@
 #' @param max_lookup_dist Maximum distance between consecutive sites
 #' @param sites_locs Data frame with chr and pos columns for each site
 #' @param aggfun Aggregation function for computing group means (default: mean)
+#' @param pval_mode Character. "parametric" (default) for t-based p-values, or "empirical" for permutation-based p-values.
+#' @param nperm Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param perm_seed Integer or NULL. RNG seed for reproducible permutations when pval_mode = "empirical". Default is NULL.
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 #' @keywords internal
 #' @noRd
 .testConnectivityBatch <- function(sites_beta, group_inds, max_pval,
                                    casecontrol = NULL, min_delta_beta = 0,
-                                   max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean) {
+                                   max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean,
+                                   pval_mode = c("parametric", "empirical"), nperm = 0L, perm_seed = NULL) {
+    pval_mode <- match.arg(pval_mode)
     n_sites <- nrow(sites_beta)
     if (n_sites < 2) {
         return(data.frame(
@@ -412,18 +427,60 @@
         reasons[low_df] <- "df<1"
         failing_groups[low_df] <- g
 
-        # Compute t-statistics (vectorized)
-        tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
-
-        na_tstat <- is.na(tstats) & connected
-        connected[na_tstat] <- FALSE
-        reasons[na_tstat] <- "na tstat"
-        failing_groups[na_tstat] <- g
-
-        # Compute p-values (vectorized), only for the non-na and connected tstats
-        finite_tstat_and_connected <- !is.na(tstats) & connected
         ps <- rep(NA_real_, n_pairs)
-        ps[finite_tstat_and_connected] <- -2 * expm1(pt(abs(tstats[finite_tstat_and_connected]), df = dfs[finite_tstat_and_connected], log.p = TRUE))
+        if (pval_mode == "parametric") {
+            # Compute t-statistics (vectorized)
+            tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
+
+            na_tstat <- is.na(tstats) & connected
+            connected[na_tstat] <- FALSE
+            reasons[na_tstat] <- "na tstat"
+            failing_groups[na_tstat] <- g
+
+            # Compute p-values (vectorized), only for the non-na and connected tstats
+            finite_tstat_and_connected <- !is.na(tstats) & connected
+            ps[finite_tstat_and_connected] <- -2 * expm1(pt(abs(tstats[finite_tstat_and_connected]), df = dfs[finite_tstat_and_connected], log.p = TRUE))
+        } else {
+            # Empirical p-values via permutations of sample labels within group
+            # Only compute for rows that are still connected and have finite cors
+            mask <- is.finite(cors) & connected
+            if (any(mask)) {
+                # RNG management
+                old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+                if (old_seed_exists) {
+                    old_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+                }
+                if (!is.null(perm_seed)) {
+                    set.seed(perm_seed)
+                }
+                on.exit({
+                    if (old_seed_exists) {
+                        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+                    }
+                }, add = TRUE)
+                counts <- integer(n_pairs)
+                m <- ncol(group_beta)
+                if (nperm > 0L && m > 2L) {
+                    for (b in seq_len(nperm)) {
+                        perm <- sample.int(m, size = m, replace = FALSE)
+                        xp <- x_mat[, perm, drop = FALSE]
+                        yp <- y_mat[, perm, drop = FALSE]
+
+                        xm <- rowMeans(xp, na.rm = TRUE)
+                        ym <- rowMeans(yp, na.rm = TRUE)
+                        xc <- xp - xm
+                        yc <- yp - ym
+                        sxy <- rowSums(xc * yc, na.rm = TRUE)
+                        sx2 <- rowSums(xc^2, na.rm = TRUE)
+                        sy2 <- rowSums(yc^2, na.rm = TRUE)
+                        rperm <- sxy / sqrt(sx2 * sy2)
+                        comp_mask <- mask & is.finite(rperm)
+                        counts[comp_mask] <- counts[comp_mask] + (abs(rperm[comp_mask]) >= abs(cors[comp_mask]))
+                    }
+                }
+                ps[mask] <- (counts[mask] + 1) / (nperm + 1)
+            }
+        }
 
         na_p <- is.na(ps) & connected
         connected[na_p] <- FALSE
@@ -586,6 +643,9 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
+#' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
+#' @param nperm Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param perm_seed Integer or NULL. RNG seed for reproducibility when pval_mode = "empirical". Default is NULL.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
 #' @param min_adj_dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
@@ -616,6 +676,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = c("hg19", "hg38", "mm10", "mm39"),
                               max_pval = 0.05,
+                              pval_mode = c("parametric", "empirical"),
+                              nperm = 0L,
+                              perm_seed = NULL,
                               max_lookup_dist = 10000,
                               min_dmps = 1,
                               min_adj_dmps = 1,
@@ -628,6 +691,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               verbose = 1,
                               beta_row_names_file = NULL,
                               tabix_file = NULL) {
+    pval_mode <- match.arg(pval_mode)
     # Clean up any zombie processes on exit
     includes <- "#include <sys/wait.h>"
     code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
@@ -933,7 +997,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 max_lookup_dist = max_lookup_dist,
                 sites_locs = cdmps_locs,
                 max_pval = max_pval,
-                aggfun = aggfun
+                aggfun = aggfun,
+                pval_mode = pval_mode,
+                nperm = nperm,
+                perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
             )
             stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
             if (verbose >= 3) {
@@ -1087,7 +1154,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                 min_cpg_delta_beta = min_cpg_delta_beta,
                 sorted_locs = sorted_locs,
                 max_lookup_dist = max_lookup_dist,
-                aggfun = aggfun
+                aggfun = aggfun,
+                pval_mode = pval_mode,
+                nperm = nperm,
+                perm_seed = if (is.null(perm_seed)) NULL else as.integer(perm_seed)
             )
             options(warn = op)
             if (verbose > 0 && exists("p_ext")) p_ext()

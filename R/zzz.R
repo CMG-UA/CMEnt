@@ -8,3 +8,5 @@
         }
     }
 }
+
+utils::globalVariables(c(".Random.seed"))
