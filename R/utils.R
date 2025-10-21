@@ -795,7 +795,6 @@ sortBetaFileByCoordinates <- function(beta_file,
         check.names = FALSE,
         stringsAsFactors = FALSE
     )
-
     .log_step("Writing sorted beta file", output_file, level=2)
 
     # Write sorted file
