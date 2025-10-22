@@ -51,9 +51,14 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 library(minfi)
 library(DMRSegal)
 
-beta_file <- "data/real_example_beta.tsv.gz"
-samplesheet_file <- "data/real_example_pheno.tsv"
-array_type <- "450K"
+if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
+    remotes::install_github("CMG-UA/DMRSegaldata")
+}
+library(DMRSegaldata)
+
+beta_file <- DMRSegaldata::getExampleBeta()
+samplesheet_file <- DMRSegaldata::getExamplePheno()
+array_type <- DMRSegaldata::getArrayType()
 genome <- "hg19"
 
 devtools::load_all(".")

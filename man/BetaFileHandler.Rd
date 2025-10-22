@@ -40,6 +40,7 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \item \href{#method-BetaFileHandler-getBetaRowNames}{\code{BetaFileHandler$getBetaRowNames()}}
 \item \href{#method-BetaFileHandler-getBetaColNames}{\code{BetaFileHandler$getBetaColNames()}}
 \item \href{#method-BetaFileHandler-validate}{\code{BetaFileHandler$validate()}}
+\item \href{#method-BetaFileHandler-getBetaLocs}{\code{BetaFileHandler$getBetaLocs()}}
 \item \href{#method-BetaFileHandler-getBeta}{\code{BetaFileHandler$getBeta()}}
 \item \href{#method-BetaFileHandler-clone}{\code{BetaFileHandler$clone()}}
 }
@@ -140,12 +141,25 @@ Self (invisibly)
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaFileHandler-getBetaLocs"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaFileHandler-getBetaLocs}{}}}
+\subsection{Method \code{getBetaLocs()}}{
+Get genomic locations for beta values
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaFileHandler$getBetaLocs()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+Data frame of genomic locations
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaFileHandler-getBeta"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaFileHandler-getBeta}{}}}
 \subsection{Method \code{getBeta()}}{
 Extract beta values for specific CpG sites and samples
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{BetaFileHandler$getBeta(row_names, col_names = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{BetaFileHandler$getBeta(row_names = NULL, col_names = NULL)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{

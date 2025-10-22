@@ -7,12 +7,13 @@
 plotDMR(
   dmrs,
   dmr_index = 1,
-  beta_file = NULL,
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
-  show_pvalues = TRUE,
-  title = NULL
+  extend_by_dmr_size_ratio = 0.2,
+  min_extension_bp = 50,
+  title = NULL,
+  .ret_breaks = FALSE
 )
 }
 \arguments{
@@ -20,15 +21,11 @@ plotDMR(
 
 \item{dmr_index}{Integer. Which DMR to plot (default: 1).}
 
-\item{beta_file}{Character. Path to the methylation beta values file (optional).}
-
 \item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
 
 \item{array}{Character. Array platform type (default: "450K").}
 
 \item{genome}{Character. Genome version (default: "hg19").}
-
-\item{show_pvalues}{Logical. Whether to show p-values on DMP stems (default: TRUE).}
 
 \item{title}{Character. Plot title (default: NULL, auto-generated).}
 }
@@ -49,7 +46,7 @@ dmrs <- readRDS("dmrs.rds")
 plotDMR(dmrs, dmr_index = 1)
 
 # Plot with custom options
-plotDMR(dmrs, dmr_index = 2, show_pvalues = TRUE)
+plotDMR(dmrs, dmr_index = 2)
 }
 
 }

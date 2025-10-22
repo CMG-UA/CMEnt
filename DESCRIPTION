@@ -34,7 +34,6 @@ Imports:
     utils,
     tools,
     data.table,
-    psych,
     cli,
     stringr,
     future,

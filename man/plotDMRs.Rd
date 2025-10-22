@@ -4,7 +4,18 @@
 \alias{plotDMRs}
 \title{Plot Multiple DMRs in a Grid}
 \usage{
-plotDMRs(dmrs, dmr_indices = NULL, ncol = 2, ...)
+plotDMRs(
+  dmrs,
+  dmr_indices = NULL,
+  top_n = 4,
+  beta_values = NULL,
+  pheno = NULL,
+  sample_group_col = "Sample_Group",
+  genome = c("hg19", "hg38", "mm10", "mm39"),
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  ncol = 1,
+  ...
+)
 }
 \arguments{
 \item{dmrs}{GRanges object. Output from findDMRsFromSeeds.}
