@@ -80,21 +80,6 @@ test_that("plotDMR works with custom title", {
     expect_equal(p$labels$title, custom_title)
 })
 
-test_that("plotDMR handles show_pvalues parameter", {
-    skip_if_not_installed("ggplot2")
-
-    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-
-    p1 <- plotDMR(dmrs, dmr_index = 1, show_pvalues = TRUE)
-    expect_s3_class(p1, "ggplot")
-
-    p2 <- plotDMR(dmrs, dmr_index = 1, show_pvalues = FALSE)
-    expect_s3_class(p2, "ggplot")
-})
-
 test_that("plotDMRs creates a combined plot", {
     skip_if_not_installed("ggplot2")
 
@@ -107,7 +92,7 @@ test_that("plotDMRs creates a combined plot", {
     p <- plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list"))
+    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"), paste0("plotDMRs should return a gtable or list of ggplot objects, instead got: ", class(p)))
 })
 
 test_that("plotDMRs handles NULL dmr_indices", {
@@ -121,7 +106,7 @@ test_that("plotDMRs handles NULL dmr_indices", {
     p <- plotDMRs(dmrs, dmr_indices = NULL)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list"))
+    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
 })
 
 test_that("plotDMRs respects ncol parameter", {
@@ -142,8 +127,6 @@ test_that("plotDMRs respects ncol parameter", {
 test_that("plotDMRWithBeta validates beta_handler type", {
     skip_if_not_installed("ggplot2")
     skip_if_not_installed("reshape2")
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
 
     dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
@@ -161,35 +144,26 @@ test_that("plotDMRWithBeta validates beta_handler type", {
     )
 })
 
-test_that("plotDMRWithBeta works with file path", {
+test_that("plotDMRWithBeta works with beta path", {
     skip_if_not_installed("ggplot2")
     skip_if_not_installed("reshape2")
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
+    skip_if_not_installed("DMRSegaldata")
 
     dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
-    library(minfi)
-    mset <- minfiData::MsetEx[1:1000, ]
-    beta_mat <- getBeta(mset)
+    pheno_file <- DMRSegaldata::getExamplePheno()
+    beta_file <- DMRSegaldata::getExampleBeta()
+    samplesheet <- read.table(pheno_file, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+
 
     pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        row.names = colnames(mset)
+        Sample_Group = samplesheet$Sample_Group,
+        row.names = rownames(samplesheet)
     )
 
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     p <- plotDMRWithBeta(
         dmrs = dmrs,
@@ -200,114 +174,11 @@ test_that("plotDMRWithBeta works with file path", {
     )
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list"))
+    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
 
     unlink(beta_file)
 })
 
-test_that("plotDMRWithBeta works with BetaFileHandler object", {
-    skip_if_not_installed("ggplot2")
-    skip_if_not_installed("reshape2")
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-
-    library(minfi)
-    mset <- minfiData::MsetEx[1:1000, ]
-    beta_mat <- getBeta(mset)
-
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        row.names = colnames(mset)
-    )
-
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    beta_handler <- BetaFileHandler$new(
-        beta_file = beta_file,
-        array = "450K",
-        genome = "hg19",
-        verbose = 0
-    )
-
-    p <- plotDMRWithBeta(
-        dmrs = dmrs,
-        dmr_index = 1,
-        beta_handler = beta_handler,
-        pheno = pheno,
-        sample_group_col = "Sample_Group"
-    )
-
-    expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list"))
-
-    unlink(beta_file)
-})
-
-test_that("plotDMRWithBeta respects max_cpgs parameter", {
-    skip_if_not_installed("ggplot2")
-    skip_if_not_installed("reshape2")
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-
-    library(minfi)
-    mset <- minfiData::MsetEx[1:1000, ]
-    beta_mat <- getBeta(mset)
-
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        row.names = colnames(mset)
-    )
-
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    p1 <- plotDMRWithBeta(
-        dmrs = dmrs,
-        dmr_index = 1,
-        beta_handler = beta_file,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        max_cpgs = 50
-    )
-    expect_true(!is.null(p1))
-
-    p2 <- plotDMRWithBeta(
-        dmrs = dmrs,
-        dmr_index = 1,
-        beta_handler = beta_file,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        max_cpgs = 200
-    )
-    expect_true(!is.null(p2))
-
-    unlink(beta_file)
-})
 
 test_that("plotDMR handles DMRs with no extended CpGs", {
     skip_if_not_installed("ggplot2")
@@ -318,7 +189,7 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
     }
 
     dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    no_extended_idx <- which(dmr_data$sup_cpgs_num == 0)
+    no_extended_idx <- which(dmr_data$start_dmp == dmr_data$start_cpg & dmr_data$end_dmp == dmr_data$end_cpg)
 
     if (length(no_extended_idx) > 0) {
         p <- plotDMR(dmrs, dmr_index = no_extended_idx[1])

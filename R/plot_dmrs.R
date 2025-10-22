@@ -580,6 +580,11 @@ plotDMRWithBeta <- function(dmrs,
     end_cpg_ind <- which(rownames(beta_locs) == end_cpg)
     cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
     cpg_locs <- beta_locs[cpg_ids, ]
+    
+    pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
+    if (nrow(pheno) == 0) {
+        stop("No samples in pheno match the samples in beta values")
+    }
 
     # Read beta values using BetaFileHandler
     beta_data <- beta_handler$getBeta(

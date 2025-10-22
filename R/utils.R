@@ -842,16 +842,19 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #' }
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
+getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) 
+{
     array <- match.arg(array)
     genome <- match.arg(genome)
     array <- tolower(array)
     genome <- tolower(genome)
-    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(path.expand("~"), ".cache", "DMRSegal", "annotations"))
+    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(path.expand("~"), 
+        ".cache", "DMRSegal", "annotations"))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    cache_file <- file.path(cache_dir, paste0(array, "_", genome, "_locations.rds"))
+    cache_file <- file.path(cache_dir, paste0(array, "_", genome, 
+        "_locations.rds"))
     if (file.exists(cache_file)) {
         locs <- readRDS(cache_file)
         return(locs)
@@ -860,14 +863,18 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (genome %in% c("hg19", "hg38")) {
         if (array == "450k") {
             pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-        } else if (array == "epic") {
+        }
+        else if (array == "epic") {
             pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
-        } else if (array == "epicv2") {
+        }
+        else if (array == "epicv2") {
             pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
-        } else if (array == "27k") {
+        }
+        else if (array == "27k") {
             pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
         }
-    } else if (genome %in% c("mm10", "mm39")) {
+    }
+    else if (genome %in% c("mm10", "mm39")) {
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             if (!requireNamespace("devtools", quietly = TRUE)) {
@@ -877,17 +884,18 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         }
     }
     if (is.null(pkg_name)) {
-        stop("Unsupported array/genome combination: ", array, "/", genome)
+        stop("Unsupported array/genome combination: ", array, 
+            "/", genome)
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
-        .log_info("Installing required annotation package: ", pkg_name)
+        .log_info("Installing required annotation package: ", 
+            pkg_name)
         if (!requireNamespace("BiocManager", quietly = TRUE)) {
             install.packages("BiocManager")
         }
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
-    
     chain_name <- NULL
     from_genome <- NULL
     if (genome == "mm39") {
@@ -899,7 +907,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
             chain_name <- "hg19ToHg38.over.chain"
             from_genome <- "hg19"
         }
-    } else {
+    }
+    else {
         if (tolower(array) == "epicv2") {
             chain_name <- "hg38ToHg19.over.chain"
             from_genome <- "hg38"
@@ -908,20 +917,19 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!is.null(chain_name)) {
         chain_file <- file.path(cache_dir, chain_name)
         if (!file.exists(chain_file)) {
-            utils::download.file(
-                url = paste0("http://hgdownload.soe.ucsc.edu/goldenPath/",
-                             from_genome,
-                             "/liftOver/", chain_name, ".gz"),
-                destfile = paste0(chain_file, ".gz"),
-                mode = "wb"
-            )
+            utils::download.file(url = paste0("http://hgdownload.soe.ucsc.edu/goldenPath/", 
+                from_genome, "/liftOver/", chain_name, ".gz"), 
+                destfile = paste0(chain_file, ".gz"), mode = "wb")
             R.utils::gunzip(paste0(chain_file, ".gz"), remove = FALSE)
         }
         chain <- rtracklayer::import.chain(chain_file)
         locs <- rtracklayer::liftOver(locs, chain)
+        # pick first mapping if multiple
+        locs <- unlist(locs)
     }
     locs <- sort(locs)
     locs <- as.data.frame(locs)
+    locs <- locs[!duplicated(rownames(locs)), ]
     colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
     if (!"pos" %in% colnames(locs)) {
         locs[, "pos"] <- locs[, "start"]
@@ -932,11 +940,12 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!"end" %in% colnames(locs)) {
         locs[, "end"] <- locs[, "pos"] + 1
     }
-    locs[locs[,"end"] == locs[,"start"], "end"] <- locs[locs[,"end"] == locs[,"start"], "start"] + 1
+    locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[, 
+        "end"] == locs[, "start"], "start"] + 1
     saveRDS(locs, cache_file)
-
     locs
 }
+
 
 
 #' Order Indices by Genomic Location
