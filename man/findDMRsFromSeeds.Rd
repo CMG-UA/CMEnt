@@ -76,9 +76,9 @@ findDMRsFromSeeds(
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
-\item{beta_file}{Character. Path to the beta value file. Either this or tabix_file must be provided.}
+\item{beta_file}{Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.}
 
-\item{dmps_file}{Character. Path to the DMPs TSV file.}
+\item{dmps_file}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
 
 \item{pheno}{Data frame. Phenotype data.}
 
@@ -158,21 +158,18 @@ and filtering internally using the min_cpg_delta_beta parameter if needed.
 \examples{
 \dontrun{
 # Load example data
-data(example_beta)
-data(example_dmps)
-data(example_pheno)
-
-# Write beta values to file
-beta_file <- tempfile(fileext = ".txt")
-write.table(cbind(ID = rownames(example_beta), example_beta),
-    file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE
-)
-
+if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
+  remotes::install_github("CMG-UA/DMRSegaldata")
+}
+library(DMRSegaldata)
+beta <- DMRSegaldata::beta
+dmps <- DMRSegaldata::dmps
+pheno <- DMRSegaldata::pheno
 # Find DMRs
 dmrs <- findDMRsFromSeeds(
-    beta_file = beta_file,
-    dmps_file = example_dmps,
-    pheno = example_pheno
+    beta_file = beta,
+    dmps_file = dmps,
+    pheno = pheno
 )
 }
 

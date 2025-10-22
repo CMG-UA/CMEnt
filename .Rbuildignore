@@ -15,3 +15,12 @@
 ^data-raw$
 ^debug$
 ^examples$
+^\.Rhistory$
+^\.RData$
+^\.Rprofile$
+^\.git$
+^\.github$
+^\.vscode$
+^DMRSegal\.Rcheck$
+^inst/doc$
+^vignettes/.*\.(md|html)$

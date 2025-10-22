@@ -29,32 +29,24 @@ End-to-end DMR discovery with the same dataset and steps as in the benchmark, in
 ```{r load}
 library(DMRSegal)
 if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
-    remotes::install_github("CMG-UA/DMRSegaldata")
+    remotes::install_github("CMG-UA/DMRSegaldata", force=T)
 }
 library(DMRSegaldata)
 
-beta_file <- DMRSegaldata::getExampleBeta()
-samplesheet_file <- DMRSegaldata::getExamplePheno()
+beta <- DMRSegaldata::beta
+pheno <- DMRSegaldata::pheno
 array_type <- DMRSegaldata::getArrayType()
-
 genome <- "hg19"
 
-# Sort beta file by coordinates (required by downstream handlers)
-sorted_beta_file <- tempfile(fileext = ".tsv")
-DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file)
-beta_file <- sorted_beta_file
-
-beta_handler <- DMRSegal::BetaFileHandler$new(beta_file, array = array_type, genome = genome)
+beta_handler <- DMRSegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
 
 # M-values (logit of beta) with small epsilon to avoid log(0)
 mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
 
-samplesheet <- read.table(samplesheet_file, header = TRUE, sep = "\t", row.names = 1)
-pheno <- data.frame(status = samplesheet$Sample_Group, row.names = rownames(samplesheet))
-pheno$group <- pheno$status
-pheno$casecontrol <- pheno$status == "cancer"
+pheno$group <- pheno$Sample_Group
+pheno$casecontrol <- pheno$Sample_Group == "cancer"
 ```
 
 ## Select DMPs with dmpFinder
@@ -62,11 +54,11 @@ pheno$casecontrol <- pheno$status == "cancer"
 ```{r dmps}
 library(minfi)
 
-design <- model.matrix(~status, data = pheno)
+design <- model.matrix(~group, data = pheno)
 colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
 dmps <- suppressWarnings(dmpFinder(mvalues,
-  pheno = pheno$status,
+  pheno = pheno$group,
   type = "categorical",
   shrinkVar = TRUE
 ))
@@ -86,7 +78,7 @@ write.table(sig_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = T
 ```{r dmrs}
 set.seed(42)
 dmrs <- DMRSegal::findDMRsFromSeeds(
-  beta_file = beta_file,
+  beta_file = beta_handler,
   dmps_file = dmps_file,
   pheno = pheno,
   sample_group_col = "group",
@@ -120,7 +112,7 @@ if (length(dmrs) > 0) {
   plotDMRWithBeta(
     dmrs,
     dmr_index = 1,
-    beta_handler = beta_handler,
+    beta = beta_handler,
     pheno = pheno,
     sample_group_col = "group",
     max_cpgs = 100

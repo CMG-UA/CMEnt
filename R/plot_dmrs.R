@@ -442,7 +442,7 @@ minmaxscale <- function(x) {
 plotDMRs <- function(dmrs,
                      dmr_indices = NULL,
                      top_n = 4,
-                     beta_values = NULL,
+                     beta = NULL,
                      pheno = NULL,
                      sample_group_col = "Sample_Group",
                      genome = c("hg19", "hg38", "mm10", "mm39"),
@@ -459,10 +459,10 @@ plotDMRs <- function(dmrs,
     }
 
     # Create individual plots
-    if (!is.null(beta_values)) {
-        if (is.character(beta_values)) {
-            beta_values <- BetaFileHandler$new(
-                beta_file = beta_values,
+    if (!is.null(beta)) {
+        if (is.character(beta)) {
+            beta <- BetaFileHandler$new(
+                beta_file = beta,
                 array = array,
                 genome = genome,
                 verbose = 0
@@ -473,7 +473,7 @@ plotDMRs <- function(dmrs,
             plotDMRWithBeta(
                 dmrs = dmrs,
                 dmr_index = i,
-                beta_handler = beta_values,
+                beta = beta,
                 pheno = pheno,
                 sample_group_col = sample_group_col,
                 ...
@@ -503,7 +503,7 @@ plotDMRs <- function(dmrs,
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
 #' @param dmr_index Integer. Which DMR to plot.
-#' @param beta_handler BetaFileHandler object OR character path to beta file.
+#' @param beta BetaFileHandler object OR character path to beta file OR the beta values matrix.
 #'   If a character path is provided, a BetaFileHandler will be created automatically.
 #' @param pheno Data frame. Phenotype data with sample information (required).
 #' @param sorted_locs Data frame. Genomic locations (optional).
@@ -523,11 +523,10 @@ plotDMRs <- function(dmrs,
 #' # Or using a file path (handler created automatically)
 #' plotDMRWithBeta(dmrs, 1, beta_handler = "beta.txt", pheno = pheno_df)
 #' }
-#'
 #' @export
 plotDMRWithBeta <- function(dmrs,
                             dmr_index,
-                            beta_handler,
+                            beta,
                             pheno,
                             sorted_locs = NULL,
                             array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -545,14 +544,14 @@ plotDMRWithBeta <- function(dmrs,
     genome <- match.arg(genome)
 
     # Create BetaFileHandler if a file path was provided
-    if (is.character(beta_handler)) {
+    if (is.character(beta)) {
         beta_handler <- BetaFileHandler$new(
-            beta_file = beta_handler,
+            beta_file = beta,
             array = array,
             genome = genome,
             verbose = 0
         )
-    } else if (!"BetaFileHandler" %in% class(beta_handler)) {
+    } else if (!"BetaFileHandler" %in% class(beta)) {
         stop("beta_handler must be either a file path (character) or a BetaFileHandler object")
     }
     if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
@@ -572,7 +571,7 @@ plotDMRWithBeta <- function(dmrs,
     # Get CpG IDs in the region
     start_cpg <- dmr_data$start_cpg
     end_cpg <- dmr_data$end_cpg
-    beta_locs <- beta_handler$getBetaLocs()
+    beta_locs <- beta$getBetaLocs()
     if(!(start_cpg %in% rownames(beta_locs)) || !(end_cpg %in% rownames(beta_locs))) {
         stop("Start or end CpG not found in beta locations")
     }
@@ -581,13 +580,13 @@ plotDMRWithBeta <- function(dmrs,
     cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
     cpg_locs <- beta_locs[cpg_ids, ]
     
-    pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
+    pheno <- pheno[rownames(pheno) %in% beta$getBetaColNames(), , drop = FALSE]
     if (nrow(pheno) == 0) {
         stop("No samples in pheno match the samples in beta values")
     }
 
     # Read beta values using BetaFileHandler
-    beta_data <- beta_handler$getBeta(
+    beta_data <- beta$getBeta(
         row_names = cpg_ids,
         col_names = rownames(pheno)
     )
@@ -636,7 +635,7 @@ plotDMRWithBeta <- function(dmrs,
             low = "#1a1a94", mid = "white", high = "red",
             midpoint = 0,
             limits = c(-max(abs(beta_melted$Beta)), max(abs(beta_melted$Beta))),
-            name = "Δβ"
+            name = "\u0394\u03b2"
         ) +
         ggplot2::labs(
             y = "Sample",
@@ -672,8 +671,7 @@ plotDMRWithBeta <- function(dmrs,
         g1 <- ggplot2::ggplotGrob(structure_plot)
         g2 <- ggplot2::ggplotGrob(heatmap_plot)
         max_width <- grid::unit.pmax(g1$widths, g2$widths)
-        library(gtable)
-        combined <- rbind(g1, g2, size='last')
+        combined <- gtable::rbind(g1, g2, size='last')
         combined$widths <- max_width
         grid::grid.newpage()
         grid::grid.draw(combined)

@@ -706,7 +706,7 @@ convertBetaToTabix <- function(beta_file,
 #'   \item Validates that the output is properly sorted
 #' }
 #' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' # Sort a beta file for 450K array
@@ -795,7 +795,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         check.names = FALSE,
         stringsAsFactors = FALSE
     )
-    .log_step("Writing sorted beta file", output_file, level=2)
+    .log_step("Writing sorted beta file", output_file, level = 2)
 
     # Write sorted file
     data.table::fwrite(
@@ -809,8 +809,6 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     return(output_file)
 }
-
-
 
 
 #' Get Sorted Array Locations
@@ -842,19 +840,22 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #' }
 #' @export
-getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) 
-{
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
     array <- match.arg(array)
     genome <- match.arg(genome)
     array <- tolower(array)
     genome <- tolower(genome)
-    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(path.expand("~"), 
-        ".cache", "DMRSegal", "annotations"))
+    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(
+        path.expand("~"),
+        ".cache", "DMRSegal", "annotations"
+    ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    cache_file <- file.path(cache_dir, paste0(array, "_", genome, 
-        "_locations.rds"))
+    cache_file <- file.path(cache_dir, paste0(
+        array, "_", genome,
+        "_locations.rds"
+    ))
     if (file.exists(cache_file)) {
         locs <- readRDS(cache_file)
         return(locs)
@@ -863,18 +864,14 @@ getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), ge
     if (genome %in% c("hg19", "hg38")) {
         if (array == "450k") {
             pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-        }
-        else if (array == "epic") {
+        } else if (array == "epic") {
             pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
-        }
-        else if (array == "epicv2") {
+        } else if (array == "epicv2") {
             pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
-        }
-        else if (array == "27k") {
+        } else if (array == "27k") {
             pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
         }
-    }
-    else if (genome %in% c("mm10", "mm39")) {
+    } else if (genome %in% c("mm10", "mm39")) {
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             if (!requireNamespace("devtools", quietly = TRUE)) {
@@ -884,12 +881,16 @@ getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), ge
         }
     }
     if (is.null(pkg_name)) {
-        stop("Unsupported array/genome combination: ", array, 
-            "/", genome)
+        stop(
+            "Unsupported array/genome combination: ", array,
+            "/", genome
+        )
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
-        .log_info("Installing required annotation package: ", 
-            pkg_name)
+        .log_info(
+            "Installing required annotation package: ",
+            pkg_name
+        )
         if (!requireNamespace("BiocManager", quietly = TRUE)) {
             install.packages("BiocManager")
         }
@@ -907,8 +908,7 @@ getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), ge
             chain_name <- "hg19ToHg38.over.chain"
             from_genome <- "hg19"
         }
-    }
-    else {
+    } else {
         if (tolower(array) == "epicv2") {
             chain_name <- "hg38ToHg19.over.chain"
             from_genome <- "hg38"
@@ -917,9 +917,13 @@ getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), ge
     if (!is.null(chain_name)) {
         chain_file <- file.path(cache_dir, chain_name)
         if (!file.exists(chain_file)) {
-            utils::download.file(url = paste0("http://hgdownload.soe.ucsc.edu/goldenPath/", 
-                from_genome, "/liftOver/", chain_name, ".gz"), 
-                destfile = paste0(chain_file, ".gz"), mode = "wb")
+            utils::download.file(
+                url = paste0(
+                    "http://hgdownload.soe.ucsc.edu/goldenPath/",
+                    from_genome, "/liftOver/", chain_name, ".gz"
+                ),
+                destfile = paste0(chain_file, ".gz"), mode = "wb"
+            )
             R.utils::gunzip(paste0(chain_file, ".gz"), remove = FALSE)
         }
         chain <- rtracklayer::import.chain(chain_file)
@@ -940,12 +944,13 @@ getSortedGenomicLocs <- function (array = c("450K", "27K", "EPIC", "EPICv2"), ge
     if (!"end" %in% colnames(locs)) {
         locs[, "end"] <- locs[, "pos"] + 1
     }
-    locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[, 
-        "end"] == locs[, "start"], "start"] + 1
+    locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[
+        ,
+        "end"
+    ] == locs[, "start"], "start"] + 1
     saveRDS(locs, cache_file)
     locs
 }
-
 
 
 #' Order Indices by Genomic Location
@@ -994,11 +999,14 @@ orderByLoc <- function(x,
 #' @param dmrs GRanges object containing genomic coordinates of DMRs
 #' @param genome Character. Genome version to use for sequence extraction.
 #'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
+#' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
+#'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
+#'   fallback when packages are unavailable (default: FALSE)
 #'
 #' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
-#' The function uses genome-appropriate BSgenome packages:
+#' The function first attempts to use genome-appropriate BSgenome packages:
 #' \itemize{
 #'   \item hg19: BSgenome.Hsapiens.UCSC.hg19
 #'   \item hg38: BSgenome.Hsapiens.UCSC.hg38
@@ -1006,16 +1014,18 @@ orderByLoc <- function(x,
 #'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
 #' }
 #'
-#' If the required BSgenome package is not installed, the function will
-#' attempt to install it automatically using BiocManager.
+#' If the required BSgenome package is not installed and installation fails,
+#' the function will automatically fall back to querying sequences from the
+#' UCSC Genome Browser REST API. The online method processes sequences in
+#' batches to avoid overwhelming the API.
 #'
 #' @examples
 #' \dontrun{
-#' # Extract sequences for DMRs
+#' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
-#' # Use with hg38 (will perform liftOver from hg19)
-#' sequences_hg38 <- getDMRSequences(dmrs, "hg38")
+#' # Force use of online UCSC API
+#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
 #'
 #' # Calculate GC content
 #' gc_content <- sapply(sequences, function(s) {
@@ -1026,8 +1036,9 @@ orderByLoc <- function(x,
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
+getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), use_online = FALSE) {
     genome <- match.arg(genome)
+
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1037,24 +1048,100 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39")) {
     } else if (genome == "mm39") {
         pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
     }
-    if (!requireNamespace(pkg_name, quietly = TRUE)) {
-        message("Installing required annotation package: ", pkg_name)
-        if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            install.packages("BiocManager")
+
+    use_bsgenome <- FALSE
+
+    if (!use_online) {
+        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+            message("BSgenome package not available: ", pkg_name)
+            message("Attempting to install...")
+            tryCatch(
+                {
+                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                        install.packages("BiocManager")
+                    }
+                    BiocManager::install(pkg_name, update = FALSE)
+                    use_bsgenome <- TRUE
+                },
+                error = function(e) {
+                    message("Installation failed. Falling back to online UCSC API.")
+                }
+            )
+        } else {
+            use_bsgenome <- TRUE
         }
-        BiocManager::install(pkg_name, update = FALSE)
-    }
-    # Load the BSgenome package
-    if (!isNamespaceLoaded(pkg_name)) {
-        loadNamespace(pkg_name)
     }
 
-    seq_db <- getExportedValue(pkg_name, pkg_name)
-    sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
-    # Convert sequences to character vector if needed
-    if (is.list(sequences)) {
-        sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
+    if (use_bsgenome) {
+        if (!isNamespaceLoaded(pkg_name)) {
+            loadNamespace(pkg_name)
+        }
+        seq_db <- getExportedValue(pkg_name, pkg_name)
+        sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
+        if (is.list(sequences)) {
+            sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
+        }
+        return(sequences)
     }
+
+    .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
+    sequences <- .getSequencesFromUCSC(dmrs, genome)
+    sequences
+}
+
+#' Query DNA Sequences from UCSC Genome Browser API
+#'
+#' @description Internal helper function to retrieve DNA sequences from the
+#' UCSC Genome Browser REST API when BSgenome packages are not available.
+#'
+#' @param dmrs GRanges object containing genomic coordinates
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")
+#'
+#' @return Character vector of DNA sequences
+#'
+#' @keywords internal
+#' @noRd
+.getSequencesFromUCSC <- function(dmrs, genome) {
+    base_url <- "https://api.genome.ucsc.edu/getData/sequence"
+
+    sequences <- character(length(dmrs))
+
+    for (i in seq_along(dmrs)) {
+        chr <- as.character(GenomeInfoDb::seqnames(dmrs[i]))
+        start <- GenomicRanges::start(dmrs[i])
+        end <- GenomicRanges::end(dmrs[i])
+
+        url <- sprintf(
+            "%s?genome=%s;chrom=%s;start=%d;end=%d",
+            base_url, genome, chr, start - 1, end
+        )
+
+        tryCatch(
+            {
+                response <- readLines(url, warn = FALSE)
+                json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
+
+                if (!is.null(json_data$dna)) {
+                    sequences[i] <- toupper(json_data$dna)
+                } else {
+                    warning("No sequence returned for region ", chr, ":", start, "-", end)
+                    sequences[i] <- NA_character_
+                }
+            },
+            error = function(e) {
+                warning(
+                    "Failed to retrieve sequence for region ", chr, ":", start, "-", end,
+                    ": ", e$message
+                )
+                sequences[i] <- NA_character_
+            }
+        )
+
+        if (i %% 10 == 0) {
+            Sys.sleep(0.1)
+        }
+    }
+
     sequences
 }
 

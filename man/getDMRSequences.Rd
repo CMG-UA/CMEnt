@@ -4,13 +4,21 @@
 \alias{getDMRSequences}
 \title{Extract DNA Sequences for DMRs}
 \usage{
-getDMRSequences(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"))
+getDMRSequences(
+  dmrs,
+  genome = c("hg19", "hg38", "mm10", "mm39"),
+  use_online = FALSE
+)
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
 
 \item{genome}{Character. Genome version to use for sequence extraction.
 Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")}
+
+\item{use_online}{Logical. If TRUE, forces use of online UCSC API instead of
+BSgenome packages. If FALSE (default), uses BSgenome packages with online
+fallback when packages are unavailable (default: FALSE)}
 }
 \value{
 A Character vector containing DNA sequences for each DMR
@@ -22,7 +30,7 @@ actual DNA sequence of identified DMRs for downstream analyses such as
 motif finding or sequence composition analysis.
 }
 \details{
-The function uses genome-appropriate BSgenome packages:
+The function first attempts to use genome-appropriate BSgenome packages:
 \itemize{
 \item hg19: BSgenome.Hsapiens.UCSC.hg19
 \item hg38: BSgenome.Hsapiens.UCSC.hg38
@@ -30,16 +38,18 @@ The function uses genome-appropriate BSgenome packages:
 \item mm39: BSgenome.Mmusculus.UCSC.mm39
 }
 
-If the required BSgenome package is not installed, the function will
-attempt to install it automatically using BiocManager.
+If the required BSgenome package is not installed and installation fails,
+the function will automatically fall back to querying sequences from the
+UCSC Genome Browser REST API. The online method processes sequences in
+batches to avoid overwhelming the API.
 }
 \examples{
 \dontrun{
-# Extract sequences for DMRs
+# Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
-# Use with hg38 (will perform liftOver from hg19)
-sequences_hg38 <- getDMRSequences(dmrs, "hg38")
+# Force use of online UCSC API
+sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
 
 # Calculate GC content
 gc_content <- sapply(sequences, function(s) {

@@ -51,11 +51,12 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             if (is.null(beta_file) && is.null(tabix_file)) {
                 stop("Either beta_file or tabix_file must be provided")
             }
-            if (!is.null(beta_file) && !file.exists(beta_file)) {
+            if (!is.null(beta_file) && is.character(beta_file) && length(beta_file) > 0 && !file.exists(beta_file)) {
                 stop("Provided beta_file does not exist: ", beta_file)
             } else if (!is.null(tabix_file) && !file.exists(tabix_file)) {
                 stop("Provided tabix_file does not exist: ", tabix_file)
             }
+
 
             array <- match.arg(array)
             genome <- match.arg(genome)
@@ -90,6 +91,12 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             }
 
             if (!is.null(self$beta_file) && is.null(self$tabix_file)) {
+                if (!is.character(self$beta_file) && length(self$beta_file) > 0) {
+                    self$beta_file_in_memory <- self$beta_file
+                    self$beta_file <- NULL
+                    private$.loaded <- TRUE
+                    return(invisible(self))
+                }
                 # Check file size
                 file_size_mb <- file.info(self$beta_file)$size / (1024^2)
 
@@ -182,7 +189,9 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 ))
             } else {
                 .log_step("Reading row names from beta file...", level = 2)
-                if (!is.null(self$beta_file)) {
+                if (!is.null(self$beta_file_in_memory)) {
+                    private$.beta_row_names <- rownames(self$beta_file_in_memory)
+                } else if (!is.null(self$beta_file)) {
                     private$.beta_row_names <- unlist(data.table::fread(
                         file = self$beta_file,
                         select = 1,
@@ -351,7 +360,6 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 }
             } else {
                 .log_step("Subsetting from tabix file..", level = 3)
-                
                 regions <- locs[, c("chr", "start", "end")]
                 regions[, "chr"] <- as.character(regions[, "chr"])
                 beta_subset <- bedr::tabix(

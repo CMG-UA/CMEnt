@@ -7,7 +7,7 @@
 plotDMRWithBeta(
   dmrs,
   dmr_index,
-  beta_handler,
+  beta,
   pheno,
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -21,7 +21,7 @@ plotDMRWithBeta(
 
 \item{dmr_index}{Integer. Which DMR to plot.}
 
-\item{beta_handler}{BetaFileHandler object OR character path to beta file.
+\item{beta}{BetaFileHandler object OR character path to beta file OR the beta values matrix.
 If a character path is provided, a BetaFileHandler will be created automatically.}
 
 \item{pheno}{Data frame. Phenotype data with sample information (required).}
@@ -52,5 +52,4 @@ plotDMRWithBeta(dmrs, 1, beta_handler = beta_handler, pheno = pheno_df)
 # Or using a file path (handler created automatically)
 plotDMRWithBeta(dmrs, 1, beta_handler = "beta.txt", pheno = pheno_df)
 }
-
 }

@@ -56,22 +56,15 @@ if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
 }
 library(DMRSegaldata)
 
-beta_file <- DMRSegaldata::getExampleBeta()
-samplesheet_file <- DMRSegaldata::getExamplePheno()
+beta <- DMRSegaldata::beta
+pheno <- DMRSegaldata::pheno
 array_type <- DMRSegaldata::getArrayType()
 genome <- "hg19"
 
-devtools::load_all(".")
-# Write sorted beta values to temp file
-sorted_beta_file <- tempfile(fileext = ".tsv")
 
-DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file)
-beta_file <- sorted_beta_file
-
-beta_file_handler <- DMRSegal::BetaFileHandler$new(beta_file, array= array_type, genome = genome)
-beta_mat <- as.matrix(beta_file_handler$getBeta())
+beta_file_handler <- DMRSegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
 locs <- beta_file_handler$getBetaLocs()
-mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6) # avoid log(0)
+mvalues <- log2(beta / (1 - beta + 1e-6) + 1e-6) # avoid log(0)
 samplesheet <- read.table(samplesheet_file, header = TRUE, sep = "\t", row.names = 1)
 
 pheno <- data.frame(
@@ -88,16 +81,7 @@ Before running DMR detection, we need to identify individual DMPs.
 
 ```{r get_dmps}
 # Create design matrix for all methods to use consistently
-design <- model.matrix(~status, data = pheno)
-colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
-# Find DMPs using limma
-dmps <- suppressWarnings(dmpFinder(mvalues,
-    pheno = pheno$status,
-    type = "categorical",
-    shrinkVar = TRUE
-))
-dmps <- dmps[!is.na(dmps$pval), ]
 # Add adjusted p-value to dmps results
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
@@ -113,21 +97,12 @@ DMRSegal uses a seed-based approach, starting from significant DMPs and extendin
 ```{r dmrsegal}
 dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
 if (!file.exists(dmrsegal_file)) {
-    
     # Write DMPs to temp file
-    dmps_file <- tempfile(fileext = ".tsv")
-    write.table(
-        sig_dmps,
-        file = dmps_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = TRUE
-    )
 
     progressr::handlers("cli")
     dmrs_segal <- progressr::with_progress(DMRSegal::findDMRsFromSeeds(
-        beta_file = sorted_beta_file,
-        dmps_file = dmps_file,
+        beta_file = beta_file_handler,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -139,9 +114,7 @@ if (!file.exists(dmrsegal_file)) {
         verbose = 2
     ))
     saveRDS(dmrs_segal, dmrsegal_file)
-    # Remove temporary files
-    unlink(c(sorted_beta_file, dmps_file))
-    detach("package:DMRSegal", unload = TRUE)
+    rm(beta_file_handler)
 }
 ```
 

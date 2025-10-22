@@ -60,21 +60,19 @@
 #' @examples
 #' \dontrun{
 #' # Load example data
-#' data(example_beta)
-#' data(example_dmps)
-#' data(example_pheno)
-#'
-#' # Write beta values to file
-#' beta_file <- tempfile(fileext = ".txt")
-#' write.table(cbind(ID = rownames(example_beta), example_beta),
-#'     file = beta_file, sep = "\t", quote = FALSE, row.names = FALSE
-#' )
-#'
+#' if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
+#'   remotes::install_github("CMG-UA/DMRSegaldata")
+#' }
+#' library(DMRSegaldata)
+#' beta <- DMRSegaldata::beta
+#' dmps <- DMRSegaldata::dmps
+#' pheno <- DMRSegaldata::pheno
+
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
-#'     beta_file = beta_file,
-#'     dmps_file = example_dmps,
-#'     pheno = example_pheno
+#'     beta_file = beta,
+#'     dmps_file = dmps,
+#'     pheno = pheno
 #' )
 #' }
 #'
@@ -99,9 +97,10 @@
 
 
 .buildConnectivityArray <- function(
-    beta_file_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, verbose = 0) {
+  beta_file_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, verbose = 0
+) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
     chr_ends <- c()
@@ -122,16 +121,33 @@
         X = seq_len(nrow(splits)),
         future.seed = TRUE,
         future.stdout = NA,
+        future.globals = c(
+            "beta_file_handler",
+            "group_inds",
+            "casecontrol",
+            "max_pval",
+            "min_delta_beta",
+            "aggfun",
+            "pval_mode",
+            "empirical_strategy",
+            "ntries",
+            "mid_p",
+            "tries_seed",
+            "chr_ends",
+            "verbose",
+            "p_ext"
+        ),
         FUN = function(split_ind) {
             split <- splits[split_ind, ]
-            chunk_beta <- beta_file_handler$getBeta(row_names = rownames(sorted_locs)[split[1]:split[2]])
+            beta_locs <- beta_file_handler$getBetaLocs()
+            chunk_beta <- beta_file_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]])
             x <- .testConnectivityBatch(
                 sites_beta = chunk_beta,
                 group_inds = group_inds,
                 casecontrol = casecontrol,
                 max_pval = max_pval,
                 min_delta_beta = min_delta_beta,
-                sites_locs = sorted_locs[split[1]:split[2], ],
+                sites_locs = beta_locs[split[1]:split[2], ],
                 aggfun = aggfun,
                 pval_mode = pval_mode,
                 empirical_strategy = empirical_strategy,
@@ -270,8 +286,9 @@
         if (is.null(ustream_stop_reason)) {
             res <- .check_upstream(ustream_exp, exp_step)
             ustream_stop_reason <- res$ustream_stop_reason
-            if(res$ustream_exp > ustream_exp)
-                .log_info("Upstream expanded by ",  ustream_exp - res$ustream_exp, " CpGs.", level = 5)
+            if (res$ustream_exp > ustream_exp) {
+                .log_info("Upstream expanded by ", ustream_exp - res$ustream_exp, " CpGs.", level = 5)
+            }
             ustream_exp <- res$ustream_exp
         }
         .log_success("Upstream expansion checked.", level = 5)
@@ -279,8 +296,9 @@
         if (is.null(dstream_stop_reason)) {
             res <- .check_downstream(dstream_exp, exp_step)
             dstream_stop_reason <- res$dstream_stop_reason
-            if(res$dstream_exp > dstream_exp)
-                .log_info("Downstream expanded by ",  res$dstream_exp - dstream_exp, " CpGs.", level = 5)
+            if (res$dstream_exp > dstream_exp) {
+                .log_info("Downstream expanded by ", res$dstream_exp - dstream_exp, " CpGs.", level = 5)
+            }
             dstream_exp <- res$dstream_exp
         }
         .log_success("Downstream expansion checked.", level = 5)
@@ -647,13 +665,12 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 }
 
 
-
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (DMPs)
 #'
 #' This function identifies DMRs from a given set of DMPs and a beta value file.
 #'
-#' @param beta_file Character. Path to the beta value file. Either this or tabix_file must be provided.
-#' @param dmps_file Character. Path to the DMPs TSV file.
+#' @param beta_file Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.
+#' @param dmps_file Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param pval_col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
@@ -724,6 +741,29 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
     on.exit(wait(), add = TRUE)
 
+
+    # Set up future plan for parallel processing
+    if (njobs < 0) {
+        njobs <- future::availableCores() + njobs
+    }
+    if (njobs > 1) {
+        if (future::availableCores("multicore") > 1L) {
+            .log_info("Using multicore parallelization with ", njobs, " workers")
+            future::plan(future::multicore, workers = njobs)
+        } else {
+            .log_info("Using multisession parallelization with ", njobs, " workers")
+            future::plan(future::multisession, workers = njobs)
+        }
+        on.exit(future::plan(future::sequential), add = TRUE)
+    } else {
+        .log_info("Using sequential processing (njobs=1)")
+        future::plan(future::sequential)
+    }
+    globals_maxsize <- getOption("future.globals.maxSize")
+    globals_maxsize <-  max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE)
+    .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
+    options(future.globals.maxSize = globals_maxsize)
+
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRSegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
@@ -753,8 +793,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     array <- match.arg(array)
     genome <- match.arg(genome)
-
-    stopifnot(file.exists(dmps_file))
+    if (is.character(dmps_file) && length(dmps_file) == 1) {
+        stopifnot(file.exists(dmps_file))
+    }
     stopifnot(casecontrol_col %in% colnames(pheno))
     stopifnot(sample_group_col %in% colnames(pheno))
     if (is.null(ignored_sample_groups)) {
@@ -773,15 +814,21 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     .log_step("Preparing inputs...")
     .log_step("Reading DMP tsv..", level = 2)
-    dmps_tsv <- try(read.table(
-        dmps_file,
-        header = TRUE,
-        sep = "\t",
-        check.names = FALSE,
-        quote = "",
-        comment.char = "",
-        row.names = NULL,
-    ))
+    if (is.character(dmps_file) && length(dmps_file) == 1) {
+        dmps_tsv <- try(read.table(
+            dmps_file,
+            header = TRUE,
+            sep = "\t",
+            check.names = FALSE,
+            quote = "",
+            comment.char = "",
+            row.names = NULL,
+        ))
+    } else if (is.data.frame(dmps_file)) {
+        dmps_tsv <- dmps_file
+    } else {
+        stop("dmps_file must be either a file path or a data frame")
+    }
     if (inherits(dmps_tsv, "try-error")) {
         .log_warn("Provided DMPs file is empty or does not exist. Not proceeding.")
         if (!is.null(output_prefix)) {
@@ -959,24 +1006,6 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     # Set up progress tracking for DMP connection
     chromosomes <- unique(dmps_locs$chr)
-
-    # Set up future plan for parallel processing
-    if (njobs < 0) {
-        njobs <- future::availableCores() + njobs
-    }
-    if (njobs > 1) {
-        if (future::availableCores("multicore") > 1L) {
-            .log_info("Using multicore parallelization with ", njobs, " workers")
-            future::plan(future::multicore, workers = njobs)
-        } else {
-            .log_info("Using multisession parallelization with ", njobs, " workers")
-            future::plan(future::multisession, workers = njobs)
-        }
-        on.exit(future::plan(future::sequential), add = TRUE)
-    } else {
-        .log_info("Using sequential processing (njobs=1)")
-        future::plan(future::sequential)
-    }
 
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "01_dmrs_from_connected_dmps.tsv"))) {
         .log_info("Loading debug DMRs from file...", level = 2)
@@ -1187,7 +1216,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         .log_info("Loading debug connectivity array from file...", level = 2)
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
     } else {
-        .log_step("Building connectivity array..", level = 2)
+        .log_step("Building connectivity array..", level = 1)
         connectivity_array <- .buildConnectivityArray(
             beta_file_handler = beta_file_handler,
             group_inds = group_inds,

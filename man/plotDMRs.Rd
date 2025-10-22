@@ -8,7 +8,7 @@ plotDMRs(
   dmrs,
   dmr_indices = NULL,
   top_n = 4,
-  beta_values = NULL,
+  beta = NULL,
   pheno = NULL,
   sample_group_col = "Sample_Group",
   genome = c("hg19", "hg38", "mm10", "mm39"),
