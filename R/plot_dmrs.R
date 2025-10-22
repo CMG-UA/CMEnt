@@ -631,7 +631,7 @@ plotDMRWithBeta <- function(dmrs,
             low = "#1a1a94", mid = "white", high = "red",
             midpoint = 0,
             limits = c(-max(abs(beta_melted$Beta)), max(abs(beta_melted$Beta))),
-            name = "Beta Value"
+            name = "Δβ"
         ) +
         ggplot2::labs(
             y = "Sample",
