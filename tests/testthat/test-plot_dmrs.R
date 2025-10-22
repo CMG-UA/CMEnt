@@ -4,8 +4,8 @@ library(DMRSegal)
 test_that("plotDMR creates a ggplot object", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -19,8 +19,8 @@ test_that("plotDMR creates a ggplot object", {
 test_that("plotDMR handles invalid dmr_index", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -38,8 +38,8 @@ test_that("plotDMR handles invalid dmr_index", {
 test_that("plotDMR works with different array types", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -53,8 +53,8 @@ test_that("plotDMR works with different array types", {
 test_that("plotDMR works with different genome versions", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -68,8 +68,8 @@ test_that("plotDMR works with different genome versions", {
 test_that("plotDMR works with custom title", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -83,8 +83,8 @@ test_that("plotDMR works with custom title", {
 test_that("plotDMR handles show_pvalues parameter", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -98,8 +98,8 @@ test_that("plotDMR handles show_pvalues parameter", {
 test_that("plotDMRs creates a combined plot", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -113,8 +113,8 @@ test_that("plotDMRs creates a combined plot", {
 test_that("plotDMRs handles NULL dmr_indices", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -127,8 +127,8 @@ test_that("plotDMRs handles NULL dmr_indices", {
 test_that("plotDMRs respects ncol parameter", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -145,8 +145,8 @@ test_that("plotDMRWithBeta validates beta_handler type", {
     skip_if_not_installed("minfi")
     skip_if_not_installed("minfiData")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -167,8 +167,8 @@ test_that("plotDMRWithBeta works with file path", {
     skip_if_not_installed("minfi")
     skip_if_not_installed("minfiData")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -211,8 +211,8 @@ test_that("plotDMRWithBeta works with BetaFileHandler object", {
     skip_if_not_installed("minfi")
     skip_if_not_installed("minfiData")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -262,8 +262,8 @@ test_that("plotDMRWithBeta respects max_cpgs parameter", {
     skip_if_not_installed("minfi")
     skip_if_not_installed("minfiData")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -312,8 +312,8 @@ test_that("plotDMRWithBeta respects max_cpgs parameter", {
 test_that("plotDMR handles DMRs with no extended CpGs", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -331,8 +331,8 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
 test_that("plotDMR handles DMRs with multiple DMPs", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -351,8 +351,8 @@ test_that("plotDMR handles DMRs with multiple DMPs", {
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("../benchmark_data/dmrs.dmrsegal.rds", package = "DMRSegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("data/example_output.rds", package = "DMRSegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
