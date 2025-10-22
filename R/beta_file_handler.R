@@ -309,6 +309,18 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             invisible(self)
         },
 
+        #' @description Get genomic locations for beta values
+        #' @return Data frame of genomic locations
+        getBetaLocs = function() {
+            if (!is.null(private$.beta_locs)) {
+                return(private$.beta_locs)
+            }
+            sorted_locs <- private$get_sorted_locs()
+            beta_row_names <- self$getBetaRowNames()
+            private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
+            return(private$.beta_locs)
+        },
+
         #' @description Extract beta values for specific CpG sites and samples
         #' @param row_names Character vector of CpG IDs to extract
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
@@ -372,6 +384,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
     private = list(
         .beta_col_names = NULL,
         .beta_row_names = NULL,
+        .beta_locs = NULL,
         .loaded = FALSE,
         .validated = FALSE,
         get_sorted_locs = function() {

@@ -11,11 +11,9 @@ if (getRversion() >= "2.15.1") {
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
-#' @param beta_file Character. Path to the methylation beta values file (optional).
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (default: "hg19").
-#' @param show_pvalues Logical. Whether to show p-values on DMP stems (default: TRUE).
 #' @param title Character. Plot title (default: NULL, auto-generated).
 #'
 #' @return A ggplot2 object.
@@ -29,7 +27,7 @@ if (getRversion() >= "2.15.1") {
 #' plotDMR(dmrs, dmr_index = 1)
 #'
 #' # Plot with custom options
-#' plotDMR(dmrs, dmr_index = 2, show_pvalues = TRUE)
+#' plotDMR(dmrs, dmr_index = 2)
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
@@ -38,12 +36,13 @@ if (getRversion() >= "2.15.1") {
 #' @export
 plotDMR <- function(dmrs,
                     dmr_index = 1,
-                    beta_file = NULL,
                     sorted_locs = NULL,
                     array = c("450K", "27K", "EPIC", "EPICv2"),
                     genome = c("hg19", "hg38", "mm10", "mm39"),
-                    show_pvalues = TRUE,
-                    title = NULL) {
+                    extend_by_dmr_size_ratio = 0.2,
+                    min_extension_bp = 50,
+                    title = NULL,
+                    .ret_breaks=FALSE) {
     if (!requireNamespace("ggplot2", quietly = TRUE)) {
         stop("Package 'ggplot2' is required for plotting. Please install it.")
     }
@@ -67,22 +66,19 @@ plotDMR <- function(dmrs,
 
     # Extract DMR information
     chr <- as.character(GenomicRanges::seqnames(dmr))
+    sorted_locs <- sorted_locs[sorted_locs$chr == chr, , drop = FALSE]
     dmr_start <- GenomicRanges::start(dmr)
     dmr_end <- GenomicRanges::end(dmr)
     start_cpg <- dmr_data$start_cpg
     end_cpg <- dmr_data$end_cpg
+    start_cpg_ind <- which(rownames(sorted_locs) == start_cpg)
+    start_cpg_pos <- sorted_locs[start_cpg_ind, "pos"]
+    end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
+    end_cpg_pos <- sorted_locs[end_cpg_ind, "pos"]
     start_dmp <- dmr_data$start_dmp
     end_dmp <- dmr_data$end_dmp
-    if (start_dmp > start_cpg) {
-        upstream_sup_cpgs <- sorted_locs[start_cpg - 1:start_dmp, ]
-    } else {
-        upstream_sup_cpgs <- data.frame()
-    }
-    if (end_dmp < end_cpg) {
-        downstream_sup_cpgs <- sorted_locs[end_dmp + 1:end_cpg, ]
-    } else {
-        downstream_sup_cpgs <- data.frame()
-    }
+    start_dmp_ind <- which(rownames(sorted_locs) == start_dmp)
+    end_dmp_ind <- which(rownames(sorted_locs) == end_dmp)
 
     # Extract DMP IDs from the comma-separated string
     dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
@@ -91,6 +87,37 @@ plotDMR <- function(dmrs,
     dmp_positions <- sorted_locs[dmp_ids, "pos"]
     start_dmp_pos <- dmr_data$start_dmp_pos
     end_dmp_pos <- dmr_data$end_dmp_pos
+
+    if (start_dmp_ind > start_cpg_ind) {
+        upstream_sup_cpgs <- sorted_locs[start_cpg_ind:(start_dmp_ind-1), ]
+    } else {
+        upstream_sup_cpgs <- data.frame()
+    }
+    if (end_dmp_ind < end_cpg_ind) {
+        downstream_sup_cpgs <- sorted_locs[(end_dmp_ind + 1):end_cpg_ind, ]
+    } else {
+        downstream_sup_cpgs <- data.frame()
+    }
+    if (extend_by_dmr_size_ratio > 0) {
+        dmr_size <- dmr_end - dmr_start
+        ext <- round(dmr_size * extend_by_dmr_size_ratio)
+    } else {
+        ext <- 0
+    }
+    ext <- max(ext, min_extension_bp)
+    plot_start <- max(1, start_cpg_pos - ext)
+    plot_end <- end_cpg_pos + ext
+    nsup_cpgs <- sorted_locs[start_dmp_ind:end_dmp_ind, ]
+    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$pos < dmr_end & nsup_cpgs$pos > dmr_start & !rownames(nsup_cpgs) %in% dmp_ids), ,drop = FALSE]
+
+    downstream_nsup_cpgs <- sorted_locs[which(sorted_locs$pos > dmr_end & sorted_locs$pos <= plot_end), ,drop = FALSE]
+    upstream_nsup_cpgs <- sorted_locs[which(sorted_locs$pos < dmr_start & sorted_locs$pos >= plot_start), ,drop = FALSE]
+    extended_nsup_cpgs <- rbind(
+        nsup_cpgs,
+        upstream_nsup_cpgs,
+        downstream_nsup_cpgs
+    )
+
 
     # Create plotting data frame
     # 1. DMPs (stem plots at y=1)
@@ -112,21 +139,60 @@ plotDMR <- function(dmrs,
         stringsAsFactors = FALSE
     )
 
-    # 3. Extended CpGs (vertical lines at y=0.5)
-    extended_cpgs <- rbind(
+    # 3. Extended supporting CpGs (vertical lines at y=0.5)
+    if (start_cpg_pos != start_dmp_pos) {
+        dmr_upstream_line <- data.frame(
+            x = start_cpg_pos,
+            xend = start_dmp_pos,
+            y = 0.5,
+            yend = 1,
+            type = "DMR_Extension",
+            stringsAsFactors = FALSE
+        )
+    } else {
+        dmr_upstream_line <- data.frame(
+            x = numeric(0),
+            xend = numeric(0),
+            y = numeric(0),
+            yend = numeric(0),
+            type = character(0),
+            stringsAsFactors = FALSE
+        )
+    }
+    if (end_cpg_pos != end_dmp_pos) {
+        dmr_downstream_line <- data.frame(
+            x = end_dmp_pos,
+            xend = end_cpg_pos,
+            y = 1,
+            yend = 0.5,
+            type = "DMR_Extension",
+            stringsAsFactors = FALSE
+        )
+    } else {
+        dmr_downstream_line <- data.frame(
+            x = numeric(0),
+            xend = numeric(0),
+            y = numeric(0),
+            yend = numeric(0),
+            type = character(0),
+            stringsAsFactors = FALSE
+        )
+    }
+
+    extended_sup_cpgs <- rbind(
         upstream_sup_cpgs,
         downstream_sup_cpgs
     )
-    if (nrow(extended_cpgs) > 0) {
-        extended_cpgs_df <- data.frame(
-            cpg_id = rownames(extended_cpgs),
-            pos = extended_cpgs$pos,
+    if (nrow(extended_sup_cpgs) > 0) {
+        extended_sup_cpgs_df <- data.frame(
+            cpg_id = rownames(extended_sup_cpgs),
+            pos = extended_sup_cpgs$pos,
             y = 0.5,
             type = "Extended_CpG",
             stringsAsFactors = FALSE
         )
     } else {
-        extended_cpgs_df <- data.frame(
+        extended_sup_cpgs_df <- data.frame(
             cpg_id = character(0),
             pos = numeric(0),
             y = numeric(0),
@@ -134,8 +200,24 @@ plotDMR <- function(dmrs,
             stringsAsFactors = FALSE
         )
     }
-
-
+    # 4. Non-supporting CpGs in extended region
+    if (nrow(extended_nsup_cpgs) > 0) {
+        extended_nsup_cpgs_df <- data.frame(
+            cpg_id = rownames(extended_nsup_cpgs),
+            pos = extended_nsup_cpgs$pos,
+            y = 0.5,
+            type = "Extended_CpG",
+            stringsAsFactors = FALSE
+        )
+    } else {
+        extended_nsup_cpgs_df <- data.frame(
+            cpg_id = character(0),
+            pos = numeric(0),
+            y = numeric(0),
+            type = character(0),
+            stringsAsFactors = FALSE
+        )
+    }
 
     # Create the plot
     p <- ggplot2::ggplot()
@@ -159,14 +241,25 @@ plotDMR <- function(dmrs,
         arrow = ggplot2::arrow(length = ggplot2::unit(0.15, "cm"), type = "closed")
     )
 
-    # Plot CpG stems
-    if (nrow(extended_cpgs_df) > 0) {
+    # Plot supported CpG stems
+    if (nrow(extended_sup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_segment(
-            data = extended_cpgs_df,
+            data = extended_sup_cpgs_df,
+            ggplot2::aes(x = pos, xend = pos, y = 0, yend = y),
+            color = "#377EB8",
+            linewidth = 0.8,
+            alpha = 0.8
+        )
+    }
+
+    # Plot non-supported CpG stems
+    if (nrow(extended_nsup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = extended_nsup_cpgs_df,
             ggplot2::aes(x = pos, xend = pos, y = 0, yend = y),
             color = "gray50",
             linewidth = 0.8,
-            alpha = 0.7
+            alpha = 0.5
         )
     }
 
@@ -179,63 +272,92 @@ plotDMR <- function(dmrs,
         shape = 16
     )
 
-    # Plot CpG points
-    if (nrow(extended_cpgs_df) > 0) {
+    # Plot supporting CpG points
+    if (nrow(extended_sup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_point(
-            data = extended_cpgs_df,
+            data = extended_sup_cpgs_df,
             ggplot2::aes(x = pos, y = y),
-            color = "gray50",
+            color = "#377EB8",
             size = 2,
             shape = 16,
-            alpha = 0.7
+            alpha = 0.8
         )
     }   
+
+    # Plot non-supporting CpG points
+    if (nrow(extended_nsup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_point(
+            data = extended_nsup_cpgs_df,
+            ggplot2::aes(x = pos, y = y),
+            color = "gray70",
+            size = 2,
+            shape = 16,
+            alpha = 0.5
+        )
+    }
 
     # Add DMR region shading
     p <- p + ggplot2::annotate(
         "rect",
         xmin = start_dmp_pos,
         xmax = end_dmp_pos,
-        ymin = -0.05,
-        ymax = 1.1,
+        ymin = 0,
+        ymax = 1,
         alpha = 0.1,
         fill = "#E41A1C"
     )
     # if upstream extended CpGs exist add shading in the form of a trapezoid
     if (nrow(upstream_sup_cpgs) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = dmr_upstream_line,
+            ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
+            color = "#E41A1C",
+            linewidth = 1.5,
+            alpha = 0.8
+        ) + ggplot2::geom_text(
+            data = dmr_upstream_line,
+            ggplot2::aes(x = (x + xend) / 2, y = yend,
+            label = "Upstream Extension"),
+            vjust = -0.5,
+            color = "#000000",
+            size = 3
+        ) 
         p <- p + ggplot2::annotate(
             "polygon",
             x = c(min(upstream_sup_cpgs$pos), start_dmp_pos, start_dmp_pos, min(upstream_sup_cpgs$pos)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
-            fill = "gray50"
+            fill = "#E41A1C"
         )
     }
     # if downstream extended CpGs exist add shading in the form of a trapezoid
     if (nrow(downstream_sup_cpgs) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = dmr_downstream_line,
+            ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
+            color = "#E41A1C",
+            linewidth = 1.5,
+            alpha = 0.8
+        ) + ggplot2::geom_text(
+            data = dmr_downstream_line,
+            ggplot2::aes(x = (x + xend) / 2, y = y, label = "Downstream Extension"),
+            vjust = -0.5,
+            color = "#000000",
+            size = 3
+        ) 
         p <- p + ggplot2::annotate(
             "polygon",
             x = c(end_dmp_pos, max(downstream_sup_cpgs$pos), max(downstream_sup_cpgs$pos), end_dmp_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
-            fill = "gray50"
+            fill = "#E41A1C"
         )
     }
-    # Add extended region shading
-    p <- p + ggplot2::annotate(
-        "rect",
-        xmin = dmr_start,
-        xmax = dmr_end,
-        ymin = -0.05,
-        ymax = 0.9,
-        alpha = 0.05,
-        fill = "gray50"
-    )
 
     # Create title if not provided
     if (is.null(title)) {
         title <- sprintf(
-            "DMR #%d: %s:%s-%s\n%d DMPs, %d CpGs (delta_beta=%.3f, p=%.2e)",
+            "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (delta_beta=%.3f, p=%.2e)",
             dmr_index,
             chr,
             format(dmr_start, big.mark = ",", scientific = FALSE),
@@ -247,13 +369,24 @@ plotDMR <- function(dmrs,
         )
     }
 
+
     # Styling
-    p <- p +
+    if (nrow(extended_nsup_cpgs) > 0 || nrow(extended_sup_cpgs) > 0) {
+       p <- p +
         ggplot2::scale_y_continuous(
             breaks = c(0.5, 1),
-            labels = c("Extended\nCpGs", "DMPs/DMR"),
+            labels = c("Array CpGs", "DMPs"),
             limits = c(-0.1, 1.15)
-        ) +
+        ) 
+    } else {
+       p <- p +
+        ggplot2::scale_y_continuous(
+            breaks = c(1),
+            labels = c("DMPs"),
+            limits = c(-0.1, 1.15)
+        ) 
+    }
+    p <- p+
         ggplot2::labs(
             title = title,
             x = sprintf("Genomic Position on %s (bp)", chr),
@@ -266,35 +399,27 @@ plotDMR <- function(dmrs,
             panel.grid.minor = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         )
-
-    # Add legend manually using annotation
-    legend_x <- dmr_start + (dmr_end - dmr_start) * 0.02
-    legend_y_start <- 0.5
-
-    p <- p +
-        ggplot2::annotate("text", x = legend_x, y = legend_y_start + 0.45,
-            label = "Legend:", hjust = 0, fontface = "bold", size = 3.5) +
-        ggplot2::annotate("segment", x = legend_x, xend = legend_x + (dmr_end - dmr_start) * 0.03,
-            y = legend_y_start + 0.35, yend = legend_y_start + 0.35,
-            color = "#377EB8", linewidth = 1.2,
-            arrow = ggplot2::arrow(length = ggplot2::unit(0.1, "cm"), type = "closed")) +
-        ggplot2::annotate("text", x = legend_x + (dmr_end - dmr_start) * 0.04,
-            y = legend_y_start + 0.35, label = "DMP (seed site)", hjust = 0, size = 3) +
-        ggplot2::annotate("segment", x = legend_x, xend = legend_x + (dmr_end - dmr_start) * 0.03,
-            y = legend_y_start + 0.25, yend = legend_y_start + 0.25,
-            color = "#E41A1C", linewidth = 1.5) +
-        ggplot2::annotate("text", x = legend_x + (dmr_end - dmr_start) * 0.04,
-            y = legend_y_start + 0.25, label = "DMR (connected region)", hjust = 0, size = 3) +
-        ggplot2::annotate("segment", x = legend_x + (dmr_end - dmr_start) * 0.015,
-            xend = legend_x + (dmr_end - dmr_start) * 0.015,
-            y = legend_y_start + 0.12, yend = legend_y_start + 0.18,
-            color = "gray70", linewidth = 0.5, alpha = 0.7) +
-        ggplot2::annotate("text", x = legend_x + (dmr_end - dmr_start) * 0.04,
-            y = legend_y_start + 0.15, label = "Extended CpG", hjust = 0, size = 3)
-
+    # Add ticks for the DMPs on the x-axis
+    breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], plot_end)
+    breaks_labels <- c(as.character(plot_start), paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")"),
+                    as.character(plot_end))
+    p <- p + ggplot2::scale_x_continuous(
+        breaks = breaks,
+        labels = breaks_labels
+    )
+    p <- p + ggplot2::coord_cartesian(xlim=c(breaks[1], breaks[length(breaks)]))
+    p <- p + ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
+    )
+    if (.ret_breaks) {
+        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr=chr))
+    }
     return(p)
 }
 
+minmaxscale <- function(x) {
+    (x - min(x)) / max(max(x) - min(x), 1e-10)
+}
 
 #' Plot Multiple DMRs in a Grid
 #'
@@ -316,25 +441,57 @@ plotDMR <- function(dmrs,
 #' @export
 plotDMRs <- function(dmrs,
                      dmr_indices = NULL,
-                     ncol = 2,
+                     top_n = 4,
+                     beta_values = NULL,
+                     pheno = NULL,
+                     sample_group_col = "Sample_Group",
+                     genome = c("hg19", "hg38", "mm10", "mm39"),
+                     array = c("450K", "27K", "EPIC", "EPICv2"),
+                     ncol = 1,
                      ...) {
+    array <- match.arg(array)
+    genome <- match.arg(genome)
     if (is.null(dmr_indices)) {
-        dmr_indices <- 1:min(4, length(dmrs))
+        score <- minmaxscale(abs(dmrs$delta_beta)) * minmaxscale(-log10(dmrs$pval_adj + 1e-10))
+        ord <- order(score, decreasing = TRUE)
+        dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
+
     }
 
     # Create individual plots
-    plot_list <- lapply(dmr_indices, function(i) {
-        plotDMR(dmrs, dmr_index = i, ...)
-    })
-
-    # Try to use patchwork if available, otherwise gridExtra, otherwise return list
-    if (requireNamespace("patchwork", quietly = TRUE)) {
-        return(patchwork::wrap_plots(plot_list, ncol = ncol))
-    } else if (requireNamespace("gridExtra", quietly = TRUE)) {
-        return(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
-    } else {
-        message("Install 'patchwork' or 'gridExtra' package for combined plots. Returning list of plots.")
+    if (!is.null(beta_values)) {
+        if (is.character(beta_values)) {
+            beta_values <- BetaFileHandler$new(
+                beta_file = beta_values,
+                array = array,
+                genome = genome,
+                verbose = 0
+            )
+        }
+        plot_list <- lapply(seq_along(dmr_indices), function(idx) {
+            i <- dmr_indices[idx]
+            plotDMRWithBeta(
+                dmrs = dmrs,
+                dmr_index = i,
+                beta_handler = beta_values,
+                pheno = pheno,
+                sample_group_col = sample_group_col,
+                ...
+            )
+        })
         return(plot_list)
+    } else {
+        plot_list <- lapply(dmr_indices, function(i) {
+            plotDMR(dmrs, dmr_index = i, ...)
+        })
+        if (requireNamespace("patchwork", quietly = TRUE)) {
+            return(patchwork::wrap_plots(plot_list, ncol = ncol))
+        } else if (requireNamespace("gridExtra", quietly = TRUE)) {
+            return(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
+        } else {
+            message("Install 'patchwork' or 'gridExtra' package for combined plots. Returning list of plots.")
+            return(plot_list)
+        }
     }
 }
 
@@ -395,18 +552,17 @@ plotDMRWithBeta <- function(dmrs,
             genome = genome,
             verbose = 0
         )
-    } else if (!inherits(beta_handler, "BetaFileHandler")) {
+    } else if (!"BetaFileHandler" %in% class(beta_handler)) {
         stop("beta_handler must be either a file path (character) or a BetaFileHandler object")
     }
-
-    # Get genomic locations
-    if (is.null(sorted_locs)) {
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+        pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
     }
-
-    # Update the handler's sorted_locs if not already set
-    if (is.null(beta_handler$sorted_locs)) {
-        beta_handler$sorted_locs <- sorted_locs
+    if (!is.data.frame(pheno)) {
+        stop("pheno must be a data frame or a valid file path to a phenotype table")
+    }
+    if (!(sample_group_col %in% colnames(pheno))) {
+        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
 
     # Extract DMR
@@ -414,19 +570,16 @@ plotDMRWithBeta <- function(dmrs,
     dmr_data <- S4Vectors::mcols(dmr)
 
     # Get CpG IDs in the region
-    start_ind <- dmr_data$start_ind
-    end_ind <- dmr_data$end_ind
-
-    # Subsample if too many CpGs
-    if ((end_ind - start_ind + 1) > max_cpgs) {
-        step <- ceiling((end_ind - start_ind + 1) / max_cpgs)
-        cpg_indices <- seq(start_ind, end_ind, by = step)
-    } else {
-        cpg_indices <- start_ind:end_ind
+    start_cpg <- dmr_data$start_cpg
+    end_cpg <- dmr_data$end_cpg
+    beta_locs <- beta_handler$getBetaLocs()
+    if(!(start_cpg %in% rownames(beta_locs)) || !(end_cpg %in% rownames(beta_locs))) {
+        stop("Start or end CpG not found in beta locations")
     }
-
-    cpg_ids <- rownames(sorted_locs)[cpg_indices]
-    cpg_locs <- sorted_locs[cpg_ids, ]
+    start_cpg_ind <- which(rownames(beta_locs) == start_cpg)
+    end_cpg_ind <- which(rownames(beta_locs) == end_cpg)
+    cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
+    cpg_locs <- beta_locs[cpg_ids, ]
 
     # Read beta values using BetaFileHandler
     beta_data <- beta_handler$getBeta(
@@ -439,19 +592,30 @@ plotDMRWithBeta <- function(dmrs,
     is_dmp <- cpg_ids %in% dmp_ids
 
     # Create structure plot
-    structure_plot <- plotDMR(
+    ret <- plotDMR(
         dmrs = dmrs,
         dmr_index = dmr_index,
-        sorted_locs = sorted_locs,
+        sorted_locs = beta_locs,
         array = array,
         genome = genome,
-        show_pvalues = FALSE,
-        title = NULL
+        title = NULL,
+        .ret_breaks=TRUE,
     )
+    structure_plot <- ret$structure_plot
+    breaks <- ret$breaks
+    breaks_labels <- ret$breaks_labels
+    chr <- ret$chr
+    # Remove x-axis title for combined plot
+    structure_plot <- structure_plot +
+        ggplot2::theme(
+            axis.title.x = ggplot2::element_blank(),
+            axis.text.x = ggplot2::element_blank()
+        )
 
     # Create heatmap
     # Prepare data
-    beta_melted <- reshape2::melt(beta_data)
+    beta_data$CpG <- rownames(beta_data)
+    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
     beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "pos"]
     beta_melted$is_DMP <- is_dmp[match(beta_melted$CpG, cpg_ids)]
@@ -464,22 +628,29 @@ plotDMRWithBeta <- function(dmrs,
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
         ggplot2::scale_fill_gradient2(
-            low = "blue", mid = "white", high = "red",
-            midpoint = 0.5,
-            limits = c(0, 1),
+            low = "#1a1a94", mid = "white", high = "red",
+            midpoint = 0,
+            limits = c(-max(abs(beta_melted$Beta)), max(abs(beta_melted$Beta))),
             name = "Beta Value"
         ) +
         ggplot2::labs(
-            x = "Genomic Position (bp)",
             y = "Sample",
-            title = sprintf("Beta Values for DMR #%d", dmr_index)
+            x = sprintf("Genomic Position on %s (bp)", chr),
+
         ) +
         ggplot2::theme_minimal(base_size = 10) +
         ggplot2::theme(
             axis.text.y = ggplot2::element_text(size = 7),
-            axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
-        )
+        ) +
+        ggplot2::scale_x_continuous(
+            breaks = breaks,
+            labels = breaks_labels
+        ) + 
+        ggplot2::coord_cartesian(xlim=c(breaks[1], breaks[length(breaks)])) +
+        ggplot2::theme(
+            axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5, vjust = 0.5)
 
+        )
     # Add vertical lines for DMPs
     if (any(is_dmp)) {
         dmp_positions <- unique(beta_melted$Position[beta_melted$is_DMP])
@@ -492,15 +663,17 @@ plotDMRWithBeta <- function(dmrs,
                 alpha = 0.7
             )
     }
-
-    # Combine plots
-    if (requireNamespace("patchwork", quietly = TRUE)) {
-        combined <- structure_plot / heatmap_plot +
-            patchwork::plot_layout(heights = c(1, 2))
+    if (requireNamespace("grid", quietly = TRUE) && requireNamespace("gtable", quietly = TRUE)) {
+        g1 <- ggplot2::ggplotGrob(structure_plot)
+        g2 <- ggplot2::ggplotGrob(heatmap_plot)
+        max_width <- grid::unit.pmax(g1$widths, g2$widths)
+        library(gtable)
+        combined <- rbind(g1, g2, size='last')
+        combined$widths <- max_width
+        grid::grid.newpage()
+        grid::grid.draw(combined)
         return(combined)
-    } else if (requireNamespace("gridExtra", quietly = TRUE)) {
-        return(gridExtra::grid.arrange(structure_plot, heatmap_plot, nrow = 2, heights = c(1, 2)))
-    } else {
+    }else {
         message("Install 'patchwork' or 'gridExtra' for combined plots. Returning list.")
         return(list(structure = structure_plot, heatmap = heatmap_plot))
     }

@@ -209,7 +209,7 @@
         # [----+---0] where - is connected, + is not connected, 0 stands for the current DMR start (ustream_exp), then fail_start_idx is the first + from the right, 4 in this case. That means that the 4th from the right failed to connect to the 3rd from the right.
         if (length(fail_runs) > 0) {
             fail_start_idx <- fail_runs[[1]] # first failing index in the reversed corr_ret
-            ustream_exp <- ustream_end_lookup_site_ind - fail_start_idx + 1 # the base is ustream_exp - 1, so the relative fail_start_idx translates to ustream_exp - 1 - fail_start_idx
+            ustream_exp <- ustream_end_lookup_site_ind - fail_start_idx + 2
             ustream_stop_reason <- corr_ret$reason[fail_start_idx]
             return(list(
                 ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
@@ -287,7 +287,7 @@
         .log_success("Downstream expansion checked.", level = 5)
         if (t == 0) {
             new_ccpgs <- dstream_exp - ustream_exp + 1
-            .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs, level = 5)
+            .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs, level = 3)
             if (new_ccpgs < min_cpgs) {
                 ustream_stop_reason <- "min_cpgs_reached"
                 dstream_stop_reason <- "min_cpgs_reached"
@@ -1211,6 +1211,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         }
         .log_success("Connectivity array built.", level = 2)
     }
+    # Remove beta_file_handler to free memory
+    rm(beta_file_handler)
+    gc()
     .log_info("Number of connected CpGs found: ", sum(connectivity_array$connected), level = 2)
     if (verbose > 1) {
         dir.create("debug", showWarnings = FALSE)
