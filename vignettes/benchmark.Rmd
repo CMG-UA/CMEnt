@@ -97,7 +97,7 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
     # Write sorted beta values to temp file
     sorted_beta_file <- tempfile(fileext = ".tsv")
 
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file)
+    DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file);
 
     # Write DMPs to temp file
     dmps_file <- tempfile(fileext = ".tsv")
@@ -111,7 +111,7 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
 
     progressr::handlers("cli")
     dmrs_segal <- progressr::with_progress(DMRSegal::findDMRsFromSeeds(
-        beta_file = beta_file,
+        beta_file = sorted_beta_file,
         dmps_file = dmps_file,
         pheno = pheno,
         sample_group_col = "group",
@@ -126,7 +126,7 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
     ))
     saveRDS(dmrs_segal, dmrsegal_file)
     # Remove temporary files
-    unlink(c(beta_file, dmps_file))
+    unlink(c(sorted_beta_file, dmps_file))
     detach("package:DMRSegal", unload = TRUE)
 # }
 ```
