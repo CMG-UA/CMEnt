@@ -22,8 +22,7 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
-biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, 
-    BiomedicalInformatics, Genetics, QualityControl, Preprocessing
+biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
 Depends:
     R (>= 4.3.0)
 Imports:
@@ -56,7 +55,8 @@ Imports:
     reshape2
 Suggests: 
     AnnotationHub,
-    BiocManager,
+    BiocManager (>= 3.21),
+    DynDoc,
     devtools,
     knitr,
     optparse,
@@ -88,8 +88,6 @@ Suggests:
     org.Mm.eg.db
 Remotes:
     cynkra/lazytest
-Additional_repositories: 
-    https://bioconductor.org/packages/3.17/bioc
 Config/testthat/edition: 3
 Collate:
     'data.R'
@@ -100,3 +98,4 @@ Collate:
     'DMRSegal-package.R'
     'plot_dmrs.R'
     'zzz.R'
+NeedsCompilation: no

@@ -325,9 +325,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
         #' @param row_names Character vector of CpG IDs to extract
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
         #' @return Matrix of beta values
-        getBeta = function(row_names, col_names = NULL) {
+        getBeta = function(row_names = NULL, col_names = NULL) {
             self$validate()
-
+            if (is.null(row_names)) {
+                row_names <- self$getBetaRowNames()
+            }
             # Use in-memory beta data if available
             if (!is.null(self$beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
@@ -349,7 +351,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 }
             } else {
                 .log_step("Subsetting from tabix file..", level = 3)
-                locs <- private$get_sorted_locs()[row_names, , drop = FALSE]
+                
                 regions <- locs[, c("chr", "start", "end")]
                 regions[, "chr"] <- as.character(regions[, "chr"])
                 beta_subset <- bedr::tabix(

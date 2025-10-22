@@ -38,6 +38,9 @@ library(progressr)
 # progressr::handlers(global = TRUE)
 benchmark_output_dir <- "benchmark_data"
 dir.create(benchmark_output_dir, showWarnings = FALSE)
+
+
+
 ```
 
 ## Loading and Preparing Data
@@ -46,12 +49,25 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 
 ```{r load_data}
 library(minfi)
+library(DMRSegal)
+
 beta_file <- "data/real_example_beta.tsv.gz"
-con <- gzfile(beta_file, "r")
-beta_mat <- as.matrix(read.table(con, header = TRUE, row.names = 1, sep = "\t"))
-close(con)
+samplesheet_file <- "data/real_example_pheno.tsv"
+array_type <- "450K"
+genome <- "hg19"
+
+devtools::load_all(".")
+# Write sorted beta values to temp file
+sorted_beta_file <- tempfile(fileext = ".tsv")
+
+DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file)
+beta_file <- sorted_beta_file
+
+beta_file_handler <- DMRSegal::BetaFileHandler$new(beta_file, array= array_type, genome = genome)
+beta_mat <- as.matrix(beta_file_handler$getBeta())
+locs <- beta_file_handler$getBetaLocs()
 mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6) # avoid log(0)
-samplesheet <- read.table("data/real_example_pheno.tsv", header = TRUE, sep = "\t", row.names = 1)
+samplesheet <- read.table(samplesheet_file, header = TRUE, sep = "\t", row.names = 1)
 
 pheno <- data.frame(
     status = samplesheet$Sample_Group,
@@ -68,7 +84,7 @@ Before running DMR detection, we need to identify individual DMPs.
 ```{r get_dmps}
 # Create design matrix for all methods to use consistently
 design <- model.matrix(~status, data = pheno)
-colnames(design) <- c("Intercept", "cancer_vs_normal")
+colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
 # Find DMPs using limma
 dmps <- suppressWarnings(dmpFinder(mvalues,
@@ -91,14 +107,8 @@ DMRSegal uses a seed-based approach, starting from significant DMPs and extendin
 
 ```{r dmrsegal}
 dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
-# if (!file.exists(dmrsegal_file)) {
-    # library(DMRSegal)
-    devtools::load_all(".")
-    # Write sorted beta values to temp file
-    sorted_beta_file <- tempfile(fileext = ".tsv")
-
-    DMRSegal::sortBetaFileByCoordinates(beta_file, sorted_beta_file);
-
+if (!file.exists(dmrsegal_file)) {
+    
     # Write DMPs to temp file
     dmps_file <- tempfile(fileext = ".tsv")
     write.table(
@@ -121,14 +131,13 @@ dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
         max_pval = 0.05,
         pval_mode = "parametric",
         njobs = 1,
-        verbose = 2,
-        .load_debug = TRUE
+        verbose = 2
     ))
     saveRDS(dmrs_segal, dmrsegal_file)
     # Remove temporary files
     unlink(c(sorted_beta_file, dmps_file))
     detach("package:DMRSegal", unload = TRUE)
-# }
+}
 ```
 
 ## Running DMRcate
@@ -146,7 +155,7 @@ if (!file.exists(dmrcate_file)) {
     }
     library(DMRcate)
     design <- model.matrix(~status, data = pheno)
-    colnames(design) <- c("Intercept", "cancer_vs_normal")
+    colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
     myannotation <- cpg.annotate("array", mvalues,
         what = "M", arraytype = "450K",
@@ -183,6 +192,8 @@ if (!file.exists(bumphunter_file)) {
 
     bumphunter_results <- bumphunter(
         beta_mat,
+        chr=locs$chr,
+        pos=locs$pos,
         design = design,
         pickCutoff = TRUE,
         B = 100, # Number of permutations
@@ -495,17 +506,6 @@ cat(sprintf("- **%.1f%%** of DMRSegal DMRs overlap with Bumphunter\n", pct_segal
 cat(sprintf("- DMRSegal is **%.1fx more selective** than DMRcate\n", length(gr_dmrcate) / length(gr_segal)))
 cat(sprintf("- DMRSegal is **%.1fx more selective** than Bumphunter\n", length(gr_bumphunter) / length(gr_segal)))
 ```
-
-## Interpretation
-
-DMRSegal's seed-based approach results in:
-
-1. **Higher selectivity**: DMRSegal identifies fewer, more confident DMRs compared to other methods
-2. **Focused regions**: The DMRs tend to be more compact and centered around strong differential methylation signals
-3. **Good overlap with other methods**: A substantial proportion of DMRSegal DMRs are validated by other methods
-4. **Complementary approach**: Some DMRSegal-specific regions may represent high-confidence findings missed by smoothing-based approaches
-
-These characteristics make DMRSegal particularly useful when you need high-confidence DMR calls or want to prioritize regions for follow-up validation.
 
 ## Session Info
 
