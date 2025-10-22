@@ -72,7 +72,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500 # Small threshold allows in-memory loading
@@ -135,7 +134,6 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 0.01
@@ -216,7 +214,6 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -288,7 +285,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_dmps = 5, # Stricter
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 0,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -303,7 +299,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_dmps = 1, # More lenient
         min_cpgs = 2,
         max_lookup_dist = 2000, # Larger distance
-        expansion_relaxation = 10, # More relaxation
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -319,7 +314,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         max_pval = 0.01, # Stricter p-value
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -400,7 +394,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         aggfun = "median",
         njobs = 1,
         verbose = 0,
@@ -416,7 +409,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         aggfun = "mean",
         njobs = 1,
         verbose = 0,
@@ -489,7 +481,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -505,7 +496,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -576,7 +566,6 @@ test_that("findDMRsFromSeeds handles edge cases gracefully", {
             min_dmps = 2,
             min_cpgs = 3,
             max_lookup_dist = 1000,
-            expansion_relaxation = 5,
             njobs = 1,
             verbose = 0,
             memory_threshold_mb = 500
@@ -729,7 +718,6 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -796,7 +784,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         min_dmps = 1,
         min_cpgs = 2,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
@@ -859,7 +846,6 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         pval_mode = "parametric",
         njobs = 1,
         verbose = 0,
@@ -874,7 +860,6 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        expansion_relaxation = 5,
         pval_mode = "empirical",
         nperm = 50,
         perm_seed = 12345,

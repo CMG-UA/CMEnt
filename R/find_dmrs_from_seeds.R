@@ -45,7 +45,6 @@ findDMRsFromSeedsCLI <- function(args) {
         casecontrol_col = args$casecontrol_col,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
         expansion_step = args$expansion_step,
-        expansion_relaxation = args$expansion_relaxation,
         array = args$array,
         genome = args$genome,
         max_pval = args$max_pval,

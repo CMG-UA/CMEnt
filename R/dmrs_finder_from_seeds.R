@@ -748,15 +748,15 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     }
     if (njobs > 1) {
         if (future::availableCores("multicore") > 1L) {
-            .log_info("Using multicore parallelization with ", njobs, " workers")
+            .log_info("Using multicore parallelization with ", njobs, " workers", level=1)
             future::plan(future::multicore, workers = njobs)
         } else {
-            .log_info("Using multisession parallelization with ", njobs, " workers")
+            .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
             future::plan(future::multisession, workers = njobs)
         }
         on.exit(future::plan(future::sequential), add = TRUE)
     } else {
-        .log_info("Using sequential processing (njobs=1)")
+        .log_info("Using sequential processing (njobs=1)", level = 1)
         future::plan(future::sequential)
     }
     globals_maxsize <- getOption("future.globals.maxSize")

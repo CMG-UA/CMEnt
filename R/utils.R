@@ -752,7 +752,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         )
     }
 
-    .log_step("Reading beta file", beta_file, level = 1)
+    .log_step("Reading beta file", beta_file, level = 2)
     # Read the beta file
     beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRSegal.verbose", 1) > 1)
 
@@ -760,7 +760,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     cpg_ids <- beta_data[[1]]
     beta_values <- beta_data[, -1, drop = FALSE]
     rownames(beta_values) <- cpg_ids
-    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples", level = 1)
+    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples", level = 2)
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
@@ -780,7 +780,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
     if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file")
+        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level=2)
     }
 
     final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
