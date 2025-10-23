@@ -12,7 +12,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         beta = NULL,
         #' @field genome Reference genome
         genome = "hg19",
-        #' @field array Array platform
+        #' @field array Array platform, ignore for mouse genomes
         array = "450K",
         #' @field beta_row_names_file Path to row names file
         beta_row_names_file = NULL,

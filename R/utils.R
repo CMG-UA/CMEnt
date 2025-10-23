@@ -754,7 +754,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
     if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level = 2)
+        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level=2)
     }
 
     final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
