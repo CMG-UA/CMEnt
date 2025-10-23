@@ -91,7 +91,7 @@ Suggests:
     org.Hs.eg.db,
     org.Mm.eg.db
 Remotes:
-    chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10
+    chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10,
     CMG-UA/DMRsegaldata
 Config/testthat/edition: 3
 Collate:
