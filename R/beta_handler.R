@@ -37,14 +37,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-
-
             array <- strex::match_arg(array, ignore_case = TRUE)
             genome <- strex::match_arg(genome, ignore_case = TRUE)
 
             # Set fields
-            private$.beta_file <- beta_file
-            private$.tabix_file <- tabix_file
+            self$beta <- beta
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file

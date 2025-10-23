@@ -10,15 +10,11 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \section{Public fields}{
 \if{html}{\out{<div class="r6-fields">}}
 \describe{
-\item{\code{beta_file}}{Path to beta values file}
-
-\item{\code{tabix_file}}{Path to tabix-indexed file}
+\item{\code{beta}}{Path to beta values file, or a tabix file, or in-memory beta matrix}
 
 \item{\code{genome}}{Reference genome}
 
 \item{\code{array}}{Array platform}
-
-\item{\code{beta_file_in_memory}}{In-memory beta data}
 
 \item{\code{beta_row_names_file}}{Path to row names file}
 
@@ -49,7 +45,6 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \if{html}{\out{<a id="method-BetaHandler-new"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-new}{}}}
 \subsection{Method \code{new()}}{
-Create a new BetaHandler object
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$new(
   beta = NULL,
@@ -62,30 +57,6 @@ Create a new BetaHandler object
 )}\if{html}{\out{</div>}}
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{beta_file}}{Path to beta values file}
-
-\item{\code{tabix_file}}{Path to tabix-indexed file}
-
-\item{\code{array}}{Array platform type}
-
-\item{\code{genome}}{Reference genome version}
-
-\item{\code{beta_row_names_file}}{Path to row names file}
-
-\item{\code{verbose}}{Verbosity level}
-
-\item{\code{memory_threshold_mb}}{Memory threshold in MB}
-
-\item{\code{njobs}}{Number of parallel jobs}
-}
-\if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A new BetaHandler object
-}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaHandler-load"></a>}}
