@@ -49,7 +49,7 @@ jobs:
             any::knitr
             any::rmarkdown
             any::BiocStyle
-            CMG-UA/DMRsegaldata::DMRsegaldata
+            CMG-UA/DMRsegaldata
             any::DMRcate
             any::bumphunter
           needs: check
