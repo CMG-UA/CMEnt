@@ -734,10 +734,12 @@ findDMRsFromSeeds <- function(beta = NULL,
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     # Clean up any zombie processes on exit
-    includes <- "#include <sys/wait.h>"
-    code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
-    wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
-    on.exit(wait(), add = TRUE)
+    if (Sys.info()[["sysname"]] != "Windows")  {
+        includes <- "#include <sys/wait.h>"
+        code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
+        wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
+        on.exit(wait(), add = TRUE)
+    }
 
 
     # Set up future plan for parallel processing
@@ -908,6 +910,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     if (is.null(dmps_tsv_id_col)) {
         dmps_tsv_id_col <- "_DMP_ROW_NAMES_"
         dmps_tsv[, dmps_tsv_id_col] <- rownames(dmps_tsv)
+        rownames(dmps_tsv) <- NULL
     }
     if (!dmps_tsv_id_col %in% colnames(dmps_tsv)) {
         stop(
@@ -915,6 +918,27 @@ findDMRsFromSeeds <- function(beta = NULL,
             "' does not reside in the DMPs file columns: ",
             paste(colnames(dmps_tsv), collapse = ",")
         )
+    }
+    if (!all(dmps_tsv[, dmps_tsv_id_col] %in% beta_row_names)) {
+        if (!any(dmps_tsv[, dmps_tsv_id_col] %in% beta_row_names)) {
+            # incorrect dmps_tsv_id_col, figure out the correct one
+            dmps_tsv_id_col_found <- NULL
+            for (col in colnames(dmps_tsv)) {
+                if (all(dmps_tsv[, col] %in% beta_row_names)) {
+                    dmps_tsv_id_col_found <- col
+                    break
+                }
+            }
+            if (is.null(dmps_tsv_id_col_found)) {
+                stop("None of the IDs in the DMPs dmps_tsv_id_col match the beta file row names.")
+            } else {
+                warning("The provided dmps_tsv_id_col '", dmps_tsv_id_col, "' is incorrect. The correct column is '", dmps_tsv_id_col_found, "', switching to that one.")
+                dmps_tsv_id_col <- dmps_tsv_id_col_found
+            }
+        } else {
+            missing_in_beta <- dmps_tsv[, dmps_tsv_id_col][!(dmps_tsv[, dmps_tsv_id_col] %in% beta_row_names)]
+            stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing_in_beta, collapse = ","))
+        }
     }
     sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     sorted_locs <- sorted_locs[beta_row_names, ]
@@ -934,10 +958,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     if (length(dmps) == 0) {
         stop("No DMPs remain after filtering against array annotation.")
-    }
-    if (!all(dmps %in% beta_row_names)) {
-        missing_in_beta <- dmps[!(dmps %in% beta_row_names)]
-        stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing_in_beta, collapse = ","))
     }
     dmps <- dmps[orderByLoc(dmps, genome = genome, genomic_locs = sorted_locs)]
     .log_step("Validating beta file sorting by position...", level = 2)
@@ -1030,17 +1050,23 @@ findDMRsFromSeeds <- function(beta = NULL,
         if (verbose > 0) {
             p_con <- progressr::progressor(steps = length(chromosomes))
         }
-        ret <- future.apply::future_lapply(
-            X = chromosomes,
-            future.seed = TRUE,
-            future.stdout = NA,
-            FUN = function(chr) {
-                op <- options(warn = 2)$warn
-                .log_step("Subsetting DMPs for chromosome ", chr, " ...", level = 3)
+        # Split by chromosome for parallel processing
+        dmps_list <- split(dmps, dmps_locs$chr)
+        dmps_list <- dmps_list[chromosomes]
+        dmps_locs_list <- split(dmps_locs, dmps_locs$chr)
+        dmps_locs_list <- dmps_locs_list[chromosomes]
 
-                m <- dmps_locs$chr == chr
-                cdmps_tsv <- dmps_tsv[(dmps_tsv[, dmps_tsv_id_col] %in% rownames(dmps_locs)), , drop = FALSE]
-                unique_groups <- unique(cdmps_tsv[, dmp_group_col])
+        if (!is.matrix(dmps_beta)) dmps_beta <- as.matrix(dmps_beta)
+        storage.mode(dmps_beta) <- "double"
+        dmps_beta_list <- lapply(split(dmps_beta, dmps_locs$chr), matrix, ncol = ncol(dmps_beta))
+        dmps_beta_list <- dmps_beta_list[chromosomes]
+        dmps_tsv$chr <- dmps_locs[dmps_tsv[, dmps_tsv_id_col], "chr"]
+        dmps_tsv_list <- split(dmps_tsv, dmps_tsv$chr)
+        dmps_tsv_list <- dmps_tsv_list[chromosomes]
+        unique_groups <- unique(dmps_tsv[, dmp_group_col])
+        gdmps_tsv_list <- lapply(
+            dmps_tsv_list,
+            function(cdmps_tsv) {
                 seed_group_inds <- split(seq_len(nrow(cdmps_tsv)), cdmps_tsv[, dmp_group_col])
                 gdmps_tsv_list <- list()
                 for (dmp_group in unique_groups) {
@@ -1050,18 +1076,22 @@ findDMRsFromSeeds <- function(beta = NULL,
                     ]
                     rownames(gdmps_tsv_list[[dmp_group]]) <- gdmps_tsv_list[[dmp_group]][, dmps_tsv_id_col]
                 }
-                cdmps <- dmps[m]
-                cdmps_beta <- dmps_beta[m, , drop = FALSE]
-                cdmps_locs <- dmps_locs[m, , drop = FALSE]
-                .log_step("Transforming beta subset to matrix...", level = 3)
-                # Ensure plain numeric matrix to avoid per-iteration unlist()
-                if (!is.matrix(cdmps_beta)) cdmps_beta <- as.matrix(cdmps_beta)
-                storage.mode(cdmps_beta) <- "double"
-                .log_success("Beta subset transformed to matrix", level = 3)
-                # Collect rows and combine once (avoid repeated data.frame rbind)
+                gdmps_tsv_list
+            }
+        )
+
+        ret <- future.apply::future_mapply(
+            chromosomes,
+            dmps_list,
+            dmps_beta_list,
+            dmps_locs_list,
+            gdmps_tsv_list,
+            future.seed = TRUE,
+            future.stdout = NA,
+            FUN = function(chr, cdmps, cdmps_beta, cdmps_locs, gdmps_tsv_list) {
+                op <- options(warn = 2)$warn
                 dmr_list <- vector("list", length = 128L)
                 dmr_n <- 0L
-
                 start_ind <- 1L
                 connection_corr_pval <- 1
                 dmr_dmps_inds <- integer(0)
@@ -1113,7 +1143,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     } else {
                         stop_reason <- "end of chromosome"
                     }
-                    for (dmp_group in unique_groups) {
+                    for (dmp_group in names(gdmps_tsv_list)) {
                         gdmps_tsv <- gdmps_tsv_list[[dmp_group]]
                         dmr_dmps_tsv <- gdmps_tsv[cdmps[dmr_dmps_inds], , drop = FALSE]
                         for (num.col in c("cases_num", "controls_num")) {
