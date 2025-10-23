@@ -1,4 +1,4 @@
-#' Beta File Handler Class
+#' Beta Handler Class
 #'
 #' @description An R6 class to handle methylation beta value files efficiently,
 #' with support for in-memory loading, tabix indexing, and various file formats.

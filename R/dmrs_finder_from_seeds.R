@@ -67,8 +67,6 @@
 #' beta <- DMRsegaldata::beta
 #' dmps <- DMRsegaldata::dmps
 #' pheno <- DMRsegaldata::pheno
-#' }
-
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
