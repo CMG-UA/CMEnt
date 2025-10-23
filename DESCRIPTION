@@ -76,6 +76,7 @@ Suggests:
     mockery,
     covr,
     DMRcate,
+    doParallel,
     bumphunter,
     minfiData,
     patchwork,

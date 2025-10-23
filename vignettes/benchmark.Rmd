@@ -157,8 +157,7 @@ if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     # bumphunter uses the same mset and design matrix as other methods
     # Run bumphunter with the same design matrix
-    library(doParallel)
-    registerDoParallel(cores = 4)
+    doParallel::registerDoParallel(cores = 4)
 
     bumphunter_results <- bumphunter(
         beta_mat,
