@@ -35,12 +35,9 @@ First, we'll set up the necessary directories and load required libraries:
 
 ```{r load_libraries}
 library(progressr)
-# progressr::handlers(global = TRUE)
+try(progressr::handlers(global = TRUE), silent = TRUE)
 benchmark_output_dir <- "benchmark_data"
 dir.create(benchmark_output_dir, showWarnings = FALSE)
-
-
-
 ```
 
 ## Loading and Preparing Data
@@ -89,7 +86,7 @@ cat(sprintf("Found %d significant DMPs (FDR < 0.05)\n", nrow(sig_dmps)))
 DMRsegal uses a seed-based approach, starting from significant DMPs and extending them into coherent regions:
 
 ```{r DMRsegal}
-DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
+DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds") # nolint
 if (!file.exists(DMRsegal_file)) {
     # Write DMPs to temp file
 
@@ -165,8 +162,8 @@ if (!file.exists(bumphunter_file)) {
 
     bumphunter_results <- bumphunter(
         beta_mat,
-        chr=locs$chr,
-        pos=locs$pos,
+        chr = locs$chr,
+        pos = locs$pos,
         design = design,
         pickCutoff = TRUE,
         B = 100, # Number of permutations
@@ -187,11 +184,11 @@ get_dmr_stats <- function(dmrs, method) {
     data.frame(
         Method = method,
         Number_of_DMRs = length(dmrs),
-        Mean_DMR_Width = mean(width(dmrs)),
-        Median_DMR_Width = median(width(dmrs)),
-        Total_Coverage_bp = sum(width(dmrs)),
-        Min_Width = min(width(dmrs)),
-        Max_Width = max(width(dmrs))
+        Mean_DMR_Width = mean(IRanges::width(dmrs)),
+        Median_DMR_Width = median(IRanges::width(dmrs)),
+        Total_Coverage_bp = sum(IRanges::width(dmrs)),
+        Min_Width = min(IRanges::width(dmrs)),
+        Max_Width = max(IRanges::width(dmrs))
     )
 }
 dmrs_segal <- readRDS(DMRsegal_file)
@@ -221,13 +218,13 @@ gr_dmrcate <- dmrs_dmrcate
 gr_bumphunter <- dmrs_bumphunter
 
 intersection <- function(gr1, gr2) {
-    sum(width(GenomicRanges::intersect(gr1, gr2)))
+    sum(IRanges::width(GenomicRanges::intersect(gr1, gr2)))
 }
 
 # IoU metric
 iou <- function(gr1, gr2) {
-    intersection <- sum(width(GenomicRanges::intersect(gr1, gr2)))
-    union <- sum(width(GenomicRanges::union(gr1, gr2)))
+    intersection <- sum(IRanges::width(GenomicRanges::intersect(gr1, gr2)))
+    union <- sum(IRanges::width(GenomicRanges::union(gr1, gr2)))
     if (union == 0) {
         return(0)
     }
@@ -236,7 +233,7 @@ iou <- function(gr1, gr2) {
 
 # Jaccard index for regions (count-based)
 jaccard_index <- function(gr1, gr2) {
-    overlap_count <- length(subsetByOverlaps(gr1, gr2))
+    overlap_count <- length(IRanges::subsetByOverlaps(gr1, gr2))
     total_unique <- length(unique(c(gr1, gr2)))
     if (total_unique == 0) {
         return(0)
