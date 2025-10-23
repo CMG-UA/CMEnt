@@ -47,15 +47,13 @@ jobs:
             any::rcmdcheck
             any::IlluminaHumanMethylation450kanno.ilmn12.hg19
             any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19
-          needs: |
-            check
-            knitr
-            BiocStyle
-            rmarkdown
-            DMRcate
-            bumphunter
-            DMRsegaldata
-            
+            any::knitr
+            any::rmarkdown
+            any::BiocStyle
+            any::DMRsegaldata
+            any::DMRcate
+            any::bumphunter
+          needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
