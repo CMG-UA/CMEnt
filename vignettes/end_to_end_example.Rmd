@@ -1,10 +1,10 @@
 ---
-title: "DMRSegal: End-to-End Example"
-author: "DMRSegal Package"
+title: "DMRsegal: End-to-End Example"
+author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{DMRSegal: End-to-End Example}
+  %\VignetteIndexEntry{DMRsegal: End-to-End Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -27,18 +27,18 @@ End-to-end DMR discovery with the same dataset and steps as in the benchmark, in
 ## Load data and prepare inputs
 
 ```{r load}
-library(DMRSegal)
-if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
-    remotes::install_github("CMG-UA/DMRSegaldata", force=T)
+library(DMRsegal)
+if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+    remotes::install_github("CMG-UA/DMRsegaldata", force=T)
 }
-library(DMRSegaldata)
+library(DMRsegaldata)
 
-beta <- DMRSegaldata::beta
-pheno <- DMRSegaldata::pheno
-array_type <- DMRSegaldata::getArrayType()
+beta <- DMRsegaldata::beta
+pheno <- DMRsegaldata::pheno
+array_type <- DMRsegaldata::getArrayType()
 genome <- "hg19"
 
-beta_handler <- DMRSegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
+beta_handler <- DMRsegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
 
@@ -77,7 +77,7 @@ write.table(sig_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = T
 
 ```{r dmrs}
 set.seed(42)
-dmrs <- DMRSegal::findDMRsFromSeeds(
+dmrs <- DMRsegal::findDMRsFromSeeds(
   beta_file = beta_handler,
   dmps_file = dmps_file,
   pheno = pheno,

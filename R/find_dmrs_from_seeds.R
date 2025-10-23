@@ -5,7 +5,7 @@
 #' @return None, outputs results to files
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
-    options("DMRSegal.verbose" = args$verbose)
+    options("DMRsegal.verbose" = args$verbose)
 
     if (!is.null(args$beta) && !is.null(args$tabix)) {
         stop("Either beta or tabix must be provided, not both.")

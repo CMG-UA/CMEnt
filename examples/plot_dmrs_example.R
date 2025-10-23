@@ -4,10 +4,10 @@
 # This script shows how to use the plotting functions to visualize
 # DMRs identified by findDMRsFromSeeds
 
-library(DMRSegal)
+library(DMRsegal)
 
 # Load example DMR results from benchmark data
-dmrs <- readRDS("benchmark_data/dmrs.dmrsegal.rds")
+dmrs <- readRDS("benchmark_data/dmrs.DMRsegal.rds")
 
 cat("Loaded", length(dmrs), "DMRs\n")
 cat("First DMR summary:\n")

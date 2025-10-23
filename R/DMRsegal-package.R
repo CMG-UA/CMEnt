@@ -1,6 +1,6 @@
-#' DMRSegal: Identify Differentially Methylated Regions from DMPs
+#' DMRsegal: Identify Differentially Methylated Regions from DMPs
 #'
-#' DMRSegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
+#' DMRsegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
 #' from pre-computed Differentially Methylated Positions (DMPs). The package uses a
 #' correlation-based approach to expand regions around significant DMPs, considering both
 #' statistical significance and biological relevance of methylation changes.

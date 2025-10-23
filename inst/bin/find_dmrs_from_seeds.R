@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 library(optparse)
-library(DMRSegal)
+library(DMRsegal)
 option_list <- list(
     make_option(c("--beta"), default = NULL, help = "The beta file, with row names the CpGs. Required if tabix not provided"), 
     make_option(c("--tabix"), default = NULL, help = "The tabix bed.gz file, with the corresponding index in the same directory. Required if beta not provided"), 
@@ -37,4 +37,4 @@ option_list <- list(
 )
 parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)
-DMRSegal::findDMRsFromSeedsCLI(args)
+DMRsegal::findDMRsFromSeedsCLI(args)

@@ -1,10 +1,10 @@
 ---
-title: "Benchmarking DMRSegal Against Other Methods"
-author: "DMRSegal Package"
+title: "Benchmarking DMRsegal Against Other Methods"
+author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Benchmarking DMRSegal Against Other Methods}
+  %\VignetteIndexEntry{Benchmarking DMRsegal Against Other Methods}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -22,7 +22,7 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette demonstrates how DMRSegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `minfiData` package to run all three methods and compare their results in terms of:
+This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `minfiData` package to run all three methods and compare their results in terms of:
 
 - Number of DMRs detected
 - DMR size distribution
@@ -49,20 +49,20 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 
 ```{r load_data}
 library(minfi)
-library(DMRSegal)
+library(DMRsegal)
 
-if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
-    remotes::install_github("CMG-UA/DMRSegaldata")
+if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+    remotes::install_github("CMG-UA/DMRsegaldata")
 }
-library(DMRSegaldata)
+library(DMRsegaldata)
 
-beta <- DMRSegaldata::beta
-pheno <- DMRSegaldata::pheno
-array_type <- DMRSegaldata::getArrayType()
+beta <- DMRsegaldata::beta
+pheno <- DMRsegaldata::pheno
+array_type <- DMRsegaldata::getArrayType()
 genome <- "hg19"
 
 
-beta_file_handler <- DMRSegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
+beta_file_handler <- DMRsegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
 locs <- beta_file_handler$getBetaLocs()
 mvalues <- log2(beta / (1 - beta + 1e-6) + 1e-6) # avoid log(0)
 pheno$casecontrol <- pheno$Sample_Group == "cancer"
@@ -83,17 +83,17 @@ sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
 cat(sprintf("Found %d significant DMPs (FDR < 0.05)\n", nrow(sig_dmps)))
 ```
 
-## Running DMRSegal
+## Running DMRsegal
 
-DMRSegal uses a seed-based approach, starting from significant DMPs and extending them into coherent regions:
+DMRsegal uses a seed-based approach, starting from significant DMPs and extending them into coherent regions:
 
-```{r dmrsegal}
-dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.dmrsegal.rds")
-if (!file.exists(dmrsegal_file)) {
+```{r DMRsegal}
+DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
+if (!file.exists(DMRsegal_file)) {
     # Write DMPs to temp file
 
     progressr::handlers("cli")
-    dmrs_segal <- progressr::with_progress(DMRSegal::findDMRsFromSeeds(
+    dmrs_segal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
         beta_file = beta_file_handler,
         dmps_file = sig_dmps,
         pheno = pheno,
@@ -107,7 +107,7 @@ if (!file.exists(dmrsegal_file)) {
         njobs = 1,
         verbose = 2
     ))
-    saveRDS(dmrs_segal, dmrsegal_file)
+    saveRDS(dmrs_segal, DMRsegal_file)
     rm(beta_file_handler)
 }
 ```
@@ -193,13 +193,13 @@ get_dmr_stats <- function(dmrs, method) {
         Max_Width = max(width(dmrs))
     )
 }
-dmrs_segal <- readRDS(dmrsegal_file)
+dmrs_segal <- readRDS(DMRsegal_file)
 dmrs_dmrcate <- readRDS(dmrcate_file)
 dmrs_bumphunter <- readRDS(bumphunter_file)
 
 # Collect stats
 stats_list <- list(
-    get_dmr_stats(dmrs_segal, "DMRSegal"),
+    get_dmr_stats(dmrs_segal, "DMRsegal"),
     get_dmr_stats(dmrs_dmrcate, "DMRcate"),
     get_dmr_stats(dmrs_bumphunter, "bumphunter")
 )
@@ -248,12 +248,12 @@ jaccard_index <- function(gr1, gr2) {
 }
 
 # Calculate overlap metrics
-# How many DMRSegal DMRs overlap with each method
+# How many DMRsegal DMRs overlap with each method
 overlap_segal_dmrcate <- length(subsetByOverlaps(gr_segal, gr_dmrcate))
 overlap_segal_bumphunter <- length(subsetByOverlaps(gr_segal, gr_bumphunter))
 overlap_dmrcate_bumphunter <- length(subsetByOverlaps(gr_dmrcate, gr_bumphunter))
 
-# Reciprocal: how many DMRcate/Bumphunter DMRs overlap with DMRSegal
+# Reciprocal: how many DMRcate/Bumphunter DMRs overlap with DMRsegal
 overlap_dmrcate_segal <- length(subsetByOverlaps(gr_dmrcate, gr_segal))
 overlap_bumphunter_segal <- length(subsetByOverlaps(gr_bumphunter, gr_segal))
 overlap_bumphunter_dmrcate <- length(subsetByOverlaps(gr_bumphunter, gr_dmrcate))
@@ -277,10 +277,10 @@ pct_bumphunter_in_segal <- (overlap_bumphunter_segal / length(gr_bumphunter)) * 
 # Create detailed overlap comparison
 overlap_comparison <- data.frame(
     Comparison = c(
-        "DMRSegal → DMRcate",
-        "DMRSegal → Bumphunter",
-        "DMRcate → DMRSegal",
-        "Bumphunter → DMRSegal",
+        "DMRsegal → DMRcate",
+        "DMRsegal → Bumphunter",
+        "DMRcate → DMRsegal",
+        "Bumphunter → DMRsegal",
         "DMRcate → Bumphunter",
         "Bumphunter → DMRcate"
     ),
@@ -321,8 +321,8 @@ We can quantify the similarity between methods using IoU (Intersection over Unio
 # Create IoU and Jaccard comparison
 similarity_metrics <- data.frame(
     Method_Pair = c(
-        "DMRSegal vs DMRcate",
-        "DMRSegal vs Bumphunter",
+        "DMRsegal vs DMRcate",
+        "DMRsegal vs Bumphunter",
         "DMRcate vs Bumphunter"
     ),
     IoU_Genomic_Coverage = c(
@@ -342,19 +342,19 @@ knitr::kable(similarity_metrics, digits = 4, caption = "Similarity Metrics")
 
 ## Specificity Analysis
 
-Let's analyze how specific DMRSegal is compared to other methods:
+Let's analyze how specific DMRsegal is compared to other methods:
 
 ```{r specificity}
-# Analyze specificity of DMRSegal
+# Analyze specificity of DMRsegal
 specificity_analysis <- data.frame(
     Metric = c(
-        "DMRs found by DMRSegal",
+        "DMRs found by DMRsegal",
         "DMRs found by DMRcate",
         "DMRs found by Bumphunter",
-        "DMRSegal unique (not in DMRcate or Bumphunter)",
-        "DMRSegal in both DMRcate and Bumphunter",
-        "DMRSegal in DMRcate only",
-        "DMRSegal in Bumphunter only"
+        "DMRsegal unique (not in DMRcate or Bumphunter)",
+        "DMRsegal in both DMRcate and Bumphunter",
+        "DMRsegal in DMRcate only",
+        "DMRsegal in Bumphunter only"
     ),
     Count = c(
         length(gr_segal),
@@ -367,26 +367,26 @@ specificity_analysis <- data.frame(
     )
 )
 
-knitr::kable(specificity_analysis, caption = "DMRSegal Specificity Analysis")
+knitr::kable(specificity_analysis, caption = "DMRsegal Specificity Analysis")
 ```
 
 ## Quality and Selectivity Metrics
 
-Finally, let's examine quality metrics that highlight DMRSegal's selective approach:
+Finally, let's examine quality metrics that highlight DMRsegal's selective approach:
 
 ```{r quality_metrics}
-# Additional quality metrics for DMRSegal's selective approach
+# Additional quality metrics for DMRsegal's selective approach
 
-# Calculate the "capture rate" - what fraction of other methods' DMRs does DMRSegal capture
+# Calculate the "capture rate" - what fraction of other methods' DMRs does DMRsegal capture
 capture_metrics <- data.frame(
     Metric = c(
-        "DMRSegal captures % of DMRcate genomic space",
-        "DMRSegal captures % of Bumphunter genomic space",
-        "Average DMR width - DMRSegal",
+        "DMRsegal captures % of DMRcate genomic space",
+        "DMRsegal captures % of Bumphunter genomic space",
+        "Average DMR width - DMRsegal",
         "Average DMR width - DMRcate",
         "Average DMR width - Bumphunter",
-        "DMRSegal selectivity ratio vs DMRcate",
-        "DMRSegal selectivity ratio vs Bumphunter"
+        "DMRsegal selectivity ratio vs DMRcate",
+        "DMRsegal selectivity ratio vs Bumphunter"
     ),
     Value = c(
         (sum(width(GenomicRanges::intersect(gr_segal, gr_dmrcate))) / sum(width(gr_dmrcate))) * 100,
@@ -414,7 +414,7 @@ library(ggplot2)
 
 # Create visualization comparing method characteristics
 method_chars <- data.frame(
-    Method = rep(c("DMRSegal", "DMRcate", "Bumphunter"), each = 2),
+    Method = rep(c("DMRsegal", "DMRcate", "Bumphunter"), each = 2),
     Characteristic = rep(c("Number of DMRs", "Total Coverage (kb)"), 3),
     Value = c(
         length(gr_segal), sum(width(gr_segal)) / 1000,
@@ -443,7 +443,7 @@ print(p1)
 # Create box plot comparing DMR widths
 width_data <- data.frame(
     Method = c(
-        rep("DMRSegal", length(gr_segal)),
+        rep("DMRsegal", length(gr_segal)),
         rep("DMRcate", length(gr_dmrcate)),
         rep("Bumphunter", length(gr_bumphunter))
     ),
@@ -470,13 +470,13 @@ print(p2)
 
 ```{r summary, echo=FALSE, results='asis'}
 cat(sprintf(
-    "- DMRSegal found **%d DMRs** compared to **%d (DMRcate)** and **%d (Bumphunter)**\n",
+    "- DMRsegal found **%d DMRs** compared to **%d (DMRcate)** and **%d (Bumphunter)**\n",
     length(gr_segal), length(gr_dmrcate), length(gr_bumphunter)
 ))
-cat(sprintf("- **%.1f%%** of DMRSegal DMRs overlap with DMRcate\n", pct_segal_in_dmrcate))
-cat(sprintf("- **%.1f%%** of DMRSegal DMRs overlap with Bumphunter\n", pct_segal_in_bumphunter))
-cat(sprintf("- DMRSegal is **%.1fx more selective** than DMRcate\n", length(gr_dmrcate) / length(gr_segal)))
-cat(sprintf("- DMRSegal is **%.1fx more selective** than Bumphunter\n", length(gr_bumphunter) / length(gr_segal)))
+cat(sprintf("- **%.1f%%** of DMRsegal DMRs overlap with DMRcate\n", pct_segal_in_dmrcate))
+cat(sprintf("- **%.1f%%** of DMRsegal DMRs overlap with Bumphunter\n", pct_segal_in_bumphunter))
+cat(sprintf("- DMRsegal is **%.1fx more selective** than DMRcate\n", length(gr_dmrcate) / length(gr_segal)))
+cat(sprintf("- DMRsegal is **%.1fx more selective** than Bumphunter\n", length(gr_bumphunter) / length(gr_segal)))
 ```
 
 ## Session Info

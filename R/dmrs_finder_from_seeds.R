@@ -60,13 +60,13 @@
 #' @examples
 #' \dontrun{
 #' # Load example data
-#' if (!requireNamespace("DMRSegaldata", quietly = TRUE)) {
-#'   remotes::install_github("CMG-UA/DMRSegaldata")
+#' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+#'   remotes::install_github("CMG-UA/DMRsegaldata")
 #' }
-#' library(DMRSegaldata)
-#' beta <- DMRSegaldata::beta
-#' dmps <- DMRSegaldata::dmps
-#' pheno <- DMRSegaldata::pheno
+#' library(DMRsegaldata)
+#' beta <- DMRsegaldata::beta
+#' dmps <- DMRsegaldata::dmps
+#' pheno <- DMRsegaldata::pheno
 
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
@@ -765,7 +765,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     options(future.globals.maxSize = globals_maxsize)
 
     # Bridge verbose to logging option for consistent styled logs
-    old_opt <- options(DMRSegal.verbose = verbose)
+    old_opt <- options(DMRsegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
     if (is.null(dmps_file) || is.null(pheno)) {
         stop("dmps_file and pheno parameters are required")

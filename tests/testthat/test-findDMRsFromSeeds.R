@@ -1,6 +1,6 @@
 # Test suite for findDMRsFromSeeds function
 library(testthat)
-library(DMRSegal)
+library(DMRsegal)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
@@ -30,7 +30,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -91,7 +91,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     dmps <- suppressWarnings(dmpFinder(mset,
         pheno = pheno$Sample_Group,
@@ -173,9 +173,9 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
         row.names = FALSE
     )
 
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
-    # Run DMRSegal with same parameters as benchmark
+    # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
         beta_file = beta_file,
         dmps_file = sig_dmps,
@@ -229,7 +229,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -335,7 +335,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -417,7 +417,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -500,7 +500,7 @@ test_that("findDMRsFromSeeds handles edge cases gracefully", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -565,7 +565,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -643,7 +643,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, genome = "hg19", overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, genome = "hg19", overwrite = TRUE)
 
     # Find DMPs
     dmps <- suppressWarnings(dmpFinder(mset,
@@ -704,7 +704,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     dmps <- suppressWarnings(dmpFinder(mset,
         pheno = pheno$Sample_Group,
@@ -766,7 +766,7 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         quote = FALSE,
         row.names = FALSE
     )
-    beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     dmps <- suppressWarnings(dmpFinder(mset,
         pheno = pheno$Sample_Group,

@@ -23,5 +23,5 @@ inst/doc
 .envrc
 benchmark_data
 debug
-DMRSegal.Rcheck/
+DMRsegal.Rcheck/
 tests/testthat/test*.loader

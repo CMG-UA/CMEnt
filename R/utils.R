@@ -276,7 +276,7 @@
 # Lightweight styled logging helpers -----------------------------------------
 
 # Internal state for timing steps
-.dmrsegal_log_env <- local({
+.DMRsegal_log_env <- local({
     e <- new.env(parent = emptyenv())
     e$last_step_time <- list()
     e
@@ -322,7 +322,7 @@
 #' @keywords internal
 #' @noRd
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRSegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 1) < level) {
         return(invisible())
     }
     msg <- paste0(..., collapse = "")
@@ -341,10 +341,10 @@
 
 #' @keywords internal
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRSegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 1) < level) {
         return(invisible())
     }
-    dur <- .fmt_dur(.dmrsegal_log_env$last_step_time[[level]])
+    dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))
@@ -353,10 +353,10 @@
 
 #' @keywords internal
 .log_step <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRSegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 1) < level) {
         return(invisible())
     }
-    .dmrsegal_log_env$last_step_time[level:max(1, length(.dmrsegal_log_env$last_step_time))] <- Sys.time()
+    .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time()
     msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
@@ -439,7 +439,7 @@
 #'
 #' The chunk-based processing ensures that even very large beta files (millions of CpGs)
 #' can be converted without running out of memory. The cache directory is located at
-#' \code{tempdir()/DMRSegal_tabix_cache/} and persists for the duration of the R session.
+#' \code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the R session.
 #' Files are named based on the MD5 hash of the input beta file, ensuring that identical
 #' files reuse the same cached version.
 #'
@@ -495,7 +495,7 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRSegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "DMRSegal", "tabix_cache"))
+        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "DMRsegal", "tabix_cache"))
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -560,7 +560,7 @@ convertBetaToTabix <- function(beta_file,
             rows_processed <- 0
 
             while (rows_processed < n_rows) {
-                if (verbose && getOption("DMRSegal.verbose", 1) > 1) {
+                if (verbose && getOption("DMRsegal.verbose", 1) > 1) {
                     .log_info("Processing rows ", rows_processed + 1, " to ",
                         min(rows_processed + chunk_size, n_rows), "...",
                         level = 3
@@ -754,7 +754,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     .log_step("Reading beta file", beta_file, level = 2)
     # Read the beta file
-    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRSegal.verbose", 1) > 1)
+    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRsegal.verbose", 1) > 1)
 
     # Get row names (CpG IDs) from first column
     cpg_ids <- beta_data[[1]]
@@ -845,9 +845,9 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     genome <- match.arg(genome)
     array <- tolower(array)
     genome <- tolower(genome)
-    cache_dir <- getOption("DMRSegal.annotation_cache_dir", file.path(
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "DMRSegal", "annotations"
+        ".cache", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)

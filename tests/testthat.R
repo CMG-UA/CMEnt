@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(DMRSegal)
+library(DMRsegal)
 
-test_check("DMRSegal")
+test_check("DMRsegal")
