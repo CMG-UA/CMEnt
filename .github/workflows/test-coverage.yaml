@@ -25,7 +25,12 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"hard"'
-          extra-packages: any::covr, any::xml2
+          extra-packages: |
+            any::covr
+            any::xml2
+            any::rcmdcheck
+            any::IlluminaHumanMethylation450kanno.ilmn12.hg19
+            any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19
           needs: coverage
 
       - name: Test coverage

@@ -59,6 +59,11 @@ Imports:
     R.utils,
     jsonlite
 Suggests: 
+    IlluminaHumanMethylation450kanno.ilmn12.hg19,
+    IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
+    IlluminaHumanMethylationEPICv2anno.20a1.hg38,
+    IlluminaHumanMethylation27kanno.ilmn12.hg19,
+    IlluminaMouseMethylationanno.12.v1.mm10,
     AnnotationHub,
     BiocManager,
     DynDoc,
@@ -70,7 +75,6 @@ Suggests:
     BiocStyle,
     SummarizedExperiment,
     testthat (>= 3.0.0),
-    lazytest,
     mockery,
     covr,
     DMRcate,
@@ -92,7 +96,7 @@ Suggests:
     org.Hs.eg.db,
     org.Mm.eg.db
 Remotes:
-    cynkra/lazytest
+    chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10
 Config/testthat/edition: 3
 Collate:
     'utils.R'

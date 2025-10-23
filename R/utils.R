@@ -851,7 +851,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
             if (!requireNamespace("devtools", quietly = TRUE)) {
                 install.packages("devtools")
             }
-            devtools::install_github(pkg_name)
+            devtools::install_github(paste0("chiaraherzog/", pkg_name))
         }
     }
     if (is.null(pkg_name)) {
