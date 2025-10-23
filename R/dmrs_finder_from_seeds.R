@@ -353,8 +353,8 @@
                                    pval_mode = c("parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
                                    ntries = 0, mid_p = FALSE, tries_seed = NULL) {
-    pval_mode <- strex::match.arg(pval_mode, ignore_case = TRUE)
-    empirical_strategy <- strex::match.arg(empirical_strategy, ignore_case = TRUE)
+    pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
+    empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     n_sites <- nrow(sites_beta)
     if (n_sites < 2) {
         return(data.frame(
@@ -733,8 +733,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               beta_row_names_file = NULL,
                               tabix_file = NULL,
                               .load_debug = FALSE) {
-    pval_mode <- strex::match.arg(pval_mode, ignore_case = TRUE)
-    empirical_strategy <- strex::match.arg(empirical_strategy, ignore_case = TRUE)
+    pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
+    empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     # Clean up any zombie processes on exit
     includes <- "#include <sys/wait.h>"
     code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
@@ -783,7 +783,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         )
     }
 
-    aggfun <- strex::match.arg(aggfun, ignore_case = TRUE)
+    aggfun <- strex::match_arg(aggfun, ignore_case = TRUE)
     aggfun <- switch(aggfun,
         median = stats::median,
         mean = mean
@@ -795,8 +795,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
 
-    array <- strex::match.arg(array, ignore_case = TRUE)
-    genome <- strex::match.arg(genome, ignore_case = TRUE)
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
     if (is.character(dmps_file) && length(dmps_file) == 1) {
         stopifnot(file.exists(dmps_file))
     }

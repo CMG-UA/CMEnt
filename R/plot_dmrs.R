@@ -47,8 +47,8 @@ plotDMR <- function(dmrs,
         stop("Package 'ggplot2' is required for plotting. Please install it.")
     }
 
-    array <- strex::match.arg(array, ignore_case = TRUE)
-    genome <- strex::match.arg(genome, ignore_case = TRUE)
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
 
     # Validate input
     if (dmr_index < 1 || dmr_index > length(dmrs)) {
@@ -453,8 +453,8 @@ plotDMRs <- function(dmrs,
                      array = c("450K", "27K", "EPIC", "EPICv2"),
                      ncol = 1,
                      ...) {
-    array <- strex::match.arg(array, ignore_case = TRUE)
-    genome <- strex::match.arg(genome, ignore_case = TRUE)
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
     if (is.null(dmr_indices)) {
         score <- minmaxscale(abs(dmrs$delta_beta)) * minmaxscale(-log10(dmrs$pval_adj + 1e-10))
         ord <- order(score, decreasing = TRUE)
@@ -544,8 +544,8 @@ plotDMRWithBeta <- function(dmrs,
         stop("Package 'reshape2' is required. Please install it.")
     }
 
-    array <- strex::match.arg(array, ignore_case = TRUE)
-    genome <- strex::match.arg(genome, ignore_case = TRUE)
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
 
     # Create BetaFileHandler if a file path or matrix was provided
     if (is.character(beta) && length(beta) == 1 && file.exists(beta) || is.matrix(beta) || is.data.frame(beta)) {
