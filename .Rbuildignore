@@ -1,4 +1,4 @@
-^DMRSegal\.Rproj$
+^DMRsegal\.Rproj$
 ^\.Rproj\.user$
 ^\.DS_Store$
 ^LICENSE\.md$
@@ -7,3 +7,20 @@
 ^CODE_OF_CONDUCT\.md$
 ^README\.Rmd$
 ^README\.html$
+^\.envrc$
+^\.here$
+^\.lintr$
+^benchmark\.R$
+^benchmark_data$
+^data-raw$
+^debug$
+^examples$
+^\.Rhistory$
+^\.RData$
+^\.Rprofile$
+^\.git$
+^\.github$
+^\.vscode$
+^DMRsegal\.Rcheck$
+^inst/doc$
+^vignettes/.*\.(md|html)$

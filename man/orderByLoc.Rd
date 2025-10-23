@@ -4,12 +4,19 @@
 \alias{orderByLoc}
 \title{Order Indices by Genomic Location}
 \usage{
-orderByLoc(x, array = "450K", genomic_locs = NULL)
+orderByLoc(
+  x,
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genomic_locs = NULL
+)
 }
 \arguments{
 \item{x}{Character or integer vector. Indices or identifiers to be ordered}
 
 \item{array}{Character. Array platform type, either "450K" or "EPIC" (default: "450K")}
+
+\item{genome}{Character. Genome version, either "hg19" or "hg38" (default: "hg19")}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
@@ -29,7 +36,7 @@ cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
 ordered_indices <- orderByLoc(cpg_ids, array = "450K")
 
 # Order using pre-computed genomic locations
-locs <- getSortedGenomicLocs("EPIC")
+locs <- getSortedGenomicLocs("EPIC", "hg38")
 ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
 }
 

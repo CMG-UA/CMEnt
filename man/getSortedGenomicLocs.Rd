@@ -2,15 +2,20 @@
 % Please edit documentation in R/utils.R
 \name{getSortedGenomicLocs}
 \alias{getSortedGenomicLocs}
-\title{Get Sorted Genomic Locations for Array Platform}
+\title{Get Sorted Array Locations}
 \usage{
-getSortedGenomicLocs(array)
+getSortedGenomicLocs(
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = c("hg19", "hg38", "mm10", "mm39")
+)
 }
 \arguments{
-\item{array}{Character. Array platform type, either "450K" or "EPIC"}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome}
+
+\item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")}
 }
 \value{
-A data frame containing sorted genomic locations with columns:
+A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 \itemize{
 \item chr: Chromosome
 \item pos: Genomic position
@@ -20,16 +25,18 @@ A data frame containing sorted genomic locations with columns:
 }
 \description{
 Retrieves and sorts genomic location annotations for the specified
-methylation array platform (450K or EPIC). The locations are sorted by
-chromosome and position to ensure proper genomic ordering.
+methylation array platform and genome version. Performs liftOver if necessary.
+The function caches the results.
 }
 \examples{
 \dontrun{
-# Get sorted locations for 450K array
+# Get sorted locations for 450K array (hg19)
 locs_450k <- getSortedGenomicLocs("450K")
 
-# Get sorted locations for EPIC array
-locs_epic <- getSortedGenomicLocs("EPIC")
-}
+# Get sorted locations for EPIC array with hg38
+locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
 
+# Get sorted locations for EPICv2 array
+locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
+}
 }

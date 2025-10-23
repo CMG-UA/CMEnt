@@ -1,10 +1,10 @@
-citHeader("To cite DMRSegal in publications use:")
+citHeader("To cite DMRsegal in publications use:")
 
 bibentry(
   bibtype = "Manual",
-  title   = "DMRSegal: {An} {R} package to ...",
+  title   = "DMRsegal: {An} {R} package to ...",
   author  = c(person("Lemonidis Vasileios")),
   year    = "2025",
   note    = "R package version 0.0.0.9000",
-  url     = "https://github.com/CMG-UA/DMRSegal"
+  url     = "https://github.com/CMG-UA/DMRsegal"
 )

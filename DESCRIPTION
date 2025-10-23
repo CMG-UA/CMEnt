@@ -1,4 +1,4 @@
-Package: DMRSegal
+Package: DMRsegal
 Type: Package
 Title: Identify Differentially Methylated Regions from DMPs
 Version: 0.99.0
@@ -8,67 +8,98 @@ Authors@R: c(
            role    = c("aut", "cre", "cph"),
            email   = "vasileios.lemonidis@uantwerpen.be",
            comment = c(ORCID = "0000-0002-6446-3536")))
-Description: DMRSegal implements a method for identifying Differentially 
+Author: Vasileios Lemonidis [aut, cre, cph]
+Maintainer: Vasileios Lemonidis <vasileios.lemonidis@uantwerpen.be>
+Description: DMRsegal implements a method for identifying Differentially 
     Methylated Regions (DMRs) from pre-computed Differentially Methylated 
     Positions (DMPs). The package uses a correlation-based approach to 
     expand regions around significant DMPs, considering both statistical 
     significance and biological relevance of methylation changes. It supports 
     both standard beta value files and tabix-indexed files for efficient 
     processing of large datasets.
-URL: https://github.com/CMG-UA/DMRSegal
-BugReports: https://github.com/CMG-UA/DMRSegal/issues
+URL: https://github.com/CMG-UA/DMRsegal
+BugReports: https://github.com/CMG-UA/DMRsegal/issues
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, 
-    BiomedicalInformatics, Genetics, QualityControl, Preprocessing
+VignetteBuilder: knitr
+biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
 Depends:
     R (>= 4.3.0)
 Imports:
-    optparse,
+    strex,
     GenomicRanges,
-    SummarizedExperiment,
     S4Vectors,
     IRanges,
     methods,
     stats,
     utils,
+    tools,
     data.table,
-    psych,
     cli,
-    Rsamtools,
     stringr,
     future,
     future.apply,
-    progressr,
+    inline,
+    progressr (== 0.16.0),
     minfi,
     bedr,
-    BSgenome.Hsapiens.UCSC.hg19,
-    IlluminaHumanMethylation450kanno.ilmn12.hg19,
-    IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+    AnnotationDbi,
+    GenomicFeatures,
+    GenomeInfoDb,
+    rtracklayer,
+    BSgenome,
+    R6,
+    ggplot2,
+    showtext,
+    dplyr,
+    readr,
+    reshape2,
+    R.utils,
+    jsonlite
 Suggests: 
+    AnnotationHub,
+    BiocManager,
+    DynDoc,
+    devtools,
     knitr,
+    optparse,
+    Rsamtools,
     rmarkdown,
     BiocStyle,
+    SummarizedExperiment,
     testthat (>= 3.0.0),
+    lazytest,
+    mockery,
     covr,
-    readr,
-    dplyr,
     DMRcate,
     bumphunter,
     ExperimentHub,
     microbenchmark,
     minfiData,
-    ggplot2,
-    pheatmap
-Additional_repositories: 
-    https://bioconductor.org/packages/3.17/bioc
+    ggnewscale,
+    patchwork,
+    gridExtra,
+    TxDb.Hsapiens.UCSC.hg19.knownGene,
+    TxDb.Hsapiens.UCSC.hg38.knownGene,
+    TxDb.Mmusculus.UCSC.mm10.knownGene,
+    TxDb.Mmusculus.UCSC.mm39.knownGene,
+    BSgenome.Hsapiens.UCSC.hg19,
+    BSgenome.Hsapiens.UCSC.hg38,
+    BSgenome.Mmusculus.UCSC.mm10,
+    BSgenome.Mmusculus.UCSC.mm39,
+    org.Hs.eg.db,
+    org.Mm.eg.db
+Remotes:
+    cynkra/lazytest
 Config/testthat/edition: 3
 Collate:
-    'data.R'
     'utils.R'
-    'dmrs_finder_from_dmps.R'
-    'find_dmrs_from_dmps.R'
-    'DMRSegal-package.R'
+    'beta_handler.R'
+    'dmrs_finder_from_seeds.R'
+    'find_dmrs_from_seeds.R'
+    'DMRsegal-package.R'
+    'plot_dmrs.R'
     'zzz.R'
+NeedsCompilation: no
