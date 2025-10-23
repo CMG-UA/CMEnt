@@ -58,7 +58,7 @@ library(DMRsegaldata)
 
 beta <- DMRsegaldata::beta
 pheno <- DMRsegaldata::pheno
-array_type <- DMRsegaldata::getArrayType()
+array_type <- "450K"
 genome <- "hg19"
 
 

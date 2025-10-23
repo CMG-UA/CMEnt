@@ -28,6 +28,7 @@ biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
 Depends:
     R (>= 4.3.0)
 Imports:
+    rlang,
     GenomicRanges,
     S4Vectors,
     IRanges,

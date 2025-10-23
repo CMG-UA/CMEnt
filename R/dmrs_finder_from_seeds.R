@@ -353,8 +353,8 @@
                                    pval_mode = c("parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
                                    ntries = 0, mid_p = FALSE, tries_seed = NULL) {
-    pval_mode <- match.arg(pval_mode)
-    empirical_strategy <- match.arg(empirical_strategy)
+    pval_mode <- rlang::arg_match(pval_mode, ignore_case = TRUE)
+    empirical_strategy <- rlang::arg_match(empirical_strategy, ignore_case = TRUE)
     n_sites <- nrow(sites_beta)
     if (n_sites < 2) {
         return(data.frame(
@@ -733,8 +733,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               beta_row_names_file = NULL,
                               tabix_file = NULL,
                               .load_debug = FALSE) {
-    pval_mode <- match.arg(pval_mode)
-    empirical_strategy <- match.arg(empirical_strategy)
+    pval_mode <- rlang::arg_match(pval_mode, ignore_case = TRUE)
+    empirical_strategy <- rlang::arg_match(empirical_strategy, ignore_case = TRUE)
     # Clean up any zombie processes on exit
     includes <- "#include <sys/wait.h>"
     code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
@@ -783,7 +783,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         )
     }
 
-    aggfun <- match.arg(aggfun)
+    aggfun <- rlang::arg_match(aggfun, ignore_case = TRUE)
     aggfun <- switch(aggfun,
         median = stats::median,
         mean = mean
@@ -795,8 +795,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
 
-    array <- match.arg(array)
-    genome <- match.arg(genome)
+    array <- rlang::arg_match(array, ignore_case = TRUE)
+    genome <- rlang::arg_match(genome, ignore_case = TRUE)
     if (is.character(dmps_file) && length(dmps_file) == 1) {
         stopifnot(file.exists(dmps_file))
     }

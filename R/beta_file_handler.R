@@ -58,8 +58,8 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             }
 
 
-            array <- match.arg(array)
-            genome <- match.arg(genome)
+            array <- rlang::arg_match(array, ignore_case = TRUE)
+            genome <- rlang::arg_match(genome, ignore_case = TRUE)
 
             # Set fields
             self$beta_file <- beta_file
