@@ -274,10 +274,10 @@
     if (is.na(secs)) {
         return("")
     }
-    if (secs < 1) {
-        sprintf(" (took %.2fms)", secs * 1000)
-    } else if (secs < 0.001) {
+    if (secs < 0.001) {
         sprintf(" (took %.2f\u03bcs)", secs * 1000000)
+    } else if (secs < 1) {
+        sprintf(" (took %.2fms)", secs * 1000)
     } else if (secs < 60) {
         sprintf(" (took %.2fs)", secs)
     } else {
