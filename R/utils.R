@@ -306,7 +306,7 @@
 }
 
 .col <- function(x, col = c("cyan", "green", "yellow", "blue")) {
-    col <- rlang::arg_match(col, ignore_case = TRUE)
+    col <- strex::match.arg(col, ignore_case = TRUE)
     if (!.has_ansi()) {
         return(x)
     }
@@ -468,8 +468,8 @@ convertBetaToTabix <- function(beta_file,
                                chunk_size = 50000,
                                njobs = 1,
                                verbose = TRUE) {
-    array <- rlang::arg_match(array, ignore_case = TRUE)
-    genome <- rlang::arg_match(genome, ignore_case = TRUE)
+    array <- strex::match.arg(array, ignore_case = TRUE)
+    genome <- strex::match.arg(genome, ignore_case = TRUE)
     # Get sorted locations if not provided
     if (is.null(sorted_locs)) {
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -730,8 +730,8 @@ sortBetaFileByCoordinates <- function(beta_file,
                                       genome = c("hg19", "hg38", "mm10", "mm39"),
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
-    array <- rlang::arg_match(array, ignore_case = TRUE)
-    genome <- rlang::arg_match(genome, ignore_case = TRUE)
+    array <- strex::match.arg(array, ignore_case = TRUE)
+    genome <- strex::match.arg(genome, ignore_case = TRUE)
     # Validate inputs
     if (!file.exists(beta_file)) {
         stop("Beta file does not exist: ", beta_file)
@@ -841,8 +841,8 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' }
 #' @export
 getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
-    array <- rlang::arg_match(array, ignore_case = TRUE)
-    genome <- rlang::arg_match(genome, ignore_case = TRUE)
+    array <- strex::match.arg(array, ignore_case = TRUE)
+    genome <- strex::match.arg(genome, ignore_case = TRUE)
     array <- tolower(array)
     genome <- tolower(genome)
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
@@ -1037,7 +1037,7 @@ orderByLoc <- function(x,
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
 getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), use_online = FALSE) {
-    genome <- rlang::arg_match(genome, ignore_case = TRUE)
+    genome <- strex::match.arg(genome, ignore_case = TRUE)
 
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"

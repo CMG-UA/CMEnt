@@ -58,7 +58,7 @@ library(DMRsegaldata)
 
 beta <- DMRsegaldata::beta
 pheno <- DMRsegaldata::pheno
-array_type <- "450K"
+array_type <- DMRsegaldata::array_type
 genome <- "hg19"
 
 
@@ -221,10 +221,6 @@ gr_bumphunter <- dmrs_bumphunter
 
 intersection <- function(gr1, gr2) {
     sum(width(GenomicRanges::intersect(gr1, gr2)))
-}
-
-smallest_width <- function(gr1, gr2) {
-    pmin(sum(width(gr1)), sum(width(gr2)))
 }
 
 # IoU metric
