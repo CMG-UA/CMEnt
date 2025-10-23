@@ -126,8 +126,6 @@ test_that("plotDMRs respects ncol parameter", {
 
 
 test_that("plotDMRWithBeta works", {
-    skip_if_not_installed("ggplot2")
-    skip_if_not_installed("reshape2")
     skip_if_not_installed("DMRsegaldata")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))

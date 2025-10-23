@@ -537,13 +537,6 @@ plotDMRWithBeta <- function(dmrs,
                             sample_group_col = "Sample_Group",
                             max_cpgs = 100) {
     showtext::showtext_auto()
-    if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        stop("Package 'ggplot2' is required. Please install it.")
-    }
-    if (!requireNamespace("reshape2", quietly = TRUE)) {
-        stop("Package 'reshape2' is required. Please install it.")
-    }
-
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
 
@@ -670,7 +663,7 @@ plotDMRWithBeta <- function(dmrs,
                 alpha = 0.7
             )
     }
-    if (requireNamespace("grid", quietly = TRUE) && requireNamespace("gtable", quietly = TRUE)) {
+    if (requireNamespace("grid", quietly = TRUE) && requireNamespace("gridExtra", quietly = TRUE) && requireNamespace("gtable", quietly = TRUE)) {
         g1 <- ggplot2::ggplotGrob(structure_plot)
         g2 <- ggplot2::ggplotGrob(heatmap_plot)
         max_width <- grid::unit.pmax(g1$widths, g2$widths)

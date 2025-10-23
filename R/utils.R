@@ -509,11 +509,22 @@ convertBetaToTabix <- function(beta_file,
                 .log_step("Counting rows in beta file...", level = 2)
             }
 
-            # Count lines efficiently
+            # Count lines efficiently (cross-platform)
             if (endsWith(beta_file, ".gz")) {
-                n_lines <- as.numeric(system(sprintf("zcat %s | wc -l", shQuote(beta_file)), intern = TRUE))
+                conn <- gzfile(beta_file, "r")
+                n_lines <- 0
+                while (length(readLines(conn, n = 10000)) > 0) {
+                    n_lines <- n_lines + 10000
+                }
+                close(conn)
+                # Recount accurately
+                conn <- gzfile(beta_file, "r")
+                n_lines <- length(readLines(conn))
+                close(conn)
             } else {
-                n_lines <- as.numeric(system(sprintf("wc -l < %s", shQuote(beta_file)), intern = TRUE))
+                conn <- file(beta_file, "r")
+                n_lines <- length(readLines(conn))
+                close(conn)
             }
             n_rows <- n_lines - 1 # Exclude header
 
@@ -609,25 +620,146 @@ convertBetaToTabix <- function(beta_file,
                 .log_step("Sorting BED file...", level = 2)
             }
             temp_sorted <- tempfile(fileext = ".bed")
-            sort_cmd <- sprintf(
-                "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -k1,1 -k2,2n) > %s",
-                shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
-            )
-            system(sort_cmd)
+
+            # Platform-specific sorting
+            is_windows <- .Platform$OS.type == "windows"
+
+            if (is_windows) {
+                # Windows: use external sorting for large files
+                # Read and write header first
+                header_line <- readLines(temp_bed, n = 1)
+                writeLines(header_line, temp_sorted)
+
+                # Process file in chunks, sort each chunk, write to temp files
+                chunk_files <- character()
+                skip <- 1
+                chunk_num <- 0
+                chunk_sort_size <- 100000 # rows per chunk
+
+                repeat {
+                    chunk <- data.table::fread(temp_bed,
+                        skip = skip, nrows = chunk_sort_size,
+                        header = FALSE, data.table = TRUE
+                    )
+                    if (nrow(chunk) == 0) break
+
+                    # Sort chunk by chr (col 1) then position (col 2)
+                    data.table::setorderv(chunk, cols = c(1, 2), order = c(1, 1))
+
+                    # Write sorted chunk to temp file
+                    chunk_num <- chunk_num + 1
+                    chunk_file <- tempfile(fileext = paste0("_chunk", chunk_num, ".txt"))
+                    data.table::fwrite(chunk, chunk_file,
+                        sep = "\t", quote = FALSE,
+                        row.names = FALSE, col.names = FALSE
+                    )
+                    chunk_files <- c(chunk_files, chunk_file)
+
+                    skip <- skip + nrow(chunk)
+                }
+
+                # K-way merge of sorted chunks
+                if (length(chunk_files) > 0) {
+                    # Helper function to compare two BED lines (chr:pos)
+                    compare_bed_lines <- function(line1, line2) {
+                        parts1 <- strsplit(line1, "\t", fixed = TRUE)[[1]]
+                        parts2 <- strsplit(line2, "\t", fixed = TRUE)[[1]]
+
+                        chr1 <- parts1[1]
+                        chr2 <- parts2[1]
+
+                        # Compare chromosomes
+                        if (chr1 != chr2) {
+                            return(chr1 < chr2)
+                        }
+
+                        # Same chromosome, compare positions
+                        pos1 <- as.numeric(parts1[2])
+                        pos2 <- as.numeric(parts2[2])
+                        return(pos1 < pos2)
+                    }
+
+                    # Open all chunk files and read first line from each
+                    connections <- lapply(chunk_files, function(f) file(f, "r"))
+                    heap <- list()
+
+                    for (i in seq_along(connections)) {
+                        line <- readLines(connections[[i]], n = 1)
+                        if (length(line) > 0) {
+                            heap[[length(heap) + 1]] <- list(line = line, chunk_idx = i)
+                        }
+                    }
+
+                    out_conn <- file(temp_sorted, "a")
+
+                    # Merge: repeatedly extract minimum, write it, and refill from same chunk
+                    while (length(heap) > 0) {
+                        # Find minimum element in heap
+                        min_idx <- 1
+                        for (i in seq_along(heap)) {
+                            if (i > 1 && compare_bed_lines(heap[[i]]$line, heap[[min_idx]]$line)) {
+                                min_idx <- i
+                            }
+                        }
+
+                        # Write minimum line
+                        writeLines(heap[[min_idx]]$line, out_conn)
+
+                        # Read next line from the same chunk
+                        chunk_idx <- heap[[min_idx]]$chunk_idx
+                        next_line <- readLines(connections[[chunk_idx]], n = 1)
+
+                        if (length(next_line) > 0) {
+                            # Replace with new line from same chunk
+                            heap[[min_idx]]$line <- next_line
+                        } else {
+                            # This chunk is exhausted, remove from heap
+                            heap[[min_idx]] <- NULL
+                        }
+                    }
+
+                    close(out_conn)
+                    lapply(connections, close)
+                    unlink(chunk_files)
+                }
+            } else {
+                # Unix/Linux/Mac: use efficient system sort
+                sort_cmd <- sprintf(
+                    "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -k1,1 -k2,2n) > %s",
+                    shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
+                )
+                system(sort_cmd)
+            }
 
             # Compress with bgzip
             if (verbose) {
                 .log_step("Compressing with bgzip...", level = 2)
             }
-            bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
-            system(bgzip_cmd)
+
+            if (is_windows) {
+                bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
+                if (bgzip_result != 0) {
+                    stop("bgzip compression failed with exit code ", bgzip_result)
+                }
+            } else {
+                bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
+                system(bgzip_cmd)
+            }
 
             # Index with tabix
             if (verbose) {
                 .log_step("Creating tabix index...", level = 2)
             }
-            tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
-            system(tabix_cmd)
+
+            if (is_windows) {
+                tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
+                if (tabix_result != 0) {
+                    stop("tabix indexing failed with exit code ", tabix_result)
+                }
+            } else {
+                tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
+                system(tabix_cmd)
+            }
 
             # Clean up temp files
             unlink(temp_bed)
@@ -754,7 +886,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
     if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level=2)
+        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level = 2)
     }
 
     final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
