@@ -536,6 +536,7 @@ plotDMRWithBeta <- function(dmrs,
                             genome = c("hg19", "hg38", "mm10", "mm39"),
                             sample_group_col = "Sample_Group",
                             max_cpgs = 100) {
+    showtext::showtext_auto()
     if (!requireNamespace("ggplot2", quietly = TRUE)) {
         stop("Package 'ggplot2' is required. Please install it.")
     }
@@ -621,7 +622,8 @@ plotDMRWithBeta <- function(dmrs,
 
     # Create heatmap
     # Prepare data
-    beta_data$CpG <- rownames(beta_data)
+    beta_data <- as.data.frame(beta_data)
+    beta_data[, "CpG"] <- rownames(beta_data)
     beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
     beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "pos"]
@@ -672,7 +674,7 @@ plotDMRWithBeta <- function(dmrs,
         g1 <- ggplot2::ggplotGrob(structure_plot)
         g2 <- ggplot2::ggplotGrob(heatmap_plot)
         max_width <- grid::unit.pmax(g1$widths, g2$widths)
-        combined <- gtable::rbind(g1, g2, size = "last")
+        combined <- gridExtra::gtable_rbind(g1, g2)
         combined$widths <- max_width
         grid::grid.newpage()
         grid::grid.draw(combined)

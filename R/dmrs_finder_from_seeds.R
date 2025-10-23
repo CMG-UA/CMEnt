@@ -23,7 +23,7 @@
 #' @param pval_col Column name in DMPs file containing p-values (default: "pval_adj")
 #' @param sample_group_col Column in pheno for sample grouping (default: "Sample_Group")
 #' @param dmp_group_col Column in DMPs file for grouping DMPs (default: NULL)
-#' @param casecontrol_col Column in pheno for case/control status (default: "casecontrol")
+#' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status (default: "casecontrol")
 #' @param min_cpg_delta_beta Minimum delta beta threshold for CpGs (default: 0)
 #' @param expansion_step Distance in bp to expand regions during search (default: 500)
 #' @param array Array platform, either "450K" or "EPIC" (default: c("450K", "EPIC"))
@@ -677,7 +677,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param dmp_group_col Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.
 #' @param dmp_groups_info Named list. Required when `dmp_group_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
-#' @param casecontrol_col Character. Column name for case-control information in the phenotype data. Default is "casecontrol".
+#' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
@@ -709,7 +709,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
                               sample_group_col = "Sample_Group",
                               dmp_group_col = NULL,
                               dmp_groups_info = NULL,
-                              casecontrol_col = "casecontrol",
+                              casecontrol_col = NULL,
                               min_cpg_delta_beta = 0,
                               expansion_step = 500,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -770,14 +770,18 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     if (is.null(dmps_file) || is.null(pheno)) {
         stop("dmps_file and pheno parameters are required")
     }
-    beta_file_handler <- BetaFileHandler$new(
-        beta_file = beta_file,
-        tabix_file = tabix_file,
-        beta_row_names_file = beta_row_names_file,
-        njobs = njobs,
-        memory_threshold_mb = memory_threshold_mb,
-        verbose = verbose
-    )
+    if (inherits(beta_file, "BetaFileHandler")) {
+        beta_file_handler <- beta_file
+    } else {
+        beta_file_handler <- BetaFileHandler$new(
+            beta_file = beta_file,
+            tabix_file = tabix_file,
+            beta_row_names_file = beta_row_names_file,
+            njobs = njobs,
+            memory_threshold_mb = memory_threshold_mb,
+            verbose = verbose
+        )
+    }
 
     aggfun <- match.arg(aggfun)
     aggfun <- switch(aggfun,
@@ -796,8 +800,11 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     if (is.character(dmps_file) && length(dmps_file) == 1) {
         stopifnot(file.exists(dmps_file))
     }
-    stopifnot(casecontrol_col %in% colnames(pheno))
     stopifnot(sample_group_col %in% colnames(pheno))
+    if (is.null(casecontrol_col)) {
+        casecontrol_col <- "_CASECONTROL_INFERRED_"
+        pheno[, casecontrol_col] <- ifelse(pheno[, sample_group_col] == levels(as.factor(pheno[, sample_group_col]))[1], 0, 1)
+    }
     if (is.null(ignored_sample_groups)) {
         ignored_sample_groups <- c()
     } else {

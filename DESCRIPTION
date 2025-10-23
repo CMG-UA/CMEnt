@@ -51,6 +51,7 @@ Imports:
     BSgenome,
     R6,
     ggplot2,
+    showtext,
     dplyr,
     readr,
     reshape2,

@@ -51,7 +51,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             if (is.null(beta_file) && is.null(tabix_file)) {
                 stop("Either beta_file or tabix_file must be provided")
             }
-            if (!is.null(beta_file) && is.character(beta_file) && length(beta_file) > 0 && !file.exists(beta_file)) {
+            if (!is.null(beta_file) && is.character(beta_file) && length(beta_file) == 1 && !file.exists(beta_file)) {
                 stop("Provided beta_file does not exist: ", beta_file)
             } else if (!is.null(tabix_file) && !file.exists(tabix_file)) {
                 stop("Provided tabix_file does not exist: ", tabix_file)
@@ -92,6 +92,10 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
 
             if (!is.null(self$beta_file) && is.null(self$tabix_file)) {
                 if (!is.character(self$beta_file) && length(self$beta_file) > 0) {
+                    if (inherits(self$beta_file, "BetaFileaHandler")) {
+                        warning("Provided beta_file is already a BetaFileHandler instance; ")
+                        return(invisible(self$beta_file))
+                    }
                     self$beta_file_in_memory <- self$beta_file
                     self$beta_file <- NULL
                     private$.loaded <- TRUE

@@ -65,14 +65,7 @@ genome <- "hg19"
 beta_file_handler <- DMRSegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
 locs <- beta_file_handler$getBetaLocs()
 mvalues <- log2(beta / (1 - beta + 1e-6) + 1e-6) # avoid log(0)
-samplesheet <- read.table(samplesheet_file, header = TRUE, sep = "\t", row.names = 1)
-
-pheno <- data.frame(
-    status = samplesheet$Sample_Group,
-    row.names = rownames(samplesheet)
-)
-pheno$group <- pheno$status
-pheno$casecontrol <- pheno$status == "cancer"
+pheno$casecontrol <- pheno$Sample_Group == "cancer"
 ```
 
 ## Finding Differentially Methylated Positions (DMPs)
@@ -104,7 +97,8 @@ if (!file.exists(dmrsegal_file)) {
         beta_file = beta_file_handler,
         dmps_file = sig_dmps,
         pheno = pheno,
-        sample_group_col = "group",
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 10000,
@@ -132,7 +126,7 @@ if (!file.exists(dmrcate_file)) {
         BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
     }
     library(DMRcate)
-    design <- model.matrix(~status, data = pheno)
+    design <- model.matrix(~Sample_Group, data = pheno)
     colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
     myannotation <- cpg.annotate("array", mvalues,

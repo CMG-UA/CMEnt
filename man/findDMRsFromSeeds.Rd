@@ -33,7 +33,7 @@ findDMRsFromSeeds(
   sample_group_col = "Sample_Group",
   dmp_group_col = NULL,
   dmp_groups_info = NULL,
-  casecontrol_col = "casecontrol",
+  casecontrol_col = NULL,
   min_cpg_delta_beta = 0,
   expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -92,7 +92,7 @@ findDMRsFromSeeds(
 
 \item{dmp_groups_info}{Named list. Required when \code{dmp_group_col} is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.}
 
-\item{casecontrol_col}{Character. Column name for case-control information in the phenotype data. Default is "casecontrol".}
+\item{casecontrol_col}{Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
 
 \item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
 

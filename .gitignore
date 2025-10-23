@@ -24,3 +24,4 @@ inst/doc
 benchmark_data
 debug
 DMRSegal.Rcheck/
+tests/testthat/test*.loader
