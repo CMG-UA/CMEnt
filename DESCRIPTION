@@ -42,7 +42,7 @@ Imports:
     future,
     future.apply,
     inline,
-    progressr (== 0.16.0),
+    progressr,
     minfi,
     bedr,
     AnnotationDbi,
