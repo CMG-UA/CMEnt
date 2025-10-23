@@ -5,6 +5,7 @@
 #'
 #'
 #' @importFrom R6 R6Class
+#' @internal
 BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
         #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix
@@ -23,6 +24,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
         njobs = 1,
+        #' @description Initialize BetaHandler object
         initialize = function(beta = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = c("hg19", "hg38", "mm10", "mm39"),
