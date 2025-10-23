@@ -260,7 +260,7 @@
 # Lightweight styled logging helpers -----------------------------------------
 
 # Internal state for timing steps
-.DMRsegal_log_env <- local({
+.DMRsegal_log_env <- local({ # nolint
     e <- new.env(parent = emptyenv())
     e$last_step_time <- list()
     e
@@ -340,7 +340,7 @@
     if (getOption("DMRsegal.verbose", 1) < level) {
         return(invisible())
     }
-    .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time()
+    .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
@@ -754,7 +754,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
     if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level=2)
+        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level = 2)
     }
 
     final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]

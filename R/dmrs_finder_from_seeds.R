@@ -61,12 +61,13 @@
 #' \dontrun{
 #' # Load example data
 #' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
-#'   remotes::install_github("CMG-UA/DMRsegaldata")
+#'     remotes::install_github("CMG-UA/DMRsegaldata")
 #' }
 #' library(DMRsegaldata)
 #' beta <- DMRsegaldata::beta
 #' dmps <- DMRsegaldata::dmps
 #' pheno <- DMRsegaldata::pheno
+#' }
 
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
@@ -97,9 +98,9 @@
 
 
 .buildConnectivityArray <- function(
-  beta_file_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, verbose = 0
+    beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, verbose = 0
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -122,7 +123,7 @@
         future.seed = TRUE,
         future.stdout = NA,
         future.globals = c(
-            "beta_file_handler",
+            "beta_handler",
             "group_inds",
             "casecontrol",
             "max_pval",
@@ -139,8 +140,8 @@
         ),
         FUN = function(split_ind) {
             split <- splits[split_ind, ]
-            beta_locs <- beta_file_handler$getBetaLocs()
-            chunk_beta <- beta_file_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]])
+            beta_locs <- beta_handler$getBetaLocs()
+            chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]])
             x <- .testConnectivityBatch(
                 sites_beta = chunk_beta,
                 group_inds = group_inds,
@@ -572,7 +573,7 @@
 #' site within the DMR regions.
 #'
 #' @param dmrs GRanges object containing DMR results from findDMRsFromSeeds
-#' @param beta_file_handler BetaFileHandler object for the methylation beta values file
+#' @param beta_handler BetaHandler object for the methylation beta values file
 #' @param beta_row_names Character vector. Row names for beta values
 #' @param beta_col_names Character vector. Column names for beta values
 #' @param sorted_locs GRanges or data frame with sorted genomic locations
@@ -586,7 +587,7 @@
 #' # Extract CpG info from DMR results
 #' cpg_info <- extractCpgInfoFromResultDMRs(
 #'     dmrs = dmr_results,
-#'     beta_file_handler = beta_file_handler,
+#'     beta_handler = beta_handler,
 #'     beta_row_names = row_names,
 #'     beta_col_names = col_names,
 #'     sorted_locs = genomic_locations
@@ -595,7 +596,7 @@
 #'
 #' @export
 extractCpgInfoFromResultDMRs <- function(dmrs,
-                                         beta_file_handler,
+                                         beta_handler,
                                          beta_row_names,
                                          beta_col_names,
                                          sorted_locs,
@@ -639,7 +640,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 
     dmrs_beta_file <- paste0(output_prefix, "dmrs_beta.tsv.gz")
     .log_step("Saving constituent CpG betas", dmrs_beta_file, " ...")
-    dmrs_beta <- beta_file_handler$getBeta(
+    dmrs_beta <- beta_handler$getBeta(
         row_names = dmrs_sites,
         col_names = beta_col_names
     )
@@ -669,7 +670,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #'
 #' This function identifies DMRs from a given set of DMPs and a beta value file.
 #'
-#' @param beta Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object. Either this or tabix_file must be provided.
 #' @param dmps Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
@@ -731,7 +732,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                               memory_threshold_mb = 500,
                               verbose = 1,
                               beta_row_names_file = NULL,
-                              tabix_file = NULL,
                               .load_debug = FALSE) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
@@ -748,7 +748,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     if (njobs > 1) {
         if (future::availableCores("multicore") > 1L) {
-            .log_info("Using multicore parallelization with ", njobs, " workers", level=1)
+            .log_info("Using multicore parallelization with ", njobs, " workers", level = 1)
             future::plan(future::multicore, workers = njobs)
         } else {
             .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
@@ -760,7 +760,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         future::plan(future::sequential)
     }
     globals_maxsize <- getOption("future.globals.maxSize")
-    globals_maxsize <-  max(max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE), 1024^2*100) # at least 100 MB
+    globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE), 1024^2 * 100) # at least 100 MB
     .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
     options(future.globals.maxSize = globals_maxsize)
 
@@ -770,12 +770,11 @@ findDMRsFromSeeds <- function(beta = NULL,
     if (is.null(dmps) || is.null(pheno)) {
         stop("dmps and pheno parameters are required")
     }
-    if (inherits(beta, "BetaFileHandler")) {
-        beta_file_handler <- beta
+    if (inherits(beta, "BetaHandler")) {
+        beta_handler <- beta
     } else {
-        beta_file_handler <- BetaFileHandler$new(
+        beta_handler <- getBetaHandler(
             beta = beta,
-            tabix_file = tabix_file,
             beta_row_names_file = beta_row_names_file,
             njobs = njobs,
             memory_threshold_mb = memory_threshold_mb,
@@ -892,8 +891,8 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     .log_step("Reading beta file characteristics..", level = 2)
 
-    beta_row_names <- beta_file_handler$getBetaRowNames()
-    beta_col_names <- beta_file_handler$getBetaColNames()
+    beta_row_names <- beta_handler$getBetaRowNames()
+    beta_col_names <- beta_handler$getBetaColNames()
 
 
     samples_selection_mask <- !(pheno[, sample_group_col] %in% ignored_sample_groups)
@@ -953,7 +952,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     if (!is.null(output_prefix)) {
         dmps_beta_output_file <- paste0(output_prefix, "dmps_beta.tsv.gz")
     }
-    dmps_beta <- beta_file_handler$getBeta(row_names = dmps, col_names = beta_col_names)
+    dmps_beta <- beta_handler$getBeta(row_names = dmps, col_names = beta_col_names)
     .log_step("Calculating delta_beta related columns in the DMPs table...", level = 2)
     if (dmp_group_col == "_DUMMY_DMP_GROUP_COL_") {
         dmp_groups_info <- list(all = NULL)
@@ -1226,7 +1225,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     } else {
         .log_step("Building connectivity array..", level = 1)
         connectivity_array <- .buildConnectivityArray(
-            beta_file_handler = beta_file_handler,
+            beta_handler = beta_handler,
             group_inds = group_inds,
             casecontrol = case_mask,
             sorted_locs = sorted_locs,
@@ -1247,8 +1246,8 @@ findDMRsFromSeeds <- function(beta = NULL,
         }
         .log_success("Connectivity array built.", level = 2)
     }
-    # Remove beta_file_handler to free memory
-    rm(beta_file_handler)
+    # Remove beta_handler to free memory
+    rm(beta_handler)
     gc()
     .log_info("Number of connected CpGs found: ", sum(connectivity_array$connected), level = 2)
     if (verbose > 1) {

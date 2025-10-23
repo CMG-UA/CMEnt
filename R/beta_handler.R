@@ -5,19 +5,14 @@
 #'
 #'
 #' @importFrom R6 R6Class
-#' @export
-BetaFileHandler <- R6::R6Class("BetaFileHandler",
+BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
-        #' @field beta_file Path to beta values file
-        beta_file = NULL,
-        #' @field tabix_file Path to tabix-indexed file
-        tabix_file = NULL,
+        #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix
+        beta = NULL,
         #' @field genome Reference genome
         genome = "hg19",
         #' @field array Array platform
         array = "450K",
-        #' @field beta_file_in_memory In-memory beta data
-        beta_file_in_memory = NULL,
         #' @field beta_row_names_file Path to row names file
         beta_row_names_file = NULL,
         #' @field sorted_locs Sorted genomic locations
@@ -28,19 +23,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
         memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
         njobs = 1,
-
-        #' @description Create a new BetaFileHandler object
-        #' @param beta_file Path to beta values file
-        #' @param tabix_file Path to tabix-indexed file
-        #' @param array Array platform type
-        #' @param genome Reference genome version
-        #' @param beta_row_names_file Path to row names file
-        #' @param verbose Verbosity level
-        #' @param memory_threshold_mb Memory threshold in MB
-        #' @param njobs Number of parallel jobs
-        #' @return A new BetaFileHandler object
-        initialize = function(beta_file = NULL,
-                              tabix_file = NULL,
+        initialize = function(beta = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = c("hg19", "hg38", "mm10", "mm39"),
                               beta_row_names_file = NULL,
@@ -48,13 +31,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                               memory_threshold_mb = 500,
                               njobs = 1) {
             # Validate inputs
-            if (is.null(beta_file) && is.null(tabix_file)) {
-                stop("Either beta_file or tabix_file must be provided")
+            if (is.null(beta)) {
+                stop("Beta values must be provided")
             }
-            if (!is.null(beta_file) && is.character(beta_file) && length(beta_file) == 1 && !file.exists(beta_file)) {
-                stop("Provided beta_file does not exist: ", beta_file)
-            } else if (!is.null(tabix_file) && !file.exists(tabix_file)) {
-                stop("Provided tabix_file does not exist: ", tabix_file)
+            if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
+                stop("Provided beta file does not exist: ", beta)
             }
 
 
@@ -62,8 +43,8 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             genome <- strex::match_arg(genome, ignore_case = TRUE)
 
             # Set fields
-            self$beta_file <- beta_file
-            self$tabix_file <- tabix_file
+            private$.beta_file <- beta_file
+            private$.tabix_file <- tabix_file
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
@@ -89,20 +70,28 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             if (private$.loaded) {
                 return(invisible(self))
             }
-
-            if (!is.null(self$beta_file) && is.null(self$tabix_file)) {
-                if (!is.character(self$beta_file) && length(self$beta_file) > 0) {
-                    if (inherits(self$beta_file, "BetaFileaHandler")) {
-                        warning("Provided beta_file is already a BetaFileHandler instance; ")
-                        return(invisible(self$beta_file))
-                    }
-                    self$beta_file_in_memory <- self$beta_file
-                    self$beta_file <- NULL
-                    private$.loaded <- TRUE
-                    return(invisible(self))
+            if (!is.character(self$beta) && length(self$beta) > 0) {
+                if (inherits(self$beta, "BetaHandler")) {
+                    warning("Provided beta is already a BetaHandler instance. Returning it directly.")
+                    return(invisible(self$beta))
                 }
+                private$.beta_file_in_memory <- self$beta
+                self$beta <- NULL
+                private$.loaded <- TRUE
+                return(invisible(self))
+            }
+            # Check if beta file is tabix
+            if (!is.null(self$beta) && is.character(self$beta) && length(self$beta) == 1) {
+                if (endsWith(self$beta, ".gz") && file.exists(paste0(self$beta, ".tbi"))) {
+                    .log_step("Beta file appears to be tabix-indexed. Using as tabix file...", level = 1)
+                    private$.tabix_file <- self$beta
+                } else {
+                    private$.beta_file <- self$beta
+                }
+            }
+            if (!is.null(private$.beta_file)) {
                 # Check file size
-                file_size_mb <- file.info(self$beta_file)$size / (1024^2)
+                file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
                 if (file_size_mb < self$memory_threshold_mb) {
                     .log_step(
@@ -110,10 +99,10 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                         " MB). Loading into memory for faster access..."
                     )
 
-                    self$beta_file_in_memory <- tryCatch(
+                    private$.beta_file_in_memory <- tryCatch(
                         {
                             temp_data <- data.table::fread(
-                                self$beta_file,
+                                private$.beta_file,
                                 header = TRUE,
                                 data.table = FALSE,
                                 showProgress = self$verbose > 1
@@ -146,12 +135,12 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 }
 
                 # If file wasn't loaded into memory, try tabix conversion
-                if (is.null(self$beta_file_in_memory)) {
+                if (is.null(private$.beta_file_in_memory)) {
                     sorted_locs <- private$get_sorted_locs()
 
                     # Attempt conversion
                     converted_tabix <- convertBetaToTabix(
-                        beta_file = self$beta_file,
+                        beta_file = private$.beta_file,
                         sorted_locs = sorted_locs,
                         output_file = NULL,
                         verbose = self$verbose > 0
@@ -159,14 +148,15 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
 
                     if (!is.null(converted_tabix)) {
                         .log_success("Beta file converted to tabix format for improved performance")
-                        self$tabix_file <- converted_tabix
-                        self$beta_file <- NULL
+                        private$.tabix_file <- converted_tabix
+                        private$.beta_file <- NULL
                     } else {
                         .log_info("Continuing with standard beta file (tabix conversion not available)")
                     }
+                } else {
+                    private$.beta_file <- NULL
                 }
             }
-
             private$.loaded <- TRUE
             invisible(self)
         },
@@ -193,11 +183,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 ))
             } else {
                 .log_step("Reading row names from beta file...", level = 2)
-                if (!is.null(self$beta_file_in_memory)) {
-                    private$.beta_row_names <- rownames(self$beta_file_in_memory)
-                } else if (!is.null(self$beta_file)) {
+                if (!is.null(private$.beta_file_in_memory)) {
+                    private$.beta_row_names <- rownames(private$.beta_file_in_memory)
+                } else if (!is.null(private$.beta_file)) {
                     private$.beta_row_names <- unlist(data.table::fread(
-                        file = self$beta_file,
+                        file = private$.beta_file,
                         select = 1,
                         sep = "\t",
                         header = TRUE,
@@ -206,7 +196,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                     ))
                 } else {
                     private$.beta_row_names <- unlist(data.table::fread(
-                        file = self$tabix_file,
+                        file = private$.tabix_file,
                         select = 4,
                         sep = "\t",
                         header = TRUE,
@@ -224,7 +214,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             }
 
             .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
-            return(private$.beta_row_names)
+            private$.beta_row_names
         },
 
         #' @description Get column names (sample IDs) from the beta file
@@ -236,17 +226,17 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 return(private$.beta_col_names)
             }
 
-            if (!is.null(self$beta_file_in_memory)) {
-                private$.beta_col_names <- colnames(self$beta_file_in_memory)
+            if (!is.null(private$.beta_file_in_memory)) {
+                private$.beta_col_names <- colnames(private$.beta_file_in_memory)
             } else {
-                if (!is.null(self$beta_file)) {
-                    if (endsWith(self$beta_file, ".gz")) {
-                        conn <- gzfile(self$beta_file, "r")
+                if (!is.null(private$.beta_file)) {
+                    if (endsWith(private$.beta_file, ".gz")) {
+                        conn <- gzfile(private$.beta_file, "r")
                     } else {
-                        conn <- file(self$beta_file, "r")
+                        conn <- file(private$.beta_file, "r")
                     }
                 } else {
-                    conn <- gzfile(self$tabix_file, "r")
+                    conn <- gzfile(private$.tabix_file, "r")
                 }
 
                 file_beta_col_names <- scan(conn,
@@ -257,7 +247,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 )
                 close(conn)
 
-                if (!is.null(self$beta_file)) {
+                if (!is.null(private$.beta_file)) {
                     # expected first column: cpg ID
                     file_beta_col_names <- file_beta_col_names[-1]
                 } else {
@@ -268,7 +258,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 private$.beta_col_names <- file_beta_col_names
             }
 
-            return(private$.beta_col_names)
+            private$.beta_col_names
         },
 
         #' @description Validate that the beta file is properly sorted and formatted
@@ -292,24 +282,26 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             sorted_locs <- private$get_sorted_locs()
             beta_row_names <- self$getBetaRowNames()
 
-            if (is.null(self$beta_file_in_memory)) {
+            if (is.null(private$.beta_file_in_memory)) {
                 # Validate that file is sorted
-                if (!all(beta_row_names[orderByLoc(beta_row_names,
-                    genome = self$genome,
-                    genomic_locs = sorted_locs
-                )] == beta_row_names)) {
+                if (!all(beta_row_names[
+                    orderByLoc(beta_row_names,
+                        genome = self$genome,
+                        genomic_locs = sorted_locs
+                    )
+                ] == beta_row_names)) {
                     stop("Provided beta file is not sorted by position!")
                 }
             } else {
                 # Sort in-memory beta data
-                self$beta_file_in_memory <- self$beta_file_in_memory[
-                    orderByLoc(rownames(self$beta_file_in_memory),
+                private$.beta_file_in_memory <- private$.beta_file_in_memory[
+                    orderByLoc(rownames(private$.beta_file_in_memory),
                         genome = self$genome,
                         genomic_locs = sorted_locs
                     ), ,
                     drop = FALSE
                 ]
-                rownames(self$beta_file_in_memory) <- beta_row_names[
+                rownames(private$.beta_file_in_memory) <- beta_row_names[
                     orderByLoc(beta_row_names,
                         genome = self$genome,
                         genomic_locs = sorted_locs
@@ -331,7 +323,7 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             sorted_locs <- private$get_sorted_locs()
             beta_row_names <- self$getBetaRowNames()
             private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
-            return(private$.beta_locs)
+            private$.beta_locs
         },
 
         #' @description Extract beta values for specific CpG sites and samples
@@ -344,17 +336,17 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 row_names <- self$getBetaRowNames()
             }
             # Use in-memory beta data if available
-            if (!is.null(self$beta_file_in_memory)) {
+            if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (is.null(col_names)) {
-                    beta_subset <- self$beta_file_in_memory[row_names, , drop = FALSE]
+                    beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                 } else {
-                    beta_subset <- self$beta_file_in_memory[row_names, col_names, drop = FALSE]
+                    beta_subset <- private$.beta_file_in_memory[row_names, col_names, drop = FALSE]
                 }
-            } else if (!is.null(self$beta_file)) {
+            } else if (!is.null(private$.beta_file)) {
                 .log_step("Subsetting from beta file..", level = 3)
                 beta_subset <- .subsetBetaFile(
-                    self$beta_file,
+                    private$.beta_file,
                     row_names,
                     beta_row_names = private$.beta_row_names,
                     beta_col_names = private$.beta_col_names
@@ -365,11 +357,11 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
             } else {
                 .log_step("Subsetting from tabix file..", level = 3)
                 locs <- self$getBetaLocs()[row_names, , drop = FALSE]
-                regions <-  locs[, c("chr", "start", "end")]
+                regions <- locs[, c("chr", "start", "end")]
                 regions[, "chr"] <- as.character(regions[, "chr"])
                 beta_subset <- bedr::tabix(
                     regions,
-                    self$tabix_file,
+                    private$.tabix_file,
                     check.valid = FALSE,
                     verbose = FALSE
                 )
@@ -402,6 +394,9 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
         .beta_locs = NULL,
         .loaded = FALSE,
         .validated = FALSE,
+        .beta_file = NULL,
+        .tabix_file = NULL,
+        .beta_file_in_memory = NULL,
         get_sorted_locs = function() {
             if (is.null(self$sorted_locs)) {
                 self$sorted_locs <- getSortedGenomicLocs(
@@ -409,7 +404,35 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                     genome = self$genome
                 )
             }
-            return(self$sorted_locs)
+            self$sorted_locs
         }
     )
 )
+
+#' @description Create a new BetaHandler object
+#' @param beta Path to beta values file, or a tabix, or a beta matrix
+#' @param array Array platform type
+#' @param genome Reference genome version
+#' @param beta_row_names_file Path to row names file
+#' @param verbose Verbosity level
+#' @param memory_threshold_mb Memory threshold in MB
+#' @param njobs Number of parallel jobs
+#' @return A new BetaHandler object
+#'
+#' @export
+getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
+                           genome = c("hg19", "hg38", "mm10", "mm39"),
+                           beta_row_names_file = NULL,
+                           verbose = 0,
+                           memory_threshold_mb = 500,
+                           njobs = 1) {
+    BetaHandler$new(
+        beta = beta,
+        array = array,
+        genome = genome,
+        beta_row_names_file = beta_row_names_file,
+        verbose = verbose,
+        memory_threshold_mb = memory_threshold_mb,
+        njobs = njobs
+    )
+}

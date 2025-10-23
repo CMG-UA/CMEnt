@@ -464,8 +464,8 @@ plotDMRs <- function(dmrs,
     # Create individual plots
     if (!is.null(beta)) {
         if (is.character(beta)) {
-            beta <- BetaFileHandler$new(
-                beta_file = beta,
+            beta <- getBetaHandler(
+                beta = beta,
                 array = array,
                 genome = genome,
                 verbose = 0
@@ -506,8 +506,8 @@ plotDMRs <- function(dmrs,
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
 #' @param dmr_index Integer. Which DMR to plot.
-#' @param beta BetaFileHandler object OR character path to beta file OR the beta values matrix.
-#'   If a character path is provided, a BetaFileHandler will be created automatically.
+#' @param beta BetaHandler object OR character path to beta file OR the beta values matrix.
+#'   If a character path is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame. Phenotype data with sample information (required).
 #' @param sorted_locs Data frame. Genomic locations (optional).
 #' @param array Character. Array platform type (default: "450K").
@@ -519,8 +519,8 @@ plotDMRs <- function(dmrs,
 #'
 #' @examples
 #' \dontrun{
-#' # Using BetaFileHandler
-#' beta_handler <- BetaFileHandler$new(beta_file = "beta.txt", array = "450K", genome = "hg19")
+#' # Using BetaHandler
+#' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
 #' plotDMRWithBeta(dmrs, 1, beta_handler = beta_handler, pheno = pheno_df)
 #'
 #' # Or using a file path (handler created automatically)
@@ -547,16 +547,16 @@ plotDMRWithBeta <- function(dmrs,
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
 
-    # Create BetaFileHandler if a file path or matrix was provided
+    # Create BetaHandler if a file path or matrix was provided
     if (is.character(beta) && length(beta) == 1 && file.exists(beta) || is.matrix(beta) || is.data.frame(beta)) {
-        beta_handler <- BetaFileHandler$new(
-            beta_file = beta,
+        beta_handler <- getBetaHandler(
+            beta = beta,
             array = array,
             genome = genome,
             verbose = 0
         )
-    } else if (!"BetaFileHandler" %in% class(beta)) {
-        stop("beta_handler must be either a file path (character) or a BetaFileHandler object")
+    } else if (!"BetaHandler" %in% class(beta)) {
+        stop("beta_handler must be either a file path (character) or a BetaHandler object")
     }
     if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
         pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
@@ -589,7 +589,7 @@ plotDMRWithBeta <- function(dmrs,
         stop("No samples in pheno match the samples in beta values")
     }
 
-    # Read beta values using BetaFileHandler
+    # Read beta values using BetaHandler
     beta_data <- beta_handler$getBeta(
         row_names = cpg_ids,
         col_names = rownames(pheno)

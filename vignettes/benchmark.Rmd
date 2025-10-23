@@ -62,9 +62,9 @@ array_type <- DMRsegaldata::array_type
 genome <- "hg19"
 
 
-beta_file_handler <- DMRsegal::BetaFileHandler$new(beta, array = array_type, genome = genome)
-beta_mat <- as.matrix(beta_file_handler$getBeta())
-locs <- beta_file_handler$getBetaLocs()
+beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
+beta_mat <- as.matrix(beta_handler$getBeta())
+locs <- beta_handler$getBetaLocs()
 mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
 pheno$casecontrol <- pheno$Sample_Group == "cancer"
 ```
@@ -95,8 +95,8 @@ if (!file.exists(DMRsegal_file)) {
 
     progressr::handlers("cli")
     dmrs_segal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
-        beta_file = beta_file_handler,
-        dmps_file = sig_dmps,
+        beta = beta_handler,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
@@ -109,7 +109,7 @@ if (!file.exists(DMRsegal_file)) {
         verbose = 2
     ))
     saveRDS(dmrs_segal, DMRsegal_file)
-    rm(beta_file_handler)
+    rm(beta_handler)
 }
 ```
 

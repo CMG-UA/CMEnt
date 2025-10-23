@@ -6,7 +6,7 @@
 \title{Find Differentially Methylated Regions (DMRs) from Pre-computed DMPs}
 \usage{
 .buildConnectivityArray(
-  beta_file_handler,
+  beta_handler,
   group_inds,
   sorted_locs,
   max_pval = 0.05,
@@ -76,7 +76,7 @@ findDMRsFromSeeds(
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
-\item{beta}{Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.}
+\item{beta}{Character. Path to the beta value file, or a beta matrix, or a BetaHandler object. Either this or tabix_file must be provided.}
 
 \item{dmps}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
 

@@ -96,7 +96,7 @@ Remotes:
 Config/testthat/edition: 3
 Collate:
     'utils.R'
-    'beta_file_handler.R'
+    'beta_handler.R'
     'dmrs_finder_from_seeds.R'
     'find_dmrs_from_seeds.R'
     'DMRsegal-package.R'

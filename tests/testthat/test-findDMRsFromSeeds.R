@@ -716,7 +716,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
 
-    mock_convertBetaToTabix <- mock(NULL)
+    mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
 

@@ -6,7 +6,7 @@
 \usage{
 extractCpgInfoFromResultDMRs(
   dmrs,
-  beta_file_handler,
+  beta_handler,
   beta_row_names,
   beta_col_names,
   sorted_locs,
@@ -17,7 +17,7 @@ extractCpgInfoFromResultDMRs(
 \arguments{
 \item{dmrs}{GRanges object containing DMR results from findDMRsFromSeeds}
 
-\item{beta_file_handler}{BetaFileHandler object for the methylation beta values file}
+\item{beta_handler}{BetaHandler object for the methylation beta values file}
 
 \item{beta_row_names}{Character vector. Row names for beta values}
 
@@ -42,7 +42,7 @@ site within the DMR regions.
 # Extract CpG info from DMR results
 cpg_info <- extractCpgInfoFromResultDMRs(
     dmrs = dmr_results,
-    beta_file_handler = beta_file_handler,
+    beta_handler = beta_handler,
     beta_row_names = row_names,
     beta_col_names = col_names,
     sorted_locs = genomic_locations

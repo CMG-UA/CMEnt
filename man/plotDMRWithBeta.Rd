@@ -21,8 +21,8 @@ plotDMRWithBeta(
 
 \item{dmr_index}{Integer. Which DMR to plot.}
 
-\item{beta}{BetaFileHandler object OR character path to beta file OR the beta values matrix.
-If a character path is provided, a BetaFileHandler will be created automatically.}
+\item{beta}{BetaHandler object OR character path to beta file OR the beta values matrix.
+If a character path is provided, a BetaHandler will be created automatically.}
 
 \item{pheno}{Data frame. Phenotype data with sample information (required).}
 
@@ -45,8 +45,8 @@ beta values across samples for DMPs and surrounding CpGs.
 }
 \examples{
 \dontrun{
-# Using BetaFileHandler
-beta_handler <- BetaFileHandler$new(beta_file = "beta.txt", array = "450K", genome = "hg19")
+# Using BetaHandler
+beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
 plotDMRWithBeta(dmrs, 1, beta_handler = beta_handler, pheno = pheno_df)
 
 # Or using a file path (handler created automatically)
