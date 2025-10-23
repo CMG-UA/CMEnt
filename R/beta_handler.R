@@ -24,7 +24,15 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
         njobs = 1,
-        #' @description Initialize BetaHandler object
+        #' @description Create a new BetaHandler object
+        #' @param beta Path to beta values file, or a tabix, or a beta matrix
+        #' @param array Array platform type
+        #' @param genome Reference genome version
+        #' @param beta_row_names_file Path to row names file
+        #' @param verbose Verbosity level
+        #' @param memory_threshold_mb Memory threshold in MB
+        #' @param njobs Number of parallel jobs
+        #' @return A new BetaHandler object
         initialize = function(beta = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = c("hg19", "hg38", "mm10", "mm39"),
