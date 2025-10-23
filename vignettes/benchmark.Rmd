@@ -402,7 +402,7 @@ Let's create some visualizations to better understand the differences between me
 
 ```{r visualizations, message=FALSE}
 if (requireNamespace("ggplot2", quietly = TRUE) == FALSE) {
-    install.packages("ggplot2", quiet = TRUE, update)
+    install.packages("ggplot2", quiet = TRUE, update = FALSE)
 }
 library(ggplot2)
 
