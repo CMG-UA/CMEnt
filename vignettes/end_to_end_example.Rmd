@@ -2,7 +2,7 @@
 title: "DMRsegal: End-to-End Example"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
-output: rmarkdown::html_vignette
+output: BiocStyle::html_document
 vignette: >
   %\VignetteIndexEntry{DMRsegal: End-to-End Example}
   %\VignetteEngine{knitr::rmarkdown}

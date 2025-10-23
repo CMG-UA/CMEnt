@@ -43,8 +43,19 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"hard"'
-          extra-packages: any::rcmdcheck
-          needs: check
+          extra-packages: |
+            any::rcmdcheck
+            any::IlluminaHumanMethylation450kanno.ilmn12.hg19
+            any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+          needs: |
+            check
+            knitr
+            BiocStyle
+            rmarkdown
+            DMRcate
+            bumphunter
+            DMRsegaldata
+            
 
       - uses: r-lib/actions/check-r-package@v2
         with:

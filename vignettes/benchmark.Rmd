@@ -2,7 +2,7 @@
 title: "Benchmarking DMRsegal Against Other Methods"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
-output: rmarkdown::html_vignette
+output: BiocStyle::html_document
 vignette: >
   %\VignetteIndexEntry{Benchmarking DMRsegal Against Other Methods}
   %\VignetteEngine{knitr::rmarkdown}
