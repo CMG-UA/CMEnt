@@ -15,8 +15,8 @@
 #' significant DMPs (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
 #'
-#' @param beta_file Path to the methylation beta values file or a data matrix with beta values
-#' @param dmps_file Path to the pre-computed DMPs file or a data frame with DMPs
+#' @param beta Path to the methylation beta values file or a data matrix with beta values
+#' @param dmps Path to the pre-computed DMPs file or a data frame with DMPs
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param dmp_groups_info Named list. Required when `dmps_tsv_id_col` is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.
@@ -40,7 +40,7 @@
 #' @param memory_threshold_mb Memory threshold in MB for switching between in-memory and file-based processing (default: 500)
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.
 #' @param beta_row_names_file Optional file with beta value row names (default: NULL)
-#' @param tabix_file Path to tabix-indexed beta values file (alternative to beta_file, default: NULL)
+#' @param tabix_file Path to tabix-indexed beta values file (alternative to beta, default: NULL)
 #'
 #' @return A GRanges object containing identified DMRs with metadata columns:
 #' \itemize{
@@ -70,8 +70,8 @@
 
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
-#'     beta_file = beta,
-#'     dmps_file = dmps,
+#'     beta = beta,
+#'     dmps = dmps,
 #'     pheno = pheno
 #' )
 #' }
@@ -669,8 +669,8 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #'
 #' This function identifies DMRs from a given set of DMPs and a beta value file.
 #'
-#' @param beta_file Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.
-#' @param dmps_file Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.
+#' @param beta Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.
+#' @param dmps Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param dmps_tsv_id_col Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.
 #' @param pval_col Character. Column name for p-values in the DMPs file. Default is "pval_adj".
@@ -697,12 +697,12 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.
 #' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
-#' @param tabix_file Character. Path to a tabix-indexed beta file. Either this or beta_file must be provided. Default is NULL.
+#' @param tabix_file Character. Path to a tabix-indexed beta file. Either this or beta must be provided. Default is NULL.
 #'
 #' @return Data frame of identified DMRs.
 #' @export
-findDMRsFromSeeds <- function(beta_file = NULL,
-                              dmps_file = NULL,
+findDMRsFromSeeds <- function(beta = NULL,
+                              dmps = NULL,
                               pheno = NULL,
                               dmps_tsv_id_col = NULL,
                               pval_col = "pval_adj",
@@ -767,14 +767,14 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     # Bridge verbose to logging option for consistent styled logs
     old_opt <- options(DMRsegal.verbose = verbose)
     on.exit(options(old_opt), add = TRUE)
-    if (is.null(dmps_file) || is.null(pheno)) {
-        stop("dmps_file and pheno parameters are required")
+    if (is.null(dmps) || is.null(pheno)) {
+        stop("dmps and pheno parameters are required")
     }
-    if (inherits(beta_file, "BetaFileHandler")) {
-        beta_file_handler <- beta_file
+    if (inherits(beta, "BetaFileHandler")) {
+        beta_file_handler <- beta
     } else {
         beta_file_handler <- BetaFileHandler$new(
-            beta_file = beta_file,
+            beta = beta,
             tabix_file = tabix_file,
             beta_row_names_file = beta_row_names_file,
             njobs = njobs,
@@ -797,8 +797,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
-    if (is.character(dmps_file) && length(dmps_file) == 1) {
-        stopifnot(file.exists(dmps_file))
+    if (is.character(dmps) && length(dmps) == 1) {
+        stopifnot(file.exists(dmps))
     }
     stopifnot(sample_group_col %in% colnames(pheno))
     if (is.null(casecontrol_col)) {
@@ -821,9 +821,9 @@ findDMRsFromSeeds <- function(beta_file = NULL,
 
     .log_step("Preparing inputs...")
     .log_step("Reading DMP tsv..", level = 2)
-    if (is.character(dmps_file) && length(dmps_file) == 1) {
+    if (is.character(dmps) && length(dmps) == 1) {
         dmps_tsv <- try(read.table(
-            dmps_file,
+            dmps,
             header = TRUE,
             sep = "\t",
             check.names = FALSE,
@@ -831,10 +831,10 @@ findDMRsFromSeeds <- function(beta_file = NULL,
             comment.char = "",
             row.names = NULL,
         ))
-    } else if (is.data.frame(dmps_file)) {
-        dmps_tsv <- dmps_file
+    } else if (is.data.frame(dmps)) {
+        dmps_tsv <- dmps
     } else {
-        stop("dmps_file must be either a file path or a data frame")
+        stop("dmps must be either a file path or a data frame")
     }
     if (inherits(dmps_tsv, "try-error")) {
         .log_warn("Provided DMPs file is empty or does not exist. Not proceeding.")

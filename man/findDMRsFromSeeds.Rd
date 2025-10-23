@@ -25,8 +25,8 @@
 )
 
 findDMRsFromSeeds(
-  beta_file = NULL,
-  dmps_file = NULL,
+  beta = NULL,
+  dmps = NULL,
   pheno = NULL,
   dmps_tsv_id_col = NULL,
   pval_col = "pval_adj",
@@ -76,9 +76,9 @@ findDMRsFromSeeds(
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
-\item{beta_file}{Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.}
+\item{beta}{Character. Path to the beta value file, or a beta matrix, or a BetaFileHandler object. Either this or tabix_file must be provided.}
 
-\item{dmps_file}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
+\item{dmps}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
 
 \item{pheno}{Data frame. Phenotype data.}
 
@@ -116,7 +116,7 @@ findDMRsFromSeeds(
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
-\item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta_file must be provided. Default is NULL.}
+\item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta must be provided. Default is NULL.}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:
@@ -167,8 +167,8 @@ dmps <- DMRsegaldata::dmps
 pheno <- DMRsegaldata::pheno
 # Find DMRs
 dmrs <- findDMRsFromSeeds(
-    beta_file = beta,
-    dmps_file = dmps,
+    beta = beta,
+    dmps = dmps,
     pheno = pheno
 )
 }

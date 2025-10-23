@@ -46,8 +46,8 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -104,8 +104,8 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     sig_dmps <- dmps[dmps$pval < 0.1, ]
 
     dmrs <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -177,8 +177,8 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
 
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -245,8 +245,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with strict min_dmps
     dmrs_strict <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 5, # Stricter
@@ -259,8 +259,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1, # More lenient
@@ -273,8 +273,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -350,8 +350,8 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -365,8 +365,8 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -432,8 +432,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -447,8 +447,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -517,8 +517,8 @@ test_that("findDMRsFromSeeds handles edge cases gracefully", {
     if (nrow(no_sig_dmps) > 0) {
 
         dmrs_empty <- findDMRsFromSeeds(
-            beta_file = beta_file,
-            dmps_file = no_sig_dmps,
+            beta = beta_file,
+            dmps = no_sig_dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_dmps = 2,
@@ -581,17 +581,17 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     # Test missing required parameters
     expect_error(
         findDMRsFromSeeds(
-            beta_file = beta_file,
-            dmps_file = NULL, # Missing
+            beta = beta_file,
+            dmps = NULL, # Missing
             pheno = pheno
         ),
-        "dmps_file"
+        "dmps"
     )
 
     expect_error(
         findDMRsFromSeeds(
-            beta_file = beta_file,
-            dmps_file = sig_dmps,
+            beta = beta_file,
+            dmps = sig_dmps,
             pheno = NULL # Missing
         ),
         "pheno"
@@ -603,8 +603,8 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
-            beta_file = beta_file,
-            dmps_file = sig_dmps,
+            beta = beta_file,
+            dmps = sig_dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
@@ -658,8 +658,8 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 
     # Test with hg19
     dmrs_hg19 <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         genome = "hg19",
         sample_group_col = "Sample_Group",
@@ -721,8 +721,8 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
 
     dmrs <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1,
@@ -779,8 +779,8 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
     sig_dmps <- dmps[dmps$pval < 0.1, ]
 
     dmrs_parametric <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -793,8 +793,8 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
     )
 
     dmrs_empirical <- findDMRsFromSeeds(
-        beta_file = beta_file,
-        dmps_file = sig_dmps,
+        beta = beta_file,
+        dmps = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,

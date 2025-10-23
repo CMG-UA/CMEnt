@@ -34,10 +34,9 @@ findDMRsFromSeedsCLI <- function(args) {
 
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
-        beta_file = args$beta,
+        beta = args$beta,
         tabix_file = args$tabix,
-        dmps_file = args$dmps_file,
-        dmps_tsv_id_col = NULL,
+        dmps = args$dmps_file,
         pval_col = args$pval_col,
         sample_group_col = args$sample_group_col,
         dmp_group_col = args$dmp_group_col,

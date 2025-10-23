@@ -66,13 +66,6 @@ dmps <- suppressWarnings(dmpFinder(mvalues,
 dmps <- dmps[!is.na(dmps$pval), ]
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-
-sig_dmps$cpg <- rownames(sig_dmps)
-cat(sprintf("Selected %d DMPs at FDR < 0.05\n", nrow(sig_dmps)))
-
-# Write DMPs to a temporary TSV for the DMR step
-dmps_file <- tempfile(fileext = ".tsv")
-write.table(sig_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = TRUE, col.names = NA)
 ```
 
 ## Find DMRs from seeds
@@ -80,8 +73,8 @@ write.table(sig_dmps, file = dmps_file, sep = "\t", quote = FALSE, row.names = T
 ```{r dmrs}
 set.seed(42)
 dmrs <- DMRsegal::findDMRsFromSeeds(
-  beta_file = beta_handler,
-  dmps_file = dmps_file,
+  beta = beta_handler,
+  dmps = sig_dmps,
   pheno = pheno,
   sample_group_col = "group",
   array = array_type,
