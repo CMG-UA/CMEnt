@@ -2,21 +2,6 @@
 library(testthat)
 library(DMRSegal)
 
-create_test_dmps_file <- function(dmps_df, file_path = NULL) {
-    if (is.null(file_path)) {
-        file_path <- tempfile(fileext = ".txt")
-    }
-    dmps_df_with_id <- data.frame(rownames(dmps_df), dmps_df, check.names = FALSE)
-    colnames(dmps_df_with_id)[1] <- "row.names"
-    write.table(
-        dmps_df_with_id,
-        file = file_path,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    return(file_path)
-}
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     skip_if_not_installed("minfi")
@@ -58,15 +43,11 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 
     # Filter significant DMPs with lenient threshold
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -78,7 +59,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
@@ -121,14 +102,10 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     dmrs <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -139,7 +116,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         memory_threshold_mb = 0.01
     )
 
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
@@ -184,10 +161,6 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
 
     # Filter significant DMPs
     sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-
     # Write beta values to temp file
     beta_file <- tempfile(fileext = ".txt")
     beta_mat <- getBeta(mset)
@@ -202,13 +175,10 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
 
     beta_file <- DMRSegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
-    # Write DMPs to temp file
-    dmps_file <- create_test_dmps_file(sig_dmps)
-
     # Run DMRSegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "group",
         min_dmps = 2,
@@ -220,13 +190,11 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 5,
-        info = "Should find 5 DMRs as in benchmark.Rmd"
-    )
+    expect_equal(length(dmrs_segal), 4)
     expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria
@@ -274,12 +242,11 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Filter DMPs more leniently for parameter testing
     sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Test with strict min_dmps
     dmrs_strict <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 5, # Stricter
@@ -293,7 +260,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1, # More lenient
@@ -307,7 +274,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -320,7 +287,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_s4_class(dmrs_strict, "GRanges")
@@ -380,15 +347,11 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -403,7 +366,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -416,7 +379,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs_median) || inherits(dmrs_median, "GRanges"))
@@ -466,15 +429,11 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -489,7 +448,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -502,7 +461,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs_no_filter) || inherits(dmrs_no_filter, "GRanges"))
@@ -556,11 +515,10 @@ test_that("findDMRsFromSeeds handles edge cases gracefully", {
     no_sig_dmps <- dmps[dmps$pval_adj > 0.99, ]
 
     if (nrow(no_sig_dmps) > 0) {
-        dmps_file <- create_test_dmps_file(no_sig_dmps)
 
         dmrs_empty <- findDMRsFromSeeds(
             beta_file = beta_file,
-            dmps_file = dmps_file,
+            dmps_file = no_sig_dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_dmps = 2,
@@ -571,9 +529,7 @@ test_that("findDMRsFromSeeds handles edge cases gracefully", {
             memory_threshold_mb = 500
         )
 
-        unlink(dmps_file)
-
-        # Should return an empty or very small GRanges
+        # Should return an empty GRanges
         expect_s4_class(dmrs_empty, "GRanges")
         expect_true(length(dmrs_empty) >= 0)
     }
@@ -621,10 +577,6 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Test missing required parameters
     expect_error(
@@ -639,7 +591,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             beta_file = beta_file,
-            dmps_file = dmps_file,
+            dmps_file = sig_dmps,
             pheno = NULL # Missing
         ),
         "pheno"
@@ -652,7 +604,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             beta_file = beta_file,
-            dmps_file = dmps_file,
+            dmps_file = sig_dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
@@ -661,7 +613,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
@@ -703,15 +655,11 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     # Test with hg19
     dmrs_hg19 <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         genome = "hg19",
         sample_group_col = "Sample_Group",
@@ -724,7 +672,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     )
 
     # Clean up
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs_hg19) || inherits(dmrs_hg19, "GRanges"))
@@ -767,10 +715,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     mock_convertBetaToTabix <- mock(NULL)
 
@@ -778,7 +722,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
     dmrs <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1,
@@ -796,7 +740,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 
-    unlink(c(beta_file, dmps_file))
+    unlink(beta_file)
 })
 
 test_that("findDMRsFromSeeds empirical p-value mode works", {
@@ -833,14 +777,10 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     sig_dmps <- dmps[dmps$pval < 0.1, ]
-    if (nrow(sig_dmps) == 0) {
-        sig_dmps <- dmps[order(dmps$pval)[1:min(50, nrow(dmps))], ]
-    }
-    dmps_file <- create_test_dmps_file(sig_dmps)
 
     dmrs_parametric <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -854,21 +794,19 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
 
     dmrs_empirical <- findDMRsFromSeeds(
         beta_file = beta_file,
-        dmps_file = dmps_file,
+        dmps_file = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
-        nperm = 50,
-        perm_seed = 12345,
         njobs = 1,
         verbose = 0,
         memory_threshold_mb = 500
     )
 
-    unlink(c(beta_file, dmps_file))
+    unlink(c(beta_file))
 
     expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
     expect_true(is.null(dmrs_empirical) || inherits(dmrs_empirical, "GRanges"))

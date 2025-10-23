@@ -514,11 +514,11 @@
                         counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
                     }
                 }
-            }
-            if (mid_p) {
-                ps <- (counts_ge + 0.5 * counts_eq + 1) / (ntries + 1)
-            } else {
-                ps <- (counts_ge + counts_eq + 1) / (ntries + 1)
+                if (mid_p) {
+                    ps <- (counts_ge + 0.5 * counts_eq + 1) / (ntries + 1)
+                } else {
+                    ps <- (counts_ge + counts_eq + 1) / (ntries + 1)
+                }
             }
         }
 
@@ -760,7 +760,7 @@ findDMRsFromSeeds <- function(beta_file = NULL,
         future::plan(future::sequential)
     }
     globals_maxsize <- getOption("future.globals.maxSize")
-    globals_maxsize <-  max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE)
+    globals_maxsize <-  max(max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE), 1024^2*100) # at least 100 MB
     .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
     options(future.globals.maxSize = globals_maxsize)
 
@@ -902,7 +902,8 @@ findDMRsFromSeeds <- function(beta_file = NULL,
     .log_step("Reordering DMPs by genomic location...", level = 2)
 
     if (is.null(dmps_tsv_id_col)) {
-        dmps_tsv_id_col <- "row.names"
+        dmps_tsv_id_col <- "_DMP_ROW_NAMES_"
+        dmps_tsv[, dmps_tsv_id_col] <- rownames(dmps_tsv)
     }
     if (!dmps_tsv_id_col %in% colnames(dmps_tsv)) {
         stop(
