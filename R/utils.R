@@ -132,10 +132,7 @@
                              sample_group_case,
                              sample_group_control,
                              target_col,
-                             subset = NULL,
-                             max_samples = NULL,
-                             max_case_samples = NULL,
-                             max_control_samples = NULL) {
+                             subset = NULL) {
     ref <- read.table(
         samplesheet_file,
         header = TRUE,
@@ -187,10 +184,6 @@
                 )
             )
         }
-        if (!is.null(max_control_samples) && max_control_samples < nrow(control_samplesheet)) {
-            inds <- sort(sample(seq_len(nrow(control_samplesheet)), max_control_samples, replace = FALSE))
-            control_samplesheet <- control_samplesheet[inds, ]
-        }
     }
 
     if (!is.null(sample_group_case)) {
@@ -211,10 +204,6 @@
                 )
             )
         }
-        if (!is.null(max_case_samples) && max_case_samples < nrow(case_samplesheet)) {
-            inds <- sort(sample(seq_len(nrow(case_samplesheet)), max_case_samples, replace = FALSE))
-            case_samplesheet <- case_samplesheet[inds, ]
-        }
     }
 
     if (!is.null(sample_group_case) || !is.null(sample_group_control)) {
@@ -231,18 +220,13 @@
         subset_samplesheet <- ref
     }
 
-    if (!is.null(max_samples) && max_samples < nrow(subset_samplesheet)) {
-        inds <- sort(sample(seq_len(nrow(subset_samplesheet)), max_samples, replace = FALSE))
-        subset_samplesheet <- subset_samplesheet[inds, ]
-    }
-
     rownames(subset_samplesheet) <- subset_samplesheet[, target_col]
     subset_samplesheet <- subset_samplesheet[, sample_group_col,
         drop =
             FALSE
     ]
     subset_samplesheet <- subset_samplesheet[
-        str_order(rownames(subset_samplesheet),
+        stringr::str_order(rownames(subset_samplesheet),
             numeric = TRUE
         ), ,
         drop = FALSE
@@ -370,19 +354,12 @@
     sample_group_col <- args$sample_group_col
     sample_group_control <- args$sample_group_control
     sample_group_case <- args$sample_group_case
-    max_missing_ratio <- args$max_missing_cov_ratio
-    if (is.null(max_missing_ratio)) {
-        max_missing_ratio <- 0.3
-    }
     if (!is.null(sample_group_case)) {
         sample_group_case <- strsplit(sample_group_case, ",")[[1]]
     }
     if (!is.null(sample_group_control)) {
         sample_group_control <- strsplit(sample_group_control, ",")[[1]]
     }
-    max_samples <- args$max_samples
-    max_case_samples <- args$max_case_samples
-    max_control_samples <- args$max_control_samples
 
     if (endsWith(samplesheet_file, ".csv")) {
         samplesheet_file_sep <- ","
@@ -396,10 +373,7 @@
         sample_group_control = sample_group_control,
         sample_group_case = sample_group_case,
         target_col = target_col,
-        subset = subset,
-        max_samples = max_samples,
-        max_case_samples = max_case_samples,
-        max_control_samples = max_control_samples
+        subset = subset
     )
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret
@@ -986,7 +960,7 @@ orderByLoc <- function(x,
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
-    str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
+    string::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
 }
 
 #' Extract DNA Sequences for DMRs
@@ -1077,7 +1051,7 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), us
             loadNamespace(pkg_name)
         }
         seq_db <- getExportedValue(pkg_name, pkg_name)
-        sequences <- getSeq(seq_db, dmrs, as.character = TRUE)
+        sequences <- Biostrings::getSeq(seq_db, dmrs, as.character = TRUE)
         if (is.list(sequences)) {
             sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
         }
