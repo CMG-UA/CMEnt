@@ -22,7 +22,7 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `minfiData` package to run all three methods and compare their results in terms of:
+This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `DMRsegaldata` package to run all three methods and compare their results in terms of:
 
 - Number of DMRs detected
 - DMR size distribution
