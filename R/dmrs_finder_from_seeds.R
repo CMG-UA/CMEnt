@@ -1086,6 +1086,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             dmps_beta_list,
             dmps_locs_list,
             gdmps_tsv_list,
+            SIMPLIFY = FALSE,
             future.seed = TRUE,
             future.stdout = NA,
             FUN = function(chr, cdmps, cdmps_beta, cdmps_locs, gdmps_tsv_list) {
