@@ -5,7 +5,7 @@
 #'
 #'
 #' @importFrom R6 R6Class
-#' @internal
+#' @keywords internal
 BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
         #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix
