@@ -360,7 +360,8 @@ BetaFileHandler <- R6::R6Class("BetaFileHandler",
                 }
             } else {
                 .log_step("Subsetting from tabix file..", level = 3)
-                regions <- locs[, c("chr", "start", "end")]
+                locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                regions <-  locs[, c("chr", "start", "end")]
                 regions[, "chr"] <- as.character(regions[, "chr"])
                 beta_subset <- bedr::tabix(
                     regions,
