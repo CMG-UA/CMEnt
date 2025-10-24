@@ -3,7 +3,7 @@
 library(optparse)
 library(DMRsegal)
 option_list <- list(
-    make_option("--beta", default = NULL, help = "The beta file, with row names the CpGs. Can also be a tabix indexed file."),
+    make_option("--beta", help = "The beta file, with row names the CpGs. Can also be a tabix indexed file."),
     make_option("--dmps_file", help = "The dmps tsv file, with row names the DMPs."),
     make_option("--pval_col", default = "pval_adj", help = "The p-value column in the dmps tsv file, defaults to 'pval_adj'"),
     make_option("--min_dmps", default = 1, type = "integer", help = "The minimum supporting DMPs per DMR, defaults to 1"),
@@ -24,6 +24,7 @@ option_list <- list(
     make_option("--sample_group_col", default = "Sample_Group", help = "Sample group column in samplesheet"),
     make_option("--njobs", default = 1, type = "integer", help = "Number of parallel jobs"),
     make_option("--verbose", default = 1, type = "integer", help = "Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1"),
+    make_option("--annotate_with_genes", default = TRUE, type = "logical", help = "Whether to annotate DMRs with gene information (default: TRUE)"),
     make_option("--samplesheet", default = NULL, help = "Samplesheet file"),
     make_option("--target_col", default = NULL, help = "Target column in samplesheet"),
     make_option("--sample_group_control", default = NULL, help = "Control group names"),

@@ -56,6 +56,7 @@ findDMRsFromSeedsCLI <- function(args) {
         njobs = args$njobs,
         verbose = args$verbose,
         beta_row_names_file = args$beta_row_names_file,
+        annotate_with_genes = args$annotate_with_genes,
         pheno = pheno
     )
 

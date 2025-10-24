@@ -754,3 +754,27 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_empirical))))
     }
 })
+
+test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
+    skip_if_not_installed("DMRsegaldata")
+
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
+
+    dmrs_not_annotated <- findDMRsFromSeeds(
+        beta = beta,
+        dmps = dmps,
+        pheno = pheno,
+        annotate_with_genes = FALSE,
+        njobs = 1,
+        verbose = 0
+    )
+
+    expect_true(is.null(dmrs_not_annotated) || inherits(dmrs_not_annotated, "GRanges"))
+    if (!is.null(dmrs_not_annotated) && length(dmrs_not_annotated) > 0) {
+        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_not_annotated))))
+        expect_false("promoter_genes" %in% names(mcols(dmrs_not_annotated)))
+        expect_false("gene_body_genes" %in% names(mcols(dmrs_not_annotated)))
+    }
+})

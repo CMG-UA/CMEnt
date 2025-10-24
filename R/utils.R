@@ -1304,26 +1304,12 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     # Load required packages
     if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
-        stop(
-            "Package '", txdb_pkg, "' is required but not installed. Please install it with:\n",
-            "  BiocManager::install('", txdb_pkg, "')"
-        )
+        BiocManager::install(txdb_pkg)
     }
 
     if (!requireNamespace(orgdb_pkg, quietly = TRUE)) {
-        stop(
-            "Package '", orgdb_pkg, "' is required but not installed. Please install it with:\n",
-            "  BiocManager::install('", orgdb_pkg, "')"
-        )
+        BiocManager::install(orgdb_pkg)
     }
-
-    if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
-        stop(
-            "Package 'GenomicFeatures' is required but not installed. Please install it with:\n",
-            "  BiocManager::install('GenomicFeatures')"
-        )
-    }
-
     .log_step("Loading gene annotations for ", genome, "...", level = 1)
 
     # Load TxDb namespace
@@ -1336,10 +1322,10 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     # Get genes and promoters
     genes <- GenomicFeatures::genes(txdb)
-    promoters <- GenomicFeatures::promoters(txdb,
-        upstream = promoter_upstream,
-        downstream = promoter_downstream
-    )
+
+    transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
+    promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
+    promoters <- stack(promoters)
 
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 1)
     .log_step("Finding overlaps with promoters and gene bodies...", level = 1)
@@ -1357,33 +1343,51 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
 
     # Extract Entrez IDs
-    promoter_entrez <- names(promoters)[S4Vectors::subjectHits(promoter_overlaps)]
+    promoter_regions <-  promoters[S4Vectors::subjectHits(promoter_overlaps)]
+
+    promoter_entrez <- as.character(mcols(promoter_regions)$name)
     gene_body_entrez <- names(genes)[S4Vectors::subjectHits(gene_body_overlaps)]
-
-    # Convert Entrez IDs to symbols
-    promoter_symbols <- AnnotationDbi::mapIds(orgdb,
-        keys = promoter_entrez,
-        column = "SYMBOL",
-        keytype = "ENTREZID",
-        multiVals = "first"
-    )
-
-    gene_body_symbols <- AnnotationDbi::mapIds(orgdb,
-        keys = gene_body_entrez,
-        column = "SYMBOL",
-        keytype = "ENTREZID",
-        multiVals = "first"
-    )
 
     # Initialize annotation columns
     n_dmrs <- length(dmrs)
     dmrs$promoter_genes <- rep(NA_character_, n_dmrs)
     dmrs$gene_body_genes <- rep(NA_character_, n_dmrs)
 
+    # Convert Entrez IDs to symbols only if there are overlaps
+    promoter_symbols <- character(0)
+    if (length(promoter_entrez) > 0 && any(!is.na(promoter_entrez))) {
+        valid_promoter_entrez <- promoter_entrez[!is.na(promoter_entrez) & promoter_entrez != ""]
+        if (length(valid_promoter_entrez) > 0) {
+            promoter_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
+                keys = valid_promoter_entrez,
+                column = "SYMBOL",
+                keytype = "ENTREZID",
+                multiVals = "first"
+            ))
+            names(promoter_symbols) <- valid_promoter_entrez
+        }
+    }
+
+    gene_body_symbols <- character(0)
+    if (length(gene_body_entrez) > 0 && any(!is.na(gene_body_entrez))) {
+        valid_gene_body_entrez <- gene_body_entrez[!is.na(gene_body_entrez) & gene_body_entrez != ""]
+        if (length(valid_gene_body_entrez) > 0) {
+            gene_body_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
+                keys = valid_gene_body_entrez,
+                column = "SYMBOL",
+                keytype = "ENTREZID",
+                multiVals = "first"
+            ))
+            names(gene_body_symbols) <- valid_gene_body_entrez
+        }
+    }
+
     # Aggregate gene symbols for each DMR
-    if (length(promoter_overlaps) > 0) {
+    if (length(promoter_overlaps) > 0 && length(promoter_symbols) > 0) {
+        promoter_entrez_char <- as.character(promoter_entrez)
+        promoter_symbols_mapped <- promoter_symbols[promoter_entrez_char]
         promoter_by_dmr <- split(
-            promoter_symbols[as.character(promoter_entrez)],
+            promoter_symbols_mapped,
             S4Vectors::queryHits(promoter_overlaps)
         )
 
@@ -1396,9 +1400,11 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         }
     }
 
-    if (length(gene_body_overlaps) > 0) {
+    if (length(gene_body_overlaps) > 0 && length(gene_body_symbols) > 0) {
+        gene_body_entrez_char <- as.character(gene_body_entrez)
+        gene_body_symbols_mapped <- gene_body_symbols[gene_body_entrez_char]
         gene_body_by_dmr <- split(
-            gene_body_symbols[as.character(gene_body_entrez)],
+            gene_body_symbols_mapped,
             S4Vectors::queryHits(gene_body_overlaps)
         )
 

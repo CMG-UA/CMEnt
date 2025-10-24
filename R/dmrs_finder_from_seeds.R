@@ -41,6 +41,7 @@
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.
 #' @param beta_row_names_file Optional file with beta value row names (default: NULL)
 #' @param tabix_file Path to tabix-indexed beta values file (alternative to beta, default: NULL)
+#' @param annotate_with_genes Logical. If TRUE (default), annotate DMRs with gene information using annotateDMRsWithGenes (default: TRUE)
 #'
 #' @return A GRanges object containing identified DMRs with metadata columns:
 #' \itemize{
@@ -730,6 +731,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                               memory_threshold_mb = 500,
                               verbose = 1,
                               beta_row_names_file = NULL,
+                              annotate_with_genes = TRUE,
                               .load_debug = FALSE) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
@@ -1430,6 +1432,12 @@ findDMRsFromSeeds <- function(beta = NULL,
         na.rm = TRUE
     )
 
+    if (annotate_with_genes) {
+        .log_step("Annotating DMRs with gene information...", level = 2)
+        dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
+        .log_success("DMR annotation completed.", level = 2)
+    }
+
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..")
@@ -1446,5 +1454,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         close(gz)
         .log_success("DMRs saved.")
     }
+
+
     invisible(dmrs_granges)
 }
