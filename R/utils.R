@@ -65,30 +65,6 @@
                             sites,
                             beta_row_names = NULL,
                             beta_col_names = NULL) {
-    # Fallback simple subsetting path for small site sets (avoids scan/skip logic issues in tests)
-    if (length(sites) <= 5000) {
-        full <- data.table::fread(beta_file, header = TRUE, data.table = FALSE)
-        rn <- full[[1]]
-        full <- full[, -1, drop = FALSE]
-        rownames(full) <- rn
-        # Preserve only requested sites in order
-        idx <- match(sites, rn)
-        if (anyNA(idx)) {
-            missing <- sites[is.na(idx)]
-            stop("Internal error: requested CpG IDs not found in beta file during subsetting: ", paste(missing, collapse = ","))
-        }
-        sub <- full[idx, , drop = FALSE]
-        if (nrow(sub) == 0) {
-            stop("None of the provided sites exist in the read beta file")
-        }
-        sub <- apply(sub, 2, as.numeric)
-        rownames(sub) <- sites
-        nas_per_row <- apply(sub, 1, function(r) sum(is.na(r)))
-        if (any(nas_per_row == ncol(sub))) {
-            warning("All-NA beta rows detected for sites: ", paste(names(nas_per_row)[nas_per_row == ncol(sub)], collapse = ","))
-        }
-        return(sub)
-    }
     if (is.null(beta_row_names)) {
         beta_row_names <- unlist(data.table::fread(
             file = beta_file,
