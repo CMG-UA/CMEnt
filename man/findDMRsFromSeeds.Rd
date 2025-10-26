@@ -72,8 +72,6 @@ findDMRsFromSeeds(
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
-
 \item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object. Either this or tabix_file must be provided.}
 
 \item{dmps}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
@@ -115,6 +113,8 @@ findDMRsFromSeeds(
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. If TRUE (default), annotate DMRs with gene information using annotateDMRsWithGenes (default: TRUE)}
+
+\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
 
 \item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta must be provided. Default is NULL.}
 }

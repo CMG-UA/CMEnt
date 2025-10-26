@@ -10,6 +10,7 @@ plotDMRs(
   top_n = 4,
   beta = NULL,
   pheno = NULL,
+  pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
   genome = c("hg19", "hg38", "mm10", "mm39"),
   array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -20,22 +21,42 @@ plotDMRs(
 \arguments{
 \item{dmrs}{GRanges object. Output from findDMRsFromSeeds.}
 
-\item{dmr_indices}{Integer vector. Which DMRs to plot (default: 1:min(4, length(dmrs))).}
+\item{dmr_indices}{Integer vector. Which DMRs to plot. If NULL, selects top_n DMRs based on delta_beta and p-value score.}
 
-\item{ncol}{Integer. Number of columns in the grid (default: 2).}
+\item{top_n}{Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).}
 
-\item{...}{Additional arguments passed to plotDMR.}
+\item{beta}{BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.}
+
+\item{pheno}{Data frame or character path to phenotype file (optional). Required when beta is provided.}
+
+\item{pval_col}{Character. The name of the column containing the aggregated p-value (default: "pval_adj").}
+
+\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
+
+\item{genome}{Character. Genome version (default: "hg19").}
+
+\item{array}{Character. Array platform type (default: "450K").}
+
+\item{ncol}{Integer. Number of columns in the grid (default: 1).}
+
+\item{...}{Additional arguments passed to plotDMR or plotDMRWithBeta.}
 }
 \value{
-A combined ggplot2 object (requires patchwork or gridExtra).
+If beta is NULL: A combined ggplot2 object (requires patchwork or gridExtra), or a list of ggplot objects.
+If beta is provided: A list of combined plot objects with structure and heatmap.
 }
 \description{
-Creates a grid of DMR plots for multiple regions.
+Creates a grid of DMR plots for multiple regions. Can optionally
+include beta value heatmaps if beta and pheno data are provided.
 }
 \examples{
 \dontrun{
+# Plot structure only
 dmrs <- readRDS("dmrs.rds")
 plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
+
+# Plot with beta values heatmap
+plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
 }
 
 }

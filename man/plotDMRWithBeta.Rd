@@ -12,8 +12,12 @@ plotDMRWithBeta(
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
+  pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
-  max_cpgs = 100
+  extend_by_dmr_size_ratio = 0.2,
+  min_extension_bp = 50,
+  max_cpgs = 100,
+  plot_title = TRUE
 )
 }
 \arguments{
@@ -21,35 +25,49 @@ plotDMRWithBeta(
 
 \item{dmr_index}{Integer. Which DMR to plot.}
 
-\item{beta}{BetaHandler object OR character path to beta file OR the beta values matrix.
-If a character path is provided, a BetaHandler will be created automatically.}
+\item{beta}{BetaHandler object, character path to beta file, or beta values matrix.
+If a character path or matrix is provided, a BetaHandler will be created automatically.}
 
-\item{pheno}{Data frame. Phenotype data with sample information (required).}
+\item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{sorted_locs}{Data frame. Genomic locations (optional).}
+\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
 
 \item{array}{Character. Array platform type (default: "450K").}
 
 \item{genome}{Character. Genome version (default: "hg19").}
 
-\item{sample_group_col}{Character. Column in pheno for sample grouping.}
+\item{pval_col}{Character. The name of the column containing the aggregated p-value (default: "pval_adj").}
+
+\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
+
+\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).}
+
+\item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
 
 \item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
+
+\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 }
 \value{
-A combined plot object.
+A combined plot object (gtable) containing the DMR structure plot and beta values heatmap,
+or a list of plots if required packages are not available.
 }
 \description{
 Creates a detailed DMR plot with an integrated heatmap showing
-beta values across samples for DMPs and surrounding CpGs.
+beta values across samples for DMPs and surrounding CpGs. The plot consists of
+two panels: the top panel shows the DMR structure with DMPs and extended CpGs,
+and the bottom panel displays a heatmap of beta values for all samples.
 }
 \examples{
 \dontrun{
 # Using BetaHandler
 beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
-plotDMRWithBeta(dmrs, 1, beta_handler = beta_handler, pheno = pheno_df)
+plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 
-# Or using a file path (handler created automatically)
-plotDMRWithBeta(dmrs, 1, beta_handler = "beta.txt", pheno = pheno_df)
+# Using a file path (handler created automatically)
+plotDMRWithBeta(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
+
+# Using a beta matrix
+plotDMRWithBeta(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 }
 }

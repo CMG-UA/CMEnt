@@ -8,12 +8,13 @@ plotDMR(
   dmrs,
   dmr_index = 1,
   sorted_locs = NULL,
+  pval_col = "pval_adj",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
-  title = NULL,
-  .ret_breaks = FALSE
+  plot_title = TRUE,
+  .ret_details = FALSE
 )
 }
 \arguments{
@@ -21,37 +22,48 @@ plotDMR(
 
 \item{dmr_index}{Integer. Which DMR to plot (default: 1).}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
+\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
-\item{array}{Character. Array platform type (default: "450K").}
+\item{pval_col}{Character. The name of the column containing the aggregated p-value used in the title (default: "pval_adj").}
 
-\item{genome}{Character. Genome version (default: "hg19").}
+\item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").}
 
-\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).}
+\item{genome}{Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19").}
 
-\item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
+\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).}
 
-\item{title}{Character. Plot title (default: NULL, auto-generated).}
+\item{min_extension_bp}{Integer. Minimum extension in base pairs for the plot region (default: 50).}
 
-\item{.ret_breaks}{Logical. Internal parameter to return breaks and labels.}
+\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).}
+
+\item{.ret_details}{Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMRWithBeta (default: FALSE).}
 }
 \value{
-A ggplot2 object.
+A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
 }
 \description{
 Visualizes the structure of Differentially Methylated Regions (DMRs)
 identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
 by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
-Optionally adds a cytoband track below the plot to show chromosomal context.
+The plot distinguishes between DMPs (differentially methylated positions), supporting
+CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
 }
 \examples{
 \dontrun{
 # Load DMR results
 dmrs <- readRDS("dmrs.rds")
 
-# Plot first DMR
+# Plot first DMR with title
 plotDMR(dmrs, dmr_index = 1)
 
+# Plot without title (title will be logged)
+plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
+
+# Plot with custom p-value column
+plotDMR(dmrs, dmr_index = 1, pval_col = "pval_raw")
+
+# Plot with extended region
+plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
 }
 
 }

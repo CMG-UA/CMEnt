@@ -60,6 +60,7 @@ Imports:
     R.utils,
     jsonlite,
     karyoploteR,
+    gridExtra,
     ggplotify,
     gtable,
     scales
@@ -84,7 +85,6 @@ Suggests:
     bumphunter,
     minfiData,
     patchwork,
-    gridExtra,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     TxDb.Mmusculus.UCSC.mm10.knownGene,

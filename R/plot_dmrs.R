@@ -8,27 +8,38 @@ if (getRversion() >= "2.15.1") {
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
 #' identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
 #' by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
-#' Optionally adds a cytoband track below the plot to show chromosomal context.
+#' The plot distinguishes between DMPs (differentially methylated positions), supporting
+#' CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
-#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
-#' @param array Character. Array platform type (default: "450K").
-#' @param genome Character. Genome version (default: "hg19").
-#' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
-#' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
-#' @param title Character. Plot title (default: NULL, auto-generated).
-#' @param .ret_details Logical. Internal parameter to return breaks and labels.
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
+#' @param pval_col Character. The name of the column containing the aggregated p-value used in the title (default: "pval_adj").
+#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").
+#' @param genome Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19").
+#' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
+#' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
+#' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).
+#' @param .ret_details Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMRWithBeta (default: FALSE).
 #'
-#' @return A ggplot2 object.
+#' @return A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
 #'
 #' @examples
 #' \dontrun{
 #' # Load DMR results
 #' dmrs <- readRDS("dmrs.rds")
 #'
-#' # Plot first DMR
+#' # Plot first DMR with title
 #' plotDMR(dmrs, dmr_index = 1)
+#' 
+#' # Plot without title (title will be logged)
+#' plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
+#' 
+#' # Plot with custom p-value column
+#' plotDMR(dmrs, dmr_index = 1, pval_col = "pval_raw")
+#' 
+#' # Plot with extended region
+#' plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
@@ -38,16 +49,14 @@ if (getRversion() >= "2.15.1") {
 plotDMR <- function(dmrs,
                     dmr_index = 1,
                     sorted_locs = NULL,
+                    pval_col = "pval_adj",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
                     genome = c("hg19", "hg38", "mm10", "mm39"),
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
-                    title = NULL,
+                    plot_title = TRUE,
                     .ret_details = FALSE) {
-    if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        stop("Package 'ggplot2' is required for plotting. Please install it.")
-    }
-
+    showtext::showtext_auto()
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
 
@@ -358,19 +367,17 @@ plotDMR <- function(dmrs,
     }
 
     # Create title if not provided
-    if (is.null(title)) {
-        title <- sprintf(
-            "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (delta_beta=%.3f, p=%.2e)",
-            dmr_index,
-            chr,
-            format(dmr_start, big.mark = ",", scientific = FALSE),
-            format(dmr_end, big.mark = ",", scientific = FALSE),
-            dmr_data$dmps_num,
-            dmr_data$cpgs_num,
-            dmr_data$delta_beta,
-            dmr_data$pval_adj
-        )
-    }
+    title <- sprintf(
+        "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (\u0394\u03b2=%.3f, p=%.2e)",
+        dmr_index,
+        chr,
+        format(dmr_start, big.mark = ",", scientific = FALSE),
+        format(dmr_end, big.mark = ",", scientific = FALSE),
+        dmr_data$dmps_num,
+        dmr_data$cpgs_num,
+        dmr_data$delta_beta,
+        dmr_data[[pval_col]]
+    )
 
     if (!"in_promoter_of" %in% colnames(mcols(dmrs))) {
         ret <- try(annotateDMRsWithGenes(dmr, genome = genome))
@@ -409,7 +416,7 @@ plotDMR <- function(dmrs,
     }
     p <- p +
         ggplot2::labs(
-            title = title,
+            title = if (plot_title) title else NULL,
             y = ""
         ) +
         ggplot2::theme_minimal(base_size = 12) +
@@ -439,6 +446,9 @@ plotDMR <- function(dmrs,
     p <- p + ggplot2::labs(
         x = sprintf("Genomic Position on %s (bp)", chr)
     )
+    if (!plot_title) {
+        .log_info("Title of the generated plot:\n", title)
+    }
 
     if (.ret_details) {
         total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[dmp_ids, , drop = FALSE])
@@ -454,19 +464,32 @@ minmaxscale <- function(x) {
 
 #' Plot Multiple DMRs in a Grid
 #'
-#' @description Creates a grid of DMR plots for multiple regions.
+#' @description Creates a grid of DMR plots for multiple regions. Can optionally
+#' include beta value heatmaps if beta and pheno data are provided.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
-#' @param dmr_indices Integer vector. Which DMRs to plot (default: 1:min(4, length(dmrs))).
-#' @param ncol Integer. Number of columns in the grid (default: 2).
-#' @param ... Additional arguments passed to plotDMR.
+#' @param dmr_indices Integer vector. Which DMRs to plot. If NULL, selects top_n DMRs based on delta_beta and p-value score.
+#' @param top_n Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).
+#' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
+#' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
+#' @param pval_col Character. The name of the column containing the aggregated p-value (default: "pval_adj").
+#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
+#' @param genome Character. Genome version (default: "hg19").
+#' @param array Character. Array platform type (default: "450K").
+#' @param ncol Integer. Number of columns in the grid (default: 1).
+#' @param ... Additional arguments passed to plotDMR or plotDMRWithBeta.
 #'
-#' @return A combined ggplot2 object (requires patchwork or gridExtra).
+#' @return If beta is NULL: A combined ggplot2 object (requires patchwork or gridExtra), or a list of ggplot objects.
+#'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples
 #' \dontrun{
+#' # Plot structure only
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
+#' 
+#' # Plot with beta values heatmap
+#' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
 #' }
 #'
 #' @export
@@ -475,15 +498,17 @@ plotDMRs <- function(dmrs,
                      top_n = 4,
                      beta = NULL,
                      pheno = NULL,
+                     pval_col = "pval_adj",
                      sample_group_col = "Sample_Group",
                      genome = c("hg19", "hg38", "mm10", "mm39"),
                      array = c("450K", "27K", "EPIC", "EPICv2"),
                      ncol = 1,
                      ...) {
+    showtext::showtext_auto()
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(dmrs$delta_beta)) * minmaxscale(-log10(dmrs$pval_adj + 1e-10))
+        score <- minmaxscale(abs(dmrs$delta_beta)) * minmaxscale(-log10(mcols(dmrs)[, pval_col] + 1e-10))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -502,6 +527,7 @@ plotDMRs <- function(dmrs,
             plotDMRWithBeta(
                 dmrs = dmrs,
                 dmr_index = i,
+                pval_col = pval_col,
                 beta = beta,
                 pheno = pheno,
                 sample_group_col = sample_group_col,
@@ -511,16 +537,9 @@ plotDMRs <- function(dmrs,
         return(plot_list)
     } else {
         plot_list <- lapply(dmr_indices, function(i) {
-            plotDMR(dmrs, dmr_index = i, ...)
+            plotDMR(dmrs, dmr_index = i, pval_col = pval_col, ...)
         })
-        if (requireNamespace("patchwork", quietly = TRUE)) {
-            return(patchwork::wrap_plots(plot_list, ncol = ncol))
-        } else if (requireNamespace("gridExtra", quietly = TRUE)) {
-            return(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
-        } else {
-            message("Install 'patchwork' or 'gridExtra' package for combined plots. Returning list of plots.")
-            return(plot_list)
-        }
+        return(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
     }
 }
 
@@ -528,29 +547,39 @@ plotDMRs <- function(dmrs,
 #' Plot DMR with Beta Values Heatmap
 #'
 #' @description Creates a detailed DMR plot with an integrated heatmap showing
-#' beta values across samples for DMPs and surrounding CpGs.
+#' beta values across samples for DMPs and surrounding CpGs. The plot consists of
+#' two panels: the top panel shows the DMR structure with DMPs and extended CpGs,
+#' and the bottom panel displays a heatmap of beta values for all samples.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
 #' @param dmr_index Integer. Which DMR to plot.
-#' @param beta BetaHandler object OR character path to beta file OR the beta values matrix.
-#'   If a character path is provided, a BetaHandler will be created automatically.
-#' @param pheno Data frame. Phenotype data with sample information (required).
-#' @param sorted_locs Data frame. Genomic locations (optional).
+#' @param beta BetaHandler object, character path to beta file, or beta values matrix.
+#'   If a character path or matrix is provided, a BetaHandler will be created automatically.
+#' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (default: "hg19").
-#' @param sample_group_col Character. Column in pheno for sample grouping.
+#' @param pval_col Character. The name of the column containing the aggregated p-value (default: "pval_adj").
+#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
+#' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
+#' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
 #' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
+#' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #'
-#' @return A combined plot object.
+#' @return A combined plot object (gtable) containing the DMR structure plot and beta values heatmap,
+#'   or a list of plots if required packages are not available.
 #'
 #' @examples
 #' \dontrun{
 #' # Using BetaHandler
 #' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
-#' plotDMRWithBeta(dmrs, 1, beta_handler = beta_handler, pheno = pheno_df)
+#' plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 #'
-#' # Or using a file path (handler created automatically)
-#' plotDMRWithBeta(dmrs, 1, beta_handler = "beta.txt", pheno = pheno_df)
+#' # Using a file path (handler created automatically)
+#' plotDMRWithBeta(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
+#' 
+#' # Using a beta matrix
+#' plotDMRWithBeta(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 #' }
 #' @export
 plotDMRWithBeta <- function(dmrs,
@@ -560,10 +589,12 @@ plotDMRWithBeta <- function(dmrs,
                             sorted_locs = NULL,
                             array = c("450K", "27K", "EPIC", "EPICv2"),
                             genome = c("hg19", "hg38", "mm10", "mm39"),
+                            pval_col = "pval_adj",
                             sample_group_col = "Sample_Group",
                             extend_by_dmr_size_ratio = 0.2,
                             min_extension_bp = 50,
-                            max_cpgs = 100) {
+                            max_cpgs = 100,
+                            plot_title = TRUE) {
     showtext::showtext_auto()
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
@@ -604,7 +635,8 @@ plotDMRWithBeta <- function(dmrs,
         dmr_index = dmr_index,
         array = array,
         genome = genome,
-        title = NULL,
+        pval_col = pval_col,
+        plot_title = plot_title,
         extend_by_dmr_size_ratio = extend_by_dmr_size_ratio,
         min_extension_bp = min_extension_bp,
         .ret_details = TRUE
@@ -684,16 +716,11 @@ plotDMRWithBeta <- function(dmrs,
                 alpha = 0.7
             )
     }
-    if (requireNamespace("grid", quietly = TRUE) && requireNamespace("gridExtra", quietly = TRUE) && requireNamespace("gtable", quietly = TRUE)) {
-        g1 <- ggplot2::ggplotGrob(structure_plot)
-        g2 <- ggplot2::ggplotGrob(heatmap_plot)
-        max_width <- grid::unit.pmax(g1$widths, g2$widths)
-        combined <- gridExtra::gtable_rbind(g1, g2)
-        combined$widths <- max_width
-        grid::grid.draw(combined)
-        return(combined)
-    } else {
-        message("Install 'patchwork' or 'gridExtra' for combined plots. Returning list.")
-        return(list(structure = structure_plot, heatmap = heatmap_plot))
-    }
+    g1 <- ggplot2::ggplotGrob(structure_plot)
+    g2 <- ggplot2::ggplotGrob(heatmap_plot)
+    max_width <- grid::unit.pmax(g1$widths, g2$widths)
+    combined <- gridExtra::gtable_rbind(g1, g2)
+    combined$widths <- max_width
+    grid::grid.draw(combined)
+    return(combined)
 }

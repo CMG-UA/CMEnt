@@ -21,8 +21,6 @@ with support for in-memory loading, tabix indexing, and various file formats.
 
 \item{\code{sorted_locs}}{Sorted genomic locations}
 
-\item{\code{verbose}}{Verbosity level}
-
 \item{\code{memory_threshold_mb}}{Memory threshold in MB}
 
 \item{\code{njobs}}{Number of parallel jobs}
@@ -68,8 +66,6 @@ Create a new BetaHandler object
 \item{\code{genome}}{Reference genome version}
 
 \item{\code{beta_row_names_file}}{Path to row names file}
-
-\item{\code{verbose}}{Verbosity level}
 
 \item{\code{memory_threshold_mb}}{Memory threshold in MB}
 
