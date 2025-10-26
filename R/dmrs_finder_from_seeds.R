@@ -749,6 +749,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs
     }
+    old_globals_maxsize <- getOption("future.globals.maxSize", 0)
     if (njobs > 1) {
         if (future::availableCores("multicore") > 1L) {
             .log_info("Using multicore parallelization with ", njobs, " workers", level = 1)
@@ -758,14 +759,16 @@ findDMRsFromSeeds <- function(beta = NULL,
             future::plan(future::multisession, workers = njobs)
         }
         on.exit(future::plan(future::sequential), add = TRUE)
+        globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
+        .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
+        options(future.globals.maxSize = globals_maxsize)
     } else {
         .log_info("Using sequential processing (njobs=1)", level = 1)
         future::plan(future::sequential)
+        options(future.globals.maxSize = Inf)
     }
-    globals_maxsize <- getOption("future.globals.maxSize")
-    globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, globals_maxsize, na.rm = TRUE), 1024^2 * 100) # at least 100 MB
-    .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
-    options(future.globals.maxSize = globals_maxsize)
+    on.exit(options(future.globals.maxSize = old_globals_maxsize), add = TRUE)
+
 
     if (is.null(dmps) || is.null(pheno)) {
         stop("dmps and pheno parameters are required")
@@ -1366,6 +1369,8 @@ findDMRsFromSeeds <- function(beta = NULL,
         seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     )
+    # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
+    GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
