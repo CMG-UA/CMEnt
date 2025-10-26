@@ -1304,7 +1304,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     if (!requireNamespace(orgdb_pkg, quietly = TRUE)) {
         BiocManager::install(orgdb_pkg)
     }
-    .log_step("Loading gene annotations for ", genome, "...", level = 1)
+    .log_step("Loading gene annotations for ", genome, "...", level = 2)
 
     # Load TxDb namespace
     if (!isNamespaceLoaded(txdb_pkg)) {
@@ -1340,8 +1340,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             saveRDS(promoters, promoters_file)
         }
     })
-    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 1)
-    .log_step("Finding overlaps with promoters and gene bodies...", level = 1)
+    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
+    .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
 
     # Find overlaps
     promoter_overlaps <- GenomicRanges::findOverlaps(dmrs, promoters)
@@ -1365,7 +1365,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     n_dmrs <- length(dmrs)
     dmrs$in_promoter_of <- rep(NA_character_, n_dmrs)
     dmrs$in_gene_body_of <- rep(NA_character_, n_dmrs)
-
+    .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
     # Convert Entrez IDs to symbols only if there are overlaps
     promoter_symbols <- character(0)
     if (length(promoter_entrez) > 0 && any(!is.na(promoter_entrez))) {
@@ -1394,7 +1394,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             names(gene_body_symbols) <- valid_gene_body_entrez
         }
     }
-
+    .log_success("Gene symbols mapped", level = 2)
     # Aggregate gene symbols for each DMR
     if (length(promoter_overlaps) > 0 && length(promoter_symbols) > 0) {
         promoter_entrez_char <- as.character(promoter_entrez)

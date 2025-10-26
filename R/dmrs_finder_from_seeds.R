@@ -743,7 +743,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         on.exit(wait(), add = TRUE)
     }
 
-    verbose <- getOption("DMRsegal.verbose", verbose)
+    verbose <- getOption("DMRsegal.verbose", 0)
 
     # Set up future plan for parallel processing
     if (njobs < 0) {
