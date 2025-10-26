@@ -42,7 +42,7 @@ Imports:
     future,
     future.apply,
     inline,
-    progressr,
+    progressr(>= 0.17.0-9002),
     minfi,
     bedr,
     AnnotationDbi,
@@ -97,7 +97,8 @@ Suggests:
     org.Mm.eg.db
 Remotes:
     chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10,
-    CMG-UA/DMRsegaldata
+    CMG-UA/DMRsegaldata,
+    futureverse/progressr
 Config/testthat/edition: 3
 Collate:
     'utils.R'
