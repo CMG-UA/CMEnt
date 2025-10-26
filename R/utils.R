@@ -282,7 +282,7 @@
 #' @keywords internal
 #' @noRd
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
     msg <- paste0(..., collapse = "")
@@ -301,7 +301,7 @@
 
 #' @keywords internal
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
     dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
@@ -313,7 +313,7 @@
 
 #' @keywords internal
 .log_step <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 1) < level) {
+    if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
     .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time() # nolint
@@ -808,7 +808,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     .log_step("Reading beta file", beta_file, level = 2)
     # Read the beta file
-    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRsegal.verbose", 1) > 1)
+    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRsegal.verbose", 0) > 1)
 
     # Get row names (CpG IDs) from first column
     cpg_ids <- beta_data[[1]]
