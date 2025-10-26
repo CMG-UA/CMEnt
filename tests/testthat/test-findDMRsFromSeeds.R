@@ -52,7 +52,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         memory_threshold_mb = 0.01
     )
     # Clean up
-    unlink(beta_file, sorted_beta_file)
+    unlink(c(beta_file, sorted_beta_file))
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
