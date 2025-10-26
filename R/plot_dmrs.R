@@ -8,13 +8,17 @@ if (getRversion() >= "2.15.1") {
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
 #' identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
 #' by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
+#' Optionally adds a cytoband track below the plot to show chromosomal context.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (default: "hg19").
+#' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
+#' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
 #' @param title Character. Plot title (default: NULL, auto-generated).
+#' @param .ret_details Logical. Internal parameter to return breaks and labels.
 #'
 #' @return A ggplot2 object.
 #'
@@ -26,8 +30,6 @@ if (getRversion() >= "2.15.1") {
 #' # Plot first DMR
 #' plotDMR(dmrs, dmr_index = 1)
 #'
-#' # Plot with custom options
-#' plotDMR(dmrs, dmr_index = 2)
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
@@ -42,7 +44,7 @@ plotDMR <- function(dmrs,
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
                     title = NULL,
-                    .ret_breaks = FALSE) {
+                    .ret_details = FALSE) {
     if (!requireNamespace("ggplot2", quietly = TRUE)) {
         stop("Package 'ggplot2' is required for plotting. Please install it.")
     }
@@ -391,7 +393,6 @@ plotDMR <- function(dmrs,
     p <- p +
         ggplot2::labs(
             title = title,
-            x = sprintf("Genomic Position on %s (bp)", chr),
             y = ""
         ) +
         ggplot2::theme_minimal(base_size = 12) +
@@ -401,6 +402,12 @@ plotDMR <- function(dmrs,
             panel.grid.minor = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         )
+
+    p <- p + ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
+    )
+
+
     # Add ticks for the DMPs on the x-axis
     breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], plot_end)
     breaks_labels <- c(
@@ -412,11 +419,14 @@ plotDMR <- function(dmrs,
         labels = breaks_labels
     )
     p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]))
-    p <- p + ggplot2::theme(
-        axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
+    p <- p + ggplot2::labs(
+            x = sprintf("Genomic Position on %s (bp)", chr)
     )
-    if (.ret_breaks) {
-        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr))
+
+    if (.ret_details) {
+        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[dmp_ids, , drop = FALSE])
+        total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
+        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs=total_shown_positions) )
     }
     return(p)
 }
@@ -535,6 +545,8 @@ plotDMRWithBeta <- function(dmrs,
                             array = c("450K", "27K", "EPIC", "EPICv2"),
                             genome = c("hg19", "hg38", "mm10", "mm39"),
                             sample_group_col = "Sample_Group",
+                            extend_by_dmr_size_ratio = 0.2,
+                            min_extension_bp = 50,
                             max_cpgs = 100) {
     showtext::showtext_auto()
     array <- strex::match_arg(array, ignore_case = TRUE)
@@ -565,26 +577,34 @@ plotDMRWithBeta <- function(dmrs,
     dmr <- dmrs[dmr_index]
     dmr_data <- S4Vectors::mcols(dmr)
 
-    # Get CpG IDs in the region
-    start_cpg <- dmr_data$start_cpg
-    end_cpg <- dmr_data$end_cpg
-    beta_locs <- beta_handler$getBetaLocs()
-    if (!(start_cpg %in% rownames(beta_locs)) || !(end_cpg %in% rownames(beta_locs))) {
-        stop("Start or end CpG not found in beta locations")
-    }
-    start_cpg_ind <- which(rownames(beta_locs) == start_cpg)
-    end_cpg_ind <- which(rownames(beta_locs) == end_cpg)
-    cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
-    cpg_locs <- beta_locs[cpg_ids, ]
-
     pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
     if (nrow(pheno) == 0) {
         stop("No samples in pheno match the samples in beta values")
     }
 
+
+
+    # Create structure plot
+    ret <- plotDMR(
+        dmrs = dmrs,
+        dmr_index = dmr_index,
+        array = array,
+        genome = genome,
+        title = NULL,
+        extend_by_dmr_size_ratio = extend_by_dmr_size_ratio,
+        min_extension_bp = min_extension_bp,
+        .ret_details = TRUE
+    )
+    structure_plot <- ret$structure_plot
+    breaks <- ret$breaks
+    breaks_labels <- ret$breaks_labels
+    total_shown_positions <- ret$total_locs
+    cpg_ids <- rownames(total_shown_positions)
+    cpg_locs <- total_shown_positions[, c("chr", "pos")]
+
     # Read beta values using BetaHandler
     beta_data <- beta_handler$getBeta(
-        row_names = cpg_ids,
+        row_names = rownames(total_shown_positions),
         col_names = rownames(pheno)
     )
 
@@ -592,19 +612,7 @@ plotDMRWithBeta <- function(dmrs,
     dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
     is_dmp <- cpg_ids %in% dmp_ids
 
-    # Create structure plot
-    ret <- plotDMR(
-        dmrs = dmrs,
-        dmr_index = dmr_index,
-        sorted_locs = beta_locs,
-        array = array,
-        genome = genome,
-        title = NULL,
-        .ret_breaks = TRUE,
-    )
-    structure_plot <- ret$structure_plot
-    breaks <- ret$breaks
-    breaks_labels <- ret$breaks_labels
+
     chr <- ret$chr
     # Remove x-axis title for combined plot
     structure_plot <- structure_plot +
@@ -629,11 +637,10 @@ plotDMRWithBeta <- function(dmrs,
 
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
-        ggplot2::scale_fill_gradient2(
-            low = "#1a1a94", mid = "white", high = "red",
-            midpoint = 0,
-            limits = c(-max(abs(beta_melted$Beta)), max(abs(beta_melted$Beta))),
-            name = "\u0394\u03b2"
+        ggplot2::scale_fill_gradient(
+            low = "white", high = "red",
+            limits = c(min(beta_melted$Beta), max(beta_melted$Beta)),
+            name = "\u03b2"
         ) +
         ggplot2::labs(
             y = "Sample",
@@ -669,7 +676,6 @@ plotDMRWithBeta <- function(dmrs,
         max_width <- grid::unit.pmax(g1$widths, g2$widths)
         combined <- gridExtra::gtable_rbind(g1, g2)
         combined$widths <- max_width
-        grid::grid.newpage()
         grid::grid.draw(combined)
         return(combined)
     } else {

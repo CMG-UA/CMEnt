@@ -58,7 +58,11 @@ Imports:
     reshape2,
     optparse,
     R.utils,
-    jsonlite
+    jsonlite,
+    karyoploteR,
+    ggplotify,
+    gtable,
+    scales
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,

@@ -55,6 +55,7 @@ findDMRsFromSeeds(
   memory_threshold_mb = 500,
   verbose = 1,
   beta_row_names_file = NULL,
+  annotate_with_genes = TRUE,
   .load_debug = FALSE
 )
 }
@@ -115,6 +116,8 @@ findDMRsFromSeeds(
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
+\item{annotate_with_genes}{Logical. If TRUE (default), annotate DMRs with gene information using annotateDMRsWithGenes (default: TRUE)}
+
 \item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta must be provided. Default is NULL.}
 }
 \value{
@@ -154,3 +157,22 @@ significant DMPs (e.g., adjusted p-value < 0.05) and let the function handle reg
 and filtering internally using the min_cpg_delta_beta parameter if needed.
 }
 
+\examples{
+\dontrun{
+# Load example data
+if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+    remotes::install_github("CMG-UA/DMRsegaldata")
+}
+library(DMRsegaldata)
+beta <- DMRsegaldata::beta
+dmps <- DMRsegaldata::dmps
+pheno <- DMRsegaldata::pheno
+# Find DMRs
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    dmps = dmps,
+    pheno = pheno
+)
+}
+
+}

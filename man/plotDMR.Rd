@@ -27,7 +27,13 @@ plotDMR(
 
 \item{genome}{Character. Genome version (default: "hg19").}
 
+\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).}
+
+\item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
+
 \item{title}{Character. Plot title (default: NULL, auto-generated).}
+
+\item{.ret_breaks}{Logical. Internal parameter to return breaks and labels.}
 }
 \value{
 A ggplot2 object.
@@ -36,6 +42,7 @@ A ggplot2 object.
 Visualizes the structure of Differentially Methylated Regions (DMRs)
 identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
 by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
+Optionally adds a cytoband track below the plot to show chromosomal context.
 }
 \examples{
 \dontrun{
@@ -45,8 +52,6 @@ dmrs <- readRDS("dmrs.rds")
 # Plot first DMR
 plotDMR(dmrs, dmr_index = 1)
 
-# Plot with custom options
-plotDMR(dmrs, dmr_index = 2)
 }
 
 }
