@@ -129,6 +129,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             NULL
                         }
                     )
+                    private$.beta_file <- NULL
                 } else {
                     .log_step(
                         "Beta file is large (", round(file_size_mb, 1),
@@ -183,10 +184,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     quote = ""
                 ))
             } else {
-                .log_step("Reading row names from beta file...", level = 2)
+                .log_step("Reading row names from input...", level = 2)
                 if (!is.null(private$.beta_file_in_memory)) {
+                    .log_info("Reading from beta matrix...", level = 3)
                     private$.beta_row_names <- rownames(private$.beta_file_in_memory)
                 } else if (!is.null(private$.beta_file)) {
+                    .log_info("Reading from beta file...", level = 3)
                     private$.beta_row_names <- unlist(data.table::fread(
                         file = private$.beta_file,
                         select = 1,
@@ -196,6 +199,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         nThread = self$njobs
                     ))
                 } else {
+                    .log_info("Reading from tabix file...", level = 3)
                     private$.beta_row_names <- unlist(data.table::fread(
                         file = private$.tabix_file,
                         select = 4,

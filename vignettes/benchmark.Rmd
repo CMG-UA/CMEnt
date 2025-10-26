@@ -71,8 +71,13 @@ pheno$casecontrol <- pheno$Sample_Group == "cancer"
 Before running DMR detection, we need to identify individual DMPs.
 
 ```{r get_dmps}
-# Create design matrix for all methods to use consistently
-
+# Find DMPs using minfi's dmpFinder
+dmps <- suppressWarnings(dmpFinder(mvalues,
+    pheno = pheno$casecontrol,
+    type = "categorical",
+    shrinkVar = TRUE
+))
+dmps <- dmps[!is.na(dmps$pval), ]
 # Add adjusted p-value to dmps results
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 

@@ -4,50 +4,15 @@ library(DMRsegal)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a small dataset for faster testing
-    mset <- minfiData::MsetEx[1:5000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    # Filter significant DMPs with lenient threshold
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -56,10 +21,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         njobs = 1,
         memory_threshold_mb = 500 # Small threshold allows in-memory loading
     )
-
-    # Clean up
-    unlink(beta_file)
-
+    
     # Assertions
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
@@ -68,43 +30,19 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    library(minfi)
-
-    mset <- minfiData::MsetEx[1:5000, ]
-    beta_mat <- getBeta(mset)
-
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
+    beta_file <- tempfile(fileext = ".tsv")
+    write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
+    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.use_tabix_cache" = FALSE)
 
     dmrs <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = sorted_beta_file,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -113,8 +51,8 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         njobs = 1,
         memory_threshold_mb = 0.01
     )
-
-    unlink(beta_file)
+    # Clean up
+    unlink(beta_file, sorted_beta_file)
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
@@ -122,76 +60,56 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     }
 })
 
-test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
+test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    pheno <- DMRsegaldata::pheno
 
-    # Replicate the benchmark.Rmd setup
-    library(minfi)
 
-    # Get sample type information from MsetEx
-    sample_types <- pData(minfiData::MsetEx)$Sample_Group
-    sample_types[sample_types == "GroupA"] <- "normal"
-    sample_types[sample_types == "GroupB"] <- "cancer"
-    sample_groups <- factor(sample_types, levels = c("normal", "cancer"))
-    selected_samples <- seq_along(sample_groups)
+    beta <- DMRsegaldata::beta
+    pheno <- DMRsegaldata::pheno
+    array_type <- DMRsegaldata::array_type
+    genome <- "hg19"
 
-    # Create the final subset
-    mset <- minfiData::MsetEx[, selected_samples]
-    pheno <- data.frame(
-        status = sample_groups[selected_samples],
-        row.names = colnames(mset)
-    )
-    pheno$group <- pheno$status
-    pheno$casecontrol <- pheno$status == "cancer"
 
-    # Find DMPs using limma (as in benchmark)
-    design <- model.matrix(~status, data = pheno)
-    colnames(design) <- c("Intercept", "cancer_vs_normal")
+    beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
+    beta_mat <- as.matrix(beta_handler$getBeta())
+    locs <- beta_handler$getBetaLocs()
+    mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
+    pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$status,
+    # Find DMPs using minfi's dmpFinder
+    dmps <- suppressWarnings(minfi::dmpFinder(mvalues,
+        pheno = pheno$casecontrol,
         type = "categorical",
         shrinkVar = TRUE
     ))
     dmps <- dmps[!is.na(dmps$pval), ]
+    # Add adjusted p-value to dmps results
     dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
     # Filter significant DMPs
     sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-    # Write beta values to temp file
-    beta_file <- tempfile(fileext = ".txt")
-    beta_mat <- getBeta(mset)
-
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
 
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
-        beta = beta_file,
+        beta = beta_handler,
         dmps = sig_dmps,
         pheno = pheno,
-        sample_group_col = "group",
+        sample_group_col = "Sample_Group",
         min_dmps = 2,
         min_cpgs = 3,
-        max_lookup_dist = 1000,
+        max_lookup_dist = 10000,
+        max_pval = 0.05,
+        pval_mode = "parametric",
         njobs = 1,
         memory_threshold_mb = 500
     )
 
-    # Clean up
-    unlink(beta_file)
-
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 4)
+    expect_equal(length(dmrs_segal), 943)
     expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria
@@ -200,50 +118,15 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a smaller dataset for faster testing
-    mset <- minfiData::MsetEx[1:3000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    # Filter DMPs more leniently for parameter testing
-    sig_dmps <- dmps[dmps$pval_adj < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
     # Test with strict min_dmps
     dmrs_strict <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 5, # Stricter
@@ -255,12 +138,12 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 1, # More lenient
-        min_cpgs = 2,
+        min_dmps = 2, # More lenient
+        min_cpgs = 2, # More lenient
         max_lookup_dist = 2000, # Larger distance
         njobs = 1,
         memory_threshold_mb = 500
@@ -268,8 +151,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -280,8 +163,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         memory_threshold_mb = 500
     )
 
-    # Clean up
-    unlink(beta_file)
 
     # Assertions
     expect_s4_class(dmrs_strict, "GRanges")
@@ -303,49 +184,15 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a smaller dataset for faster testing
-    mset <- minfiData::MsetEx[1:3000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -358,8 +205,8 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -370,8 +217,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         memory_threshold_mb = 500
     )
 
-    # Clean up
-    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs_median) || inherits(dmrs_median, "GRanges"))
@@ -383,49 +228,15 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a smaller dataset for faster testing
-    mset <- minfiData::MsetEx[1:3000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -438,8 +249,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -450,8 +261,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         memory_threshold_mb = 500
     )
 
-    # Clean up
-    unlink(beta_file)
 
     # Assertions
     expect_true(is.null(dmrs_no_filter) || inherits(dmrs_no_filter, "GRanges"))
@@ -464,49 +273,15 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 })
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
-
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a smaller dataset
-    mset <- minfiData::MsetEx[1:1000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
     # Test missing required parameters
     expect_error(
         findDMRsFromSeeds(
-            beta = beta_file,
+            beta = beta,
             dmps = NULL, # Missing
             pheno = pheno
         ),
@@ -515,8 +290,8 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
-            beta = beta_file,
-            dmps = sig_dmps,
+            beta = beta,
+            dmps = dmps,
             pheno = NULL # Missing
         ),
         "pheno"
@@ -524,68 +299,32 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     # Test with wrong column names in pheno
     pheno_wrong <- pheno
-    names(pheno_wrong) <- c("wrong_col1", "wrong_col2")
+    colnames(pheno_wrong) <- c("wrong_col1", "wrong_col2", "wrong_col3", "wrong_col4")
 
     expect_error(
         findDMRsFromSeeds(
-            beta = beta_file,
-            dmps = sig_dmps,
+            beta = beta,
+            dmps = dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol"
         )
     )
 
-    # Clean up
-    unlink(beta_file)
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
+    skip_if_not_installed("DMRsegaldata")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
-    # Use real minfiData for this test
-    library(minfi)
-
-    # Subset to a smaller dataset
-    mset <- minfiData::MsetEx[1:2000, ]
-    beta_mat <- getBeta(mset)
-
-    # Prepare pheno data
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    # Create temporary files
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, genome = "hg19", overwrite = TRUE)
-
-    # Find DMPs
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
-
-    # Test with hg19
-    dmrs_hg19 <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+    # Test with hg38
+    dmrs_hg38 <- findDMRsFromSeeds(
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
-        genome = "hg19",
+        genome = "hg38",
         sample_group_col = "Sample_Group",
         min_dmps = 2,
         min_cpgs = 3,
@@ -594,58 +333,27 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         memory_threshold_mb = 500
     )
 
-    # Clean up
-    unlink(beta_file)
-
     # Assertions
-    expect_true(is.null(dmrs_hg19) || inherits(dmrs_hg19, "GRanges"))
-    if (!is.null(dmrs_hg19)) expect_true(length(dmrs_hg19) >= 0)
+    expect_true(is.null(dmrs_hg38) || inherits(dmrs_hg38, "GRanges"))
+    if (!is.null(dmrs_hg38)) expect_true(length(dmrs_hg38) >= 0)
 })
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
+    skip_if_not_installed("DMRsegaldata")
     skip_if_not_installed("mockery")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
-    library(minfi)
     library(mockery)
-
-    mset <- minfiData::MsetEx[1:3000, ]
-    beta_mat <- getBeta(mset)
-
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
 
     dmrs <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 1,
@@ -662,47 +370,19 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 
-    unlink(beta_file)
 })
 
 test_that("findDMRsFromSeeds empirical p-value mode works", {
-    skip_if_not_installed("minfi")
-    skip_if_not_installed("minfiData")
+    skip_if_not_installed("DMRsegaldata")
+    skip_if_not_installed("mockery")
+    beta <- DMRsegaldata::beta
+    dmps <- DMRsegaldata::dmps
+    pheno <- DMRsegaldata::pheno
 
-    library(minfi)
-
-    mset <- minfiData::MsetEx[1:3000, ]
-    beta_mat <- getBeta(mset)
-
-    pheno <- data.frame(
-        Sample_Group = pData(mset)$Sample_Group,
-        casecontrol = pData(mset)$Sample_Group == "GroupB",
-        row.names = colnames(mset)
-    )
-
-    beta_file <- tempfile(fileext = ".txt")
-    write.table(
-        cbind(ID = rownames(beta_mat), beta_mat),
-        file = beta_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
-    )
-    beta_file <- DMRsegal::sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-
-    dmps <- suppressWarnings(dmpFinder(mset,
-        pheno = pheno$Sample_Group,
-        type = "categorical",
-        shrinkVar = TRUE
-    ))
-    dmps <- dmps[!is.na(dmps$pval), ]
-    dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-    sig_dmps <- dmps[dmps$pval < 0.1, ]
 
     dmrs_parametric <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -714,8 +394,8 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
     )
 
     dmrs_empirical <- findDMRsFromSeeds(
-        beta = beta_file,
-        dmps = sig_dmps,
+        beta = beta,
+        dmps = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_dmps = 2,
@@ -725,8 +405,6 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         njobs = 1,
         memory_threshold_mb = 500
     )
-
-    unlink(c(beta_file))
 
     expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
     expect_true(is.null(dmrs_empirical) || inherits(dmrs_empirical, "GRanges"))
@@ -751,6 +429,8 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
         beta = beta,
         dmps = dmps,
         pheno = pheno,
+        min_dmps = 2,
+        min_cpgs = 3,
         annotate_with_genes = FALSE,
         njobs = 1
     )

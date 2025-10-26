@@ -247,7 +247,7 @@
         return("")
     }
     secs <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-    if (is.na(secs)) {
+    if (is.na(secs) || secs < 0) {
         return("")
     }
     if (secs < 0.001) {
@@ -683,7 +683,7 @@ convertBetaToTabix <- function(beta_file,
             } else {
                 # Unix/Linux/Mac: use efficient system sort
                 sort_cmd <- sprintf(
-                    "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -k1,1 -k2,2n) > %s",
+                    "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
                     shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
                 )
                 system(sort_cmd)
