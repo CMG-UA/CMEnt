@@ -51,7 +51,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
-            self$verbose <- getOption("DMRsegal.verbose", default = 0)
             self$memory_threshold_mb <- memory_threshold_mb
             self$njobs <- njobs
 
@@ -108,7 +107,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                                 private$.beta_file,
                                 header = TRUE,
                                 data.table = FALSE,
-                                showProgress = self$verbose > 1
+                                showProgress = getOption("DMRsegal.verbose", 0) > 1
                             )
 
                             # Set rownames from first column

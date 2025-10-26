@@ -114,7 +114,7 @@
             splits <- rbind(splits, c(chunk_start, chunk_end))
         }
     }
-    verbose <- getOption("DMRsegal.verbose", verbose)
+    verbose <- getOption("DMRsegal.verbose", 0)
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits))
     }
