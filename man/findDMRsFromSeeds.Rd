@@ -20,8 +20,7 @@
   ntries = 500,
   mid_p = TRUE,
   tries_seed = 42,
-  njobs = 1,
-  verbose = 0
+  njobs = 1
 )
 
 findDMRsFromSeeds(
@@ -53,7 +52,6 @@ findDMRsFromSeeds(
   output_prefix = NULL,
   njobs = future::availableCores(),
   memory_threshold_mb = 500,
-  verbose = 1,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   .load_debug = FALSE

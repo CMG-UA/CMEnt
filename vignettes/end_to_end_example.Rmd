@@ -85,8 +85,7 @@ dmrs <- DMRsegal::findDMRsFromSeeds(
     max_lookup_dist = 10000,
     max_pval = 0.05,
     pval_mode = "parametric",
-    njobs = 1,
-    verbose = 1
+    njobs = 1
 )
 length(dmrs)
 ```

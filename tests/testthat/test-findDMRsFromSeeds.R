@@ -54,7 +54,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500 # Small threshold allows in-memory loading
     )
 
@@ -112,7 +111,6 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 0.01
     )
 
@@ -185,7 +183,6 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfiData", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -253,7 +250,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -267,7 +263,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_cpgs = 2,
         max_lookup_dist = 2000, # Larger distance
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -282,7 +277,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         max_lookup_dist = 1000,
         max_pval = 0.01, # Stricter p-value
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -359,7 +353,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         max_lookup_dist = 1000,
         aggfun = "median",
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -374,7 +367,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         max_lookup_dist = 1000,
         aggfun = "mean",
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -441,7 +433,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -456,7 +447,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpg_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -542,8 +532,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
             dmps = sig_dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
-            casecontrol_col = "casecontrol",
-            verbose = 0
+            casecontrol_col = "casecontrol"
         )
     )
 
@@ -602,7 +591,6 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -664,7 +652,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         min_cpgs = 2,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -723,7 +710,6 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         max_lookup_dist = 1000,
         pval_mode = "parametric",
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -737,7 +723,6 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         njobs = 1,
-        verbose = 0,
         memory_threshold_mb = 500
     )
 
@@ -767,14 +752,13 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
         dmps = dmps,
         pheno = pheno,
         annotate_with_genes = FALSE,
-        njobs = 1,
-        verbose = 0
+        njobs = 1
     )
 
     expect_true(is.null(dmrs_not_annotated) || inherits(dmrs_not_annotated, "GRanges"))
     if (!is.null(dmrs_not_annotated) && length(dmrs_not_annotated) > 0) {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_not_annotated))))
-        expect_false("promoter_genes" %in% names(mcols(dmrs_not_annotated)))
-        expect_false("gene_body_genes" %in% names(mcols(dmrs_not_annotated)))
+        expect_false("in_promoter_of" %in% names(mcols(dmrs_not_annotated)))
+        expect_false("in_gene_body_of" %in% names(mcols(dmrs_not_annotated)))
     }
 })

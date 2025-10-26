@@ -31,7 +31,6 @@ findDMRsFromSeedsCLI <- function(args) {
         "Head of parsed phenotype:\n\t",
         paste(capture.output(print(head(pheno))), collapse = "\n\t")
     )
-
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta = args$beta,
@@ -54,7 +53,6 @@ findDMRsFromSeedsCLI <- function(args) {
         ignored_sample_groups = args$ignored_sample_groups,
         output_prefix = args$output_prefix,
         njobs = args$njobs,
-        verbose = args$verbose,
         beta_row_names_file = args$beta_row_names_file,
         annotate_with_genes = args$annotate_with_genes,
         pheno = pheno

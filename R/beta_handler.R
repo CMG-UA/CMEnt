@@ -18,8 +18,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         beta_row_names_file = NULL,
         #' @field sorted_locs Sorted genomic locations
         sorted_locs = NULL,
-        #' @field verbose Verbosity level
-        verbose = 0,
         #' @field memory_threshold_mb Memory threshold in MB
         memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
@@ -29,7 +27,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param array Array platform type
         #' @param genome Reference genome version
         #' @param beta_row_names_file Path to row names file
-        #' @param verbose Verbosity level
         #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
@@ -37,7 +34,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = c("hg19", "hg38", "mm10", "mm39"),
                               beta_row_names_file = NULL,
-                              verbose = 0,
                               memory_threshold_mb = 500,
                               njobs = 1) {
             # Validate inputs
@@ -55,7 +51,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
-            self$verbose <- verbose
+            self$verbose <- getOption("DMRsegal.verbose", default = 0)
             self$memory_threshold_mb <- memory_threshold_mb
             self$njobs <- njobs
 
@@ -149,8 +145,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     converted_tabix <- convertBetaToTabix(
                         beta_file = private$.beta_file,
                         sorted_locs = sorted_locs,
-                        output_file = NULL,
-                        verbose = self$verbose > 0
+                        output_file = NULL
                     )
 
                     if (!is.null(converted_tabix)) {
@@ -421,7 +416,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param array Array platform type
 #' @param genome Reference genome version
 #' @param beta_row_names_file Path to row names file
-#' @param verbose Verbosity level
 #' @param memory_threshold_mb Memory threshold in MB
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
@@ -430,7 +424,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),
                            beta_row_names_file = NULL,
-                           verbose = 0,
                            memory_threshold_mb = 500,
                            njobs = 1) {
     BetaHandler$new(
@@ -438,7 +431,6 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         array = array,
         genome = genome,
         beta_row_names_file = beta_row_names_file,
-        verbose = verbose,
         memory_threshold_mb = memory_threshold_mb,
         njobs = njobs
     )

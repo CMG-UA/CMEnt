@@ -99,7 +99,7 @@
 .buildConnectivityArray <- function(
     beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
     chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, verbose = 0
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -114,6 +114,7 @@
             splits <- rbind(splits, c(chunk_start, chunk_end))
         }
     }
+    verbose <- getOption("DMRsegal.verbose", verbose)
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits))
     }
@@ -729,7 +730,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                               output_prefix = NULL,
                               njobs = future::availableCores(),
                               memory_threshold_mb = 500,
-                              verbose = 1,
                               beta_row_names_file = NULL,
                               annotate_with_genes = TRUE,
                               .load_debug = FALSE) {
@@ -743,6 +743,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         on.exit(wait(), add = TRUE)
     }
 
+    verbose <- getOption("DMRsegal.verbose", verbose)
 
     # Set up future plan for parallel processing
     if (njobs < 0) {
@@ -766,9 +767,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
     options(future.globals.maxSize = globals_maxsize)
 
-    # Bridge verbose to logging option for consistent styled logs
-    old_opt <- options(DMRsegal.verbose = verbose)
-    on.exit(options(old_opt), add = TRUE)
     if (is.null(dmps) || is.null(pheno)) {
         stop("dmps and pheno parameters are required")
     }
@@ -780,7 +778,6 @@ findDMRsFromSeeds <- function(beta = NULL,
             beta_row_names_file = beta_row_names_file,
             njobs = njobs,
             memory_threshold_mb = memory_threshold_mb,
-            verbose = verbose
         )
     }
 
@@ -1269,7 +1266,6 @@ findDMRsFromSeeds <- function(beta = NULL,
             ntries = ntries,
             mid_p = mid_p,
             tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed),
-            verbose = verbose,
             njobs = njobs
         )
         if (verbose > 0) {

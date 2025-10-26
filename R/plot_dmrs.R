@@ -29,7 +29,6 @@ if (getRversion() >= "2.15.1") {
 #'
 #' # Plot first DMR
 #' plotDMR(dmrs, dmr_index = 1)
-#'
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
@@ -373,6 +372,24 @@ plotDMR <- function(dmrs,
         )
     }
 
+    if (!"in_promoter_of" %in% colnames(mcols(dmrs))) {
+        ret <- try(annotateDMRsWithGenes(dmr, genome = genome))
+        if (inherits(ret, "try-error")) {
+            warning("Failed to annotate DMR with gene information.")
+        } else {
+            dmr <- ret
+            in_promoter_of <- dmr$in_promoter_of
+            if (length(in_promoter_of) > 0 && !all(is.na(in_promoter_of))) {
+                gene_labels <- paste(in_promoter_of, collapse = ", ")
+                title <- paste0(title, "\n Overlapping Promoters: ", gene_labels)
+            }
+            body_genes <- dmr$in_gene_body_of
+            if (length(body_genes) > 0 && !all(is.na(body_genes))) {
+                gene_labels <- paste(body_genes, collapse = ", ")
+                title <- paste0(title, "\n Overlapping Gene Bodies: ", gene_labels)
+            }
+        }
+    }
 
     # Styling
     if (nrow(extended_nsup_cpgs) > 0 || nrow(extended_sup_cpgs) > 0) {
@@ -407,11 +424,11 @@ plotDMR <- function(dmrs,
         axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
     )
 
-
     # Add ticks for the DMPs on the x-axis
     breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], plot_end)
+    cpgs_labs <- paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
     breaks_labels <- c(
-        as.character(plot_start), paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")"),
+        as.character(plot_start), cpgs_labs,
         as.character(plot_end)
     )
     p <- p + ggplot2::scale_x_continuous(
@@ -420,13 +437,13 @@ plotDMR <- function(dmrs,
     )
     p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]))
     p <- p + ggplot2::labs(
-            x = sprintf("Genomic Position on %s (bp)", chr)
+        x = sprintf("Genomic Position on %s (bp)", chr)
     )
 
     if (.ret_details) {
         total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[dmp_ids, , drop = FALSE])
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
-        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs=total_shown_positions) )
+        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions))
     }
     return(p)
 }
@@ -477,8 +494,7 @@ plotDMRs <- function(dmrs,
             beta <- getBetaHandler(
                 beta = beta,
                 array = array,
-                genome = genome,
-                verbose = 0
+                genome = genome
             )
         }
         plot_list <- lapply(seq_along(dmr_indices), function(idx) {
@@ -557,8 +573,7 @@ plotDMRWithBeta <- function(dmrs,
         beta_handler <- getBetaHandler(
             beta = beta,
             array = array,
-            genome = genome,
-            verbose = 0
+            genome = genome
         )
     } else if (!"BetaHandler" %in% class(beta)) {
         stop("beta_handler must be either a file path (character) or a BetaHandler object")
@@ -581,7 +596,6 @@ plotDMRWithBeta <- function(dmrs,
     if (nrow(pheno) == 0) {
         stop("No samples in pheno match the samples in beta values")
     }
-
 
 
     # Create structure plot

@@ -371,7 +371,6 @@
 #'   directory in tempdir() with hash-based naming (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
 #' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
-#' @param verbose Logical. Whether to print progress messages (default: TRUE)
 #'
 #' @return Character. Path to the created tabix file, or NULL if conversion failed
 #'
@@ -416,8 +415,7 @@ convertBetaToTabix <- function(beta_file,
                                genome = c("hg19", "hg38", "mm10", "mm39"),
                                output_file = NULL,
                                chunk_size = 50000,
-                               njobs = 1,
-                               verbose = TRUE) {
+                               njobs = 1) {
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
     # Get sorted locations if not provided
@@ -436,9 +434,7 @@ convertBetaToTabix <- function(beta_file,
     )
 
     if (!tabix_available) {
-        if (verbose) {
-            .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
-        }
+        .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
         return(NULL)
     }
 
@@ -454,26 +450,24 @@ convertBetaToTabix <- function(beta_file,
 
         # Create cache filename based on hash
         output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
-
+        
         # Check if tabix file already exists in cache
-        if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-            if (verbose) {
-                .log_info("Using cached tabix file: ", basename(output_file))
-            }
+        if (getOption("DMRsegal.use_tabix_cache", TRUE) && file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
+            .log_info("Using cached tabix file: ", basename(output_file), level = 2)
             return(output_file)
+        }
+        if (!getOption("DMRsegal.use_tabix_cache", TRUE)) {
+            output_file <- file.path(tempdir(), paste0("beta_", beta_hash, ".bed.gz"))
+            .log_info("Tabix caching disabled; will create new tabix file at a temporary location: ", basename(output_file), level = 2)
         }
     }
 
-    if (verbose) {
-        .log_step("Converting beta file to tabix format...")
-    }
+    .log_step("Converting beta file to tabix format...", level = 1)
 
     tryCatch(
         {
             # Read header to get column names
-            if (verbose) {
-                .log_step("Reading beta file header...", level = 2)
-            }
+            .log_step("Reading beta file header...", level = 2)
 
             header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
             header_line <- readLines(header_conn, n = 1)
@@ -481,9 +475,7 @@ convertBetaToTabix <- function(beta_file,
             col_names <- strsplit(header_line, "\t")[[1]]
 
             # Get total number of rows for progress tracking
-            if (verbose) {
-                .log_step("Counting rows in beta file...", level = 2)
-            }
+            .log_step("Counting rows in beta file...", level = 2)
 
             # Count lines efficiently (cross-platform)
             if (endsWith(beta_file, ".gz")) {
@@ -504,9 +496,7 @@ convertBetaToTabix <- function(beta_file,
             }
             n_rows <- n_lines - 1 # Exclude header
 
-            if (verbose) {
-                .log_info("Processing ", n_rows, " CpG sites...", level = 2)
-            }
+            .log_info("Processing ", n_rows, " CpG sites...", level = 2)
 
             # Create temporary BED file for writing chunks
             temp_bed <- tempfile(fileext = ".bed")
@@ -521,12 +511,10 @@ convertBetaToTabix <- function(beta_file,
             rows_processed <- 0
 
             while (rows_processed < n_rows) {
-                if (verbose && getOption("DMRsegal.verbose", 1) > 1) {
-                    .log_info("Processing rows ", rows_processed + 1, " to ",
+                .log_info("Processing rows ", rows_processed + 1, " to ",
                         min(rows_processed + chunk_size, n_rows), "...",
                         level = 3
                     )
-                }
 
                 # Read chunk
                 chunk_data <- data.table::fread(
@@ -578,23 +566,17 @@ convertBetaToTabix <- function(beta_file,
                 skip_rows <- skip_rows + nrow(chunk_data)
             }
 
-            if (verbose) {
-                .log_success("Processed ", rows_processed, " rows", level = 2)
-            }
+            .log_success("Processed ", rows_processed, " rows", level = 2)
 
             # Check if any data was written
             if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
-                if (verbose) {
-                    .log_warn("No common CpGs found between beta file and genomic locations")
-                }
+                .log_warn("No common CpGs found between beta file and genomic locations")
                 unlink(temp_bed)
                 return(NULL)
             }
 
             # Sort, compress with bgzip, and index with tabix
-            if (verbose) {
-                .log_step("Sorting BED file...", level = 2)
-            }
+            .log_step("Sorting BED file...", level = 2)
             temp_sorted <- tempfile(fileext = ".bed")
 
             # Platform-specific sorting
@@ -708,9 +690,7 @@ convertBetaToTabix <- function(beta_file,
             }
 
             # Compress with bgzip
-            if (verbose) {
-                .log_step("Compressing with bgzip...", level = 2)
-            }
+            .log_step("Compressing with bgzip...", level = 2)
 
             if (is_windows) {
                 bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
@@ -723,9 +703,7 @@ convertBetaToTabix <- function(beta_file,
             }
 
             # Index with tabix
-            if (verbose) {
-                .log_step("Creating tabix index...", level = 2)
-            }
+            .log_step("Creating tabix index...", level = 2)
 
             if (is_windows) {
                 tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
@@ -742,21 +720,15 @@ convertBetaToTabix <- function(beta_file,
             unlink(temp_sorted)
 
             if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-                if (verbose) {
-                    .log_success("Tabix file created: ", output_file)
-                }
+                .log_success("Tabix file created: ", output_file, level=1)
                 return(output_file)
             } else {
-                if (verbose) {
-                    .log_warn("Failed to create tabix index")
-                }
+                .log_warn("Failed to create tabix index")
                 NULL
             }
         },
         error = function(e) {
-            if (verbose) {
-                .log_warn("Error converting to tabix: ", e$message)
-            }
+            .log_warn("Error converting to tabix: ", e$message)
             NULL
         }
     )
@@ -893,6 +865,33 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 
+.lift_over_from_genome_to_genome <- function(granges, from_genome, to_genome) {
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
+        path.expand("~"),
+        ".cache", "DMRsegal", "annotations"
+    ))
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    chain_name <- paste0(from_genome, "To", stringr::str_to_title(to_genome), ".over.chain")
+    chain_file <- file.path(cache_dir, chain_name)
+    if (!file.exists(chain_file)) {
+        utils::download.file(
+            url = paste0(
+                "http://hgdownload.soe.ucsc.edu/goldenPath/",
+                from_genome, "/liftOver/", chain_name, ".gz"
+            ),
+            destfile = paste0(chain_file, ".gz"), mode = "wb"
+        )
+        R.utils::gunzip(paste0(chain_file, ".gz"), overwrite = TRUE)
+    }
+    chain <- rtracklayer::import.chain(chain_file)
+    lifted <- rtracklayer::liftOver(granges, chain)
+    lifted_unlisted <- unlist(lifted)
+    return(lifted_unlisted)
+}
+
+
 #' Get Sorted Array Locations
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
@@ -979,39 +978,21 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
-    chain_name <- NULL
     from_genome <- NULL
     if (genome == "mm39") {
-        chain_name <- "mm10ToMm39.over.chain"
         from_genome <- "mm10"
     }
     if (genome == "hg38") {
         if (tolower(array) != "epicv2") {
-            chain_name <- "hg19ToHg38.over.chain"
             from_genome <- "hg19"
         }
     } else {
         if (tolower(array) == "epicv2") {
-            chain_name <- "hg38ToHg19.over.chain"
             from_genome <- "hg38"
         }
     }
-    if (!is.null(chain_name)) {
-        chain_file <- file.path(cache_dir, chain_name)
-        if (!file.exists(chain_file)) {
-            utils::download.file(
-                url = paste0(
-                    "http://hgdownload.soe.ucsc.edu/goldenPath/",
-                    from_genome, "/liftOver/", chain_name, ".gz"
-                ),
-                destfile = paste0(chain_file, ".gz"), mode = "wb"
-            )
-            R.utils::gunzip(paste0(chain_file, ".gz"), remove = FALSE)
-        }
-        chain <- rtracklayer::import.chain(chain_file)
-        locs <- rtracklayer::liftOver(locs, chain)
-        # pick first mapping if multiple
-        locs <- unlist(locs)
+    if (!is.null(from_genome)) {
+        locs <- .lift_over_from_genome_to_genome(locs, from_genome, genome)
     }
     locs <- sort(locs)
     locs <- as.data.frame(locs)
@@ -1243,8 +1224,8 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), us
 #'
 #' @return The input Dataframe/GRanges object with additional metadata columns:
 #' \itemize{
-#'   \item promoter_genes: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
-#'   \item gene_body_genes: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+#'   \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
+#'   \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
 #' }
 #'
 #' @details
@@ -1277,6 +1258,10 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), us
 annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200) {
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
+        path.expand("~"),
+        ".cache", "DMRsegal", "annotations"
+    ))
     dmrs_df_provided <- is.data.frame(dmrs)
     if (dmrs_df_provided) {
         dmrs <- GenomicRanges::makeGRangesFromDataFrame(dmrs,
@@ -1284,6 +1269,15 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
             na.rm = TRUE
         )
+    } else {
+        if (!is(dmrs, "GRanges")) {
+            stop("dmrs must be a data.frame or GRanges object")
+        }
+        # if the genome info in the dmrs is different from the specified genome, update the locations with liftOver
+        dmrs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(dmrs))[[1]]
+        if (dmrs_genome != genome) {
+            dmrs <- .lift_over_from_genome_to_genome(dmrs, dmrs_genome, genome)
+        }
     }
     # Select appropriate TxDb and org.db based on genome
     txdb_pkg <- switch(genome,
@@ -1321,12 +1315,31 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     txdb <- getExportedValue(txdb_pkg, txdb_pkg)
 
     # Get genes and promoters
-    genes <- GenomicFeatures::genes(txdb)
-
-    transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
-    promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
-    promoters <- stack(promoters)
-
+    # Load them from cache if available
+    suppressMessages({
+        genes_file <- file.path(cache_dir, paste0("genes_", genome, ".rds"))
+        if (file.exists(genes_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
+            .log_info("Loading cached genes from ", genes_file, level = 2)
+            genes <- readRDS(genes_file)
+        } else {
+            genes <- GenomicFeatures::genes(txdb)
+            # get genes only within standard chromosomes
+            std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::seqinfo(txdb))
+            genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% std_chroms]
+            saveRDS(genes, genes_file)
+        }
+        promoters_file <- file.path(cache_dir, paste0("promoters_", genome, ".rds"))
+        if (file.exists(promoters_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
+            .log_info("Loading cached promoters from ", promoters_file, level = 2)
+            promoters <- readRDS(promoters_file)
+        } else {
+            transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
+            transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
+            promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
+            promoters <- stack(promoters)
+            saveRDS(promoters, promoters_file)
+        }
+    })
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 1)
     .log_step("Finding overlaps with promoters and gene bodies...", level = 1)
 
@@ -1350,8 +1363,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     # Initialize annotation columns
     n_dmrs <- length(dmrs)
-    dmrs$promoter_genes <- rep(NA_character_, n_dmrs)
-    dmrs$gene_body_genes <- rep(NA_character_, n_dmrs)
+    dmrs$in_promoter_of <- rep(NA_character_, n_dmrs)
+    dmrs$in_gene_body_of <- rep(NA_character_, n_dmrs)
 
     # Convert Entrez IDs to symbols only if there are overlaps
     promoter_symbols <- character(0)
@@ -1395,7 +1408,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             idx <- as.integer(i)
             genes_vec <- unique(na.omit(promoter_by_dmr[[i]]))
             if (length(genes_vec) > 0) {
-                dmrs$promoter_genes[idx] <- paste(genes_vec, collapse = ",")
+                dmrs$in_promoter_of[idx] <- paste(genes_vec, collapse = ",")
             }
         }
     }
@@ -1412,7 +1425,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             idx <- as.integer(i)
             genes_vec <- unique(na.omit(gene_body_by_dmr[[i]]))
             if (length(genes_vec) > 0) {
-                dmrs$gene_body_genes[idx] <- paste(genes_vec, collapse = ",")
+                dmrs$in_gene_body_of[idx] <- paste(genes_vec, collapse = ",")
             }
         }
     }

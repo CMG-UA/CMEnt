@@ -77,7 +77,7 @@ test_that("plotDMR works with custom title", {
     p <- plotDMR(dmrs, dmr_index = 1, title = custom_title)
 
     expect_s3_class(p, "ggplot")
-    expect_equal(p$labels$title, custom_title)
+    expect_match(p$labels$title, paste0("^", custom_title, ".*$"))
 })
 
 test_that("plotDMRs creates a combined plot", {
@@ -136,12 +136,13 @@ test_that("plotDMRWithBeta works", {
     pheno <- DMRsegaldata::pheno
     beta <- DMRsegaldata::beta
 
-    p <- plotDMRWithBeta(
+    p <- suppressWarnings( plotDMRWithBeta(
         dmrs = dmrs,
         dmr_index = 1,
         beta = beta,
         pheno = pheno,
         sample_group_col = "Sample_Group"
+    )
     )
 
     expect_true(!is.null(p))

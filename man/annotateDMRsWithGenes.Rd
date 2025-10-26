@@ -26,8 +26,8 @@ to define promoter region (default: 200)}
 \value{
 The input Dataframe/GRanges object with additional metadata columns:
 \itemize{
-\item promoter_genes: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
-\item gene_body_genes: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+\item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
+\item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
 }
 }
 \description{

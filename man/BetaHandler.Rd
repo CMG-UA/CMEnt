@@ -53,7 +53,6 @@ Create a new BetaHandler object
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   beta_row_names_file = NULL,
-  verbose = 0,
   memory_threshold_mb = 500,
   njobs = 1
 )}\if{html}{\out{</div>}}
