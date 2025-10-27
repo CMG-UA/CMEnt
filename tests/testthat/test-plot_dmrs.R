@@ -74,7 +74,7 @@ test_that("plotDMR works with custom title", {
     }
 
     custom_title <- "Test DMR Title"
-    p <- plotDMR(dmrs, dmr_index = 1, plot_title = F)
+    p <- plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
 
     expect_s3_class(p, "ggplot")
 })
@@ -135,7 +135,7 @@ test_that("plotDMRWithBeta works", {
     pheno <- DMRsegaldata::pheno
     beta <- DMRsegaldata::beta
 
-    p <- suppressWarnings( plotDMRWithBeta(
+    p <- suppressWarnings(plotDMRWithBeta(
         dmrs = dmrs,
         dmr_index = 1,
         beta = beta,

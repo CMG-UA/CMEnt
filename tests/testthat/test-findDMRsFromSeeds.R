@@ -21,7 +21,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         njobs = 1,
         memory_threshold_mb = 500 # Small threshold allows in-memory loading
     )
-    
+
     # Assertions
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {

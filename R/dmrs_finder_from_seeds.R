@@ -97,9 +97,9 @@
 
 
 .buildConnectivityArray <- function(
-  beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
+    beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -668,7 +668,6 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 .calculateBetaStats <- function(beta_values, beta_col_names, pheno,
                                 casecontrol_col,
                                 dmp_groups_info, aggfun) {
-    
     ret <- list()
     for (dmp_group in names(dmp_groups_info)) {
         if (!is.null(dmp_groups_info[[dmp_group]])) {
@@ -1443,7 +1442,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         group_beta_stats <- as.data.frame(beta_stats[[dmr_group]])
         rownames(group_beta_stats) <- all_selected_cpgs
         grouped_dmrs <- list()
-        for (dmr_ind in seq_along(extended_dmrs)) {
+        for (dmr_ind in seq_len(nrow(extended_dmrs))) {
             dmr <- extended_dmrs[dmr_ind, ]
             dmr_dmps <- strsplit(dmr$dmps, ",")[[1]]
             dmr$cases_beta <- aggfun(abs(group_beta_stats[dmr_dmps, "cases_beta"])) * sign(sum(sign(group_beta_stats[dmr_dmps, "cases_beta"])))
@@ -1485,7 +1484,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     dmrs <- extended_dmrs_with_groups
     .log_success("DMR delta-beta information added.", level = 2)
 
-    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
     dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
         dmrs,
         keep.extra.columns = TRUE,
@@ -1499,6 +1497,9 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 2)
     }
+    dmrs <- as.data.frame(dmrs_granges)
+    colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
+    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
 
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")

@@ -450,7 +450,7 @@ convertBetaToTabix <- function(beta_file,
 
         # Create cache filename based on hash
         output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
-        
+
         # Check if tabix file already exists in cache
         if (getOption("DMRsegal.use_tabix_cache", TRUE) && file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
             .log_info("Using cached tabix file: ", basename(output_file), level = 2)
@@ -512,9 +512,9 @@ convertBetaToTabix <- function(beta_file,
 
             while (rows_processed < n_rows) {
                 .log_info("Processing rows ", rows_processed + 1, " to ",
-                        min(rows_processed + chunk_size, n_rows), "...",
-                        level = 3
-                    )
+                    min(rows_processed + chunk_size, n_rows), "...",
+                    level = 3
+                )
 
                 # Read chunk
                 chunk_data <- data.table::fread(
@@ -634,7 +634,7 @@ convertBetaToTabix <- function(beta_file,
                         # Same chromosome, compare positions
                         pos1 <- as.numeric(parts1[2])
                         pos2 <- as.numeric(parts2[2])
-                        return(pos1 < pos2)
+                        pos1 < pos2
                     }
 
                     # Open all chunk files and read first line from each
@@ -720,7 +720,7 @@ convertBetaToTabix <- function(beta_file,
             unlink(temp_sorted)
 
             if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-                .log_success("Tabix file created: ", output_file, level=1)
+                .log_success("Tabix file created: ", output_file, level = 1)
                 return(output_file)
             } else {
                 .log_warn("Failed to create tabix index")
@@ -865,7 +865,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 
-.lift_over_from_genome_to_genome <- function(granges, from_genome, to_genome) {
+.liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
         ".cache", "DMRsegal", "annotations"
@@ -888,7 +888,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
     lifted_unlisted <- unlist(lifted)
-    return(lifted_unlisted)
+    lifted_unlisted
 }
 
 
@@ -992,7 +992,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         }
     }
     if (!is.null(from_genome)) {
-        locs <- .lift_over_from_genome_to_genome(locs, from_genome, genome)
+        locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
     locs <- sort(locs)
     locs <- as.data.frame(locs)
@@ -1276,7 +1276,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         # if the genome info in the dmrs is different from the specified genome, update the locations with liftOver
         dmrs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(dmrs))[[1]]
         if (dmrs_genome != genome) {
-            dmrs <- .lift_over_from_genome_to_genome(dmrs, dmrs_genome, genome)
+            dmrs <- .liftOverFromGenomeToGenome(dmrs, dmrs_genome, genome)
         }
     }
     # Select appropriate TxDb and org.db based on genome
@@ -1356,7 +1356,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
 
     # Extract Entrez IDs
-    promoter_regions <-  promoters[S4Vectors::subjectHits(promoter_overlaps)]
+    promoter_regions <- promoters[S4Vectors::subjectHits(promoter_overlaps)]
 
     promoter_entrez <- as.character(mcols(promoter_regions)$name)
     gene_body_entrez <- names(genes)[S4Vectors::subjectHits(gene_body_overlaps)]

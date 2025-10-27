@@ -31,13 +31,13 @@ if (getRversion() >= "2.15.1") {
 #'
 #' # Plot first DMR with title
 #' plotDMR(dmrs, dmr_index = 1)
-#' 
+#'
 #' # Plot without title (title will be logged)
 #' plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
-#' 
+#'
 #' # Plot with custom p-value column
 #' plotDMR(dmrs, dmr_index = 1, pval_col = "pval_raw")
-#' 
+#'
 #' # Plot with extended region
 #' plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
 #' }
@@ -487,7 +487,7 @@ minmaxscale <- function(x) {
 #' # Plot structure only
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
-#' 
+#'
 #' # Plot with beta values heatmap
 #' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
 #' }
@@ -577,7 +577,7 @@ plotDMRs <- function(dmrs,
 #'
 #' # Using a file path (handler created automatically)
 #' plotDMRWithBeta(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
-#' 
+#'
 #' # Using a beta matrix
 #' plotDMRWithBeta(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 #' }
