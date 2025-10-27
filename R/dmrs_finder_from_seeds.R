@@ -77,7 +77,7 @@
 #' }
 #'
 #' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame findOverlaps
-#' @importFrom future.apply future_lapply
+#' @importFrom future.apply future_lapply future_mapply
 #' @importFrom future availableCores
 #' @importFrom progressr progressor
 #' @importFrom stringr str_count str_order
@@ -1091,6 +1091,23 @@ findDMRsFromSeeds <- function(beta = NULL,
             SIMPLIFY = FALSE,
             future.seed = TRUE,
             future.stdout = NA,
+            future.globals = c(
+                "group_inds",
+                "case_mask",
+                "max_lookup_dist",
+                "max_pval",
+                "aggfun",
+                "pval_mode",
+                "empirical_strategy",
+                "ntries",
+                "mid_p",
+                "tries_seed",
+                "min_dmps",
+                ".testConnectivityBatch",
+                ".log_step",
+                ".log_success",
+                ".log_info"
+            ),
             FUN = function(chr, cdmps, cdmps_beta, cdmps_locs, gdmps_tsv_list) {
                 op <- options(warn = 2)$warn
                 dmr_list <- vector("list", length = 128L)

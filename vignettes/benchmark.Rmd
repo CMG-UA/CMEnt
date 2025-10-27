@@ -94,7 +94,7 @@ DMRsegal uses a seed-based approach, starting from significant DMPs and extendin
 DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds") # nolint
 if (!file.exists(DMRsegal_file)) {
     # Write DMPs to temp file
-
+    options("DMRsegal.verbose" = 1)
     progressr::handlers("cli")
     dmrs_segal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
         beta = beta_handler,
