@@ -937,7 +937,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         array, "_", genome,
         "_locations.rds"
     ))
-    if (file.exists(cache_file)) {
+    if (getOption("DMRsegal.use_annotation_cache", TRUE) && file.exists(cache_file)) {
         locs <- readRDS(cache_file)
         return(locs)
     }
@@ -994,10 +994,10 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
-    locs <- sort(locs)
     locs <- as.data.frame(locs)
-    locs <- locs[!duplicated(rownames(locs)), ]
     colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
+    locs <- locs[orderByLoc(rownames(locs), genomic_locs = as.data.frame(locs)), ]
+    locs <- locs[!duplicated(rownames(locs)), ]
     if (!"pos" %in% colnames(locs)) {
         locs[, "pos"] <- locs[, "start"]
     }

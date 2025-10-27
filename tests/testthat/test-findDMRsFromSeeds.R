@@ -299,7 +299,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     # Test with wrong column names in pheno
     pheno_wrong <- pheno
-    colnames(pheno_wrong) <- c("wrong_col1", "wrong_col2", "wrong_col3", "wrong_col4")
+    colnames(pheno_wrong) <- c("wrong_col1", "wrong_col2", "wrong_col3")
 
     expect_error(
         findDMRsFromSeeds(
@@ -318,7 +318,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     beta <- DMRsegaldata::beta
     dmps <- DMRsegaldata::dmps
     pheno <- DMRsegaldata::pheno
-
+    options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
         beta = beta,
@@ -350,7 +350,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
-
+    options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
         beta = beta,
         dmps = dmps,
@@ -360,7 +360,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         min_cpgs = 2,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 0.1
     )
 
     expect_called(mock_convertBetaToTabix, 0)

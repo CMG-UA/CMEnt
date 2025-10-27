@@ -453,9 +453,9 @@ plotDMR <- function(dmrs,
     if (.ret_details) {
         total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[dmp_ids, , drop = FALSE])
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
-        return(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions))
+        return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
-    return(p)
+    invisible(p)
 }
 
 minmaxscale <- function(x) {
@@ -534,12 +534,12 @@ plotDMRs <- function(dmrs,
                 ...
             )
         })
-        return(plot_list)
+        invisible(plot_list)
     } else {
         plot_list <- lapply(dmr_indices, function(i) {
             plotDMR(dmrs, dmr_index = i, pval_col = pval_col, ...)
         })
-        return(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
+        invisible(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
     }
 }
 
@@ -686,7 +686,7 @@ plotDMRWithBeta <- function(dmrs,
         ggplot2::scale_fill_gradient(
             low = "white", high = "red",
             limits = c(min(beta_melted$Beta), max(beta_melted$Beta)),
-            name = "\u03b2"
+            name = "\u03b2-values"
         ) +
         ggplot2::labs(
             y = "Sample",
@@ -722,5 +722,5 @@ plotDMRWithBeta <- function(dmrs,
     combined <- gridExtra::gtable_rbind(g1, g2)
     combined$widths <- max_width
     grid::grid.draw(combined)
-    return(combined)
+    invisible(combined)
 }
