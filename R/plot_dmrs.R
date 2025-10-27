@@ -1,6 +1,6 @@
 # Avoid NSE warnings from R CMD check for ggplot2 aes()
 if (getRversion() >= "2.15.1") {
-    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "pos"))
+    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start"))
 }
 
 #' Plot DMR Structure with DMPs and Extended CpGs
@@ -14,7 +14,6 @@ if (getRversion() >= "2.15.1") {
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
-#' @param pval_col Character. The name of the column containing the aggregated p-value used in the title (default: "pval_adj").
 #' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").
 #' @param genome Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
@@ -35,9 +34,6 @@ if (getRversion() >= "2.15.1") {
 #' # Plot without title (title will be logged)
 #' plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
 #'
-#' # Plot with custom p-value column
-#' plotDMR(dmrs, dmr_index = 1, pval_col = "pval_raw")
-#'
 #' # Plot with extended region
 #' plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
 #' }
@@ -49,7 +45,6 @@ if (getRversion() >= "2.15.1") {
 plotDMR <- function(dmrs,
                     dmr_index = 1,
                     sorted_locs = NULL,
-                    pval_col = "pval_adj",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
                     genome = c("hg19", "hg38", "mm10", "mm39"),
                     extend_by_dmr_size_ratio = 0.2,
@@ -82,9 +77,9 @@ plotDMR <- function(dmrs,
     start_cpg <- dmr_data$start_cpg
     end_cpg <- dmr_data$end_cpg
     start_cpg_ind <- which(rownames(sorted_locs) == start_cpg)
-    start_cpg_pos <- sorted_locs[start_cpg_ind, "pos"]
+    start_cpg_pos <- sorted_locs[start_cpg_ind, "start"]
     end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
-    end_cpg_pos <- sorted_locs[end_cpg_ind, "pos"]
+    end_cpg_pos <- sorted_locs[end_cpg_ind, "start"]
     start_dmp <- dmr_data$start_dmp
     end_dmp <- dmr_data$end_dmp
     start_dmp_ind <- which(rownames(sorted_locs) == start_dmp)
@@ -94,7 +89,7 @@ plotDMR <- function(dmrs,
     dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
 
     # Get DMP positions
-    dmp_positions <- sorted_locs[dmp_ids, "pos"]
+    dmp_positions <- sorted_locs[dmp_ids, "start"]
     start_dmp_pos <- dmr_data$start_dmp_pos
     end_dmp_pos <- dmr_data$end_dmp_pos
 
@@ -118,10 +113,10 @@ plotDMR <- function(dmrs,
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
     nsup_cpgs <- sorted_locs[start_dmp_ind:end_dmp_ind, ]
-    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$pos < dmr_end & nsup_cpgs$pos > dmr_start & !rownames(nsup_cpgs) %in% dmp_ids), , drop = FALSE]
+    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !rownames(nsup_cpgs) %in% dmp_ids), , drop = FALSE]
 
-    downstream_nsup_cpgs <- sorted_locs[which(sorted_locs$pos > dmr_end & sorted_locs$pos <= plot_end), , drop = FALSE]
-    upstream_nsup_cpgs <- sorted_locs[which(sorted_locs$pos < dmr_start & sorted_locs$pos >= plot_start), , drop = FALSE]
+    downstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start > dmr_end & sorted_locs$start <= plot_end), , drop = FALSE]
+    upstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start < dmr_start & sorted_locs$start >= plot_start), , drop = FALSE]
     extended_nsup_cpgs <- rbind(
         nsup_cpgs,
         upstream_nsup_cpgs,
@@ -133,7 +128,7 @@ plotDMR <- function(dmrs,
     # 1. DMPs (stem plots at y=1)
     dmp_df <- data.frame(
         cpg_id = dmp_ids,
-        pos = dmp_positions,
+        start = dmp_positions,
         y = 1,
         type = "DMP",
         stringsAsFactors = FALSE
@@ -196,7 +191,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_sup_cpgs) > 0) {
         extended_sup_cpgs_df <- data.frame(
             cpg_id = rownames(extended_sup_cpgs),
-            pos = extended_sup_cpgs$pos,
+            start = extended_sup_cpgs$start,
             y = 0.5,
             type = "Extended_CpG",
             stringsAsFactors = FALSE
@@ -204,7 +199,7 @@ plotDMR <- function(dmrs,
     } else {
         extended_sup_cpgs_df <- data.frame(
             cpg_id = character(0),
-            pos = numeric(0),
+            start = numeric(0),
             y = numeric(0),
             type = character(0),
             stringsAsFactors = FALSE
@@ -214,7 +209,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_nsup_cpgs) > 0) {
         extended_nsup_cpgs_df <- data.frame(
             cpg_id = rownames(extended_nsup_cpgs),
-            pos = extended_nsup_cpgs$pos,
+            start = extended_nsup_cpgs$start,
             y = 0.5,
             type = "Extended_CpG",
             stringsAsFactors = FALSE
@@ -222,7 +217,7 @@ plotDMR <- function(dmrs,
     } else {
         extended_nsup_cpgs_df <- data.frame(
             cpg_id = character(0),
-            pos = numeric(0),
+            start = numeric(0),
             y = numeric(0),
             type = character(0),
             stringsAsFactors = FALSE
@@ -245,7 +240,7 @@ plotDMR <- function(dmrs,
     # Plot DMP stems
     p <- p + ggplot2::geom_segment(
         data = dmp_df,
-        ggplot2::aes(x = pos, xend = pos, y = 0, yend = y),
+        ggplot2::aes(x = start, xend = start, y = 0, yend = y),
         color = "#377EB8",
         linewidth = 1.2,
         arrow = ggplot2::arrow(length = ggplot2::unit(0.15, "cm"), type = "closed")
@@ -255,7 +250,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_sup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_segment(
             data = extended_sup_cpgs_df,
-            ggplot2::aes(x = pos, xend = pos, y = 0, yend = y),
+            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
             color = "#377EB8",
             linewidth = 0.8,
             alpha = 0.8
@@ -266,7 +261,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_nsup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_segment(
             data = extended_nsup_cpgs_df,
-            ggplot2::aes(x = pos, xend = pos, y = 0, yend = y),
+            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
             color = "gray50",
             linewidth = 0.8,
             alpha = 0.5
@@ -276,7 +271,7 @@ plotDMR <- function(dmrs,
     # Plot DMP points
     p <- p + ggplot2::geom_point(
         data = dmp_df,
-        ggplot2::aes(x = pos, y = y),
+        ggplot2::aes(x = start, y = y),
         color = "#377EB8",
         size = 3,
         shape = 16
@@ -286,7 +281,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_sup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_point(
             data = extended_sup_cpgs_df,
-            ggplot2::aes(x = pos, y = y),
+            ggplot2::aes(x = start, y = y),
             color = "#377EB8",
             size = 2,
             shape = 16,
@@ -298,7 +293,7 @@ plotDMR <- function(dmrs,
     if (nrow(extended_nsup_cpgs_df) > 0) {
         p <- p + ggplot2::geom_point(
             data = extended_nsup_cpgs_df,
-            ggplot2::aes(x = pos, y = y),
+            ggplot2::aes(x = start, y = y),
             color = "gray70",
             size = 2,
             shape = 16,
@@ -336,7 +331,7 @@ plotDMR <- function(dmrs,
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_cpgs$pos), start_dmp_pos, start_dmp_pos, min(upstream_sup_cpgs$pos)),
+            x = c(min(upstream_sup_cpgs$start), start_dmp_pos, start_dmp_pos, min(upstream_sup_cpgs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -359,7 +354,7 @@ plotDMR <- function(dmrs,
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_dmp_pos, max(downstream_sup_cpgs$pos), max(downstream_sup_cpgs$pos), end_dmp_pos),
+            x = c(end_dmp_pos, max(downstream_sup_cpgs$start), max(downstream_sup_cpgs$start), end_dmp_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -368,7 +363,7 @@ plotDMR <- function(dmrs,
 
     # Create title if not provided
     title <- sprintf(
-        "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (\u0394\u03b2=%.3f, p=%.2e)",
+        "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (\u0394\u03b2=%.3f)",
         dmr_index,
         chr,
         format(dmr_start, big.mark = ",", scientific = FALSE),
@@ -376,7 +371,6 @@ plotDMR <- function(dmrs,
         dmr_data$dmps_num,
         dmr_data$cpgs_num,
         dmr_data$delta_beta,
-        dmr_data[[pval_col]]
     )
 
     if (!"in_promoter_of" %in% colnames(mcols(dmrs))) {
@@ -432,8 +426,8 @@ plotDMR <- function(dmrs,
     )
 
     # Add ticks for the DMPs on the x-axis
-    breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], plot_end)
-    cpgs_labs <- paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "pos"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
+    breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "start"], plot_end)
+    cpgs_labs <- paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "start"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
     breaks_labels <- c(
         as.character(plot_start), cpgs_labs,
         as.character(plot_end)
@@ -472,7 +466,6 @@ minmaxscale <- function(x) {
 #' @param top_n Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
-#' @param pval_col Character. The name of the column containing the aggregated p-value (default: "pval_adj").
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param genome Character. Genome version (default: "hg19").
 #' @param array Character. Array platform type (default: "450K").
@@ -498,7 +491,6 @@ plotDMRs <- function(dmrs,
                      top_n = 4,
                      beta = NULL,
                      pheno = NULL,
-                     pval_col = "pval_adj",
                      sample_group_col = "Sample_Group",
                      genome = c("hg19", "hg38", "mm10", "mm39"),
                      array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -508,7 +500,7 @@ plotDMRs <- function(dmrs,
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(dmrs$delta_beta)) * minmaxscale(-log10(mcols(dmrs)[, pval_col] + 1e-10))
+        score <- minmaxscale(abs(dmrs$delta_beta))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -527,7 +519,6 @@ plotDMRs <- function(dmrs,
             plotDMRWithBeta(
                 dmrs = dmrs,
                 dmr_index = i,
-                pval_col = pval_col,
                 beta = beta,
                 pheno = pheno,
                 sample_group_col = sample_group_col,
@@ -537,7 +528,7 @@ plotDMRs <- function(dmrs,
         invisible(plot_list)
     } else {
         plot_list <- lapply(dmr_indices, function(i) {
-            plotDMR(dmrs, dmr_index = i, pval_col = pval_col, ...)
+            plotDMR(dmrs, dmr_index = i, ...)
         })
         invisible(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
     }
@@ -559,7 +550,6 @@ plotDMRs <- function(dmrs,
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (default: "hg19").
-#' @param pval_col Character. The name of the column containing the aggregated p-value (default: "pval_adj").
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
@@ -589,7 +579,6 @@ plotDMRWithBeta <- function(dmrs,
                             sorted_locs = NULL,
                             array = c("450K", "27K", "EPIC", "EPICv2"),
                             genome = c("hg19", "hg38", "mm10", "mm39"),
-                            pval_col = "pval_adj",
                             sample_group_col = "Sample_Group",
                             extend_by_dmr_size_ratio = 0.2,
                             min_extension_bp = 50,
@@ -635,7 +624,6 @@ plotDMRWithBeta <- function(dmrs,
         dmr_index = dmr_index,
         array = array,
         genome = genome,
-        pval_col = pval_col,
         plot_title = plot_title,
         extend_by_dmr_size_ratio = extend_by_dmr_size_ratio,
         min_extension_bp = min_extension_bp,
@@ -646,7 +634,7 @@ plotDMRWithBeta <- function(dmrs,
     breaks_labels <- ret$breaks_labels
     total_shown_positions <- ret$total_locs
     cpg_ids <- rownames(total_shown_positions)
-    cpg_locs <- total_shown_positions[, c("chr", "pos")]
+    cpg_locs <- total_shown_positions[, c("chr", "start")]
 
     # Read beta values using BetaHandler
     beta_data <- beta_handler$getBeta(
@@ -673,7 +661,7 @@ plotDMRWithBeta <- function(dmrs,
     beta_data[, "CpG"] <- rownames(beta_data)
     beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
-    beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "pos"]
+    beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
     beta_melted$is_DMP <- is_dmp[match(beta_melted$CpG, cpg_ids)]
     beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
 

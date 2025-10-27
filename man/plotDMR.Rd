@@ -8,7 +8,6 @@ plotDMR(
   dmrs,
   dmr_index = 1,
   sorted_locs = NULL,
-  pval_col = "pval_adj",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   extend_by_dmr_size_ratio = 0.2,
@@ -23,8 +22,6 @@ plotDMR(
 \item{dmr_index}{Integer. Which DMR to plot (default: 1).}
 
 \item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
-
-\item{pval_col}{Character. The name of the column containing the aggregated p-value used in the title (default: "pval_adj").}
 
 \item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").}
 
@@ -58,9 +55,6 @@ plotDMR(dmrs, dmr_index = 1)
 
 # Plot without title (title will be logged)
 plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
-
-# Plot with custom p-value column
-plotDMR(dmrs, dmr_index = 1, pval_col = "pval_raw")
 
 # Plot with extended region
 plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)

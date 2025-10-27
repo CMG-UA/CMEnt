@@ -81,8 +81,7 @@ cat("\n=== Example 4: Publication-quality plot ===\n")
 interesting_idx <- which(
     dmr_data$dmps_num >= 2 & 
     dmr_data$cpgs_num >= 10 & 
-    abs(dmr_data$delta_beta) > 0.2 &
-    dmr_data$pval_adj < 0.05
+    abs(dmr_data$delta_beta) > 0.2
 )[1]
 
 if (!is.na(interesting_idx)) {
@@ -121,7 +120,6 @@ summary_data <- data.frame(
     n_dmps = dmr_data$dmps_num,
     n_cpgs = dmr_data$cpgs_num,
     delta_beta = dmr_data$delta_beta,
-    neg_log10_pval = -log10(dmr_data$pval_adj + 1e-300),
     width = GenomicRanges::width(dmrs)
 )
 

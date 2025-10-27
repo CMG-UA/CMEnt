@@ -279,19 +279,9 @@
 }
 
 #' Internal logging helpers using cli
-#' @keywords internal
-#' @noRd
-.log_info <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 0) < level) {
-        return(invisible())
-    }
-    msg <- paste0(..., collapse = "")
-    lead <- paste(rep("\t", level - 1), .col(cli::symbol$info, "blue"), sep = "")
-    message(paste(lead, msg))
-    invisible()
-}
 
 #' @keywords internal
+#' @noRd
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
@@ -300,29 +290,47 @@
 }
 
 #' @keywords internal
+#' @noRd
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
     dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
     msg <- paste0(paste0(..., collapse = ""), dur)
-    lead <- paste(rep("\t", level - 1), .col(cli::symbol$tick, "green"), sep = "")
+    lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))
     invisible()
 }
 
 #' @keywords internal
+#' @noRd
+.log_info <- function(..., .envir = parent.frame(), level = 1) {
+    if (getOption("DMRsegal.verbose", 0) < level) {
+        return(invisible())
+    }
+    msg <- paste0(..., collapse = "")
+    lead <- paste(rep(" ", level - 1), .col(cli::symbol$info, "blue"), sep = "")
+    message(paste(lead, msg))
+    invisible()
+}
+
+
+
+#' @keywords internal
+#' @noRd
 .log_step <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
     .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
-    lead <- paste(rep("\t", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
+    lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
     invisible()
 }
 
+#' @keywords internal
+#' @noRd
 .processSamplesheet <- function(args,
                                 subset = NULL) {
     samplesheet_file <- args$samplesheet
@@ -354,6 +362,143 @@
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret
 }
+CHROMOSOMES <- c(as.character(1:22), "X", "Y", "MT") # nolint
+CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
+
+processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", start_col = "start", end_col = NULL, id_col = NULL, score_col = NULL, strand_col = NULL, output_dir = NULL) {
+    tabix_available <- tryCatch(
+        {
+            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
+            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
+            TRUE
+        },
+        error = function(e) FALSE,
+        warning = function(w) FALSE
+    )
+
+    if (!tabix_available) {
+        stop("tabix/bgzip not found in PATH. Cannot process BED file.")
+    }
+
+    if (is.null(output_dir)) {
+        cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache"))
+    } else {
+        cache_dir <- output_dir
+    }
+    hash <- .getFileHash(bed_file)
+    normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
+
+    # Read BED file header
+    bed_header <- strsplit(readLines(bed_file, n = 1), "\t")[[1]]
+    # Ensure required columns are present
+    required_cols <- c(chrom_col, start_col, end_col, id_col)
+    if (!is.null(score_col)) {
+        required_cols <- c(required_cols, score_col)
+    }
+    if (!is.null(strand_col)) {
+        required_cols <- c(required_cols, strand_col)
+    }
+    missing_cols <- setdiff(required_cols, bed_header)
+    if (length(missing_cols) > 0) {
+        stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
+    }
+    sample_ids <- rownames(pheno)
+    existing_ids <- setdiff(sample_ids, bed_header)
+
+    # Map existing sample IDs to BED file rows
+    id_mapping <- match(existing_ids, bed_header)
+    id_mapping <- id_mapping[!is.na(id_mapping)]
+    if (length(id_mapping) == 0) {
+        stop("None of the provided sample IDs were found in the BED file header.")
+    }
+    if (length(id_mapping) < length(sample_ids)) {
+        missing_ids <- setdiff(sample_ids, bed_header)
+        .log_warn(length(missing_ids), " out of ", length(sample_ids), " sample IDs were not found in the BED file header and will be ignored. The IDs are: ", paste(missing_ids, collapse = ", "))
+    }
+
+    # Quickly read number of rows in BED file
+    num_rows <- sum(sapply(readLines(con), function(x) nchar(x) > 0)) - 1
+    .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
+
+    library(bigmatrix)
+    sorted_locs <- bigmatrix::big.matrix(nrow = num_rows, ncol = 4,
+        type = "integer",
+        backingfile = file.path(cache_dir, paste0("bed_locations_", hash)),
+        descriptorfile = file.path(cache_dir, paste0("bed_locations_", hash, ".desc")),
+        dimnames = list(NULL, c("chr", "start", "end"))
+    )
+
+    # Read chunks of the BED file to minimize memory usage
+    chunk_size <- 100000
+    con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
+    norm_bed_con <- file(normalized_bed_file, "w")
+    # Write normalized header to new BED file
+    norm_bed_header <- c("#chrom", "start", "end", "id", "score", "strand", existing_ids)
+    writeLines(paste(norm_bed_header, collapse = "\t"), norm_bed_con)
+    # Skip header line
+    readLines(con, n = 1)
+    count <- 0
+    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
+        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
+        colnames(bed_data) <- bed_header
+        bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = CHROMOSOMES))
+        bed_data$start <- as.integer(bed_data[[start_col]])
+        if (!is.null(end_col)) {
+            bed_data$end <- as.integer(bed_data[[end_col]])
+        } else {
+            bed_data$end <- bed_data$start + 1
+        }
+        if (!is.null(score_col)) {
+            colnames(bed_data)[which(colnames(bed_data) == score_col)] <- "score"
+        } else {
+            bed_data$score <- "."
+        }
+        if (!is.null(strand_col)) {
+            colnames(bed_data)[which(colnames(bed_data) == strand_col)] <- "strand"
+        } else {
+            bed_data$strand <- "."
+        }
+        if (!is.null(id_col)) {
+            colnames(bed_data)[which(colnames(bed_data) == id_col)] <- "id"
+            bed_data$id <- bed_data[[id_col]]
+        } else {
+            bed_data$id <- "."
+        }
+        loc_data <- bed_data[, c("chr", "start", "end"), drop = FALSE]
+
+        sorted_locs[count + 1:(count + nrow(loc_data)), ] <- as.matrix(loc_data)
+        count <- count + nrow(loc_data)
+        # Write normalized BED data
+        bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
+        data.table::fwrite(
+            bed_subset,
+            file = norm_bed_con,
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE,
+            col.names = FALSE,
+            append = TRUE
+        )
+    }
+    close(con)
+    close(norm_bed_con)
+
+    sorted_locs <- sorted_locs[order(sorted_locs[, 1], sorted_locs[, 2]), ]
+
+    # Convert to tabix
+    convertBetaToTabix(
+        .bed_file = normalized_bed_file,
+        output_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
+        chunk_size = 50000,
+        njobs = 1
+    )
+    saveRDS(sorted_locs, file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds")))
+    return(list(
+        tabix_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
+        locations_file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
+    ))
+}
+
 
 #' Convert Beta File to Tabix-Indexed Format
 #'
@@ -363,7 +508,7 @@
 #' to avoid redundant conversions of the same beta file.
 #'
 #' @param beta_file Character. Path to the input beta values file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'pos' columns.
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
 #' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
@@ -413,15 +558,12 @@ convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
                                genome = c("hg19", "hg38", "mm10", "mm39"),
+                               locations_file = NULL,
                                output_file = NULL,
                                chunk_size = 50000,
-                               njobs = 1) {
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
-    # Get sorted locations if not provided
-    if (is.null(sorted_locs)) {
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
-    }
+                               njobs = 1,
+                               .bed_file = NULL) {
+
     # Check if tabix/bgzip are available
     tabix_available <- tryCatch(
         {
@@ -466,113 +608,114 @@ convertBetaToTabix <- function(beta_file,
 
     tryCatch(
         {
-            # Read header to get column names
-            .log_step("Reading beta file header...", level = 2)
-
-            header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
-            header_line <- readLines(header_conn, n = 1)
-            close(header_conn)
-            col_names <- strsplit(header_line, "\t")[[1]]
-
-            # Get total number of rows for progress tracking
-            .log_step("Counting rows in beta file...", level = 2)
-
-            # Count lines efficiently (cross-platform)
-            if (endsWith(beta_file, ".gz")) {
-                conn <- gzfile(beta_file, "r")
-                n_lines <- 0
-                while (length(readLines(conn, n = 10000)) > 0) {
-                    n_lines <- n_lines + 10000
+            if (is.null(.bed_file)) {
+                array <- strex::match_arg(array, ignore_case = TRUE)
+                genome <- strex::match_arg(genome, ignore_case = TRUE)
+                # Get sorted locations if not provided
+                if (is.null(sorted_locs)) {
+                    sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
                 }
-                close(conn)
-                # Recount accurately
-                conn <- gzfile(beta_file, "r")
+                # Read header to get column names
+                .log_step("Reading beta file header...", level = 2)
+
+                header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
+                header_line <- readLines(header_conn, n = 1)
+                close(header_conn)
+                col_names <- strsplit(header_line, "\t")[[1]]
+
+                # Get total number of rows for progress tracking
+                .log_step("Counting rows in beta file...", level = 2)
+
+                # Count lines efficiently (cross-platform)
+                if (endsWith(beta_file, ".gz")) {
+                    conn <- gzfile(beta_file, "r")
+                } else {
+                    conn <- file(beta_file, "r")
+                }
                 n_lines <- length(readLines(conn))
                 close(conn)
-            } else {
-                conn <- file(beta_file, "r")
-                n_lines <- length(readLines(conn))
-                close(conn)
-            }
-            n_rows <- n_lines - 1 # Exclude header
+                n_rows <- n_lines - 1 # Exclude header
 
-            .log_info("Processing ", n_rows, " CpG sites...", level = 2)
+                .log_info("Processing ", n_rows, " CpG sites...", level = 2)
 
-            # Create temporary BED file for writing chunks
-            temp_bed <- tempfile(fileext = ".bed")
+                # Create temporary BED file for writing chunks
+                temp_bed <- tempfile(fileext = ".bed")
 
-            # Write header to temp BED file with 6 mandatory BED columns
-            bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
-            writeLines(paste(bed_header, collapse = "\t"), temp_bed)
+                # Write header to temp BED file with 6 mandatory BED columns
+                bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
+                writeLines(paste(bed_header, collapse = "\t"), temp_bed)
 
-            # Process file in chunks to avoid memory issues
+                # Process file in chunks to avoid memory issues
 
-            skip_rows <- 1 # Start after header
-            rows_processed <- 0
+                skip_rows <- 1 # Start after header
+                rows_processed <- 0
 
-            while (rows_processed < n_rows) {
-                .log_info("Processing rows ", rows_processed + 1, " to ",
-                    min(rows_processed + chunk_size, n_rows), "...",
-                    level = 3
-                )
-
-                # Read chunk
-                chunk_data <- data.table::fread(
-                    beta_file,
-                    header = FALSE,
-                    skip = skip_rows,
-                    nrows = chunk_size,
-                    data.table = FALSE,
-                    showProgress = FALSE
-                )
-
-                if (nrow(chunk_data) == 0) break
-
-                # Set column names
-                colnames(chunk_data) <- col_names
-
-                cpg_ids <- chunk_data[[1]]
-
-                # Match with genomic locations
-                common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
-
-                if (length(common_cpgs) > 0) {
-                    # Create BED format for this chunk with 6 mandatory columns
-                    bed_chunk <- sorted_locs[common_cpgs, c("chr", "pos"), drop = FALSE]
-                    bed_chunk$start <- bed_chunk$pos
-                    bed_chunk$end <- bed_chunk$pos + 1
-                    bed_chunk$id <- rownames(bed_chunk)
-                    bed_chunk$score <- 0
-                    bed_chunk$strand <- "*"
-                    bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
-
-                    # Add beta values as additional columns
-                    beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
-                    bed_chunk <- cbind(bed_chunk, beta_subset)
-
-                    # Append to temp BED file
-                    data.table::fwrite(
-                        bed_chunk,
-                        file = temp_bed,
-                        sep = "\t",
-                        quote = FALSE,
-                        row.names = FALSE,
-                        col.names = FALSE,
-                        append = TRUE
+                while (rows_processed < n_rows) {
+                    .log_info("Processing rows ", rows_processed + 1, " to ",
+                        min(rows_processed + chunk_size, n_rows), "...",
+                        level = 3
                     )
+
+                    # Read chunk
+                    chunk_data <- data.table::fread(
+                        beta_file,
+                        header = FALSE,
+                        skip = skip_rows,
+                        nrows = chunk_size,
+                        data.table = FALSE,
+                        showProgress = FALSE
+                    )
+
+                    if (nrow(chunk_data) == 0) break
+
+                    # Set column names
+                    colnames(chunk_data) <- col_names
+
+                    cpg_ids <- chunk_data[[1]]
+
+                    # Match with genomic locations
+                    common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
+
+                    if (length(common_cpgs) > 0) {
+                        # Create BED format for this chunk with 6 mandatory columns
+                        bed_chunk <- sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE]
+                        bed_chunk$end <- bed_chunk$start + 1
+                        bed_chunk$id <- rownames(bed_chunk)
+                        bed_chunk$score <- 0
+                        bed_chunk$strand <- "*"
+                        bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
+
+                        # Add beta values as additional columns
+                        beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
+                        bed_chunk <- cbind(bed_chunk, beta_subset)
+
+                        # Append to temp BED file
+                        data.table::fwrite(
+                            bed_chunk,
+                            file = temp_bed,
+                            sep = "\t",
+                            quote = FALSE,
+                            row.names = FALSE,
+                            col.names = FALSE,
+                            append = TRUE
+                        )
+                    }
+
+                    rows_processed <- rows_processed + nrow(chunk_data)
+                    skip_rows <- skip_rows + nrow(chunk_data)
                 }
 
-                rows_processed <- rows_processed + nrow(chunk_data)
-                skip_rows <- skip_rows + nrow(chunk_data)
-            }
+                .log_success("Processed ", rows_processed, " rows", level = 2)
 
-            .log_success("Processed ", rows_processed, " rows", level = 2)
-
-            # Check if any data was written
-            if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
-                .log_warn("No common CpGs found between beta file and genomic locations")
-                unlink(temp_bed)
-                return(NULL)
+                # Check if any data was written
+                if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
+                    .log_warn("No common CpGs found between beta file and genomic locations")
+                    unlink(temp_bed)
+                    return(NULL)
+                }
+            } else {
+                temp_bed <- .bed_file
+                .log_info("Using provided BED file for tabix conversion: ", temp_bed, level = 2)
             }
 
             # Sort, compress with bgzip, and index with tabix
@@ -618,7 +761,7 @@ convertBetaToTabix <- function(beta_file,
 
                 # K-way merge of sorted chunks
                 if (length(chunk_files) > 0) {
-                    # Helper function to compare two BED lines (chr:pos)
+                    # Helper function to compare two BED lines (chr:start)
                     compare_bed_lines <- function(line1, line2) {
                         parts1 <- strsplit(line1, "\t", fixed = TRUE)[[1]]
                         parts2 <- strsplit(line2, "\t", fixed = TRUE)[[1]]
@@ -755,7 +898,7 @@ convertBetaToTabix <- function(beta_file,
 #' \enumerate{
 #'   \item Reads the beta values file
 #'   \item Loads the appropriate array annotation (450K or EPIC)
-#'   \item Sorts CpG sites by genomic coordinates (chr:pos)
+#'   \item Sorts CpG sites by genomic coordinates (chr:start)
 #'   \item Writes the sorted data to a new file
 #'   \item Validates that the output is properly sorted
 #' }
@@ -904,9 +1047,9 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 #' \itemize{
 #'   \item chr: Chromosome
-#'   \item pos: Genomic position
-#'   \item start: Start position (same as pos)
-#'   \item end: End position (pos + 1)
+#'   \item start: Genomic position
+#'   \item start: Start position (same as start)
+#'   \item end: End position (start + 1)
 #' }
 #'
 #' @examples
@@ -921,7 +1064,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #' }
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39")) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
     array <- tolower(array)
@@ -932,6 +1075,10 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    if (!is.null(locations_file) && file.exists(locations_file)) {
+        locs <- readRDS(locations_file)
+        return(locs)
     }
     cache_file <- file.path(cache_dir, paste0(
         array, "_", genome,
@@ -998,14 +1145,14 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
     locs <- locs[orderByLoc(rownames(locs), genomic_locs = as.data.frame(locs)), ]
     locs <- locs[!duplicated(rownames(locs)), ]
-    if (!"pos" %in% colnames(locs)) {
-        locs[, "pos"] <- locs[, "start"]
+    if (!"start" %in% colnames(locs)) {
+        locs[, "start"] <- locs[, "start"]
     }
     if (!"start" %in% colnames(locs)) {
-        locs[, "start"] <- locs[, "pos"]
+        locs[, "start"] <- locs[, "start"]
     }
     if (!"end" %in% colnames(locs)) {
-        locs[, "end"] <- locs[, "pos"] + 1
+        locs[, "end"] <- locs[, "start"] + 1
     }
     locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[
         ,
@@ -1049,7 +1196,7 @@ orderByLoc <- function(x,
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
-    stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "pos"]), numeric = TRUE)
+    stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
 }
 
 #' Extract DNA Sequences for DMRs

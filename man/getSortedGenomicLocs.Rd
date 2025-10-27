@@ -6,7 +6,8 @@
 \usage{
 getSortedGenomicLocs(
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39")
+  genome = c("hg19", "hg38", "mm10", "mm39"),
+  locations_file = NULL
 )
 }
 \arguments{
@@ -18,9 +19,9 @@ getSortedGenomicLocs(
 A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 \itemize{
 \item chr: Chromosome
-\item pos: Genomic position
-\item start: Start position (same as pos)
-\item end: End position (pos + 1)
+\item start: Genomic position
+\item start: Start position (same as start)
+\item end: End position (start + 1)
 }
 }
 \description{

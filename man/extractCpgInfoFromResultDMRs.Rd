@@ -11,6 +11,7 @@ extractCpgInfoFromResultDMRs(
   beta_col_names,
   sorted_locs,
   output_prefix = NULL,
+  bed_provided = FALSE,
   njobs = 1
 )
 }

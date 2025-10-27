@@ -40,7 +40,7 @@ The function performs the following steps:
 \enumerate{
 \item Reads the beta values file
 \item Loads the appropriate array annotation (450K or EPIC)
-\item Sorts CpG sites by genomic coordinates (chr:pos)
+\item Sorts CpG sites by genomic coordinates (chr:start)
 \item Writes the sorted data to a new file
 \item Validates that the output is properly sorted
 }

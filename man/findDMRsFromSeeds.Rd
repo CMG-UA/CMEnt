@@ -20,18 +20,16 @@
   ntries = 500,
   mid_p = TRUE,
   tries_seed = 42,
-  njobs = 1
+  njobs = 1,
+  bed_provided = FALSE
 )
 
 findDMRsFromSeeds(
   beta = NULL,
   dmps = NULL,
   pheno = NULL,
-  dmps_tsv_id_col = NULL,
-  pval_col = "pval_adj",
+  dmps_tsv_id_col = 1,
   sample_group_col = "Sample_Group",
-  dmp_group_col = NULL,
-  dmp_groups_info = NULL,
   casecontrol_col = NULL,
   min_cpg_delta_beta = 0,
   expansion_step = 500,
@@ -54,7 +52,15 @@ findDMRsFromSeeds(
   memory_threshold_mb = 500,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
-  .load_debug = FALSE
+  bed_provided = FALSE,
+  bed_chrom_col = "chrom",
+  bed_start_col = "start",
+  bed_end_col = NULL,
+  bed_id_col = NULL,
+  bed_score_col = NULL,
+  bed_strand_col = NULL,
+  .load_debug = FALSE,
+  verbose = 1
 )
 }
 \arguments{
@@ -64,6 +70,8 @@ findDMRsFromSeeds(
 
 \item{aggfun}{Character. Aggregation function to use ("median" or "mean") when calculating delta beta values and p-values of DMRs. Default is "median".}
 
+\item{empirical_strategy}{Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
+
 \item{pval_mode}{Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.}
 
 \item{ntries}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
@@ -72,21 +80,17 @@ findDMRsFromSeeds(
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object. Either this or tabix_file must be provided.}
+\item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE.}
+
+\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmatrix.}
 
 \item{dmps}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
 
 \item{pheno}{Data frame. Phenotype data.}
 
-\item{dmps_tsv_id_col}{Character. Column name for DMP identifiers in the DMPs TSV file. Default is NULL.}
-
-\item{pval_col}{Character. Column name for p-values in the DMPs file. Default is "pval_adj".}
+\item{dmps_tsv_id_col}{Character. Column name or index for DMP identifiers in the DMPs TSV file. Default is 1.}
 
 \item{sample_group_col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
-
-\item{dmp_group_col}{Character. Column name for DMP group information in the DMPs TSV file. Default is NULL.}
-
-\item{dmp_groups_info}{Named list. Required when \code{dmp_group_col} is given. List of DMP group information, where names are group identifiers, found in dmps_tsv_id_col column, and values are the samples names, found in the beta values columns. Default is NULL.}
 
 \item{casecontrol_col}{Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
 
@@ -112,11 +116,23 @@ findDMRsFromSeeds(
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
-\item{annotate_with_genes}{Logical. If TRUE (default), annotate DMRs with gene information using annotateDMRsWithGenes (default: TRUE)}
+\item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
-\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 3 (very verbose). Default is 1.}
+\item{bed_chrom_col}{Character. Column name for chromosome in the BED file. Default is "chrom".}
 
-\item{tabix_file}{Character. Path to a tabix-indexed beta file. Either this or beta must be provided. Default is NULL.}
+\item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
+
+\item{bed_end_col}{Character or NULL. Column name for end position in the BED file. If NULL, start_col + 1 will be used. Default is NULL, which means that the column is assumed missing.}
+
+\item{bed_id_col}{Character or NULL. Column name for CpG identifier in the BED file. Default is NULL, which means that the column is assumed missing.}
+
+\item{bed_score_col}{Character or NULL. Column name for score in the BED file. Default is NULL, which means that the column is assumed missing.}
+
+\item{bed_strand_col}{Character or NULL. Column name for strand in the BED file. Default is NULL, which means that the column is assumed missing.}
+
+\item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
+
+\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:

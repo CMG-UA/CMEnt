@@ -30,12 +30,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
-        initialize = function(beta = NULL,
-                              array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = c("hg19", "hg38", "mm10", "mm39"),
-                              beta_row_names_file = NULL,
-                              memory_threshold_mb = 500,
-                              njobs = 1) {
+    initialize = function(beta = NULL,
+                  array = c("450K", "27K", "EPIC", "EPICv2"),
+                  genome = c("hg19", "hg38", "mm10", "mm39"),
+                  beta_row_names_file = NULL,
+                  sorted_locs = NULL,
+                  memory_threshold_mb = 500,
+                  njobs = 1) {
             # Validate inputs
             if (is.null(beta)) {
                 stop("Beta values must be provided")
@@ -51,6 +52,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
+            self$sorted_locs <- sorted_locs
             self$memory_threshold_mb <- memory_threshold_mb
             self$njobs <- njobs
 
@@ -218,7 +220,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 }
             }
             sorted_locs <- private$get_sorted_locs()
-            private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
+            if (!is.null(rownames(sorted_locs))) {
+                private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
+            }
 
             .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
             private$.beta_row_names
@@ -416,11 +420,17 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
     )
 )
 
-#' @description Create a new BetaHandler object
+#' Create a BetaHandler object for efficient beta value access
+#'
+#' @name getBetaHandler
+#' @description Create a new BetaHandler object that manages methylation beta values
+#' from various input formats (files, matrices, tabix) with memory-efficient access patterns.
+#'
 #' @param beta Path to beta values file, or a tabix, or a beta matrix
 #' @param array Array platform type
 #' @param genome Reference genome version
 #' @param beta_row_names_file Path to row names file
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns
 #' @param memory_threshold_mb Memory threshold in MB
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
@@ -429,6 +439,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),
                            beta_row_names_file = NULL,
+                           sorted_locs = NULL,
                            memory_threshold_mb = 500,
                            njobs = 1) {
     BetaHandler$new(
@@ -437,6 +448,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         genome = genome,
         beta_row_names_file = beta_row_names_file,
         memory_threshold_mb = memory_threshold_mb,
-        njobs = njobs
+        njobs = njobs,
+        sorted_locs = sorted_locs
     )
 }

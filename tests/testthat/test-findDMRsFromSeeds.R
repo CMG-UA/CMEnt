@@ -344,12 +344,12 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     beta <- DMRsegaldata::beta
     dmps <- DMRsegaldata::dmps
     pheno <- DMRsegaldata::pheno
-
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
+    options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
         beta = beta,

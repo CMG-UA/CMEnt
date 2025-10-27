@@ -10,7 +10,6 @@ plotDMRs(
   top_n = 4,
   beta = NULL,
   pheno = NULL,
-  pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
   genome = c("hg19", "hg38", "mm10", "mm39"),
   array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -28,8 +27,6 @@ plotDMRs(
 \item{beta}{BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.}
 
 \item{pheno}{Data frame or character path to phenotype file (optional). Required when beta is provided.}
-
-\item{pval_col}{Character. The name of the column containing the aggregated p-value (default: "pval_adj").}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 

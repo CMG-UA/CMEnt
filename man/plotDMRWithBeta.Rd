@@ -12,7 +12,6 @@ plotDMRWithBeta(
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
-  pval_col = "pval_adj",
   sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
@@ -35,8 +34,6 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 \item{array}{Character. Array platform type (default: "450K").}
 
 \item{genome}{Character. Genome version (default: "hg19").}
-
-\item{pval_col}{Character. The name of the column containing the aggregated p-value (default: "pval_adj").}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
