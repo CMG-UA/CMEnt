@@ -482,7 +482,7 @@
                 if (do_permutations) {
                     min_possible_pval <- 1 / (1 + factorial(m))
                     if (min_possible_pval > max_pval_corrected) {
-                        warning("Skipping empirical p-value computation for group '", g, "' since minimum possible p-value (", min_possible_pval, ") exceeds max_pval_corrected (", max_pval_corrected, ").")
+                        .log_warn("Skipping empirical p-value computation for group '", g, "' since minimum possible p-value (", min_possible_pval, ") exceeds max_pval_corrected (", max_pval_corrected, ").")
                         next
                     }
                 }
@@ -965,12 +965,12 @@ findDMRsFromSeeds <- function(beta = NULL,
             if (is.null(dmps_tsv_id_col_found)) {
                 stop("None of the IDs in the DMPs dmps_tsv_id_col match the beta file row names.")
             } else {
-                warning("The provided dmps_tsv_id_col '", dmps_tsv_id_col, "' is incorrect. The correct column is '", dmps_tsv_id_col_found, "', switching to that one.")
+                .log_warn("The provided dmps_tsv_id_col '", dmps_tsv_id_col, "' is incorrect. The correct column is '", dmps_tsv_id_col_found, "', switching to that one.")
                 dmps_tsv_id_col <- dmps_tsv_id_col_found
             }
         } else {
             missing_in_beta <- dmps_tsv[, dmps_tsv_id_col][!(dmps_tsv[, dmps_tsv_id_col] %in% beta_row_names)]
-            stop("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing_in_beta, collapse = ","))
+            .log_warn("Some of the DMPs are not present in the beta file. DMPs: ", paste(missing_in_beta, collapse = ","))
         }
     }
     sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
