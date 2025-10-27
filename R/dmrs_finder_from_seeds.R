@@ -340,7 +340,7 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 5)
-    if (bed_provided) {
+    if (!bed_provided) {
         dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
         dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
     } else {
@@ -725,7 +725,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmatrix.
 #' @param dmps Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
-#' @param dmps_tsv_id_col Character. Column name or index for DMP identifiers in the DMPs TSV file. Default is 1.
+#' @param dmps_tsv_id_col Character. Column name or index for DMP identifiers in the DMPs TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
@@ -764,7 +764,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 findDMRsFromSeeds <- function(beta = NULL,
                               dmps = NULL,
                               pheno = NULL,
-                              dmps_tsv_id_col = 1,
+                              dmps_tsv_id_col = NULL,
                               sample_group_col = "Sample_Group",
                               casecontrol_col = NULL,
                               min_cpg_delta_beta = 0,
@@ -865,7 +865,11 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     if (is.null(dmps_tsv_id_col)) {
         dmps_tsv_id_col <- "_DMP_ROW_NAMES_"
-        dmps_tsv[, dmps_tsv_id_col] <- rownames(dmps_tsv)
+        if (!is.null(rownames(dmps_tsv))) {
+            dmps_tsv[, dmps_tsv_id_col] <- rownames(dmps_tsv)
+        } else {
+            dmps_tsv_id_col <- colnames(dmps_tsv)[1]
+        }
         rownames(dmps_tsv) <- NULL
     }
     if (is.numeric(dmps_tsv_id_col)) {
