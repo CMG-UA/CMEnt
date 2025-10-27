@@ -289,14 +289,6 @@ overlap_comparison <- data.frame(
         overlap_dmrcate_bumphunter,
         overlap_bumphunter_dmrcate
     ),
-    Total_DMRs = c(
-        length(gr_segal),
-        length(gr_segal),
-        length(gr_dmrcate),
-        length(gr_bumphunter),
-        length(gr_dmrcate),
-        length(gr_bumphunter)
-    ),
     Percentage_Overlap = c(
         pct_segal_in_dmrcate,
         pct_segal_in_bumphunter,

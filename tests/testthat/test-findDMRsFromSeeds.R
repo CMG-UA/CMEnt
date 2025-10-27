@@ -91,7 +91,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
     # Filter significant DMPs
     sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-
+    options("DMRsegal.verbose" = 2)
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
         beta = beta_handler,
