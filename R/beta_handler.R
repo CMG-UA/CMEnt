@@ -217,6 +217,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
                 }
             }
+            sorted_locs <- private$get_sorted_locs()
+            private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
 
             .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
             private$.beta_row_names

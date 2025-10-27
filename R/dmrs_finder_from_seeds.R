@@ -810,6 +810,8 @@ findDMRsFromSeeds <- function(beta = NULL,
             beta_row_names_file = beta_row_names_file,
             njobs = njobs,
             memory_threshold_mb = memory_threshold_mb,
+            array = array,
+            genome = genome
         )
     }
 
@@ -973,7 +975,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     sorted_locs <- sorted_locs[beta_row_names, ]
-    dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genome = genome, genomic_locs = sorted_locs), , drop = FALSE]
+    dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genomic_locs = sorted_locs), , drop = FALSE]
 
     dmps <- unique(dmps_tsv[, dmps_tsv_id_col])
     # Filter DMPs not present in array annotation first (prevents NA logical indices later)
