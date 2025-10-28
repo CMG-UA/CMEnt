@@ -69,7 +69,7 @@
         beta_row_names <- unlist(data.table::fread(
             file = beta_file,
             select = 1,
-            header = TRUE,
+            header = TRUE
         ))
     }
 

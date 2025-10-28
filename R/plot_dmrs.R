@@ -370,7 +370,7 @@ plotDMR <- function(dmrs,
         format(dmr_end, big.mark = ",", scientific = FALSE),
         dmr_data$dmps_num,
         dmr_data$cpgs_num,
-        dmr_data$delta_beta,
+        dmr_data$delta_beta
     )
 
     if (!"in_promoter_of" %in% colnames(mcols(dmrs))) {
@@ -678,11 +678,11 @@ plotDMRWithBeta <- function(dmrs,
         ) +
         ggplot2::labs(
             y = "Sample",
-            x = sprintf("Genomic Position on %s (bp)", chr),
+            x = sprintf("Genomic Position on %s (bp)", chr)
         ) +
         ggplot2::theme_minimal(base_size = 10) +
         ggplot2::theme(
-            axis.text.y = ggplot2::element_text(size = 7),
+            axis.text.y = ggplot2::element_text(size = 7)
         ) +
         ggplot2::scale_x_continuous(
             breaks = breaks,

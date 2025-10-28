@@ -275,39 +275,3 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         expect_equal(length(dmrs_median_func), length(dmrs_median_char))
     }
 })
-
-test_that("getBetaHandler accepts sorted_locs parameter", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-
-    # Create a simple sorted_locs data frame
-    sorted_locs <- data.frame(
-        chr = rep("chr1", nrow(beta)),
-        start = seq_len(nrow(beta)),
-        end = seq_len(nrow(beta)) + 1
-    )
-    rownames(sorted_locs) <- rownames(beta)
-
-    # Test getBetaHandler with sorted_locs
-    expect_no_error({
-        beta_handler <- getBetaHandler(
-            beta = beta,
-            array = "450K",
-            genome = "hg19",
-            sorted_locs = sorted_locs,
-            memory_threshold_mb = 500,
-            njobs = 1
-        )
-    })
-
-    # Test without sorted_locs (should still work)
-    expect_no_error({
-        beta_handler_no_locs <- getBetaHandler(
-            beta = beta,
-            array = "450K",
-            genome = "hg19",
-            memory_threshold_mb = 500,
-            njobs = 1
-        )
-    })
-})

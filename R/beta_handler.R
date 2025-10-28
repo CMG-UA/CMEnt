@@ -52,6 +52,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$array <- array
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
+            if (!is.null(sorted_locs)){
+                if (is.character(sorted_locs) && length(sorted_locs) == 1 && file(exists(sorted_locs))){
+                    sorted_locs <- readRDS(sorted_locs)
+                }
+            }
             self$sorted_locs <- sorted_locs
             self$memory_threshold_mb <- memory_threshold_mb
             self$njobs <- njobs
@@ -141,7 +146,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
                 # If file wasn't loaded into memory, try tabix conversion
                 if (is.null(private$.beta_file_in_memory)) {
-                    sorted_locs <- private$get_sorted_locs()
+                    sorted_locs <- self$getGenomicLocs()
 
                     # Attempt conversion
                     converted_tabix <- convertBetaToTabix(
@@ -163,6 +168,18 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             private$.loaded <- TRUE
             invisible(self)
+        },
+
+        #' @description Get **all** provided sorted genomic locations
+        #' @return data.frame or matrix of the genomic locations
+        getGenomicLocs = function() {
+            if (is.null(self$sorted_locs)) {
+                self$sorted_locs <- getSortedGenomicLocs(
+                    array = self$array,
+                    genome = self$genome
+                )
+            }
+            self$sorted_locs
         },
 
         #' @description Get row names (CpG IDs) from the beta file
@@ -219,7 +236,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
                 }
             }
-            sorted_locs <- private$get_sorted_locs()
+            sorted_locs <- self$getGenomicLocs()
             if (!is.null(rownames(sorted_locs))) {
                 private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
             }
@@ -290,7 +307,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
             .log_step("Validating beta file sorting by position...", level = 2)
 
-            sorted_locs <- private$get_sorted_locs()
+            sorted_locs <- self$getGenomicLocs()
             beta_row_names <- self$getBetaRowNames()
 
             if (is.null(private$.beta_file_in_memory)) {
@@ -331,7 +348,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(private$.beta_locs)) {
                 return(private$.beta_locs)
             }
-            sorted_locs <- private$get_sorted_locs()
+            sorted_locs <- self$getGenomicLocs()
             beta_row_names <- self$getBetaRowNames()
             private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
             private$.beta_locs
@@ -407,16 +424,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .validated = FALSE,
         .beta_file = NULL,
         .tabix_file = NULL,
-        .beta_file_in_memory = NULL,
-        get_sorted_locs = function() {
-            if (is.null(self$sorted_locs)) {
-                self$sorted_locs <- getSortedGenomicLocs(
-                    array = self$array,
-                    genome = self$genome
-                )
-            }
-            self$sorted_locs
-        }
+        .beta_file_in_memory = NULL
     )
 )
 

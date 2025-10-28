@@ -773,7 +773,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                               genome = c("hg19", "hg38", "mm10", "mm39"),
                               max_pval = 0.05,
                               pval_mode = c("parametric", "empirical"),
-                              empirical_strategy = c("auto", "montecarlo"),
+                              empirical_strategy = c("auto", "montecarlo", "permutations"),
                               ntries = 200L,
                               mid_p = FALSE,
                               tries_seed = NULL,
@@ -845,7 +845,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             check.names = FALSE,
             quote = "",
             comment.char = "",
-            row.names = NULL,
+            row.names = NULL
         ))
     } else if (is.data.frame(dmps)) {
         dmps_tsv <- dmps
@@ -885,6 +885,7 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     if (inherits(beta, "BetaHandler")) {
         beta_handler <- beta
+        sorted_locs <- beta_handler$getGenomicLocs()
     } else {
         sorted_locs <- NULL
         if (is.character(beta) && length(beta) == 1 && file.exists(beta)) {
@@ -1120,7 +1121,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             check.names = FALSE,
             quote = "",
             comment.char = "",
-            row.names = NULL,
+            row.names = NULL
         )
     } else {
         # Use progressr for cross-platform progress reporting
