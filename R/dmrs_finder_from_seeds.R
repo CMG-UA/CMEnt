@@ -103,13 +103,13 @@
 .buildConnectivityArray <- function(
     beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
     chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1, bed_provided = FALSE
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
     chr_ends <- c()
-    for (chr in unique(sorted_locs$chr)) {
-        chr_inds <- which(sorted_locs$chr == chr)
+    for (chr in unique(sorted_locs[, "chr"])) {
+        chr_inds <- which(sorted_locs[, "chr"] == chr)
         chr_start <- min(chr_inds)
         chr_end <- max(chr_inds)
         chr_ends <- c(chr_ends, chr_end)
@@ -128,7 +128,6 @@
         future.stdout = NA,
         future.globals = c(
             "beta_handler",
-            "bed_provided",
             "group_inds",
             "casecontrol",
             "max_pval",
@@ -139,6 +138,7 @@
             "ntries",
             "mid_p",
             "tries_seed",
+            "splits",
             "chr_ends",
             "verbose",
             "p_ext"
@@ -146,7 +146,7 @@
         FUN = function(split_ind) {
             split <- splits[split_ind, ]
             beta_locs <- beta_handler$getBetaLocs()
-            if (bed_provided) {
+            if (!bigmemory::is.big.matrix(beta_locs)) {
                 chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]])
             } else {
                 chunk_beta <- beta_handler$getBeta(
@@ -168,6 +168,7 @@
                 tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed)
             )
             if (split[2] %in% chr_ends) {
+                # if we are at the end of a chromosome, add a final row of FALSE to indicate end-of-input
                 add <- data.frame(
                     connected = FALSE,
                     pval = NA,
@@ -197,12 +198,11 @@
                         chr_locs,
                         min_cpg_delta_beta = 0,
                         min_cpgs = 3,
-                        expansion_step = 500,
-                        bed_provided = FALSE) {
+                        expansion_step = 500) {
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_dmp"]
     dmr_end <- dmr["end_dmp"]
-    if (bed_provided) {
+    if (bigmemory::is.sub.big.matrix(chr_locs)) {
         dmr_start_ind <- as.integer(dmr_start)
         dmr_end_ind <- as.integer(dmr_end)
     } else {
@@ -336,7 +336,7 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 5)
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(chr_locs)) {
         dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
         dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
     } else {
@@ -401,7 +401,7 @@
 
     # Check distance condition if provided (vectorized)
     if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
-        dists <- sites_locs$start[2:n_sites] - sites_locs$start[1:(n_sites - 1)]
+        dists <- sites_locs[2:n_sites, "start"] - sites_locs[1:(n_sites - 1), "start"]
         exceeded_dist <- dists > max_lookup_dist
         connected[exceeded_dist] <- FALSE
         reasons[exceeded_dist] <- "exceeded max distance"
@@ -623,7 +623,6 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
                                          beta_col_names,
                                          sorted_locs,
                                          output_prefix = NULL,
-                                         bed_provided = FALSE,
                                          njobs = 1) {
     if (!is.null(output_prefix)) {
         if (!dir.exists(dirname(output_prefix))) {
@@ -636,7 +635,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
     for (i in seq_len(nrow(dmrs))) {
         start_cpg_ind <- dmrs$start_cpg_ind[i]
         end_cpg_ind <- dmrs$end_cpg_ind[i]
-        if (!bed_provided) {
+        if (!bigmemory::is.big.matrix(sorted_locs)) {
             cpgs <- rownames(sorted_locs)[start_cpg_ind:end_cpg_ind]
         } else {
             cpgs <- start_cpg_ind:end_cpg_ind
@@ -663,7 +662,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
     }
 
     dmrs_sites <- unique(dmrs_sites)
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(sorted_locs)) {
         dmrs_sites <- rownames(sorted_locs)[rownames(sorted_locs) %in% dmrs_sites]
     }
 
@@ -745,7 +744,7 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
+#' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
@@ -1024,7 +1023,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     if (is.null(sorted_locs)) {
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(sorted_locs)) {
         sorted_locs <- sorted_locs[beta_row_names, ]
         dmps_tsv <- dmps_tsv[orderByLoc(dmps_tsv[, dmps_tsv_id_col], genomic_locs = sorted_locs), , drop = FALSE]
     } else {
@@ -1032,7 +1031,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
 
     # Filter DMPs not present in array annotation first (prevents NA logical indices later)
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(sorted_locs)) {
         dmps <- unique(dmps_tsv[, dmps_tsv_id_col])
         missing_in_annotation <- setdiff(dmps, rownames(sorted_locs))
         if (length(missing_in_annotation) > 0) {
@@ -1055,7 +1054,7 @@ findDMRsFromSeeds <- function(beta = NULL,
 
 
     .log_step("Subsetting beta matrix for DMPs...", level = 2)
-    dmps_locs <- sorted_locs[dmps, , drop = FALSE]
+    dmps_locs <- as.data.frame(sorted_locs[dmps, , drop = FALSE])
     dmps_beta <- beta_handler$getBeta(row_names = dmps, col_names = beta_col_names)
     if (!is.null(output_prefix)) {
         dmps_beta_output_file <- paste0(output_prefix, "dmps_beta.tsv.gz")
@@ -1093,7 +1092,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_step("Connecting DMPs to form initial DMRs..", level = 1)
 
     # Set up progress tracking for DMP connection
-    chromosomes <- unique(dmps_locs$chr)
+    chromosomes <- unique(dmps_locs[,"chr"])
 
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "01_dmrs_from_connected_dmps.tsv"))) {
         .log_info("Loading debug DMRs from file...", level = 2)
@@ -1114,14 +1113,14 @@ findDMRsFromSeeds <- function(beta = NULL,
             p_con <- progressr::progressor(steps = length(chromosomes))
         }
         # Split by chromosome for parallel processing
-        dmps_list <- split(dmps, dmps_locs$chr)
+        dmps_list <- split(dmps, dmps_locs[, "chr"])
         dmps_list <- dmps_list[chromosomes]
-        dmps_locs_list <- split(dmps_locs, dmps_locs$chr)
+        dmps_locs_list <- split(dmps_locs, dmps_locs[, "chr"])
         dmps_locs_list <- dmps_locs_list[chromosomes]
 
         if (!is.matrix(dmps_beta)) dmps_beta <- as.matrix(dmps_beta)
         storage.mode(dmps_beta) <- "double"
-        dmps_beta_list <- lapply(split(dmps_beta, dmps_locs$chr), matrix, ncol = ncol(dmps_beta))
+        dmps_beta_list <- lapply(split(dmps_beta, dmps_locs[, "chr"]), matrix, ncol = ncol(dmps_beta))
         dmps_beta_list <- dmps_beta_list[chromosomes]
         ret <- future.apply::future_mapply(
             chromosomes,
@@ -1291,8 +1290,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             ntries = ntries,
             mid_p = mid_p,
             tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed),
-            njobs = njobs,
-            bed_provided = bed_provided
+            njobs = njobs
         )
         if (verbose > 0) {
             p_ext <- progressr::progressor(steps = n_dmrs)
@@ -1308,9 +1306,19 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_step("Expanding ", n_dmrs, " DMRs using up to ", njobs, " parallel jobs...", level = 2)
     ret <- list()
     for (chr in unique(dmrs$chr)) {
-        chr_mask <- sorted_locs$chr == chr
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
-        chr_locs <- sorted_locs[chr_mask, , drop = FALSE]
+        chr_mask <- sorted_locs[, "chr"] == chr
+        first_row <- which(chr_mask)[1]
+        last_row <- which(chr_mask)[sum(chr_mask)]
+        if (bigmemory::is.big.matrix(sorted_locs)) {
+            chr_locs <- bigmemory::sub.big.matrix(
+                sorted_locs,
+                firstRow  = first_row,
+                lastRow = last_row
+            )
+        } else {
+            chr_locs <- sorted_locs[chr_mask, , drop = FALSE]
+        }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
 
         chr_ret <- future.apply::future_apply(
@@ -1327,8 +1335,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     expansion_step = expansion_step,
                     min_cpgs = min_cpgs,
                     min_cpg_delta_beta = min_cpg_delta_beta,
-                    chr_locs = chr_locs,
-                    bed_provided = bed_provided
+                    chr_locs = chr_locs
                 )
                 options(warn = op)
                 if (verbose > 0 && exists("p_ext")) p_ext()
@@ -1369,7 +1376,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         extended_dmrs <- extended_dmrs[!end_less_than_start, ]
         .log_warn("Remaining: ", nrow(extended_dmrs))
     }
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(sorted_locs)) {
         all_locs_inds <- rownames(sorted_locs)
         names(all_locs_inds) <- all_locs_inds
         all_locs_inds[seq_along(all_locs_inds)] <- seq_along(all_locs_inds)
@@ -1486,7 +1493,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(extended_dmrs)), function(i) {
         seq(extended_dmrs$start_cpg_ind[i], extended_dmrs$end_cpg_ind[i])
     })))
-    if (!bed_provided) {
+    if (!bigmemory::is.big.matrix(sorted_locs)) {
         all_selected_cpgs <- rownames(sorted_locs)[all_selected_cpgs]
     }
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
@@ -1514,7 +1521,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmr$cases_beta_max <- max(beta_stats[dmr_dmps, "cases_beta"], na.rm = TRUE)
         dmr$controls_beta_min <- min(beta_stats[dmr_dmps, "controls_beta"], na.rm = TRUE)
         dmr$controls_beta_max <- max(beta_stats[dmr_dmps, "controls_beta"], na.rm = TRUE)
-        if (!bed_provided) {
+        if (!bigmemory::is.big.matrix(sorted_locs)) {
             dmr_cpgs <- rownames(sorted_locs)[seq.int(dmr$start_cpg_ind, dmr$end_cpg_ind)]
         } else {
             dmr_cpgs <- seq.int(dmr$start_cpg_ind, dmr$end_cpg_ind)
@@ -1549,14 +1556,14 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
-    if (bed_provided) {
-        dmrs$start_dmp <- paste0(sorted_locs[dmrs$start_dmp, "chr"], ":", sorted_locs[dmrs$start_dmp, "start"])
-        dmrs$end_dmp <- paste0(sorted_locs[dmrs$end_dmp, "chr"], ":", sorted_locs[dmrs$end_dmp, "start"])
-        dmrs$start_cpg <- paste0(sorted_locs[dmrs$start_cpg, "chr"], ":", dmrs$start_cpg)
-        dmrs$end_cpg <- paste0(sorted_locs[dmrs$end_cpg, "chr"], ":", dmrs$end_cpg)
+    if (bigmemory::is.big.matrix(sorted_locs)) {
+        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_dmp, "chr"]], ":", sorted_locs[dmrs$start_dmp, "start"])
+        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_dmp, "chr"]], ":", sorted_locs[dmrs$end_dmp, "start"])
+        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_cpg, "chr"]], ":", dmrs$start_cpg)
+        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_cpg, "chr"]], ":", dmrs$end_cpg)
         dmrs$dmps <- sapply(dmrs$dmps, function(dmp_ids) {
             dmp_ids_split <- unlist(strsplit(dmp_ids, ","))
-            dmp_ids_annotated <- paste0(sorted_locs[dmp_ids_split, "chr"], ":", sorted_locs[dmp_ids_split, "start"])
+            dmp_ids_annotated <- paste0(CHROMOSOMES[sorted_locs[dmp_ids_split, "chr"]], ":", sorted_locs[dmp_ids_split, "start"])
             paste(dmp_ids_annotated, collapse = ",")
         })
 

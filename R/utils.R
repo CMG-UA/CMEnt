@@ -486,6 +486,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
 
     con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), 'r')
     bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
+    count <- 0
     while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
         bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
         colnames(bed_data) <- bed_header
