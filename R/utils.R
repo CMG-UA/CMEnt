@@ -365,7 +365,7 @@
 CHROMOSOMES <- c(as.character(1:22), "X", "Y", "MT") # nolint
 CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 
-processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", start_col = "start", end_col = NULL, id_col = NULL, score_col = NULL, strand_col = NULL, output_dir = NULL) {
+processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", start_col = "start", output_dir = NULL) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -381,9 +381,12 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     }
 
     if (is.null(output_dir)) {
-        cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache"))
+        cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
     } else {
         cache_dir <- output_dir
+    }
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
     hash <- .getFileHash(bed_file)
     normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
@@ -391,13 +394,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     # Read BED file header
     bed_header <- strsplit(readLines(bed_file, n = 1), "\t")[[1]]
     # Ensure required columns are present
-    required_cols <- c(chrom_col, start_col, end_col, id_col)
-    if (!is.null(score_col)) {
-        required_cols <- c(required_cols, score_col)
-    }
-    if (!is.null(strand_col)) {
-        required_cols <- c(required_cols, strand_col)
-    }
+    required_cols <- c(chrom_col, start_col)
     missing_cols <- setdiff(required_cols, bed_header)
     if (length(missing_cols) > 0) {
         stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
@@ -437,27 +434,9 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         colnames(bed_data) <- bed_header
         bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = CHROMOSOMES))
         bed_data$start <- as.integer(bed_data[[start_col]])
-        if (!is.null(end_col)) {
-            bed_data$end <- as.integer(bed_data[[end_col]])
-        } else {
-            bed_data$end <- bed_data$start + 1
-        }
-        if (!is.null(score_col)) {
-            colnames(bed_data)[which(colnames(bed_data) == score_col)] <- "score"
-        } else {
-            bed_data$score <- "."
-        }
-        if (!is.null(strand_col)) {
-            colnames(bed_data)[which(colnames(bed_data) == strand_col)] <- "strand"
-        } else {
-            bed_data$strand <- "."
-        }
-        if (!is.null(id_col)) {
-            colnames(bed_data)[which(colnames(bed_data) == id_col)] <- "id"
-            bed_data$id <- bed_data[[id_col]]
-        } else {
-            bed_data$id <- "."
-        }
+        bed_data$end <- bed_data$start + 1
+        bed_data$score <- "."
+        bed_data$id <- seq(count + 1, count + nrow(bed_data))
 
         # Write normalized BED data
         bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
@@ -470,6 +449,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
             col.names = FALSE,
             append = TRUE
         )
+        count <- count + nrow(bed_data)
     }
     close(con)
 
@@ -482,9 +462,6 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         njobs = 1
     )
     options(bigmemory.allow.dimnames = TRUE)
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE)
-    }
     backing_file <- paste0("bed_locations_", hash)
     descriptor_file <- paste0("bed_locations_", hash, ".desc")
     backing_path_full <- file.path(cache_dir, backing_file)
@@ -610,7 +587,7 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "DMRsegal", "tabix_cache"))
+        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -1038,7 +1015,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 .liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1098,7 +1075,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     genome <- tolower(genome)
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1434,7 +1411,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
                                   promoter_downstream = 200) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     dmrs_df_provided <- is.data.frame(dmrs)
     if (dmrs_df_provided) {

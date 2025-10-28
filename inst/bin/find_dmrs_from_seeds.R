@@ -28,11 +28,7 @@ option_list <- list(
     make_option("--sample_group_case", default = NULL, help = "Case group names"),
     make_option("--bed_provided", default = FALSE, type = "logical", help = "Whether BED file is provided"),
     make_option("--bed_chrom_col", default = "#chrom", help = "Column in BED file for chromosome"),
-    make_option("--bed_start_col", default = "start", help = "Column in BED file for start position"),
-    make_option("--bed_end_col", default = "end", help = "Column in BED file for end position. If NULL, will be assumed it does not exist"),
-    make_option("--bed_id_col", default = "name", help = "Column in BED file for region ID. If NULL, will be assumed it does not exist"),
-    make_option("--bed_score_col", default = "score", help = "Column in BED file for region score. If NULL, will be assumed it does not exist"),
-    make_option("--bed_strand_col", default = "strand", help = "Column in BED file for strand. If NULL, will be assumed it does not exist")
+    make_option("--bed_start_col", default = "start", help = "Column in BED file for start position")
 )
 parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)

@@ -55,10 +55,6 @@ findDMRsFromSeeds(
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
-  bed_end_col = NULL,
-  bed_id_col = NULL,
-  bed_score_col = NULL,
-  bed_strand_col = NULL,
   .load_debug = FALSE,
   verbose = 1
 )
@@ -121,14 +117,6 @@ findDMRsFromSeeds(
 \item{bed_chrom_col}{Character. Column name for chromosome in the BED file. Default is "chrom".}
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
-
-\item{bed_end_col}{Character or NULL. Column name for end position in the BED file. If NULL, start_col + 1 will be used. Default is NULL, which means that the column is assumed missing.}
-
-\item{bed_id_col}{Character or NULL. Column name for CpG identifier in the BED file. Default is NULL, which means that the column is assumed missing.}
-
-\item{bed_score_col}{Character or NULL. Column name for score in the BED file. Default is NULL, which means that the column is assumed missing.}
-
-\item{bed_strand_col}{Character or NULL. Column name for strand in the BED file. Default is NULL, which means that the column is assumed missing.}
 
 \item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 

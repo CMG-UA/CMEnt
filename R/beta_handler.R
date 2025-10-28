@@ -307,20 +307,28 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(invisible(self))
             }
 
-            .log_step("Validating beta file sorting by position...", level = 2)
 
             sorted_locs <- self$getGenomicLocs()
             beta_row_names <- self$getBetaRowNames()
-
+            if (private$.sorted_locs_is_bigmatrix) {
+                if(is.null(private$.tabix_file)){
+                    stop("When using big.matrix for sorted_locs, beta must be provided as tabix file.")
+                }
+            }
             if (is.null(private$.beta_file_in_memory)) {
-                # Validate that file is sorted
-                if (!all(beta_row_names[
-                    orderByLoc(beta_row_names,
-                        genome = self$genome,
-                        genomic_locs = sorted_locs
-                    )
-                ] == beta_row_names)) {
-                    stop("Provided beta file is not sorted by position!")
+                if (!private$.sorted_locs_is_bigmatrix) {
+                    .log_step("Validating beta file sorting by position...", level = 2)
+
+                    # Validate that file is sorted
+                    if (!all(beta_row_names[
+                        orderByLoc(beta_row_names,
+                            genome = self$genome,
+                            genomic_locs = sorted_locs
+                        )
+                    ] == beta_row_names)) {
+                        stop("Provided beta file is not sorted by position!")
+                    }
+                    .log_success("Beta file sorting validated", level = 2)
                 }
             } else {
                 # Sort in-memory beta data
@@ -339,7 +347,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 ]
             }
 
-            .log_success("Beta file sorting validated", level = 2)
             private$.validated <- TRUE
             invisible(self)
         },

@@ -45,10 +45,6 @@
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
-#' @param bed_end_col Character or NULL. Column name for end position in the BED file. If NULL, start_col + 1 will be used. Default is NULL, which means that the column is assumed missing.
-#' @param bed_id_col Character or NULL. Column name for CpG identifier in the BED file. Default is NULL, which means that the column is assumed missing.
-#' @param bed_score_col Character or NULL. Column name for score in the BED file. Default is NULL, which means that the column is assumed missing.
-#' @param bed_strand_col Character or NULL. Column name for strand in the BED file. Default is NULL, which means that the column is assumed missing.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #'
 #' @return A GRanges object containing identified DMRs with metadata columns:
@@ -752,10 +748,6 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
-#' @param bed_end_col Character or NULL. Column name for end position in the BED file. If NULL, start_col + 1 will be used. Default is NULL, which means that the column is assumed missing.
-#' @param bed_id_col Character or NULL. Column name for CpG identifier in the BED file. Default is NULL, which means that the column is assumed missing.
-#' @param bed_score_col Character or NULL. Column name for score in the BED file. Default is NULL, which means that the column is assumed missing.
-#' @param bed_strand_col Character or NULL. Column name for strand in the BED file. Default is NULL, which means that the column is assumed missing.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 
 #'
@@ -791,10 +783,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                               bed_provided = FALSE,
                               bed_chrom_col = "chrom",
                               bed_start_col = "start",
-                              bed_end_col = NULL,
-                              bed_id_col = NULL,
-                              bed_score_col = NULL,
-                              bed_strand_col = NULL,
                               .load_debug = FALSE,
                               verbose = 1) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
@@ -902,11 +890,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     bed_file = beta,
                     pheno = pheno,
                     chrom_col = bed_chrom_col,
-                    start_col = bed_start_col,
-                    end_col = bed_end_col,
-                    id_col = bed_id_col,
-                    score_col = bed_score_col,
-                    strand_col = bed_strand_col
+                    start_col = bed_start_col
                 )
                 beta <- ret$tabix_file
                 sorted_locs <- readRDS(ret$locations_file)

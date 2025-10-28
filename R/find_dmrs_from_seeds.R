@@ -41,11 +41,7 @@ findDMRsFromSeedsCLI <- function(args) {
         pheno = pheno,
         bed_provided = args$bed_provided,
         bed_chrom_col = args$bed_chrom_col,
-        bed_start_col = args$bed_start_col,
-        bed_end_col = args$bed_end_col,
-        bed_id_col = args$bed_id_col,
-        bed_score_col = args$bed_score_col,
-        bed_strand_col = args$bed_strand_col
+        bed_start_col = args$bed_start_col
     )
 
     .log_info(

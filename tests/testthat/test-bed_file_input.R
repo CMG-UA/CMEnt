@@ -30,7 +30,6 @@ create_dmps_without_chr_prefix <- function(dmps, beta_mat, locs) {
 test_that("findDMRsFromSeeds works with minimal bed file",  {
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
-
     beta <- DMRsegaldata::beta
     dmps <- DMRsegaldata::dmps
     pheno <- DMRsegaldata::pheno
@@ -54,7 +53,6 @@ test_that("findDMRsFromSeeds works with minimal bed file",  {
     write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 
     dmps_with_chr_pos <- create_dmps_with_chr_pos(dmps, beta_mat, locs)
-    progressr::with_progress({
     dmrs <- findDMRsFromSeeds(
         beta = bed_file,
         dmps = dmps_with_chr_pos,
@@ -71,7 +69,6 @@ test_that("findDMRsFromSeeds works with minimal bed file",  {
         memory_threshold_mb = 500,
         verbose = 2
     )
-    })
 
     unlink(bed_file)
 
@@ -122,10 +119,6 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         bed_provided = TRUE,
         bed_chrom_col = "chrom",
         bed_start_col = "start",
-        bed_end_col = "end",
-        bed_id_col = "id",
-        bed_score_col = "score",
-        bed_strand_col = "strand",
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
@@ -331,7 +324,6 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
         bed_provided = TRUE,
         bed_chrom_col = "my_chr",
         bed_start_col = "my_pos",
-        bed_end_col = "my_end",
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
