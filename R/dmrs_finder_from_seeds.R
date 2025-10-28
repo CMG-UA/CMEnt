@@ -198,13 +198,14 @@
                         chr_locs,
                         min_cpg_delta_beta = 0,
                         min_cpgs = 3,
-                        expansion_step = 500) {
+                        expansion_step = 500,
+                        chr_start_base = 0) {
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_dmp"]
     dmr_end <- dmr["end_dmp"]
     if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
-        dmr_start_ind <- as.integer(dmr_start)
-        dmr_end_ind <- as.integer(dmr_end)
+        dmr_start_ind <- as.integer(dmr_start) - chr_start_base
+        dmr_end_ind <- as.integer(dmr_end) - chr_start_base
     } else {
         dmr_start_ind <- which(rownames(chr_locs) == dmr_start)
         dmr_end_ind <- which(rownames(chr_locs) == dmr_end)
@@ -336,15 +337,21 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 5)
-    if (!bigmemory::is.big.matrix(chr_locs)) {
-        dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
-        dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
-    } else {
+    print(ustream_exp)
+    print(dstream_exp)
+    print(dim(chr_locs))
+    if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
         dmr["start_cpg"] <- ustream_exp
         dmr["end_cpg"] <- dstream_exp
+        dmr["start"] <- chr_locs[ustream_exp, "start"]
+        dmr["end"] <- chr_locs[dstream_exp, "start"]
+
+    } else {
+        dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
+        dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
+        dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
+        dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     }
-    dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
-    dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
@@ -885,7 +892,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     stop("When providing a bed file as beta input, the DMP IDs in the dmps file/dataframe (using dmps_tsv_id_col: ", dmps_tsv_id_col, ") must be in 'chr:pos' format (e.g., chr1:123456).")
                 }
                 .log_step("Converting bed beta file to tabix-indexed beta file...")
-                ret <- processMethylationBedData(
+                ret <- readCustomMethylationBedData(
                     bed_file = beta,
                     pheno = pheno,
                     chrom_col = bed_chrom_col,
@@ -1306,10 +1313,12 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_step("Expanding ", n_dmrs, " DMRs using up to ", njobs, " parallel jobs...", level = 2)
     ret <- list()
     for (chr in unique(dmrs$chr)) {
+        print(paste("PREPARING CHR ", chr))
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
         chr_mask <- sorted_locs[, "chr"] == chr
         first_row <- which(chr_mask)[1]
         last_row <- which(chr_mask)[sum(chr_mask)]
+        chr_start_base <- first_row - 1
         if (bigmemory::is.big.matrix(sorted_locs)) {
             chr_locs <- bigmemory::sub.big.matrix(
                 sorted_locs,
@@ -1320,6 +1329,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             chr_locs <- sorted_locs[chr_mask, , drop = FALSE]
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
+        print(paste("START CHR ", chr))
 
         chr_ret <- future.apply::future_apply(
             X = chr_dmrs,
@@ -1335,13 +1345,16 @@ findDMRsFromSeeds <- function(beta = NULL,
                     expansion_step = expansion_step,
                     min_cpgs = min_cpgs,
                     min_cpg_delta_beta = min_cpg_delta_beta,
-                    chr_locs = chr_locs
+                    chr_locs = chr_locs,
+                    chr_start_base = chr_start_base
                 )
                 options(warn = op)
                 if (verbose > 0 && exists("p_ext")) p_ext()
                 x
             }
         )
+        print(paste("COMPLETE CHR ", chr))
+        print(length(chr_ret))
         ret <- c(ret, chr_ret)
     }
     .log_success("DMR expansion complete.", level = 2)
@@ -1396,7 +1409,6 @@ findDMRsFromSeeds <- function(beta = NULL,
         keep.extra.columns = TRUE,
         ignore.strand = TRUE,
         seqnames.field = "chr",
-        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     )
 
@@ -1540,7 +1552,19 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     dmrs <- do.call(rbind, dmrs_with_beta_stats)
     .log_success("DMR delta-beta information added.", level = 2)
+    if (bigmemory::is.big.matrix(sorted_locs)) {
+        dmrs$chr  <- CHROMOSOMES[dmrs$chr]
+        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_dmp, "chr"]], ":", sorted_locs[dmrs$start_dmp, "start"])
+        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_dmp, "chr"]], ":", sorted_locs[dmrs$end_dmp, "start"])
+        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_cpg, "chr"]], ":", dmrs$start_cpg)
+        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_cpg, "chr"]], ":", dmrs$end_cpg)
+        dmrs$dmps <- sapply(dmrs$dmps, function(dmp_ids) {
+            dmp_ids_split <- unlist(strsplit(dmp_ids, ","))
+            dmp_ids_annotated <- paste0(CHROMOSOMES[sorted_locs[dmp_ids_split, "chr"]], ":", sorted_locs[dmp_ids_split, "start"])
+            paste(dmp_ids_annotated, collapse = ",")
+        })
 
+    }
     dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
         dmrs,
         keep.extra.columns = TRUE,
@@ -1556,18 +1580,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
-    if (bigmemory::is.big.matrix(sorted_locs)) {
-        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_dmp, "chr"]], ":", sorted_locs[dmrs$start_dmp, "start"])
-        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_dmp, "chr"]], ":", sorted_locs[dmrs$end_dmp, "start"])
-        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_cpg, "chr"]], ":", dmrs$start_cpg)
-        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_cpg, "chr"]], ":", dmrs$end_cpg)
-        dmrs$dmps <- sapply(dmrs$dmps, function(dmp_ids) {
-            dmp_ids_split <- unlist(strsplit(dmp_ids, ","))
-            dmp_ids_annotated <- paste0(CHROMOSOMES[sorted_locs[dmp_ids_split, "chr"]], ":", sorted_locs[dmp_ids_split, "start"])
-            paste(dmp_ids_annotated, collapse = ",")
-        })
 
-    }
     .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")

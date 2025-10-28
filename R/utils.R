@@ -365,7 +365,8 @@
 CHROMOSOMES <- c(as.character(1:22), "X", "Y", "MT") # nolint
 CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 
-processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", start_col = "start", output_dir = NULL) {
+readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
+     start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -421,7 +422,6 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
 
 
     # Read chunks of the BED file to minimize memory usage
-    chunk_size <- 100000
     con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
     # Write normalized header to new BED file
     norm_bed_header <- c("#chrom", "start", "end", "id", "score", "strand", existing_ids)
@@ -459,7 +459,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     convertBetaToTabix(
         .bed_file = normalized_bed_file,
         output_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
-        chunk_size = 50000,
+        chunk_size = chunk_size,
         njobs = 1
     )
     options(bigmemory.allow.dimnames = TRUE)
