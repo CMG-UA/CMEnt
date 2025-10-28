@@ -365,6 +365,105 @@
 CHROMOSOMES <- c(as.character(1:22), "X", "Y", "MT") # nolint
 CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 
+#' Read and Process Custom Methylation BED Data
+#'
+#' @description Reads methylation data from a custom BED file format, converts it to
+#' a tabix-indexed format for efficient random access, and creates genomic location
+#' indices. This function is designed to handle custom methylation array data or
+#' sequencing-based methylation data in BED format, making it compatible with the
+#' DMRsegal workflow.
+#'
+#' @param bed_file Character. Path to the input BED file containing methylation data.
+#'   The file should have chromosome and position columns, plus sample columns with
+#'   methylation values. Can be gzipped (default: NULL)
+#' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
+#'   present in both the pheno rownames and BED file header will be processed
+#' @param chrom_col Character. Name of the chromosome column in the BED file
+#'   (default: "#chrom")
+#' @param start_col Character. Name of the start position column in the BED file
+#'   (default: "start")
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses
+#'   a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory
+#'   efficiency (default: 50000)
+#'
+#' @return A list with two elements:
+#' \itemize{
+#'   \item tabix_file: Character path to the created tabix-indexed BED file
+#'   \item locations_file: Character path to the RDS file containing genomic location indices
+#' }
+#'
+#' @details
+#' The function performs the following workflow:
+#' \enumerate{
+#'   \item Validates that tabix and bgzip are available in the system PATH
+#'   \item Checks the BED file header for required columns and sample IDs
+#'   \item Processes the BED file in chunks to minimize memory usage
+#'   \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
+#'   \item Converts chromosomes to integer factors for efficient sorting
+#'   \item Creates a tabix-indexed compressed file for fast random access
+#'   \item Builds a bigmemory-backed matrix of genomic locations for efficient lookups
+#'   \item Caches all processed files based on input file hash for reuse
+#' }
+#'
+#' The cache directory structure includes:
+#' \itemize{
+#'   \item `bed_beta_<hash>.bed.gz`: Tabix-indexed BED file with methylation values
+#'   \item `bed_beta_<hash>.bed.gz.tbi`: Tabix index file
+#'   \item `bed_locations_<hash>`: bigmemory backing file for genomic locations
+#'   \item `bed_locations_<hash>.desc`: bigmemory descriptor file
+#'   \item `bed_locations_<hash>.rds`: Serialized descriptor for loading locations
+#' }
+#'
+#' @section Requirements:
+#' This function requires tabix and bgzip command-line tools to be installed and
+#' available in the system PATH. These tools are part of the HTSlib/samtools suite.
+#'
+#' @section Memory Management:
+#' The function uses chunk-based processing to handle large BED files without
+#' loading the entire dataset into memory. The genomic locations are stored in
+#' a bigmemory-backed matrix that can exceed available RAM by using disk-backed
+#' storage.
+#'
+#' @examples
+#' \dontrun{
+#' # Create a simple phenotype data frame
+#' pheno <- data.frame(
+#'     sample_group = c("case", "case", "control", "control"),
+#'     row.names = c("Sample1", "Sample2", "Sample3", "Sample4")
+#' )
+#'
+#' # Process a custom BED file
+#' result <- readCustomMethylationBedData(
+#'     bed_file = "custom_methylation.bed.gz",
+#'     pheno = pheno
+#' )
+#'
+#' # Use custom column names
+#' result <- readCustomMethylationBedData(
+#'     bed_file = "custom_methylation.bed",
+#'     pheno = pheno,
+#'     chrom_col = "chromosome",
+#'     start_col = "position"
+#' )
+#'
+#' # Specify custom output directory
+#' result <- readCustomMethylationBedData(
+#'     bed_file = "custom_methylation.bed.gz",
+#'     pheno = pheno,
+#'     output_dir = "/path/to/cache"
+#' )
+#'
+#' # Access the processed files
+#' tabix_file <- result$tabix_file
+#' locations_file <- result$locations_file
+#' }
+#'
+#' @seealso
+#' \code{\link{convertBetaToTabix}} for converting standard beta files to tabix format
+#' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
+#'
+#' @export
 readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
      start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(

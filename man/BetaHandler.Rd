@@ -32,6 +32,7 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \itemize{
 \item \href{#method-BetaHandler-new}{\code{BetaHandler$new()}}
 \item \href{#method-BetaHandler-load}{\code{BetaHandler$load()}}
+\item \href{#method-BetaHandler-getGenomicLocs}{\code{BetaHandler$getGenomicLocs()}}
 \item \href{#method-BetaHandler-getBetaRowNames}{\code{BetaHandler$getBetaRowNames()}}
 \item \href{#method-BetaHandler-getBetaColNames}{\code{BetaHandler$getBetaColNames()}}
 \item \href{#method-BetaHandler-validate}{\code{BetaHandler$validate()}}
@@ -51,6 +52,7 @@ Create a new BetaHandler object
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   beta_row_names_file = NULL,
+  sorted_locs = NULL,
   memory_threshold_mb = 500,
   njobs = 1
 )}\if{html}{\out{</div>}}
@@ -66,6 +68,8 @@ Create a new BetaHandler object
 \item{\code{genome}}{Reference genome version}
 
 \item{\code{beta_row_names_file}}{Path to row names file}
+
+\item{\code{sorted_locs}}{Sorted genomic locations data frame. If NULL, will be retrieved automatically}
 
 \item{\code{memory_threshold_mb}}{Memory threshold in MB}
 
@@ -88,6 +92,19 @@ Load beta file data into memory or prepare for file-based access
 
 \subsection{Returns}{
 Self (invisibly)
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-getGenomicLocs"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-getGenomicLocs}{}}}
+\subsection{Method \code{getGenomicLocs()}}{
+Get \strong{all} provided sorted genomic locations
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getGenomicLocs()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+data.frame or matrix of the genomic locations
 }
 }
 \if{html}{\out{<hr>}}

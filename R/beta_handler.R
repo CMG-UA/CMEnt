@@ -27,6 +27,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param array Array platform type
         #' @param genome Reference genome version
         #' @param beta_row_names_file Path to row names file
+        #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object

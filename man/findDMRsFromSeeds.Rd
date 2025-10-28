@@ -20,15 +20,14 @@
   ntries = 500,
   mid_p = TRUE,
   tries_seed = 42,
-  njobs = 1,
-  bed_provided = FALSE
+  njobs = 1
 )
 
 findDMRsFromSeeds(
   beta = NULL,
   dmps = NULL,
   pheno = NULL,
-  dmps_tsv_id_col = 1,
+  dmps_tsv_id_col = NULL,
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
   min_cpg_delta_beta = 0,
@@ -37,7 +36,7 @@ findDMRsFromSeeds(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   max_pval = 0.05,
   pval_mode = c("parametric", "empirical"),
-  empirical_strategy = c("auto", "montecarlo"),
+  empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
   mid_p = FALSE,
   tries_seed = NULL,
@@ -76,15 +75,13 @@ findDMRsFromSeeds(
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE.}
-
 \item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix.}
 
 \item{dmps}{Character. Path to the DMPs TSV file or the dmps dataframe, in a format like the one produced by dmpFinder.}
 
 \item{pheno}{Data frame. Phenotype data.}
 
-\item{dmps_tsv_id_col}{Character. Column name or index for DMP identifiers in the DMPs TSV file. Default is 1.}
+\item{dmps_tsv_id_col}{Character. Column name or index for DMP identifiers in the DMPs TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.}
 
 \item{sample_group_col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
 
@@ -113,6 +110,8 @@ findDMRsFromSeeds(
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
+
+\item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.}
 
 \item{bed_chrom_col}{Character. Column name for chromosome in the BED file. Default is "chrom".}
 

@@ -1,33 +1,32 @@
 library(testthat)
-library(DMRsegal)
 
 create_dmps_with_chr_pos <- function(dmps, beta_mat, locs) {
     dmp_row_names <- rownames(dmps)
     dmp_indices <- match(dmp_row_names, rownames(beta_mat))
     valid_indices <- !is.na(dmp_indices)
-    
+
     dmps_subset <- dmps[valid_indices, , drop = FALSE]
     dmps_subset$ID <- paste0(as.character(locs$chr[dmp_indices[valid_indices]]), ":", locs$start[dmp_indices[valid_indices]])
     dmps_subset <- dmps_subset[!grepl("NA", dmps_subset$ID), , drop = FALSE]
-    
-    return(dmps_subset)
+
+    dmps_subset
 }
 
 create_dmps_without_chr_prefix <- function(dmps, beta_mat, locs) {
     dmp_row_names <- rownames(dmps)
     dmp_indices <- match(dmp_row_names, rownames(beta_mat))
     valid_indices <- !is.na(dmp_indices)
-    
+
     dmps_subset <- dmps[valid_indices, , drop = FALSE]
     chr_without_prefix <- gsub("^chr", "", as.character(locs$chr[dmp_indices[valid_indices]]))
     dmps_subset$ID <- paste0(chr_without_prefix, ":", locs$start[dmp_indices[valid_indices]])
     dmps_subset <- dmps_subset[!grepl("NA", dmps_subset$ID), , drop = FALSE]
-    
-    return(dmps_subset)
+
+    dmps_subset
 }
 
 
-test_that("findDMRsFromSeeds works with minimal bed file",  {
+test_that("findDMRsFromSeeds works with minimal bed file", {
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
     beta <- DMRsegaldata::beta
