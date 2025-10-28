@@ -912,11 +912,20 @@ findDMRsFromSeeds <- function(beta = NULL,
                 sorted_locs <- readRDS(ret$locations_file)
                 .log_success("Conversion to tabix-indexed beta file completed.")
                 # Converting dmps ids to sorted_locs indices, based on their position
+                .log_step("Converting DMP IDs to bed positions...", level = 2)
                 converted_dmp_ids <- c()
-                for (dmp_id in dmp_ids) {
-                    parts <- unlist(strsplit(dmp_id, ":"))
-                    chrom <- as.integer(factor(parts[1], levels = CHROMOSOMES))
-                    pos <- as.numeric(parts[2])
+                if (verbose > 1) {
+                    p <- progressr::progressor(steps = nrow(dmps_tsv))
+                }
+                chroms_and_pos <- strsplit(dmp_ids, ":")
+                chroms <- sapply(chroms_and_pos, function(x) x[1])
+                pos <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
+                chroms <- as.integer(factor(chroms, levels = CHROMOSOMES))
+
+                for (i in seq_along(dmp_ids)) {
+                    dmp_id <- dmp_ids[i]
+                    chrom <- chroms[i]
+                    pos <- pos[i]
                     loc_index <- which(sorted_locs[, "chr"] == chrom & sorted_locs[, "start"] == pos)
 
                     if (length(loc_index) == 1) {
@@ -925,7 +934,11 @@ findDMRsFromSeeds <- function(beta = NULL,
                         .log_warn("DMP ID '", dmp_id, "' could not be found in the bed beta file. It will be skipped.")
                         converted_dmp_ids <- c(converted_dmp_ids, NA)
                     }
+                    if (verbose > 1) {
+                        p()
+                    }
                 }
+                .log_success("DMP IDs successfully converted to bed positions.", level = 2)
                 dmps_tsv[, dmps_tsv_id_col] <- converted_dmp_ids
                 dmps_tsv <- dmps_tsv[!is.na(dmps_tsv[, dmps_tsv_id_col]), ]
                 if (nrow(dmps_tsv) == 0) {

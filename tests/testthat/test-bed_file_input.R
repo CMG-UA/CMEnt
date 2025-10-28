@@ -28,7 +28,6 @@ create_dmps_without_chr_prefix <- function(dmps, beta_mat, locs) {
 
 
 test_that("findDMRsFromSeeds works with minimal bed file",  {
-    desc = "Testing bed file input with minimal columns (chrom and start)"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -55,7 +54,7 @@ test_that("findDMRsFromSeeds works with minimal bed file",  {
     write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
 
     dmps_with_chr_pos <- create_dmps_with_chr_pos(dmps, beta_mat, locs)
-
+    progressr::with_progress({
     dmrs <- findDMRsFromSeeds(
         beta = bed_file,
         dmps = dmps_with_chr_pos,
@@ -69,8 +68,10 @@ test_that("findDMRsFromSeeds works with minimal bed file",  {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        verbose = 2
     )
+    })
 
     unlink(bed_file)
 
@@ -81,7 +82,6 @@ test_that("findDMRsFromSeeds works with minimal bed file",  {
 })
 
 test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
-    desc = "Testing bed file input with all standard BED columns"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -130,7 +130,8 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        verbose = 2
     )
 
     unlink(bed_file)
@@ -142,7 +143,6 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
 })
 
 test_that("findDMRsFromSeeds detects bed file by extension", {
-    desc = "Testing automatic detection of BED files by .bed extension"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -182,7 +182,8 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        verbose = 2
     )
 
     unlink(bed_file)
@@ -194,7 +195,6 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
 })
 
 test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format with bed file", {
-    desc = "Testing validation of DMP ID format when using BED files"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -231,7 +231,8 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
             bed_start_col = "start",
             min_dmps = 2,
             min_cpgs = 3,
-            njobs = 1
+            njobs = 1,
+            verbose = 2
         ),
         "must be in 'chr:pos' format"
     )
@@ -240,7 +241,6 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
 })
 
 test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosome names", {
-    desc = "Testing BED files with numeric chromosome names (without chr prefix)"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -281,7 +281,8 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        verbose = 2
     )
 
     unlink(bed_file)
@@ -293,7 +294,6 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
 })
 
 test_that("findDMRsFromSeeds works with bed file and custom column names", {
-    desc = "Testing BED files with custom column names"
     skip_if_not_installed("DMRsegaldata")
     skip_on_ci()
 
@@ -336,7 +336,8 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        verbose = 2
     )
 
     unlink(bed_file)
