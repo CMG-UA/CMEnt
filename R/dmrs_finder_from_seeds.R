@@ -337,12 +337,9 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 5)
-    print(ustream_exp)
-    print(dstream_exp)
-    print(dim(chr_locs))
     if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
-        dmr["start_cpg"] <- ustream_exp
-        dmr["end_cpg"] <- dstream_exp
+        dmr["start_cpg"] <- ustream_exp + chr_start_base
+        dmr["end_cpg"] <- dstream_exp + chr_start_base
         dmr["start"] <- chr_locs[ustream_exp, "start"]
         dmr["end"] <- chr_locs[dstream_exp, "start"]
 
@@ -593,111 +590,6 @@
     }
 
     ret
-}
-
-#' Extract CpG Information from DMR Results
-#'
-#' @description This function extracts detailed CpG methylation information for
-#' identified DMRs, providing beta values and additional metadata for each CpG
-#' site within the DMR regions.
-#'
-#' @param dmrs GRanges object containing DMR results from findDMRsFromSeeds
-#' @param beta_handler BetaHandler object for the methylation beta values file
-#' @param beta_row_names Character vector. Row names for beta values
-#' @param beta_col_names Character vector. Column names for beta values
-#' @param sorted_locs GRanges or data frame with sorted genomic locations
-#' @param output_prefix Character. Optional prefix for output files (default: NULL)
-#' @param njobs Integer. Number of cores for parallel processing (default: 1)
-#'
-#' @return A data frame containing detailed CpG information for each DMR
-#'
-#' @examples
-#' \dontrun{
-#' # Extract CpG info from DMR results
-#' cpg_info <- extractCpgInfoFromResultDMRs(
-#'     dmrs = dmr_results,
-#'     beta_handler = beta_handler,
-#'     beta_row_names = row_names,
-#'     beta_col_names = col_names,
-#'     sorted_locs = genomic_locations
-#' )
-#' }
-#'
-#' @export
-extractCpgInfoFromResultDMRs <- function(dmrs,
-                                         beta_handler,
-                                         beta_row_names,
-                                         beta_col_names,
-                                         sorted_locs,
-                                         output_prefix = NULL,
-                                         njobs = 1) {
-    if (!is.null(output_prefix)) {
-        if (!dir.exists(dirname(output_prefix))) {
-            dir.create(dirname(output_prefix), recursive = TRUE)
-        }
-    }
-    dmrs_cpgs <- data.frame()
-    dmrs_sites <- c()
-    .log_step("Finding constituent CpGs of DMRs present in beta file..")
-    for (i in seq_len(nrow(dmrs))) {
-        start_cpg_ind <- dmrs$start_cpg_ind[i]
-        end_cpg_ind <- dmrs$end_cpg_ind[i]
-        if (!bigmemory::is.big.matrix(sorted_locs)) {
-            cpgs <- rownames(sorted_locs)[start_cpg_ind:end_cpg_ind]
-        } else {
-            cpgs <- start_cpg_ind:end_cpg_ind
-        }
-        cpgs <- cpgs[cpgs %in% beta_row_names]
-        dmrs_cpgs <- rbind(dmrs_cpgs, data.frame(dmr = dmrs$id[i], cpgs = cpgs))
-        dmrs_sites <- c(dmrs_sites, cpgs)
-    }
-
-    if (!is.null(output_prefix)) {
-        dmrs_cpgs_file <- paste0(output_prefix, ".cpgs.tsv.gz")
-        .log_step("Saving DMR-CpG mapping to ", dmrs_cpgs_file, " ...")
-        gz <- gzfile(dmrs_cpgs_file, "w")
-        write.table(
-            dmrs_cpgs,
-            gz,
-            sep = "\t",
-            quote = FALSE,
-            qmethod = "double",
-            col.names = TRUE,
-            row.names = FALSE
-        )
-        close(gz)
-    }
-
-    dmrs_sites <- unique(dmrs_sites)
-    if (!bigmemory::is.big.matrix(sorted_locs)) {
-        dmrs_sites <- rownames(sorted_locs)[rownames(sorted_locs) %in% dmrs_sites]
-    }
-
-    dmrs_beta_file <- paste0(output_prefix, "dmrs_beta.tsv.gz")
-    .log_step("Saving constituent CpG betas", dmrs_beta_file, " ...")
-    dmrs_beta <- beta_handler$getBeta(
-        row_names = dmrs_sites,
-        col_names = beta_col_names
-    )
-    rownames(dmrs_beta) <- dmrs_sites
-    if (!is.null(output_prefix)) {
-        gz <- gzfile(dmrs_beta_file, "w")
-        write.table(
-            dmrs_beta,
-            gz,
-            sep = "\t",
-            quote = FALSE,
-            qmethod = "double",
-            col.names = NA,
-            row.names = TRUE
-        )
-        close(gz)
-    }
-    ret <- list(
-        dmrs_cpgs = dmrs_cpgs,
-        dmrs_beta = dmrs_beta
-    )
-    invisible(ret)
 }
 
 .calculateBetaStats <- function(beta_values, beta_col_names, pheno,
@@ -1121,14 +1013,14 @@ findDMRsFromSeeds <- function(beta = NULL,
         }
         # Split by chromosome for parallel processing
         dmps_list <- split(dmps, dmps_locs[, "chr"])
-        dmps_list <- dmps_list[chromosomes]
+        dmps_list <- dmps_list[as.character(chromosomes)]
         dmps_locs_list <- split(dmps_locs, dmps_locs[, "chr"])
-        dmps_locs_list <- dmps_locs_list[chromosomes]
+        dmps_locs_list <- dmps_locs_list[as.character(chromosomes)]
 
         if (!is.matrix(dmps_beta)) dmps_beta <- as.matrix(dmps_beta)
         storage.mode(dmps_beta) <- "double"
         dmps_beta_list <- lapply(split(dmps_beta, dmps_locs[, "chr"]), matrix, ncol = ncol(dmps_beta))
-        dmps_beta_list <- dmps_beta_list[chromosomes]
+        dmps_beta_list <- dmps_beta_list[as.character(chromosomes)]
         ret <- future.apply::future_mapply(
             chromosomes,
             dmps_list,
@@ -1299,9 +1191,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed),
             njobs = njobs
         )
-        if (verbose > 0) {
-            p_ext <- progressr::progressor(steps = n_dmrs)
-        }
+        
         .log_success("Connectivity array built.", level = 2)
     }
     .log_info("Number of connected CpGs found: ", sum(connectivity_array$connected), level = 2)
@@ -1311,9 +1201,11 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     stopifnot(nrow(connectivity_array) != nrow(sorted_locs))
     .log_step("Expanding ", n_dmrs, " DMRs using up to ", njobs, " parallel jobs...", level = 2)
+    if (verbose > 0) {
+        p_ext <- progressr::progressor(steps = n_dmrs)
+    }
     ret <- list()
     for (chr in unique(dmrs$chr)) {
-        print(paste("PREPARING CHR ", chr))
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
         chr_mask <- sorted_locs[, "chr"] == chr
         first_row <- which(chr_mask)[1]
@@ -1329,7 +1221,6 @@ findDMRsFromSeeds <- function(beta = NULL,
             chr_locs <- sorted_locs[chr_mask, , drop = FALSE]
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
-        print(paste("START CHR ", chr))
 
         chr_ret <- future.apply::future_apply(
             X = chr_dmrs,
@@ -1353,8 +1244,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                 x
             }
         )
-        print(paste("COMPLETE CHR ", chr))
-        print(length(chr_ret))
         ret <- c(ret, chr_ret)
     }
     .log_success("DMR expansion complete.", level = 2)
@@ -1450,14 +1339,18 @@ findDMRsFromSeeds <- function(beta = NULL,
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
     if (bigmemory::is.big.matrix(sorted_locs)) {
         # Change seqnames from factor to character
-        GenomeInfoDb::seqlevels(extended_dmrs_ranges) <- CHROMOSOMES[as.integer(GenomeInfoDb::seqlevels(extended_dmrs_ranges))]
+        extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
+            extended_dmrs_ranges, CHROMOSOMES[as.integer(GenomeInfoDb::seqlevels(extended_dmrs_ranges))]
+        )
     }
     .log_step("Finding GC content of DMRs..", level = 1)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
     GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        GenomeInfoDb::seqlevels(extended_dmrs_ranges) <-  factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = CHROMOSOMES)
+        extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
+            extended_dmrs_ranges, as.character(as.integer(factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = CHROMOSOMES)))
+        )
     }
     extended_dmrs <- as.data.frame(extended_dmrs_ranges)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
@@ -1528,9 +1421,10 @@ findDMRsFromSeeds <- function(beta = NULL,
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
     dmrs_with_beta_stats <- list()
+    dmrs_dmps <- strsplit(extended_dmrs$dmps, ",")
     for (dmr_ind in seq_len(nrow(extended_dmrs))) {
         dmr <- extended_dmrs[dmr_ind, ]
-        dmr_dmps <- strsplit(dmr$dmps, ",")[[1]]
+        dmr_dmps <- dmrs_dmps[[dmr_ind]]
         dmr$cases_beta <- aggfun(abs(beta_stats[dmr_dmps, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_dmps, "cases_beta"])))
         dmr$controls_beta <- aggfun(abs(beta_stats[dmr_dmps, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_dmps, "controls_beta"])))
         dmr$delta_beta <- dmr$cases_beta - dmr$controls_beta
@@ -1543,7 +1437,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         if (!bigmemory::is.big.matrix(sorted_locs)) {
             dmr_cpgs <- rownames(sorted_locs)[seq.int(dmr$start_cpg_ind, dmr$end_cpg_ind)]
         } else {
-            dmr_cpgs <- seq.int(dmr$start_cpg_ind, dmr$end_cpg_ind)
+            dmr_cpgs <- as.character(seq.int(dmr$start_cpg_ind, dmr$end_cpg_ind))
         }
         dmr$cpgs_cases_beta <- aggfun(abs(beta_stats[dmr_cpgs, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "cases_beta"])))
         dmr$cpgs_controls_beta <- aggfun(abs(beta_stats[dmr_cpgs, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "controls_beta"])))
@@ -1561,16 +1455,32 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_success("DMR delta-beta information added.", level = 2)
     if (bigmemory::is.big.matrix(sorted_locs)) {
         dmrs$chr  <- CHROMOSOMES[dmrs$chr]
-        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_dmp, "chr"]], ":", sorted_locs[dmrs$start_dmp, "start"])
-        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_dmp, "chr"]], ":", sorted_locs[dmrs$end_dmp, "start"])
-        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$start_cpg, "chr"]], ":", dmrs$start_cpg)
-        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[dmrs$end_cpg, "chr"]], ":", dmrs$end_cpg)
-        dmrs$dmps <- sapply(dmrs$dmps, function(dmp_ids) {
-            dmp_ids_split <- unlist(strsplit(dmp_ids, ","))
-            dmp_ids_annotated <- paste0(CHROMOSOMES[sorted_locs[dmp_ids_split, "chr"]], ":", sorted_locs[dmp_ids_split, "start"])
-            paste(dmp_ids_annotated, collapse = ",")
+        start_dmps <- as.integer(dmrs$start_dmp)
+        end_dmps <- as.integer(dmrs$end_dmp)
+        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[start_dmps, "chr"]], ":", sorted_locs[start_dmps, "start"])
+        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[end_dmps, "chr"]], ":", sorted_locs[end_dmps, "start"])
+        start_cpgs <- as.integer(dmrs$start_cpg)
+        end_cpgs <- as.integer(dmrs$end_cpg)
+        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":",  sorted_locs[start_cpgs, "start"])
+        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[end_cpgs, "chr"]], ":", sorted_locs[end_cpgs, "start"])
+        dmrs$tmp_id <- seq_len(nrow(dmrs))
+        dmrs$dmps_unlisted <- sapply(dmrs$dmps, function(dmp_ids) {
+            as.integer(unlist(strsplit(dmp_ids, ",")))
         })
-
+        # explode on dmps column to annotate
+        dmps_exploded <- dmrs[, "tmp_id", drop = FALSE]
+        dmps_exploded <- dmps_exploded[rep(seq_len(nrow(dmps_exploded)), times = sapply(dmrs$dmps_unlisted, length)), , drop = FALSE]
+        dmps_exploded$dmps_unlisted <- as.integer(unlist(dmrs$dmps_unlisted))
+        dmps_exploded$chr <- CHROMOSOMES[sorted_locs[dmps_exploded$dmps_unlisted, "chr"]]
+        dmps_exploded$pos <- sorted_locs[dmps_exploded$dmps_unlisted, "start"]
+        dmps_exploded$annotated_dmp <- paste0(dmps_exploded$chr, ":", dmps_exploded$pos)
+        dmps_annotated_list <- split(dmps_exploded$annotated_dmp, dmps_exploded$tmp_id)
+        dmrs$dmps <- sapply(dmps_annotated_list, function(x) {
+            paste(x, collapse = ",")
+        })
+        dmrs$dmps_unlisted <- NULL
+        dmrs$tmp_id <- NULL
+        dmrs$id <- paste0(dmrs$chr, ":", sorted_locs[start_cpgs, "start"], "-", sorted_locs[end_cpgs, "start"])
     }
     dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
         dmrs,
