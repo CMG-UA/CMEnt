@@ -1396,8 +1396,8 @@ findDMRsFromSeeds <- function(beta = NULL,
         extended_dmrs$start_cpg_ind <- as.numeric(all_locs_inds[extended_dmrs$start_cpg])
         extended_dmrs$end_cpg_ind <- as.numeric(all_locs_inds[extended_dmrs$end_cpg])
     } else {
-        extended_dmrs$start_cpg_ind <- extended_dmrs$start_cpg
-        extended_dmrs$end_cpg_ind <- extended_dmrs$end_cpg
+        extended_dmrs$start_cpg_ind <- as.integer(extended_dmrs$start_cpg)
+        extended_dmrs$end_cpg_ind <- as.integer(extended_dmrs$end_cpg)
     }
 
 
@@ -1425,8 +1425,8 @@ findDMRsFromSeeds <- function(beta = NULL,
     for (i in seq_len(length(extended_dmrs_ranges_reduced))) {
         inds <- sh[qh == i]
         cols_vals <- orig_mcols[inds, ]
-        agg_df[i, "start_cpg_ind"] <- min(cols_vals$start_cpg_ind)
-        agg_df[i, "end_cpg_ind"] <- max(cols_vals$end_cpg_ind)
+        agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
+        agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
         agg_df[i, "sup_cpgs_num"] <- agg_df[i, "end_cpg_ind"] - agg_df[i, "start_cpg_ind"] + 1
         agg_df[i, "start_dmp"] <- cols_vals$start_dmp[[1]]
         agg_df[i, "end_dmp"] <- cols_vals$end_dmp[[length(inds)]]
@@ -1435,7 +1435,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         agg_dmps <- unique(unlist(strsplit(cols_vals$dmps, ",")))
         agg_df[i, "dmps"] <- paste(agg_dmps, collapse = ",")
         agg_df[i, "dmps_num"] <- length(agg_dmps)
-        agg_df[i, "connection_corr_pval"] <- aggfun(cols_vals$connection_corr_pval, na.rm = TRUE)
+        agg_df[i, "connection_corr_pval"] <- aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE)
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
         agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
         agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
@@ -1448,11 +1448,16 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
-
+    if (bigmemory::is.big.matrix(sorted_locs)) {
+        seqnames(extended_dmrs_ranges) <- CHROMOSOMES[as.integer(seqnames(extended_dmrs_ranges))]
+    }
     .log_step("Finding GC content of DMRs..", level = 1)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
     GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
+    if (bigmemory::is.big.matrix(sorted_locs)) {
+        seqnames(extended_dmrs_ranges) <- factor(seqnames(extended_dmrs_ranges), levels = CHROMOSOMES)
+    }
     extended_dmrs <- as.data.frame(extended_dmrs_ranges)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
@@ -1460,6 +1465,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     extended_dmrs[extended_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
 
     extended_dmrs$dmps_num_adj <- ceiling(extended_dmrs$cpgs_num / extended_dmrs$sup_cpgs_num * extended_dmrs$dmps_num)
+
     .log_success("CpG content calculated.", level = 1)
     .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 1)
     if (verbose >= 2) {
