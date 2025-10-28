@@ -421,29 +421,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
     close(tmp_con)
     .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
-    options(bigmemory.allow.dimnames = TRUE)
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE)
-    }
-    backing_file <- paste0("bed_locations_", hash)
-    descriptor_file <- paste0("bed_locations_", hash, ".desc")
-    backing_path_full <- file.path(cache_dir, backing_file)
-    descriptor_path_full <- file.path(cache_dir, descriptor_file)
-    
-    if (file.exists(backing_path_full)) {
-        file.remove(backing_path_full)
-    }
-    if (file.exists(descriptor_path_full)) {
-        file.remove(descriptor_path_full)
-    }
-    
-    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 3,
-        type = "integer",
-        backingfile = backing_file,
-        backingpath = cache_dir,
-        descriptorfile = descriptor_file,
-        dimnames = list(NULL, c("chr", "start", "end"))
-    )
+
 
     # Read chunks of the BED file to minimize memory usage
     chunk_size <- 100000
@@ -480,11 +458,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         } else {
             bed_data$id <- "."
         }
-        loc_data <- bed_data[, c("chr", "start", "end"), drop = FALSE]
-        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
 
-        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
-        count <- count + nrow(loc_data)
         # Write normalized BED data
         bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
         data.table::fwrite(
@@ -499,7 +473,6 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     }
     close(con)
 
-    sorted_locs <- sorted_locs[order(sorted_locs[, 1], sorted_locs[, 2]), ]
 
     # Convert to tabix
     convertBetaToTabix(
@@ -508,7 +481,45 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         chunk_size = 50000,
         njobs = 1
     )
-    saveRDS(sorted_locs, file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds")))
+    options(bigmemory.allow.dimnames = TRUE)
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE)
+    }
+    backing_file <- paste0("bed_locations_", hash)
+    descriptor_file <- paste0("bed_locations_", hash, ".desc")
+    backing_path_full <- file.path(cache_dir, backing_file)
+    descriptor_path_full <- file.path(cache_dir, descriptor_file)
+    
+    if (file.exists(backing_path_full)) {
+        file.remove(backing_path_full)
+    }
+    if (file.exists(descriptor_path_full)) {
+        file.remove(descriptor_path_full)
+    }
+    
+    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 3,
+        type = "integer",
+        backingfile = backing_file,
+        backingpath = cache_dir,
+        descriptorfile = descriptor_file,
+        dimnames = list(NULL, c("chr", "start", "end"))
+    )
+
+
+    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), 'r')
+    bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
+    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
+        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
+        colnames(bed_data) <- bed_header
+        loc_data <- bed_data[, c("#chrom", "start", "end"), drop = FALSE]
+        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
+
+        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
+        count <- count + nrow(loc_data)
+    }
+    rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
+
+    saveRDS(bigmemory::describe(sorted_locs), file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds")))
     return(list(
         tabix_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
         locations_file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))

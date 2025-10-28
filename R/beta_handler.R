@@ -53,10 +53,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$genome <- genome
             self$beta_row_names_file <- beta_row_names_file
             if (!is.null(sorted_locs)){
-                if (is.character(sorted_locs) && length(sorted_locs) == 1 && file(exists(sorted_locs))){
+                if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)){
                     sorted_locs <- readRDS(sorted_locs)
+                    try(sorted_locs <- bigmemory::attach.big.matrix(sorted_locs), silent = TRUE)
                 }
             }
+            private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
             self$sorted_locs <- sorted_locs
             self$memory_threshold_mb <- memory_threshold_mb
             self$njobs <- njobs
@@ -228,7 +230,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         nThread = self$njobs
                     ))
                 }
-
+                if (!private$.sorted_locs_is_bigmatrix) {
+                    sorted_locs <- self$getGenomicLocs()
+                    private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
+                } else {
+                    private$.beta_row_names <- as.integer(private$.beta_row_names)
+                }
                 if (!is.null(self$beta_row_names_file)) {
                     writeLines(
                         paste(private$.beta_row_names, collapse = "\n"),
@@ -236,11 +243,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
                 }
             }
-            sorted_locs <- self$getGenomicLocs()
-            if (!is.null(rownames(sorted_locs))) {
-                private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
-            }
-
             .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
             private$.beta_row_names
         },
@@ -349,6 +351,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(private$.beta_locs)
             }
             sorted_locs <- self$getGenomicLocs()
+            if (private$.sorted_locs_is_bigmatrix) {
+                private$.beta_locs <- sorted_locs
+                return(sorted_locs)
+            }
             beta_row_names <- self$getBetaRowNames()
             private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
             private$.beta_locs
@@ -424,7 +430,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .validated = FALSE,
         .beta_file = NULL,
         .tabix_file = NULL,
-        .beta_file_in_memory = NULL
+        .beta_file_in_memory = NULL,
+        .sorted_locs_is_bigmatrix = FALSE
     )
 )
 

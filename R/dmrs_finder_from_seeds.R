@@ -910,34 +910,20 @@ findDMRsFromSeeds <- function(beta = NULL,
                 )
                 beta <- ret$tabix_file
                 sorted_locs <- readRDS(ret$locations_file)
+                try(sorted_locs <- bigmemory::attach.big.matrix(sorted_locs), silent = TRUE)
                 .log_success("Conversion to tabix-indexed beta file completed.")
                 # Converting dmps ids to sorted_locs indices, based on their position
                 .log_step("Converting DMP IDs to bed positions...", level = 2)
                 converted_dmp_ids <- c()
-                if (verbose > 1) {
-                    p <- progressr::progressor(steps = nrow(dmps_tsv))
-                }
                 chroms_and_pos <- strsplit(dmp_ids, ":")
                 chroms <- sapply(chroms_and_pos, function(x) x[1])
-                pos <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
+                positions <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
                 chroms <- as.integer(factor(chroms, levels = CHROMOSOMES))
-
-                for (i in seq_along(dmp_ids)) {
-                    dmp_id <- dmp_ids[i]
-                    chrom <- chroms[i]
-                    pos <- pos[i]
-                    loc_index <- which(sorted_locs[, "chr"] == chrom & sorted_locs[, "start"] == pos)
-
-                    if (length(loc_index) == 1) {
-                        converted_dmp_ids <- c(converted_dmp_ids, loc_index)
-                    } else {
-                        .log_warn("DMP ID '", dmp_id, "' could not be found in the bed beta file. It will be skipped.")
-                        converted_dmp_ids <- c(converted_dmp_ids, NA)
-                    }
-                    if (verbose > 1) {
-                        p()
-                    }
-                }
+                dmps_tsv <- dmps_tsv[order(chroms, positions), ]
+                converted_dmp_ids <- match(
+                    paste0(chroms, ":", positions),
+                    rownames(sorted_locs)
+                )
                 .log_success("DMP IDs successfully converted to bed positions.", level = 2)
                 dmps_tsv[, dmps_tsv_id_col] <- converted_dmp_ids
                 dmps_tsv <- dmps_tsv[!is.na(dmps_tsv[, dmps_tsv_id_col]), ]
