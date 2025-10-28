@@ -403,7 +403,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
     }
     sample_ids <- rownames(pheno)
-    existing_ids <- setdiff(sample_ids, bed_header)
+    existing_ids <- intersect(sample_ids, bed_header)
 
     # Map existing sample IDs to BED file rows
     id_mapping <- match(existing_ids, bed_header)
@@ -417,11 +417,12 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     }
 
     # Quickly read number of rows in BED file
-    num_rows <- sum(sapply(readLines(con), function(x) nchar(x) > 0)) - 1
+    tmp_con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
+    num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
+    close(tmp_con)
     .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
 
-    library(bigmatrix)
-    sorted_locs <- bigmatrix::big.matrix(nrow = num_rows, ncol = 4,
+    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 4,
         type = "integer",
         backingfile = file.path(cache_dir, paste0("bed_locations_", hash)),
         descriptorfile = file.path(cache_dir, paste0("bed_locations_", hash, ".desc")),

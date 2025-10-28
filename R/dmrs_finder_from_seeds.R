@@ -701,20 +701,20 @@ extractCpgInfoFromResultDMRs <- function(dmrs,
 .calculateBetaStats <- function(beta_values, beta_col_names, pheno,
                                 casecontrol_col,
                                 aggfun) {
-        cases_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
-        controls_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
-        case_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, sd, na.rm = TRUE)
-        control_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, sd, na.rm = TRUE)
-        cases_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
-        controls_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
-        list(
-            cases_beta = cases_beta,
-            controls_beta = controls_beta,
-            cases_beta_sd = case_sd,
-            controls_beta_sd = control_sd,
-            cases_num = cases_num,
-            controls_num = controls_num
-        )
+    cases_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
+    controls_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
+    case_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, sd, na.rm = TRUE)
+    control_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, sd, na.rm = TRUE)
+    cases_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
+    controls_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
+    list(
+        cases_beta = cases_beta,
+        controls_beta = controls_beta,
+        cases_beta_sd = case_sd,
+        controls_beta_sd = control_sd,
+        cases_num = cases_num,
+        controls_num = controls_num
+    )
 }
 
 
@@ -1567,8 +1567,8 @@ findDMRsFromSeeds <- function(beta = NULL,
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
     if (bed_provided) {
-        dmrs$start_dmp <-paste0(sorted_locs[dmrs$start_dmp, "chr"], ":", sorted_locs[dmrs$start_dmp, "start"])
-        dmrs$end_dmp <-paste0(sorted_locs[dmrs$end_dmp, "chr"], ":", sorted_locs[dmrs$end_dmp, "start"])
+        dmrs$start_dmp <- paste0(sorted_locs[dmrs$start_dmp, "chr"], ":", sorted_locs[dmrs$start_dmp, "start"])
+        dmrs$end_dmp <- paste0(sorted_locs[dmrs$end_dmp, "chr"], ":", sorted_locs[dmrs$end_dmp, "start"])
         dmrs$start_cpg <- paste0(sorted_locs[dmrs$start_cpg, "chr"], ":", dmrs$start_cpg)
         dmrs$end_cpg <- paste0(sorted_locs[dmrs$end_cpg, "chr"], ":", dmrs$end_cpg)
         dmrs$dmps <- sapply(dmrs$dmps, function(dmp_ids) {
