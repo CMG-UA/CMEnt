@@ -481,8 +481,9 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
             bed_data$id <- "."
         }
         loc_data <- bed_data[, c("chr", "start", "end"), drop = FALSE]
+        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
 
-        sorted_locs[count + 1:(count + nrow(loc_data)), ] <- as.matrix(loc_data)
+        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
         count <- count + nrow(loc_data)
         # Write normalized BED data
         bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]

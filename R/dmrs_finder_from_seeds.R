@@ -917,7 +917,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     parts <- unlist(strsplit(dmp_id, ":"))
                     chrom <- as.integer(factor(parts[1], levels = CHROMOSOMES))
                     pos <- as.numeric(parts[2])
-                    loc_index <- which(sorted_locs$chr == chrom & sorted_locs$start == pos)
+                    loc_index <- which(sorted_locs[, "chr"] == chrom & sorted_locs[, "start"] == pos)
 
                     if (length(loc_index) == 1) {
                         converted_dmp_ids <- c(converted_dmp_ids, loc_index)

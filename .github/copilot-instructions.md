@@ -13,6 +13,7 @@ Rules to follow:
 - Keep the documentation concise and to the point.
 - Always escape ! when running on terminal, to avoid history expansion issues.
 - Never make tests whose errors are skipped. The code should be robust enough to handle edge cases without skipping errors.
+- When using the terminal for tests, avoid filtering lines, always show the full output.
 - if you have to install packages for things to work, do it! Don't try to find alternatives. Add them to the DESCRIPTION file as well!
 - Avoid thinking that the next step is connected to the previous one. The question can be self-contained. Do not get very focused on previous context.
 - Avoid creating new files while solving the problem, unless explicitly instructed to do so.
