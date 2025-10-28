@@ -421,7 +421,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
     close(tmp_con)
     .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
-
+    options(bigmemory.allow.dimnames = TRUE)
     sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 4,
         type = "integer",
         backingfile = file.path(cache_dir, paste0("bed_locations_", hash)),
