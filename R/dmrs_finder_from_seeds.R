@@ -1449,14 +1449,15 @@ findDMRsFromSeeds <- function(beta = NULL,
     GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        seqnames(extended_dmrs_ranges) <- CHROMOSOMES[as.integer(seqnames(extended_dmrs_ranges))]
+        # Change seqnames from factor to character
+        GenomeInfoDb::seqlevels(extended_dmrs_ranges) <- CHROMOSOMES[as.integer(GenomeInfoDb::seqlevels(extended_dmrs_ranges))]
     }
     .log_step("Finding GC content of DMRs..", level = 1)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
     GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        seqnames(extended_dmrs_ranges) <- factor(seqnames(extended_dmrs_ranges), levels = CHROMOSOMES)
+        GenomeInfoDb::seqlevels(extended_dmrs_ranges) <-  factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = CHROMOSOMES)
     }
     extended_dmrs <- as.data.frame(extended_dmrs_ranges)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
