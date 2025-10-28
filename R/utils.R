@@ -422,20 +422,35 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
     close(tmp_con)
     .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
     options(bigmemory.allow.dimnames = TRUE)
-    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 4,
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE)
+    }
+    backing_file <- paste0("bed_locations_", hash)
+    descriptor_file <- paste0("bed_locations_", hash, ".desc")
+    backing_path_full <- file.path(cache_dir, backing_file)
+    descriptor_path_full <- file.path(cache_dir, descriptor_file)
+    
+    if (file.exists(backing_path_full)) {
+        file.remove(backing_path_full)
+    }
+    if (file.exists(descriptor_path_full)) {
+        file.remove(descriptor_path_full)
+    }
+    
+    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 3,
         type = "integer",
-        backingfile = file.path(cache_dir, paste0("bed_locations_", hash)),
-        descriptorfile = file.path(cache_dir, paste0("bed_locations_", hash, ".desc")),
+        backingfile = backing_file,
+        backingpath = cache_dir,
+        descriptorfile = descriptor_file,
         dimnames = list(NULL, c("chr", "start", "end"))
     )
 
     # Read chunks of the BED file to minimize memory usage
     chunk_size <- 100000
     con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
-    norm_bed_con <- file(normalized_bed_file, "w")
     # Write normalized header to new BED file
     norm_bed_header <- c("#chrom", "start", "end", "id", "score", "strand", existing_ids)
-    writeLines(paste(norm_bed_header, collapse = "\t"), norm_bed_con)
+    writeLines(paste(norm_bed_header, collapse = "\t"), normalized_bed_file)
     # Skip header line
     readLines(con, n = 1)
     count <- 0
@@ -473,7 +488,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
         data.table::fwrite(
             bed_subset,
-            file = norm_bed_con,
+            file = normalized_bed_file,
             sep = "\t",
             quote = FALSE,
             row.names = FALSE,
@@ -482,7 +497,6 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         )
     }
     close(con)
-    close(norm_bed_con)
 
     sorted_locs <- sorted_locs[order(sorted_locs[, 1], sorted_locs[, 2]), ]
 
