@@ -202,7 +202,7 @@
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_dmp"]
     dmr_end <- dmr["end_dmp"]
-    if (bigmemory::is.sub.big.matrix(chr_locs)) {
+    if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
         dmr_start_ind <- as.integer(dmr_start)
         dmr_end_ind <- as.integer(dmr_end)
     } else {

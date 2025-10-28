@@ -24,4 +24,8 @@ inst/doc
 benchmark_data
 debug
 DMRsegal.Rcheck/
+
+
+# Temporary files created by testthat ----
 tests/testthat/test*.loader
+tests/testthat/Rplots.pdf
