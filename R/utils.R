@@ -437,6 +437,7 @@ processMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom", sta
         bed_data$end <- bed_data$start + 1
         bed_data$score <- "."
         bed_data$id <- seq(count + 1, count + nrow(bed_data))
+        bed_data$strand <- "*"
 
         # Write normalized BED data
         bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
