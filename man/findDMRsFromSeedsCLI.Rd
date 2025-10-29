@@ -16,7 +16,6 @@ None, outputs results to files
 Command Line Interface for Finding DMRs from DMPs
 }
 \examples{
-\donttest{
 if (!requireNamespace("optparse", quietly = TRUE)) {
     install.packages("optparse")
 }
@@ -36,6 +35,5 @@ args <- list(
 )
 
 findDMRsFromSeedsCLI(args)
-}
 
 }

@@ -159,7 +159,6 @@ and filtering internally using the min_cpg_delta_beta parameter if needed.
 }
 
 \examples{
-\donttest{
 # Load example data
 if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
     remotes::install_github("CMG-UA/DMRsegaldata")
@@ -174,6 +173,5 @@ dmrs <- findDMRsFromSeeds(
     dmps = dmps,
     pheno = pheno
 )
-}
 
 }

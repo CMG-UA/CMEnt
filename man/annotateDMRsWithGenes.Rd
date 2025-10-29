@@ -48,7 +48,6 @@ Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.
 }
 \examples{
-\donttest{
 # Annotate DMRs with gene information
 dmrs <- data.frame(
     chr = c("chr1", "chr2"),
@@ -64,6 +63,5 @@ dmrs_annotated <- annotateDMRsWithGenes(
     promoter_upstream = 5000,
     promoter_downstream = 1000
 )
-}
 
 }

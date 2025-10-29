@@ -37,7 +37,6 @@ Create a new BetaHandler object that manages methylation beta values
 from various input formats (files, matrices, tabix) with memory-efficient access patterns.
 }
 \examples{
-\donttest{
 if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
     remotes::install_github("CMG-UA/DMRsegaldata")
 }
@@ -55,6 +54,5 @@ head(beta_locs)
 
 beta_values <- beta_handler$getBeta()
 head(beta_values[, 1:5])
-}
 
 }

@@ -63,7 +63,6 @@
 #' }
 #'
 #' @examples
-#' \donttest{
 #' # Load example data
 #' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
 #'     remotes::install_github("CMG-UA/DMRsegaldata")
@@ -78,7 +77,6 @@
 #'     dmps = dmps,
 #'     pheno = pheno
 #' )
-#' }
 #'
 #' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame findOverlaps
 #' @importFrom future.apply future_lapply future_mapply

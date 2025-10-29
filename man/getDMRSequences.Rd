@@ -42,7 +42,6 @@ UCSC Genome Browser REST API. The online method processes sequences in
 batches to avoid overwhelming the API.
 }
 \examples{
-\donttest{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
@@ -53,6 +52,5 @@ sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
 gc_content <- sapply(sequences, function(s) {
     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 })
-}
 
 }

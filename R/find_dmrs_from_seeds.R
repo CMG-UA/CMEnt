@@ -5,7 +5,6 @@
 #' @return None, outputs results to files
 #'
 #' @examples
-#' \donttest{
 #' if (!requireNamespace("optparse", quietly = TRUE)) {
 #'     install.packages("optparse")
 #' }
@@ -25,7 +24,6 @@
 #' )
 #' 
 #' findDMRsFromSeedsCLI(args)
-#' }
 #'
 #' @export
 findDMRsFromSeedsCLI <- function(args) {

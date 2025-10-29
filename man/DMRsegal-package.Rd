@@ -55,8 +55,4 @@ Useful links:
 }
 
 }
-\author{
-\strong{Maintainer}: Vasileios Lemonidis \email{vasileios.lemonidis@uantwerpen.be} (\href{https://orcid.org/0000-0002-6446-3536}{ORCID}) [copyright holder]
-
-}
 \keyword{internal}
