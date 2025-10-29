@@ -39,7 +39,7 @@ plotDMRs(
 \item{...}{Additional arguments passed to plotDMR or plotDMRWithBeta.}
 }
 \value{
-If beta is NULL: A combined ggplot2 object (requires patchwork or gridExtra), or a list of ggplot objects.
+If beta is NULL: A gtable object.
 If beta is provided: A list of combined plot objects with structure and heatmap.
 }
 \description{

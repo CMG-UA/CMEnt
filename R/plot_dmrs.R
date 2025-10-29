@@ -471,7 +471,7 @@ minmaxscale <- function(x) {
 #' @param ncol Integer. Number of columns in the grid (default: 1).
 #' @param ... Additional arguments passed to plotDMR or plotDMRWithBeta.
 #'
-#' @return If beta is NULL: A combined ggplot2 object (requires patchwork or gridExtra), or a list of ggplot objects.
+#' @return If beta is NULL: A gtable object.
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples

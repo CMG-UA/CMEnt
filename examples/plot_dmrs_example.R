@@ -31,26 +31,15 @@ cat("Saved plot to: dmr_plot_example_1.png\n")
 # ============================================================================
 cat("\n=== Example 2: Multiple DMRs in a grid ===\n")
 
-# Check if patchwork is available
-if (requireNamespace("patchwork", quietly = TRUE)) {
-    # Plot the first 6 DMRs
-    p2 <- plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
-    print(p2)
     
-    ggsave("dmr_plot_example_2.png", p2, width = 15, height = 8, dpi = 300)
-    cat("Saved plot to: dmr_plot_example_2.png\n")
-} else {
-    cat("Install 'patchwork' package for grid plots:\n")
-    cat("  install.packages('patchwork')\n")
-    
-    # Plot individually
-    for (i in 1:3) {
-        p <- plotDMR(dmrs, dmr_index = i)
-        fname <- sprintf("dmr_plot_example_2_%d.png", i)
-        ggsave(fname, p, width = 10, height = 4, dpi = 300)
-        cat("Saved plot to:", fname, "\n")
-    }
+# Plot individually
+for (i in 1:3) {
+    p <- plotDMR(dmrs, dmr_index = i)
+    fname <- sprintf("dmr_plot_example_2_%d.png", i)
+    ggsave(fname, p, width = 10, height = 4, dpi = 300)
+    cat("Saved plot to:", fname, "\n")
 }
+
 
 # ============================================================================
 # Example 3: Plot DMRs with different characteristics

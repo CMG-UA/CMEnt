@@ -143,8 +143,7 @@ test_that("plotDMRWithBeta works", {
     )
     )
 
-    expect_true(!is.null(p))
-    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
+    expect_true(inherits(p, "gtable"))
 })
 
 
