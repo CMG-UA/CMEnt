@@ -468,11 +468,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @return A new BetaHandler object
 #'
 #' @examples
-#' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
-#'     remotes::install_github("CMG-UA/DMRsegaldata")
-#' }
-#' library(DMRsegaldata)
-#' beta_matrix <- DMRsegaldata::beta
+#' beta_matrix <- data(beta)
 #' 
 #' beta_handler <- getBetaHandler(
 #'     beta = beta_matrix,

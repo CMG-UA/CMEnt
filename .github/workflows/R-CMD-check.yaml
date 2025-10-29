@@ -60,7 +60,6 @@ jobs:
             any::knitr
             any::rmarkdown
             any::BiocStyle
-            CMG-UA/DMRsegaldata
             any::DMRcate
             any::bumphunter
             any::doParallel

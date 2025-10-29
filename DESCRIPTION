@@ -28,6 +28,8 @@ RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 Config/testthat/parallel: true
 biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
+LazyData: true
+LazyDataCompression: xz
 Depends:
     R (>= 4.5.0)
 Imports:

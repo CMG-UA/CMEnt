@@ -22,7 +22,7 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data from the `DMRsegaldata` package to run all three methods and compare their results in terms of:
+This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data to run all three methods and compare their results in terms of:
 
 - Number of DMRs detected
 - DMR size distribution
@@ -48,14 +48,9 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 library(minfi)
 library(DMRsegal)
 
-if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
-    remotes::install_github("CMG-UA/DMRsegaldata")
-}
-library(DMRsegaldata)
-
-beta <- DMRsegaldata::beta
-pheno <- DMRsegaldata::pheno
-array_type <- DMRsegaldata::array_type
+beta <- data(beta)
+pheno <- data(pheno)
+array_type <- data(array_type)
 genome <- "hg19"
 
 

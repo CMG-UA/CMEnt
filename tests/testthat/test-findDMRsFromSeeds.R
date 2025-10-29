@@ -3,10 +3,10 @@ library(testthat)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
@@ -29,10 +29,10 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
     beta_file <- tempfile(fileext = ".tsv")
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
@@ -61,14 +61,14 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    pheno <- data(pheno)
 
 
-    beta <- DMRsegaldata::beta
-    pheno <- DMRsegaldata::pheno
-    array_type <- DMRsegaldata::array_type
+    beta <- data(beta)
+    pheno <- data(pheno)
+    array_type <- data(array_type)
     genome <- "hg19"
 
 
@@ -117,10 +117,10 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     # Test with strict min_dmps
     dmrs_strict <- findDMRsFromSeeds(
@@ -183,10 +183,10 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
@@ -227,10 +227,10 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
@@ -272,10 +272,10 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 })
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     # Test missing required parameters
     expect_error(
@@ -313,10 +313,10 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
@@ -338,11 +338,11 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 })
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
-    skip_if_not_installed("DMRsegaldata")
+    
     skip_if_not_installed("mockery")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -372,11 +372,11 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 })
 
 test_that("findDMRsFromSeeds empirical p-value mode works", {
-    skip_if_not_installed("DMRsegaldata")
+    
     skip_if_not_installed("mockery")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
 
     dmrs_parametric <- findDMRsFromSeeds(
@@ -418,11 +418,11 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
 })
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
-    skip_if_not_installed("DMRsegaldata")
+    
 
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    beta <- data(beta)
+    dmps <- data(dmps)
+    pheno <- data(pheno)
 
     dmrs_not_annotated <- findDMRsFromSeeds(
         beta = beta,
