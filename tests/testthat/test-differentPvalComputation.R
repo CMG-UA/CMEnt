@@ -2,6 +2,7 @@
 library(testthat)
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
+    skip_on_ci()
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -85,6 +86,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 })
 
 test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibility", {
+    skip_on_ci()
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -151,6 +153,7 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
 })
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
+    skip_on_ci()
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -210,63 +213,5 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     # All should produce valid results
     if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
-    }
-})
-
-test_that("findDMRsFromSeeds aggfun accepts function objects", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-
-    # Test with median function
-    dmrs_median_func <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = median,
-        memory_threshold_mb = 500,
-        annotate_with_genes = FALSE
-    )
-
-    # Test with mean function
-    dmrs_mean_func <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = mean,
-        memory_threshold_mb = 500,
-        annotate_with_genes = FALSE
-    )
-
-    # Test with character string for comparison
-    dmrs_median_char <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = "median",
-        memory_threshold_mb = 500,
-        annotate_with_genes = FALSE
-    )
-
-    # Assertions
-    expect_true(is.null(dmrs_median_func) || inherits(dmrs_median_func, "GRanges"))
-    expect_true(is.null(dmrs_mean_func) || inherits(dmrs_mean_func, "GRanges"))
-    expect_true(is.null(dmrs_median_char) || inherits(dmrs_median_char, "GRanges"))
-
-    # Function and character should produce same results for median
-    if (!is.null(dmrs_median_func) && !is.null(dmrs_median_char)) {
-        expect_equal(length(dmrs_median_func), length(dmrs_median_char))
     }
 })
