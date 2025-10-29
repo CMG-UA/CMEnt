@@ -930,33 +930,22 @@ convertBetaToTabix <- function(beta_file,
                     "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
                     shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
                 )
-                system2(sort_cmd)
+                system(sort_cmd)
             }
 
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
 
-            if (is_windows) {
-                bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
-                if (bgzip_result != 0) {
+            bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
+            if (bgzip_result != 0) {
                     stop("bgzip compression failed with exit code ", bgzip_result)
-                }
-            } else {
-                bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
-                system2(bgzip_cmd)
             }
-
             # Index with tabix
             .log_step("Creating tabix index...", level = 2)
 
-            if (is_windows) {
-                tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
-                if (tabix_result != 0) {
-                    stop("tabix indexing failed with exit code ", tabix_result)
-                }
-            } else {
-                tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
-                system2(tabix_cmd)
+            tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
+            if (tabix_result != 0) {
+                stop("tabix indexing failed with exit code ", tabix_result)
             }
 
             # Clean up temp files
