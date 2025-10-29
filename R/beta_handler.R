@@ -468,7 +468,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @return A new BetaHandler object
 #'
 #' @examples
-#' beta_matrix <- data(beta)
+#' beta_matrix <- load(system.file("data/beta.rda", package = "DMRsegal"))
 #' 
 #' beta_handler <- getBetaHandler(
 #'     beta = beta_matrix,

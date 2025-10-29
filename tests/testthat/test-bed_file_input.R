@@ -29,10 +29,10 @@ create_dmps_without_chr_prefix <- function(dmps, beta_mat, locs) {
 test_that("findDMRsFromSeeds works with minimal bed file", {
     
     skip_on_ci()
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -80,10 +80,10 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
 test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
     skip_on_ci()
 
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -138,10 +138,10 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
     
     skip_on_ci()
 
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -191,10 +191,10 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
     
     skip_on_ci()
 
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -238,10 +238,10 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
     
     skip_on_ci()
 
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -292,10 +292,10 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
     
     skip_on_ci()
 
-    data(beta)
-    data(dmps)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())

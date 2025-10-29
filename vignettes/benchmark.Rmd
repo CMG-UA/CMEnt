@@ -48,9 +48,9 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 library(minfi)
 library(DMRsegal)
 
-data(beta)
-data(pheno)
-array_type <- data(array_type)
+load(system.file("data/beta.rda", package = "DMRsegal"))
+load(system.file("data/pheno.rda", package = "DMRsegal"))
+array_type <- load(system.file("data/array_type.rda", package = "DMRsegal"))
 genome <- "hg19"
 
 

@@ -4,9 +4,9 @@ library(testthat)
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
@@ -30,9 +30,9 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
     beta_file <- tempfile(fileext = ".tsv")
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
@@ -62,9 +62,9 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
     
-    data(beta)
-    data(pheno)
-    data(array_type)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/array_type.rda", package = "DMRsegal"))
     genome <- "hg19"
 
 
@@ -114,9 +114,9 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with strict min_dmps
     dmrs_strict <- findDMRsFromSeeds(
@@ -180,9 +180,9 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
@@ -224,9 +224,9 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
@@ -269,9 +269,9 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test missing required parameters
     expect_error(
@@ -310,9 +310,9 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
 test_that("findDMRsFromSeeds works with different genome builds", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
@@ -336,9 +336,9 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 test_that("findDMRsFromSeeds works when tabix is not available", {
     
     skip_if_not_installed("mockery")
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -370,9 +370,9 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 test_that("findDMRsFromSeeds empirical p-value mode works", {
     
     skip_if_not_installed("mockery")
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
 
     dmrs_parametric <- findDMRsFromSeeds(
@@ -416,9 +416,9 @@ test_that("findDMRsFromSeeds empirical p-value mode works", {
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
     
 
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     dmrs_not_annotated <- findDMRsFromSeeds(
         beta = beta,

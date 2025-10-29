@@ -1,12 +1,11 @@
 # Test suite for new functionality in findDMRsFromSeeds
 library(testthat)
-library(DMRsegal)
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
-    
-    data(beta)
-    data(dmps)
-    data(pheno)
+
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
@@ -88,9 +87,9 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
 test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibility", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
@@ -155,9 +154,9 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(
@@ -219,9 +218,9 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
 
 test_that("findDMRsFromSeeds aggfun accepts function objects", {
     
-    data(beta)
-    data(dmps)
-    data(pheno)
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with median function
     dmrs_median_func <- findDMRsFromSeeds(
