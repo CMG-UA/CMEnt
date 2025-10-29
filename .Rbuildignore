@@ -2,15 +2,11 @@
 ^\.Rproj\.user$
 ^\.DS_Store$
 ^LICENSE\.md$
-^CONTRIBUTING\.md$
 ^\.github$
-^CODE_OF_CONDUCT\.md$
 ^README\.Rmd$
 ^README\.html$
-^\.envrc$
 ^\.here$
 ^\.lintr$
-^benchmark\.R$
 ^benchmark_data$
 ^data-raw$
 ^debug$
@@ -18,10 +14,7 @@
 ^\.Rhistory$
 ^\.RData$
 ^\.Rprofile$
-^\.git$
-^\.github$
 ^\.vscode$
 ^DMRsegal\.Rcheck$
-^inst/doc$
 ^vignettes/.*\.(md|html)$
 ^codecov\.yml$
