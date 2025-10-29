@@ -1160,7 +1160,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
 
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
-    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
+    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
     .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)
@@ -1331,6 +1331,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
     .log_success("Overlapping extended DMRs merged: ", length(extended_dmrs_ranges), " final extended DMRs.", level = 1)
+    .log_step("Stage 4: Annotating and filtering resulting DMRs..", level = 1)
     if (bigmemory::is.big.matrix(sorted_locs)) {
         # Change seqnames from factor to character
         extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
@@ -1491,11 +1492,11 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
-
-    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
+    .log_success("Annotation and filtering complete. Final number of DMRs: ", nrow(dmrs), level = 1)
+    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
-        .log_step("Saving DMRs to ", dmrs_file, "..")
+        .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
         gz <- gzfile(dmrs_file, "w")
         write.table(
             dmrs,
@@ -1507,7 +1508,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             row.names = FALSE
         )
         close(gz)
-        .log_success("DMRs saved.")
+        .log_success("DMRs saved.", level = 2)
     }
 
 
