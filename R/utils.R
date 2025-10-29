@@ -595,6 +595,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
         sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
         count <- count + nrow(loc_data)
     }
+    close(con)
     rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
 
     saveRDS(bigmemory::describe(sorted_locs), file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds")))
@@ -1170,10 +1171,11 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' }
 #' @export
 getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
-    array <- tolower(array)
-    genome <- tolower(genome)
+    if (!is.null(locations_file) && file.exists(locations_file)) {
+        locs <- readRDS(locations_file)
+        try(locs <- bigmemory::attach.big.matrix(locs), silent = TRUE)
+        return(locs)
+    }
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
         ".cache", "R", "DMRsegal", "annotations"
@@ -1181,10 +1183,10 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    if (!is.null(locations_file) && file.exists(locations_file)) {
-        locs <- readRDS(locations_file)
-        return(locs)
-    }
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    array <- tolower(array)
+    genome <- tolower(genome)
     cache_file <- file.path(cache_dir, paste0(
         array, "_", genome,
         "_locations.rds"
@@ -1299,6 +1301,8 @@ orderByLoc <- function(x,
                        genome = c("hg19", "hg38", "mm10", "mm39"),
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+        genome <- strex::match_arg(genome, ignore_case = TRUE)
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
     stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
@@ -1312,8 +1316,7 @@ orderByLoc <- function(x,
 #' motif finding or sequence composition analysis.
 #'
 #' @param dmrs GRanges object containing genomic coordinates of DMRs
-#' @param genome Character. Genome version to use for sequence extraction.
-#'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
+#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg19".
 #' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
 #'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
 #'   fallback when packages are unavailable (default: FALSE)
@@ -1351,8 +1354,7 @@ orderByLoc <- function(x,
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), use_online = FALSE) {
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
+getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
 
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
@@ -1362,11 +1364,16 @@ getDMRSequences <- function(dmrs, genome = c("hg19", "hg38", "mm10", "mm39"), us
         pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
     } else if (genome == "mm39") {
         pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+    } else {
+        pkg_name <- NULL
     }
+    # Rename chromosomes to match BSgenome naming
+    GenomeInfoDb::seqlevels(dmrs) <- sub("^chr", "", GenomeInfoDb::seqlevels(dmrs))
+    GenomeInfoDb::seqlevels(dmrs) <- paste0("chr", GenomeInfoDb::seqlevels(dmrs))
 
     use_bsgenome <- FALSE
 
-    if (!use_online) {
+    if (!use_online && !is.null(pkg_name)) {
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             message("BSgenome package not available: ", pkg_name)
             message("Attempting to install...")
@@ -1531,22 +1538,15 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             dmrs <- .liftOverFromGenomeToGenome(dmrs, dmrs_genome, genome)
         }
     }
-    # Select appropriate TxDb and org.db based on genome
-    txdb_pkg <- switch(genome,
-        "hg19" = "TxDb.Hsapiens.UCSC.hg19.knownGene",
-        "hg38" = "TxDb.Hsapiens.UCSC.hg38.knownGene",
-        "mm10" = "TxDb.Mmusculus.UCSC.mm10.knownGene",
-        "mm39" = "TxDb.Mmusculus.UCSC.mm39.knownGene",
-        stop("Unsupported genome: ", genome, ". Supported: hg19, hg38, mm10, mm39")
-    )
 
-    orgdb_pkg <- switch(genome,
-        "hg19" = "org.Hs.eg.db",
-        "hg38" = "org.Hs.eg.db",
-        "mm10" = "org.Mm.eg.db",
-        "mm39" = "org.Mm.eg.db",
+    supported_organisms <- Organism.dplyr::supportedOrganisms()
+    # find row matching the genome
+    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), ,drop=F]
+    if (length(matched_row) == 0) {
         stop("Unsupported genome: ", genome)
-    )
+    }
+    txdb_pkg <- matched_row$TxDb
+    orgdb_pkg <- matched_row$OrgDb
 
     # Load required packages
     if (!requireNamespace(txdb_pkg, quietly = TRUE)) {

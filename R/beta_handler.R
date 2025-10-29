@@ -24,8 +24,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         njobs = 1,
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix
-        #' @param array Array platform type
-        #' @param genome Reference genome version
+        #' @param array Array platform type. Ignored if sorted_locs have been provided.
+        #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs have been provided.
         #' @param beta_row_names_file Path to row names file
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param memory_threshold_mb Memory threshold in MB
@@ -45,13 +45,17 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-            array <- strex::match_arg(array, ignore_case = TRUE)
-            genome <- strex::match_arg(genome, ignore_case = TRUE)
+            if(is.null(sorted_locs)){
+                array <- strex::match_arg(array, ignore_case = TRUE)
+                genome <- strex::match_arg(genome, ignore_case = TRUE)
+                self$array <- array
+                self$genome <- genome
+            }
+
 
             # Set fields
             self$beta <- beta
-            self$array <- array
-            self$genome <- genome
+
             self$beta_row_names_file <- beta_row_names_file
             if (!is.null(sorted_locs)){
                 if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)){
@@ -455,10 +459,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' from various input formats (files, matrices, tabix) with memory-efficient access patterns.
 #'
 #' @param beta Path to beta values file, or a tabix, or a beta matrix
-#' @param array Array platform type
-#' @param genome Reference genome version
+#' @param array Array platform type, **ignored** if sorted_locs have been provided
+#' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. **Ignored** if sorted_locs have been provided.
 #' @param beta_row_names_file Path to row names file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.
 #' @param memory_threshold_mb Memory threshold in MB
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object

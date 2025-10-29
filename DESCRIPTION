@@ -78,6 +78,7 @@ Suggests:
     DMRsegaldata,
     rmarkdown,
     BiocStyle,
+    Organism.dplyr,
     SummarizedExperiment,
     testthat (>= 3.0.0),
     mockery,
@@ -89,14 +90,9 @@ Suggests:
     patchwork,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
-    TxDb.Mmusculus.UCSC.mm10.knownGene,
-    TxDb.Mmusculus.UCSC.mm39.knownGene,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
-    BSgenome.Mmusculus.UCSC.mm10,
-    BSgenome.Mmusculus.UCSC.mm39,
-    org.Hs.eg.db,
-    org.Mm.eg.db
+    org.Hs.eg.db
 Remotes:
     chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10,
     CMG-UA/DMRsegaldata,

@@ -624,7 +624,7 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
-#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
+#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume DMPs correlation is significant. Default is 0.05.
 #' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
@@ -674,7 +674,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                               aggfun = c("median", "mean"),
                               ignored_sample_groups = NULL,
                               output_prefix = NULL,
-                              njobs = future::availableCores(),
+                              njobs = future::availableCores() - 1,
                               memory_threshold_mb = 500,
                               beta_row_names_file = NULL,
                               annotate_with_genes = TRUE,
@@ -779,7 +779,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             if (beta_file_ext == "bed" || bed_provided) {
                 # Make sure that the dmp tsv_id col has entries that are chr:pos format
                 bed_provided <- TRUE
-                dmp_ids <- dmps[, dmps_tsv_id_col]
+                dmp_ids <- dmps_tsv[, dmps_tsv_id_col]
                 if (!all(grepl("^(chr)?[0-9XYM]+:[0-9]+$", dmp_ids))) {
                     stop("When providing a bed file as beta input, the DMP IDs in the dmps file/dataframe (using dmps_tsv_id_col: ", dmps_tsv_id_col, ") must be in 'chr:pos' format (e.g., chr1:123456).")
                 }
@@ -1191,7 +1191,6 @@ findDMRsFromSeeds <- function(beta = NULL,
             tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed),
             njobs = njobs
         )
-        
         .log_success("Connectivity array built.", level = 2)
     }
     .log_info("Number of connected CpGs found: ", sum(connectivity_array$connected), level = 2)
@@ -1200,7 +1199,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
     }
     stopifnot(nrow(connectivity_array) != nrow(sorted_locs))
-    .log_step("Expanding ", n_dmrs, " DMRs using up to ", njobs, " parallel jobs...", level = 2)
+    .log_step("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = n_dmrs)
     }

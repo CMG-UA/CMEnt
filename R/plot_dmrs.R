@@ -13,9 +13,9 @@ if (getRversion() >= "2.15.1") {
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
+#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if sorted_locs is provided.
+#' @param genome Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
-#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").
-#' @param genome Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).
@@ -44,16 +44,15 @@ if (getRversion() >= "2.15.1") {
 #' @export
 plotDMR <- function(dmrs,
                     dmr_index = 1,
-                    sorted_locs = NULL,
                     array = c("450K", "27K", "EPIC", "EPICv2"),
                     genome = c("hg19", "hg38", "mm10", "mm39"),
+                    sorted_locs = NULL,
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
                     plot_title = TRUE,
                     .ret_details = FALSE) {
     showtext::showtext_auto()
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
+
 
     # Validate input
     if (dmr_index < 1 || dmr_index > length(dmrs)) {
@@ -66,6 +65,8 @@ plotDMR <- function(dmrs,
 
     # Get genomic locations if not provided
     if (is.null(sorted_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+        genome <- strex::match_arg(genome, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 

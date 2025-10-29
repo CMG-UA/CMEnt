@@ -4,17 +4,12 @@
 \alias{getDMRSequences}
 \title{Extract DNA Sequences for DMRs}
 \usage{
-getDMRSequences(
-  dmrs,
-  genome = c("hg19", "hg38", "mm10", "mm39"),
-  use_online = FALSE
-)
+getDMRSequences(dmrs, genome, use_online = FALSE)
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
 
-\item{genome}{Character. Genome version to use for sequence extraction.
-Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")}
+\item{genome}{Character. Genome version to use for sequence extraction, .e.g. "hg19".}
 
 \item{use_online}{Logical. If TRUE, forces use of online UCSC API instead of
 BSgenome packages. If FALSE (default), uses BSgenome packages with online

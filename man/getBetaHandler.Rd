@@ -17,13 +17,13 @@ getBetaHandler(
 \arguments{
 \item{beta}{Path to beta values file, or a tabix, or a beta matrix}
 
-\item{array}{Array platform type}
+\item{array}{Array platform type, \strong{ignored} if sorted_locs have been provided}
 
-\item{genome}{Reference genome version}
+\item{genome}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs have been provided.}
 
 \item{beta_row_names_file}{Path to row names file}
 
-\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns}
+\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.}
 
 \item{memory_threshold_mb}{Memory threshold in MB}
 
