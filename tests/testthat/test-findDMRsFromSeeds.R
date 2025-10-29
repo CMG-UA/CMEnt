@@ -17,7 +17,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        njobs = 1,
         memory_threshold_mb = 500 # Small threshold allows in-memory loading
     )
 
