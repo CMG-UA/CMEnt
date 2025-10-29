@@ -935,15 +935,15 @@ convertBetaToTabix <- function(beta_file,
 
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
-
+            .log_info("Expected output compressed file: ", output_file, level = 3)
             bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
             if (bgzip_result != 0) {
-                    stop("bgzip compression failed with exit code ", bgzip_result)
+                stop("bgzip compression failed with exit code ", bgzip_result)
             }
             # Index with tabix
             .log_step("Creating tabix index...", level = 2)
 
-            tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
+            tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE, stdout = TRUE)
             if (tabix_result != 0) {
                 stop("tabix indexing failed with exit code ", tabix_result)
             }

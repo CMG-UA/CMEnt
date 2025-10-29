@@ -66,7 +66,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
         max_lookup_dist = 1000,
         njobs = 1,
         memory_threshold_mb = 500,
-        verbose = 2
+        verbose = 3
     )
 
     unlink(bed_file)
