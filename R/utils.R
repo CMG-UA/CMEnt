@@ -478,7 +478,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     }
 
     if (is.null(output_dir)) {
-        if (getOption("DMRsegal.bed_cache_dir", TRUE)){
+        if (getOption("DMRsegal.bed_cache_dir", TRUE)) {
             cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
         } else {
             cache_dir <- tempdir()
@@ -1345,7 +1345,7 @@ orderByLoc <- function(x,
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size=0) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size = 0) {
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {

@@ -27,7 +27,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -59,7 +58,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
-    
+
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
     load(system.file("data/array_type.rda", package = "DMRsegal"))
@@ -111,7 +110,6 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -177,7 +175,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -221,7 +218,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -266,7 +262,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 })
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -303,11 +298,9 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
             casecontrol_col = "casecontrol"
         )
     )
-
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -331,7 +324,6 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 })
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
-    
     skip_if_not_installed("mockery")
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
@@ -361,12 +353,9 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     if (!is.null(dmrs) && length(dmrs) > 0) {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
     }
-
 })
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
-    
-
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))

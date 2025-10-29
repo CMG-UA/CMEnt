@@ -987,7 +987,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_step("Stage 1: Connecting DMPs to form initial DMRs..", level = 1)
 
     # Set up progress tracking for DMP connection
-    chromosomes <- unique(dmps_locs[,"chr"])
+    chromosomes <- unique(dmps_locs[, "chr"])
 
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "01_dmrs_from_connected_dmps.tsv"))) {
         .log_info("Loading debug DMRs from file...", level = 2)
