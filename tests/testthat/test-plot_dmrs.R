@@ -1,5 +1,4 @@
 library(testthat)
-library(DMRsegal)
 
 test_that("plotDMR creates a ggplot object", {
     skip_if_not_installed("ggplot2")
@@ -91,7 +90,7 @@ test_that("plotDMRs creates a combined plot", {
     p <- plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"), paste0("plotDMRs should return a gridExtra or list of ggplot objects, instead got: ", class(p)))
+    expect_true(inherits(p, "gtable"))
 })
 
 test_that("plotDMRs handles NULL dmr_indices", {
@@ -105,7 +104,7 @@ test_that("plotDMRs handles NULL dmr_indices", {
     p <- plotDMRs(dmrs, dmr_indices = NULL)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
+    expect_true(inherits(p, "gtable"))
 })
 
 test_that("plotDMRs respects ncol parameter", {

@@ -1319,7 +1319,8 @@ orderByLoc <- function(x,
 #' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
 #'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
 #'   fallback when packages are unavailable (default: FALSE)
-#'
+#' @param flank_size Integer. Number of base pairs to add as flanking regions
+#'   on both sides of each DMR (default: 0)
 #' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
@@ -1353,7 +1354,7 @@ orderByLoc <- function(x,
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size=0) {
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1368,7 +1369,9 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
     # Rename chromosomes to match BSgenome naming
     GenomeInfoDb::seqlevels(dmrs) <- sub("^chr", "", GenomeInfoDb::seqlevels(dmrs))
     GenomeInfoDb::seqlevels(dmrs) <- paste0("chr", GenomeInfoDb::seqlevels(dmrs))
-
+    if (flank_size > 0) {
+        dmrs <- GenomicRanges::flank(dmrs, width = flank_size, both = TRUE)
+    }
     use_bsgenome <- FALSE
 
     if (!use_online && !is.null(pkg_name)) {

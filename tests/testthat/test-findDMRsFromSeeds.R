@@ -1,6 +1,5 @@
 # Test suite for findDMRsFromSeeds function
 library(testthat)
-library(DMRsegal)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
