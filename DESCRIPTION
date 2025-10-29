@@ -69,11 +69,9 @@ Suggests:
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
     IlluminaHumanMethylationEPICv2anno.20a1.hg38,
     IlluminaHumanMethylation27kanno.ilmn12.hg19,
-    IlluminaMouseMethylationanno.12.v1.mm10,
     BiocManager,
     devtools,
     knitr,
-    DMRsegaldata,
     rmarkdown,
     BiocStyle,
     Organism.dplyr,
@@ -91,10 +89,6 @@ Suggests:
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
     org.Hs.eg.db
-Remotes:
-    chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10,
-    CMG-UA/DMRsegaldata,
-    futureverse/progressr
 Config/testthat/edition: 3
 Collate:
     'utils.R'
