@@ -29,11 +29,11 @@ create_dmps_without_chr_prefix <- function(dmps, beta_mat, locs) {
 test_that("findDMRsFromSeeds works with minimal bed file", {
     
     skip_on_ci()
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
-
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 
@@ -80,11 +80,12 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
 test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
     skip_on_ci()
 
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
 
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 
@@ -137,11 +138,12 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
     
     skip_on_ci()
 
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
 
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 
@@ -189,11 +191,12 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
     
     skip_on_ci()
 
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
 
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 
@@ -235,11 +238,12 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
     
     skip_on_ci()
 
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
 
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 
@@ -288,11 +292,12 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
     
     skip_on_ci()
 
-    beta <- data(beta)
-    dmps <- data(dmps)
-    pheno <- data(pheno)
+    data(beta)
+    data(dmps)
+    data(pheno)
+    data(array_type)
 
-    beta_handler <- getBetaHandler(beta, array = data(array_type), genome = "hg19")
+    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
 

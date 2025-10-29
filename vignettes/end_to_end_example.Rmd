@@ -28,9 +28,9 @@ End-to-end DMR discovery with the same dataset and steps as in the benchmark, in
 
 ```{r load}
 
-beta <- data(beta)
-pheno <- data(pheno)
-array_type <- data(array_type)
+data(beta)
+data(pheno)
+data(array_type)
 genome <- "hg19"
 
 beta_handler <- DMRsegal::getBetaHandler(beta = beta, array = array_type, genome = genome)

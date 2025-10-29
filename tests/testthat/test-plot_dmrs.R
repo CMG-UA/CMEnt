@@ -131,8 +131,8 @@ test_that("plotDMRWithBeta works", {
         skip("Benchmark DMRs not available")
     }
 
-    pheno <- data(pheno)
-    beta <- data(beta)
+    data(pheno)
+    data(beta)
 
     p <- suppressWarnings(plotDMRWithBeta(
         dmrs = dmrs,

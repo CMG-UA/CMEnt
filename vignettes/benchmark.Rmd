@@ -48,8 +48,8 @@ We'll use an example methylation dataset with 10 cases and 10 normals:
 library(minfi)
 library(DMRsegal)
 
-beta <- data(beta)
-pheno <- data(pheno)
+data(beta)
+data(pheno)
 array_type <- data(array_type)
 genome <- "hg19"
 

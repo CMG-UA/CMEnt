@@ -161,9 +161,9 @@ and filtering internally using the min_cpg_delta_beta parameter if needed.
 \examples{
 # Load example data
 
-beta <- data(beta)
-dmps <- data(dmps)
-pheno <- data(pheno)
+data(beta)
+data(dmps)
+data(pheno)
 # Find DMRs
 dmrs <- findDMRsFromSeeds(
     beta = beta,
