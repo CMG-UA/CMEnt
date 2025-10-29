@@ -936,16 +936,23 @@ convertBetaToTabix <- function(beta_file,
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
             .log_info("Expected output compressed file: ", output_file, level = 3)
-            bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
-            if (bgzip_result != 0) {
-                stop("bgzip compression failed with exit code ", bgzip_result)
+            status_code <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = error_file)
+            if (status_code != 0) {
+                con <- file(error_file, "r")
+                error <- readLines(con)
+                close(con)
+                stop("bgzip compression failed with exit code ", status_code, ": ", error)
             }
             # Index with tabix
             .log_step("Creating tabix index...", level = 2)
+            error_file <- tempfile(fileext = ".log")
 
-            tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE, stdout = TRUE)
-            if (tabix_result != 0) {
-                stop("tabix indexing failed with exit code ", tabix_result)
+            status_code <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = error_file, stdout = NULL)
+            if (status_code != 0) {
+                con <- file(error_file, "r")
+                error <- readLines(con)
+                close(con)
+                stop("tabix indexing failed with exit code ", status_code, ": ", error)
             }
 
             # Clean up temp files
