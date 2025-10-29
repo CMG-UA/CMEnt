@@ -17,7 +17,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "parametric",
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -33,7 +32,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -49,7 +47,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -65,7 +62,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "permutations",
         ntries = 100,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -104,7 +100,6 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -120,7 +115,6 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -137,7 +131,6 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 123,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -169,7 +162,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 0,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -185,7 +177,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -201,7 +192,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 200,
         tries_seed = 42,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -232,7 +222,6 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = median,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -246,7 +235,6 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = mean,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -260,7 +248,6 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "median",
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
