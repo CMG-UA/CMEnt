@@ -15,3 +15,27 @@ None, outputs results to files
 \description{
 Command Line Interface for Finding DMRs from DMPs
 }
+\examples{
+\donttest{
+if (!requireNamespace("optparse", quietly = TRUE)) {
+    install.packages("optparse")
+}
+library(optparse)
+
+args <- list(
+    beta = "path/to/beta_values.rds",
+    dmps_file = "path/to/dmps.tsv",
+    samplesheet = "path/to/samplesheet.csv",
+    sample_group_col = "Sample_Group",
+    casecontrol_col = "casecontrol",
+    array = "450K",
+    genome = "hg19",
+    output_prefix = "my_analysis",
+    njobs = 4,
+    verbose = 1
+)
+
+findDMRsFromSeedsCLI(args)
+}
+
+}

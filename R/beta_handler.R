@@ -467,6 +467,27 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
 #'
+#' @examples
+#' \donttest{
+#' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+#'     remotes::install_github("CMG-UA/DMRsegaldata")
+#' }
+#' library(DMRsegaldata)
+#' beta_matrix <- DMRsegaldata::beta
+#' 
+#' beta_handler <- getBetaHandler(
+#'     beta = beta_matrix,
+#'     array = "450K",
+#'     genome = "hg19"
+#' )
+#' 
+#' beta_locs <- beta_handler$getBetaLocs()
+#' head(beta_locs)
+#' 
+#' beta_values <- beta_handler$getBeta()
+#' head(beta_values[, 1:5])
+#' }
+#'
 #' @export
 getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),

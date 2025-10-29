@@ -113,3 +113,6 @@ if (length(dmrs) > 0) {
     )
 }
 ```
+```{r session_info}
+sessionInfo()
+```

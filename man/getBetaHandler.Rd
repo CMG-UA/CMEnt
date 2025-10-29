@@ -36,3 +36,25 @@ A new BetaHandler object
 Create a new BetaHandler object that manages methylation beta values
 from various input formats (files, matrices, tabix) with memory-efficient access patterns.
 }
+\examples{
+\donttest{
+if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
+    remotes::install_github("CMG-UA/DMRsegaldata")
+}
+library(DMRsegaldata)
+beta_matrix <- DMRsegaldata::beta
+
+beta_handler <- getBetaHandler(
+    beta = beta_matrix,
+    array = "450K",
+    genome = "hg19"
+)
+
+beta_locs <- beta_handler$getBetaLocs()
+head(beta_locs)
+
+beta_values <- beta_handler$getBeta()
+head(beta_values[, 1:5])
+}
+
+}
