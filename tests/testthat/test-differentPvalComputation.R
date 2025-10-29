@@ -17,7 +17,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "parametric",
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with auto strategy
@@ -32,7 +33,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with montecarlo strategy
@@ -47,7 +49,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with permutations strategy
@@ -62,7 +65,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "permutations",
         ntries = 100,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -100,7 +104,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     dmrs_seed1_run2 <- findDMRsFromSeeds(
@@ -115,7 +120,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Run with different seed
@@ -131,7 +137,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 123,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -162,7 +169,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 0,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with ntries = 50
@@ -177,7 +185,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 50,
         tries_seed = 42,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with ntries = 200
@@ -192,7 +201,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 200,
         tries_seed = 42,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -222,7 +232,8 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = median,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with mean function
@@ -235,7 +246,8 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = mean,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with character string for comparison
@@ -248,7 +260,8 @@ test_that("findDMRsFromSeeds aggfun accepts function objects", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "median",
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions

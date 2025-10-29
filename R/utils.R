@@ -478,7 +478,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     }
 
     if (is.null(output_dir)) {
-        cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
+        if (getOption("DMRsegal.bed_cache_dir", TRUE)){
+            cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
+        } else {
+            cache_dir <- tempdir()
+        }
     } else {
         cache_dir <- output_dir
     }
