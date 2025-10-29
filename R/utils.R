@@ -741,6 +741,7 @@ convertBetaToTabix <- function(beta_file,
 
                 # Create temporary BED file for writing chunks
                 temp_bed <- tempfile(fileext = ".bed")
+                withr::defer(unlink(temp_bed))
 
                 # Write header to temp BED file with 6 mandatory BED columns
                 bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
@@ -811,7 +812,6 @@ convertBetaToTabix <- function(beta_file,
                 # Check if any data was written
                 if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
                     .log_warn("No common CpGs found between beta file and genomic locations")
-                    unlink(temp_bed)
                     return(NULL)
                 }
             } else {
@@ -883,6 +883,7 @@ convertBetaToTabix <- function(beta_file,
 
                     # Open all chunk files and read first line from each
                     connections <- lapply(chunk_files, function(f) file(f, "r"))
+
                     heap <- list()
 
                     for (i in seq_along(connections)) {
@@ -921,8 +922,10 @@ convertBetaToTabix <- function(beta_file,
                     }
 
                     close(out_conn)
+                    # Close all chunk file connections
                     lapply(connections, close)
-                    unlink(chunk_files)
+                    # Clean up chunk files
+                    lapply(chunk_files, unlink)
                 }
             } else {
                 # Unix/Linux/Mac: use efficient system sort
@@ -932,11 +935,12 @@ convertBetaToTabix <- function(beta_file,
                 )
                 system(sort_cmd)
             }
-
+            unlink(temp_bed)
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
             .log_info("Expected output compressed file: ", output_file, level = 3)
             status_code <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = error_file)
+            unlink(temp_sorted)
             if (status_code != 0) {
                 con <- file(error_file, "r")
                 error <- readLines(con)
@@ -956,8 +960,6 @@ convertBetaToTabix <- function(beta_file,
             }
 
             # Clean up temp files
-            unlink(temp_bed)
-            unlink(temp_sorted)
 
             if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
                 .log_success("Tabix file created: ", output_file, level = 1)

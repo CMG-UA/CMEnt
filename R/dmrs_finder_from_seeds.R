@@ -477,13 +477,12 @@
                 if (!is.null(tries_seed)) {
                     set.seed(tries_seed)
                 }
-                on.exit(
+                withr::defer(
                     {
                         if (old_seed_exists) {
                             assign(".Random.seed", old_seed, envir = .GlobalEnv)
                         }
-                    },
-                    add = TRUE
+                    }
                 )
                 counts_ge <- integer(n_pairs)
                 counts_eq <- integer(n_pairs)
@@ -684,7 +683,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         includes <- "#include <sys/wait.h>"
         code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
         wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
-        on.exit(wait(), add = TRUE)
+        withr::defer(wait())
     }
     options(DMRsegal.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
@@ -701,7 +700,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
             future::plan(future::multisession, workers = njobs)
         }
-        on.exit(future::plan(future::sequential), add = TRUE)
+        withr::defer(future::plan(future::sequential))
         globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
         .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
         options(future.globals.maxSize = globals_maxsize)
@@ -710,7 +709,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         future::plan(future::sequential)
         options(future.globals.maxSize = Inf)
     }
-    on.exit(options(future.globals.maxSize = old_globals_maxsize), add = TRUE)
+    withr::defer(options(future.globals.maxSize = old_globals_maxsize))
 
     if (is.null(dmps) || is.null(pheno)) {
         stop("dmps and pheno parameters are required")

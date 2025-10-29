@@ -34,8 +34,10 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
     beta_file <- tempfile(fileext = ".tsv")
+    withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    withr::defer(unlink(sorted_beta_file))
     options("DMRsegal.verbose" = 3)
     options("DMRsegal.use_tabix_cache" = FALSE)
 
@@ -50,8 +52,6 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         njobs = 1,
         memory_threshold_mb = 0.01
     )
-    # Clean up
-    unlink(c(beta_file, sorted_beta_file))
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
