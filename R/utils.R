@@ -1694,3 +1694,16 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     .log_success("Gene annotation complete", level = 1)
     return(dmrs)
 }
+
+
+
+# @TODO keep on working on this function
+extractDMRMotifs <- function(dmrs, beta, genome = "hg19", array = "450k", genomic_locs = NULL, flank_size = 5) {
+    if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
+        genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = NULL)
+    }
+    beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = genomic_locs)
+    sequences <- getDMRSequences(dmrs, genome, flank_size = flank_size)
+
+
+}
