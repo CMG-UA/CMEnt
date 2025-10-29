@@ -46,7 +46,7 @@ The plot distinguishes between DMPs (differentially methylated positions), suppo
 CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
 }
 \examples{
-\dontrun{
+\donttest{
 # Load DMR results
 dmrs <- readRDS("dmrs.rds")
 

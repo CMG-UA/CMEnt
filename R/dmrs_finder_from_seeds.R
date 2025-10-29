@@ -63,7 +63,7 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Load example data
 #' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
 #'     remotes::install_github("CMG-UA/DMRsegaldata")
@@ -693,6 +693,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         on.exit(wait(), add = TRUE)
     }
     options(DMRsegal.verbose = verbose)
+    options(cli.num_colors = cli::num_ansi_colors())
     # Set up future plan for parallel processing
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs

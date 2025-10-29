@@ -49,7 +49,7 @@ The function performs the following steps:
 If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 }
 \examples{
-\dontrun{
+\donttest{
 # Sort a beta file for 450K array
 sorted_file <- sortBetaFileByCoordinates(
     beta_file = "unsorted_beta.txt",

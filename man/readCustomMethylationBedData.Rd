@@ -84,7 +84,7 @@ storage.
 }
 
 \examples{
-\dontrun{
+\donttest{
 # Create a simple phenotype data frame
 pheno <- data.frame(
     sample_group = c("case", "case", "control", "control"),

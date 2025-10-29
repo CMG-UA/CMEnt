@@ -61,7 +61,7 @@ Files are named based on the MD5 hash of the input beta file, ensuring that iden
 files reuse the same cached version.
 }
 \examples{
-\dontrun{
+\donttest{
 # Convert a beta file to tabix format
 tabix_file <- convertBetaToTabix(
     beta_file = "methylation_beta.txt",

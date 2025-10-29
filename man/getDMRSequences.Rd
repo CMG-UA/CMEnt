@@ -39,7 +39,7 @@ UCSC Genome Browser REST API. The online method processes sequences in
 batches to avoid overwhelming the API.
 }
 \examples{
-\dontrun{
+\donttest{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 

@@ -56,7 +56,7 @@ two panels: the top panel shows the DMR structure with DMPs and extended CpGs,
 and the bottom panel displays a heatmap of beta values for all samples.
 }
 \examples{
-\dontrun{
+\donttest{
 # Using BetaHandler
 beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
 plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)

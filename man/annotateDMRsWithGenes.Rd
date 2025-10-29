@@ -48,7 +48,7 @@ Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.
 }
 \examples{
-\dontrun{
+\donttest{
 # Annotate DMRs with gene information
 dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
 

@@ -30,7 +30,7 @@ methylation array platform and genome version. Performs liftOver if necessary.
 The function caches the results.
 }
 \examples{
-\dontrun{
+\donttest{
 # Get sorted locations for 450K array (hg19)
 locs_450k <- getSortedGenomicLocs("450K")
 

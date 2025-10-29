@@ -315,7 +315,6 @@
 }
 
 
-
 #' @keywords internal
 #' @noRd
 .log_step <- function(..., .envir = parent.frame(), level = 1) {
@@ -426,7 +425,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' storage.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Create a simple phenotype data frame
 #' pheno <- data.frame(
 #'     sample_group = c("case", "case", "control", "control"),
@@ -465,7 +464,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #'
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
-     start_col = "start", output_dir = NULL, chunk_size = 50000) {
+                                         start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -566,15 +565,16 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     descriptor_file <- paste0("bed_locations_", hash, ".desc")
     backing_path_full <- file.path(cache_dir, backing_file)
     descriptor_path_full <- file.path(cache_dir, descriptor_file)
-    
+
     if (file.exists(backing_path_full)) {
         file.remove(backing_path_full)
     }
     if (file.exists(descriptor_path_full)) {
         file.remove(descriptor_path_full)
     }
-    
-    sorted_locs <- bigmemory::big.matrix(nrow = num_rows, ncol = 3,
+
+    sorted_locs <- bigmemory::big.matrix(
+        nrow = num_rows, ncol = 3,
         type = "integer",
         backingfile = backing_file,
         backingpath = cache_dir,
@@ -583,7 +583,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     )
 
 
-    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), 'r')
+    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), "r")
     bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
     count <- 0
     while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
@@ -644,7 +644,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
 #' files reuse the same cached version.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Convert a beta file to tabix format
 #' tabix_file <- convertBetaToTabix(
 #'     beta_file = "methylation_beta.txt",
@@ -669,7 +669,6 @@ convertBetaToTabix <- function(beta_file,
                                chunk_size = 50000,
                                njobs = 1,
                                .bed_file = NULL) {
-
     # Check if tabix/bgzip are available
     tabix_available <- tryCatch(
         {
@@ -935,7 +934,7 @@ convertBetaToTabix <- function(beta_file,
                     "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
                     shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
                 )
-                system(sort_cmd)
+                system2(sort_cmd)
             }
 
             # Compress with bgzip
@@ -948,7 +947,7 @@ convertBetaToTabix <- function(beta_file,
                 }
             } else {
                 bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
-                system(bgzip_cmd)
+                system2(bgzip_cmd)
             }
 
             # Index with tabix
@@ -961,7 +960,7 @@ convertBetaToTabix <- function(beta_file,
                 }
             } else {
                 tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
-                system(tabix_cmd)
+                system2(tabix_cmd)
             }
 
             # Clean up temp files
@@ -1011,7 +1010,7 @@ convertBetaToTabix <- function(beta_file,
 #' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Sort a beta file for 450K array
 #' sorted_file <- sortBetaFileByCoordinates(
 #'     beta_file = "unsorted_beta.txt",
@@ -1159,7 +1158,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' }
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Get sorted locations for 450K array (hg19)
 #' locs_450k <- getSortedGenomicLocs("450K")
 #'
@@ -1285,7 +1284,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
 #' @return Integer vector of ordered indices
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Order CpG indices by genomic location
 #' cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
 #' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
@@ -1338,7 +1337,7 @@ orderByLoc <- function(x,
 #' batches to avoid overwhelming the API.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
@@ -1355,7 +1354,6 @@ orderByLoc <- function(x,
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
 getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
-
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1500,7 +1498,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
 #' Multiple overlapping genes are concatenated with commas.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Annotate DMRs with gene information
 #' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
 #'
@@ -1541,7 +1539,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     supported_organisms <- Organism.dplyr::supportedOrganisms()
     # find row matching the genome
-    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), ,drop=F]
+    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), , drop = FALSE]
     if (length(matched_row) == 0) {
         stop("Unsupported genome: ", genome)
     }

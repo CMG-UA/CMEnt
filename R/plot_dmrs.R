@@ -24,7 +24,7 @@ if (getRversion() >= "2.15.1") {
 #' @return A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Load DMR results
 #' dmrs <- readRDS("dmrs.rds")
 #'
@@ -477,7 +477,7 @@ minmaxscale <- function(x) {
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Plot structure only
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
@@ -561,7 +561,7 @@ plotDMRs <- function(dmrs,
 #'   or a list of plots if required packages are not available.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Using BetaHandler
 #' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
 #' plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)
