@@ -59,11 +59,7 @@ Imports:
     optparse,
     R.utils,
     jsonlite,
-    karyoploteR,
-    gridExtra,
-    ggplotify,
-    gtable,
-    scales
+    gridExtra
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,

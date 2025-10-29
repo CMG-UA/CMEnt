@@ -1500,6 +1500,11 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE) {
 #' @examples
 #' \donttest{
 #' # Annotate DMRs with gene information
+#' dmrs <- data.frame(
+#'     chr = c("chr1", "chr2"),
+#'     start = c(1000000, 2000000),
+#'     end = c(1001000, 2001000)
+#' )
 #' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
 #'
 #' # Use custom promoter definition

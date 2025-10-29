@@ -1411,7 +1411,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
 
     beta_stats <- .calculateBetaStats(
-        beta = all_selected_cpgs_beta,
+        beta_values = all_selected_cpgs_beta,
         beta_col_names = beta_col_names,
         pheno = pheno,
         casecontrol_col = casecontrol_col,

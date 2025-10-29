@@ -557,7 +557,7 @@ plotDMRs <- function(dmrs,
 #' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #'
-#' @return A combined plot object (gtable) containing the DMR structure plot and beta values heatmap,
+#' @return A combined plot object (gridExtra) containing the DMR structure plot and beta values heatmap,
 #'   or a list of plots if required packages are not available.
 #'
 #' @examples

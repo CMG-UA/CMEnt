@@ -91,7 +91,7 @@ test_that("plotDMRs creates a combined plot", {
     p <- plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"), paste0("plotDMRs should return a gtable or list of ggplot objects, instead got: ", class(p)))
+    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"), paste0("plotDMRs should return a gridExtra or list of ggplot objects, instead got: ", class(p)))
 })
 
 test_that("plotDMRs handles NULL dmr_indices", {
@@ -105,7 +105,7 @@ test_that("plotDMRs handles NULL dmr_indices", {
     p <- plotDMRs(dmrs, dmr_indices = NULL)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
+    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
 })
 
 test_that("plotDMRs respects ncol parameter", {
@@ -145,7 +145,7 @@ test_that("plotDMRWithBeta works", {
     )
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable") || inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
+    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
 })
 
 

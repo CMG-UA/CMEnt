@@ -46,7 +46,7 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 \item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 }
 \value{
-A combined plot object (gtable) containing the DMR structure plot and beta values heatmap,
+A combined plot object (gridExtra) containing the DMR structure plot and beta values heatmap,
 or a list of plots if required packages are not available.
 }
 \description{
