@@ -3,7 +3,6 @@ library(testthat)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -126,8 +125,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_dmps = 5, # Stricter
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with lenient parameters
@@ -139,8 +138,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_dmps = 2, # More lenient
         min_cpgs = 2, # More lenient
         max_lookup_dist = 2000, # Larger distance
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with different max_pval
@@ -153,8 +152,8 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         max_pval = 0.01, # Stricter p-value
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
 
@@ -193,8 +192,8 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "median",
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with mean aggregation
@@ -207,8 +206,8 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "mean",
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
 
@@ -237,8 +236,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with delta beta filtering
@@ -251,8 +250,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
 
@@ -323,7 +322,6 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         min_dmps = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        njobs = 1,
         memory_threshold_mb = 500
     )
 
@@ -353,8 +351,8 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         min_dmps = 1,
         min_cpgs = 2,
         max_lookup_dist = 1000,
-        njobs = 1,
-        memory_threshold_mb = 0.1
+        memory_threshold_mb = 0.1,
+        annotate_with_genes = FALSE
     )
 
     expect_called(mock_convertBetaToTabix, 0)
@@ -364,52 +362,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 
-})
-
-test_that("findDMRsFromSeeds empirical p-value mode works", {
-    
-    skip_if_not_installed("mockery")
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-
-
-    dmrs_parametric <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        pval_mode = "parametric",
-        njobs = 1,
-        memory_threshold_mb = 500
-    )
-
-    dmrs_empirical <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        pval_mode = "empirical",
-        njobs = 1,
-        memory_threshold_mb = 500
-    )
-
-    expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
-    expect_true(is.null(dmrs_empirical) || inherits(dmrs_empirical, "GRanges"))
-
-    if (!is.null(dmrs_parametric) && length(dmrs_parametric) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_parametric))))
-    }
-
-    if (!is.null(dmrs_empirical) && length(dmrs_empirical) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_empirical))))
-    }
 })
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {

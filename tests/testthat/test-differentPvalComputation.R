@@ -2,7 +2,6 @@
 library(testthat)
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
-
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -86,7 +85,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 })
 
 test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibility", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -153,7 +151,6 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
 })
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
@@ -217,7 +214,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
 })
 
 test_that("findDMRsFromSeeds aggfun accepts function objects", {
-    
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))

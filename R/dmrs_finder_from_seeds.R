@@ -513,23 +513,25 @@
                         ntries <- 500
                     }
                 }
+                maxval <-  max(y_mat, na.rm = TRUE)
+                minval <- min(y_mat, na.rm = TRUE)
+                abs_cors <- abs(cors)
                 for (b in seq_len(ntries)) {
                     # Permute sample labels (columns) only for y; x remains fixed
                     if (do_permutations) {
                         perm <- sample.int(m, size = m, replace = FALSE)
                         yp <- y_mat[, perm, drop = FALSE]
                     } else {
-                        yp <- matrix(runif(n = nrow(y_mat) * m, min = min(y_mat, na.rm = TRUE), max = max(y_mat, na.rm = TRUE)), nrow = nrow(y_mat), ncol = m)
+                        yp <- matrix(runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
                     }
-                    ym <- rowMeans(yp, na.rm = TRUE)
-                    yc <- sweep(yp, 1L, ym, FUN = "-")
+                    yc <- yp - rowMeans(yp, na.rm = TRUE)
                     sxy <- rowSums(x_centered * yc, na.rm = TRUE)
                     sy2 <- rowSums(yc^2, na.rm = TRUE)
                     rperm <- sxy / sqrt(sum_x2 * sy2)
                     comp_mask <- is.finite(rperm)
                     if (any(comp_mask)) {
                         ap <- abs(rperm[comp_mask])
-                        ao <- abs(cors[comp_mask])
+                        ao <- abs_cors[comp_mask]
                         counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
                         counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
                     }
