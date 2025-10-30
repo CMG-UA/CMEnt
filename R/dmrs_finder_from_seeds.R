@@ -319,8 +319,8 @@
             new_ccpgs <- dstream_exp - ustream_exp + 1
             .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs, level = 3)
             if (new_ccpgs < min_cpgs) {
-                ustream_stop_reason <- "min_cpgs_reached"
-                dstream_stop_reason <- "min_cpgs_reached"
+                ustream_stop_reason <- "min-cpgs-not-reached"
+                dstream_stop_reason <- "min-cpgs-not-reached"
                 .log_info("DMR could not reach min_cpgs=", min_cpgs, " after expansion (", new_ccpgs, "). Stopping expansion.", level = 3)
             }
 
@@ -709,7 +709,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             .log_info("Setting future.globals.maxSize to Inf due to future.apply version < 1.20.0-9003 (see https://github.com/futureverse/future.apply/issues/126)", level = 2)
             options(future.globals.maxSize = Inf)
             withr::defer(options(future.globals.maxSize = old_globals_maxsize))
-            } else { 
+        } else {
             globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
             .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
             options(future.globals.maxSize = globals_maxsize)
