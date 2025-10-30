@@ -744,18 +744,17 @@ plotDMRWithBeta <- function(dmrs,
 #' @importFrom BioCircos BioCircos
 #' @export
 plotDMRsCircos <- function(dmrs,
-                              beta,
-                              pheno,
-                              genome = "hg19",
-                              array = "450K",
-                              sorted_locs = NULL,
-                              sample_group_col = "Sample_Group",
-                              max_fdr = 0.05,
-                              flank_size = 5,
-                              max_cpgs_per_dmr = 100,
-                              max_interactions = 30,
-                              ...) {
-
+                           beta,
+                           pheno,
+                           genome = "hg19",
+                           array = "450K",
+                           sorted_locs = NULL,
+                           sample_group_col = "Sample_Group",
+                           max_fdr = 0.05,
+                           flank_size = 5,
+                           max_cpgs_per_dmr = 100,
+                           max_interactions = 30,
+                           ...) {
     if (inherits(dmrs, "data.frame")) {
         dmrs <- GenomicRanges::makeGRangesFromDataFrame(
             dmrs,
@@ -767,11 +766,11 @@ plotDMRsCircos <- function(dmrs,
     }
 
     beta_handler <- getBetaHandler(
-            beta = beta,
-            array = array,
-            genome = genome,
-            sorted_locs = sorted_locs
-        )
+        beta = beta,
+        array = array,
+        genome = genome,
+        sorted_locs = sorted_locs
+    )
 
     if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
         pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
@@ -782,7 +781,7 @@ plotDMRsCircos <- function(dmrs,
     if (!(sample_group_col %in% colnames(pheno))) {
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
-    if (is.null(sorted_locs)){
+    if (is.null(sorted_locs)) {
         sorted_locs <- beta_handler$getGenomicLocs()
     }
     .log_step("Preparing data for BioCircos plot...")
@@ -857,7 +856,8 @@ plotDMRsCircos <- function(dmrs,
         # make 3 splits based on corr values for color gradation
         link_data$color_group <- cut(link_data$corr, breaks = 3, labels = c("low", "medium", "high"))
         link_data$color <- ifelse(link_data$color_group == "low", "#FF0000",
-                                  ifelse(link_data$color_group == "medium", "#FF7F00", "#FFFF00"))
+            ifelse(link_data$color_group == "medium", "#FF7F00", "#FFFF00")
+        )
         for (color_group in unique(link_data$color_group)) {
             group_data <- link_data[link_data$color_group == color_group, ]
             tracklist <- tracklist + BioCircos::BioCircosLinkTrack(
@@ -945,7 +945,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr) {
+.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr, width = 100) {
     chr_list <- list()
     start_list <- list()
     end_list <- list()
@@ -958,39 +958,28 @@ plotDMRsCircos <- function(dmrs,
         .log_warn("No samples in pheno match the samples in beta values. Skipping heatmap track.")
         return(NULL)
     }
-    starts <- id_to_genomic_locs_index(S4Vectors::mcols(dmrs)$start_cpg, sorted_locs)
-    ends <- id_to_genomic_locs_index(S4Vectors::mcols(dmrs)$end_cpg, sorted_locs)
+    available_cpgs <- beta_handler$getBetaRowNames()
+    starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
+    ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
+    betas_to_extract <- c()
+    ids <- c()
     for (i in seq_along(dmrs)) {
         start_cpg_ind <- starts[[i]]
         end_cpg_ind <- ends[[i]]
-
-        if (length(start_cpg_ind) == 0 || length(end_cpg_ind) == 0) {
-            next
-        }
-
-        cpg_range <- start_cpg_ind:end_cpg_ind
-        num_cpgs <- length(cpg_range)
-
-        if (num_cpgs > max_cpgs_per_dmr) {
-            step <- ceiling(num_cpgs / max_cpgs_per_dmr)
-            cpg_range <- cpg_range[seq(1, num_cpgs, by = step)]
-        }
-
-        beta_data <- beta_handler$getBeta(
-            row_names = cpg_range,
-            col_names = rownames(pheno),
-            allow_missing = TRUE
-        )
-
-        beta_mean <- rowMeans(beta_data, na.rm = TRUE)
-
-        shown_locs <- sorted_locs[cpg_range, ]
-
-        chr_list[[i]] <- as.character(shown_locs$chr)
-        start_list[[i]] <- shown_locs$start
-        end_list[[i]] <- shown_locs$start + 1
-        val_list[[i]] <- beta_mean
+        betas_to_extract <- c(betas_to_extract, available_cpgs[start_cpg_ind:end_cpg_ind])
+        ids <- c(ids, rep(i, length(start_cpg_ind:end_cpg_ind)))
     }
+    beta_data <- beta_handler$getBeta(
+        row_names = betas_to_extract,
+        col_names = rownames(pheno)
+    )
+    shown_locs <- sorted_locs[betas_to_extract, ]
+    shown_locs$start <- pmax(shown_locs$start - as.integer(width / 2), 0)
+    shown_locs$end <- shown_locs$end + as.integer(width / 2)
+
+    chr_list <- split(as.character(shown_locs$chr), ids)
+    start_list <- split(shown_locs$start, ids)
+    end_list <- split(shown_locs$end, ids)
 
     if (length(chr_list) == 0) {
         return(NULL)
@@ -1000,9 +989,10 @@ plotDMRsCircos <- function(dmrs,
         chr = unlist(chr_list),
         start = unlist(start_list),
         end = unlist(end_list),
-        value = unlist(val_list)
+        value = beta_data
     )
 }
+
 
 .prepareBioCircosArcData <- function(dmrs) {
     list(
@@ -1015,7 +1005,7 @@ plotDMRsCircos <- function(dmrs,
 
 
 .prepareBioCircosLinkData <- function(dmrs, genome, array, max_fdr, flank_size, sorted_locs) {
-    interactions <- tryCatch(
+    ret <- tryCatch(
         {
             computeMotifBasedDMRsInteraction(
                 dmrs = dmrs,
@@ -1032,11 +1022,11 @@ plotDMRsCircos <- function(dmrs,
         }
     )
 
-    if (is.null(interactions) || nrow(interactions) == 0) {
+    if (is.null(ret) || nrow(ret$interactions) == 0) {
         .log_warn("No significant interactions found at FDR <= ", max_fdr)
         return(NULL)
     }
 
-    .log_success("Found ", nrow(interactions), " motif-based interactions")
-    interactions
+    .log_success("Found ", nrow(ret$interactions), " motif-based interactions")
+    ret$interactions
 }
