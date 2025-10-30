@@ -20,10 +20,10 @@ if (file.exists("data/beta.rda")) {
 }
 
 if (length(dmrs) > 0) {
-    dmrs_subset <- dmrs[1:min(10, length(dmrs))]
+    dmrs_subset <- dmrs
     
     cat("Creating BioCircos plot without interactions...\n")
-    plot_obj <- plotDMRsBioCircos(
+    plot_obj <- plotDMRsCircos(
         dmrs = dmrs_subset,
         beta = beta,
         pheno = pheno,
@@ -36,7 +36,7 @@ if (length(dmrs) > 0) {
     print(plot_obj)
     
     cat("\n\nCreating BioCircos plot with motif-based interactions...\n")
-    plot_obj_with_interactions <- plotDMRsBioCircos(
+    plot_obj_with_interactions <- plotDMRsCircos(
         dmrs = dmrs_subset,
         beta = beta,
         pheno = pheno,

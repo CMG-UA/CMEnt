@@ -1734,22 +1734,22 @@ BASE_LEVELS <- c("A", "T", "G", "C")
 convert_to_granges <- function(obj, genome) {
     input_is_df <- is.data.frame(obj)
     if (input_is_df) {
-        gr <- GenomicRanges::makeGRangesFromDataFrame(obj,
+        obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
             na.rm = TRUE
         )
     } else {
-        if (!is(gr, "GRanges")) {
+        if (!is(obj, "GRanges")) {
             stop("dmrs must be a data.frame or GRanges object")
         }
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
-        grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(gr))[[1]]
+        grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))[[1]]
         if (grs_genome != genome) {
-            gr <- .liftOverFromGenomeToGenome(gr, grs_genome, genome)
+            obj <- .liftOverFromGenomeToGenome(obj, grs_genome, genome)
         }
     }
-    gr
+    obj
 }
 
 

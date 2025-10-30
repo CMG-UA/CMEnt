@@ -31,13 +31,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
-    initialize = function(beta = NULL,
-                  array = c("450K", "27K", "EPIC", "EPICv2"),
-                  genome = c("hg19", "hg38", "mm10", "mm39"),
-                  beta_row_names_file = NULL,
-                  sorted_locs = NULL,
-                  memory_threshold_mb = 500,
-                  njobs = 1) {
+        initialize = function(beta = NULL,
+                              array = c("450K", "27K", "EPIC", "EPICv2"),
+                              genome = c("hg19", "hg38", "mm10", "mm39"),
+                              beta_row_names_file = NULL,
+                              sorted_locs = NULL,
+                              memory_threshold_mb = 500,
+                              njobs = 1) {
             # Validate inputs
             if (is.null(beta)) {
                 stop("Beta values must be provided")
@@ -45,7 +45,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-            if(is.null(sorted_locs)){
+            if (is.null(sorted_locs)) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
                 genome <- strex::match_arg(genome, ignore_case = TRUE)
                 self$array <- array
@@ -57,8 +57,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$beta <- beta
 
             self$beta_row_names_file <- beta_row_names_file
-            if (!is.null(sorted_locs)){
-                if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)){
+            if (!is.null(sorted_locs)) {
+                if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)) {
                     sorted_locs <- readRDS(sorted_locs)
                     try(sorted_locs <- bigmemory::attach.big.matrix(sorted_locs), silent = TRUE)
                 }
@@ -316,7 +316,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             sorted_locs <- self$getGenomicLocs()
             beta_row_names <- self$getBetaRowNames()
             if (private$.sorted_locs_is_bigmatrix) {
-                if(is.null(private$.tabix_file)){
+                if (is.null(private$.tabix_file)) {
                     stop("When using big.matrix for sorted_locs, beta must be provided as tabix file.")
                 }
             }
@@ -373,17 +373,35 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         },
 
         #' @description Extract beta values for specific CpG sites and samples
-        #' @param row_names Character vector of CpG IDs to extract
+        #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices of the **total genomic locations**.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
+        #' @param allow_missing Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)
         #' @return Matrix of beta values
-        getBeta = function(row_names = NULL, col_names = NULL) {
+        getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
             if (is.null(row_names)) {
                 row_names <- self$getBetaRowNames()
             }
+            if (is.numeric(row_names) && !private$.sorted_locs_is_bigmatrix) {
+                row_names <- rownames(getSortedGenomicLocs(
+                    array = self$array,
+                    genome = self$genome
+                )[row_names, , drop = FALSE])
+            }
             # Use in-memory beta data if available
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
+                if (allow_missing) {
+                    row_names <- intersect(row_names, rownames(private$.beta_file_in_memory))
+                } else {
+                    missing_rows <- setdiff(row_names, rownames(private$.beta_file_in_memory))
+                    if (length(missing_rows) > 0) {
+                        stop(
+                            "Requested CpG sites not found in beta data: ",
+                            paste(missing_rows, collapse = ", ")
+                        )
+                    }
+                }
                 if (is.null(col_names)) {
                     beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                 } else {
@@ -397,6 +415,20 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     beta_row_names = private$.beta_row_names,
                     beta_col_names = private$.beta_col_names
                 )
+                if (allow_missing) {
+                    if (nrow(beta_subset) == 0) {
+                        return(data.frame())
+                    }
+                } else {
+                    row_names_found <- rownames(beta_subset)
+                    missing_rows <- setdiff(row_names, row_names_found)
+                    if (length(missing_rows) > 0) {
+                        stop(
+                            "Requested CpG sites not found in beta file: ",
+                            paste(missing_rows, collapse = ", ")
+                        )
+                    }
+                }
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
@@ -416,6 +448,18 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     check.chr = FALSE,
                     verbose = FALSE
                 )
+                if (allow_missing) {
+                    if (nrow(beta_subset) == 0) {
+                        return(data.frame())
+                    }
+                } else {
+                    if (nrow(beta_subset) < length(row_names)) {
+                        stop(
+                            length(row_names) - nrow(beta_subset),
+                            " requested CpG sites were not found in beta tabix file."
+                        )
+                    }
+                }
                 if (is.null(beta_subset)) {
                     dir.create("debug", showWarnings = FALSE)
                     saveRDS(row_names, "debug/row_names.rds")
@@ -469,16 +513,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #'
 #' @examples
 #' beta_matrix <- load(system.file("data/beta.rda", package = "DMRsegal"))
-#' 
+#'
 #' beta_handler <- getBetaHandler(
 #'     beta = beta_matrix,
 #'     array = "450K",
 #'     genome = "hg19"
 #' )
-#' 
+#'
 #' beta_locs <- beta_handler$getBetaLocs()
 #' head(beta_locs)
-#' 
+#'
 #' beta_values <- beta_handler$getBeta()
 #' head(beta_values[, 1:5])
 #'
