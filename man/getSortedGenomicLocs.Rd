@@ -30,7 +30,6 @@ methylation array platform and genome version. Performs liftOver if necessary.
 The function caches the results.
 }
 \examples{
-\donttest{
 # Get sorted locations for 450K array (hg19)
 locs_450k <- getSortedGenomicLocs("450K")
 
@@ -39,5 +38,5 @@ locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
 
 # Get sorted locations for EPICv2 array
 locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
-}
+
 }

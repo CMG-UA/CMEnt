@@ -30,7 +30,6 @@ locations (chromosome and position). This function is useful for sorting CpG
 sites or other genomic features by their physical positions.
 }
 \examples{
-\donttest{
 # Order CpG indices by genomic location
 cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
 ordered_indices <- orderByLoc(cpg_ids, array = "450K")
@@ -38,6 +37,5 @@ ordered_indices <- orderByLoc(cpg_ids, array = "450K")
 # Order using pre-computed genomic locations
 locs <- getSortedGenomicLocs("EPIC", "hg38")
 ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
-}
 
 }

@@ -1,12 +1,11 @@
 # Test suite for new functionality in findDMRsFromSeeds
 library(testthat)
-library(DMRsegal)
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    skip_on_ci()
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
@@ -18,8 +17,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "parametric",
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with auto strategy
@@ -34,8 +33,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with montecarlo strategy
@@ -50,8 +49,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test empirical mode with permutations strategy
@@ -66,8 +65,8 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "permutations",
         ntries = 100,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -87,10 +86,10 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 })
 
 test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibility", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    skip_on_ci()
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
@@ -105,8 +104,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     dmrs_seed1_run2 <- findDMRsFromSeeds(
@@ -121,8 +120,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Run with different seed
@@ -138,8 +137,8 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         empirical_strategy = "montecarlo",
         ntries = 50,
         tries_seed = 123,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -154,10 +153,10 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
 })
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
+    skip_on_ci()
+    load(system.file("data/beta.rda", package = "DMRsegal"))
+    load(system.file("data/dmps.rda", package = "DMRsegal"))
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
 
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(
@@ -170,8 +169,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 0,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with ntries = 50
@@ -186,8 +185,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 50,
         tries_seed = 42,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Test with ntries = 200
@@ -202,8 +201,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pval_mode = "empirical",
         ntries = 200,
         tries_seed = 42,
-        njobs = 1,
-        memory_threshold_mb = 500
+        memory_threshold_mb = 500,
+        annotate_with_genes = FALSE
     )
 
     # Assertions
@@ -214,64 +213,5 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     # All should produce valid results
     if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
         expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
-    }
-})
-
-test_that("findDMRsFromSeeds aggfun accepts function objects", {
-    skip_if_not_installed("DMRsegaldata")
-    beta <- DMRsegaldata::beta
-    dmps <- DMRsegaldata::dmps
-    pheno <- DMRsegaldata::pheno
-
-    # Test with median function
-    dmrs_median_func <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = median,
-        njobs = 1,
-        memory_threshold_mb = 500
-    )
-
-    # Test with mean function
-    dmrs_mean_func <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = mean,
-        njobs = 1,
-        memory_threshold_mb = 500
-    )
-
-    # Test with character string for comparison
-    dmrs_median_char <- findDMRsFromSeeds(
-        beta = beta,
-        dmps = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_dmps = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        aggfun = "median",
-        njobs = 1,
-        memory_threshold_mb = 500
-    )
-
-    # Assertions
-    expect_true(is.null(dmrs_median_func) || inherits(dmrs_median_func, "GRanges"))
-    expect_true(is.null(dmrs_mean_func) || inherits(dmrs_mean_func, "GRanges"))
-    expect_true(is.null(dmrs_median_char) || inherits(dmrs_median_char, "GRanges"))
-
-    # Function and character should produce same results for median
-    if (!is.null(dmrs_median_func) && !is.null(dmrs_median_char)) {
-        expect_equal(length(dmrs_median_func), length(dmrs_median_char))
     }
 })

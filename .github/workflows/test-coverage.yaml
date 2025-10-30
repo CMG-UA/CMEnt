@@ -32,8 +32,6 @@ jobs:
             any::IlluminaHumanMethylation450kanno.ilmn12.hg19
             any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19
             any::BSgenome.Hsapiens.UCSC.hg19
-            CMG-UA/DMRsegaldata
-            any::minfiData
             any::mockery
 
           needs: coverage

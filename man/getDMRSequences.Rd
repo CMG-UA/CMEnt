@@ -4,7 +4,7 @@
 \alias{getDMRSequences}
 \title{Extract DNA Sequences for DMRs}
 \usage{
-getDMRSequences(dmrs, genome, use_online = FALSE)
+getDMRSequences(dmrs, genome, use_online = FALSE, flank_size = 0)
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
@@ -14,6 +14,9 @@ getDMRSequences(dmrs, genome, use_online = FALSE)
 \item{use_online}{Logical. If TRUE, forces use of online UCSC API instead of
 BSgenome packages. If FALSE (default), uses BSgenome packages with online
 fallback when packages are unavailable (default: FALSE)}
+
+\item{flank_size}{Integer. Number of base pairs to add as flanking regions
+on both sides of each DMR (default: 0)}
 }
 \value{
 A Character vector containing DNA sequences for each DMR
@@ -39,7 +42,6 @@ UCSC Genome Browser REST API. The online method processes sequences in
 batches to avoid overwhelming the API.
 }
 \examples{
-\donttest{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
@@ -50,6 +52,5 @@ sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
 gc_content <- sapply(sequences, function(s) {
     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 })
-}
 
 }

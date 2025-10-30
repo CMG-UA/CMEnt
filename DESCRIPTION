@@ -7,13 +7,17 @@ Authors@R: c(
            family  = "Lemonidis",
            role    = c("aut", "cre", "cph"),
            email   = "vasileios.lemonidis@uantwerpen.be",
-           comment = c(ORCID = "0000-0002-6446-3536")))
+           comment = c(ORCID = "0000-0002-6446-3536")),
+    person("Center for Oncological Research, University of Antwerp",
+           role = c("cph", "fnd")),
+    person("Stichting Tegen Kanker",
+           role = "fnd"))
 Description: DMRsegal implements a method for identifying Differentially 
     Methylated Regions (DMRs) from pre-computed Differentially Methylated 
     Positions (DMPs). The package uses a correlation-based approach to 
     expand regions around significant DMPs, considering both statistical 
     significance and biological relevance of methylation changes. It supports 
-    both standard beta value files and tabix-indexed files for efficient 
+    standard beta value files and methylation bed files for efficient 
     processing of large datasets.
 URL: https://github.com/CMG-UA/DMRsegal
 BugReports: https://github.com/CMG-UA/DMRsegal/issues
@@ -23,9 +27,11 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 Config/testthat/parallel: true
-biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
+biocViews: DNAMethylation, DifferentialMethylation, Epigenetics, StatisticalMethod, WorkflowStep, Annotation
+LazyData: true
+LazyDataCompression: xz
 Depends:
-    R (>= 4.3.0)
+    R (>= 4.5.0)
 Imports:
     strex,
     GenomicRanges,
@@ -41,13 +47,14 @@ Imports:
     future,
     future.apply,
     inline,
-    progressr(>= 0.17.0-9002),
+    progressr,
     minfi,
     bedr,
     bigmemory,
     AnnotationDbi,
     GenomicFeatures,
     GenomeInfoDb,
+    Organism.dplyr,
     rtracklayer,
     BSgenome,
     R6,
@@ -63,34 +70,22 @@ Imports:
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
-    IlluminaHumanMethylationEPICv2anno.20a1.hg38,
-    IlluminaHumanMethylation27kanno.ilmn12.hg19,
-    IlluminaMouseMethylationanno.12.v1.mm10,
     BiocManager,
     devtools,
     knitr,
-    DMRsegaldata,
     rmarkdown,
     BiocStyle,
-    Organism.dplyr,
-    SummarizedExperiment,
     testthat (>= 3.0.0),
     mockery,
     covr,
     DMRcate,
     doParallel,
     bumphunter,
-    minfiData,
-    patchwork,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
     org.Hs.eg.db
-Remotes:
-    chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10,
-    CMG-UA/DMRsegaldata,
-    futureverse/progressr
 Config/testthat/edition: 3
 Collate:
     'utils.R'

@@ -61,7 +61,6 @@ Files are named based on the MD5 hash of the input beta file, ensuring that iden
 files reuse the same cached version.
 }
 \examples{
-\donttest{
 # Convert a beta file to tabix format
 tabix_file <- convertBetaToTabix(
     beta_file = "methylation_beta.txt",
@@ -74,6 +73,5 @@ tabix_file <- convertBetaToTabix(
     output_file = "my_custom_location.bed.gz",
     array = "EPIC"
 )
-}
 
 }

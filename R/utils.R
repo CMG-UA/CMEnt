@@ -425,7 +425,6 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' storage.
 #'
 #' @examples
-#' \donttest{
 #' # Create a simple phenotype data frame
 #' pheno <- data.frame(
 #'     sample_group = c("case", "case", "control", "control"),
@@ -456,7 +455,6 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' # Access the processed files
 #' tabix_file <- result$tabix_file
 #' locations_file <- result$locations_file
-#' }
 #'
 #' @seealso
 #' \code{\link{convertBetaToTabix}} for converting standard beta files to tabix format
@@ -480,7 +478,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     }
 
     if (is.null(output_dir)) {
-        cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
+        if (getOption("DMRsegal.bed_cache_dir", TRUE)) {
+            cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
+        } else {
+            cache_dir <- tempdir()
+        }
     } else {
         cache_dir <- output_dir
     }
@@ -644,7 +646,6 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
 #' files reuse the same cached version.
 #'
 #' @examples
-#' \donttest{
 #' # Convert a beta file to tabix format
 #' tabix_file <- convertBetaToTabix(
 #'     beta_file = "methylation_beta.txt",
@@ -657,7 +658,6 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
 #'     output_file = "my_custom_location.bed.gz",
 #'     array = "EPIC"
 #' )
-#' }
 #'
 #' @export
 convertBetaToTabix <- function(beta_file,
@@ -745,6 +745,7 @@ convertBetaToTabix <- function(beta_file,
 
                 # Create temporary BED file for writing chunks
                 temp_bed <- tempfile(fileext = ".bed")
+                withr::defer(unlink(temp_bed))
 
                 # Write header to temp BED file with 6 mandatory BED columns
                 bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
@@ -815,7 +816,6 @@ convertBetaToTabix <- function(beta_file,
                 # Check if any data was written
                 if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
                     .log_warn("No common CpGs found between beta file and genomic locations")
-                    unlink(temp_bed)
                     return(NULL)
                 }
             } else {
@@ -887,6 +887,7 @@ convertBetaToTabix <- function(beta_file,
 
                     # Open all chunk files and read first line from each
                     connections <- lapply(chunk_files, function(f) file(f, "r"))
+
                     heap <- list()
 
                     for (i in seq_along(connections)) {
@@ -925,8 +926,10 @@ convertBetaToTabix <- function(beta_file,
                     }
 
                     close(out_conn)
+                    # Close all chunk file connections
                     lapply(connections, close)
-                    unlink(chunk_files)
+                    # Clean up chunk files
+                    lapply(chunk_files, unlink)
                 }
             } else {
                 # Unix/Linux/Mac: use efficient system sort
@@ -934,38 +937,33 @@ convertBetaToTabix <- function(beta_file,
                     "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
                     shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
                 )
-                system2(sort_cmd)
+                system(sort_cmd)
             }
-
+            unlink(temp_bed)
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
-
-            if (is_windows) {
-                bgzip_result <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = TRUE)
-                if (bgzip_result != 0) {
-                    stop("bgzip compression failed with exit code ", bgzip_result)
-                }
-            } else {
-                bgzip_cmd <- sprintf("bgzip -c %s > %s", shQuote(temp_sorted), shQuote(output_file))
-                system2(bgzip_cmd)
+            .log_info("Expected output compressed file: ", output_file, level = 3)
+            status_code <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = error_file)
+            unlink(temp_sorted)
+            if (status_code != 0) {
+                con <- file(error_file, "r")
+                error <- readLines(con)
+                close(con)
+                stop("bgzip compression failed with exit code ", status_code, ": ", error)
             }
-
             # Index with tabix
             .log_step("Creating tabix index...", level = 2)
+            error_file <- tempfile(fileext = ".log")
 
-            if (is_windows) {
-                tabix_result <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = TRUE)
-                if (tabix_result != 0) {
-                    stop("tabix indexing failed with exit code ", tabix_result)
-                }
-            } else {
-                tabix_cmd <- sprintf("tabix -fp bed %s", shQuote(output_file))
-                system2(tabix_cmd)
+            status_code <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = error_file, stdout = NULL)
+            if (status_code != 0) {
+                con <- file(error_file, "r")
+                error <- readLines(con)
+                close(con)
+                stop("tabix indexing failed with exit code ", status_code, ": ", error)
             }
 
             # Clean up temp files
-            unlink(temp_bed)
-            unlink(temp_sorted)
 
             if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
                 .log_success("Tabix file created: ", output_file, level = 1)
@@ -1010,7 +1008,6 @@ convertBetaToTabix <- function(beta_file,
 #' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 #'
 #' @examples
-#' \donttest{
 #' # Sort a beta file for 450K array
 #' sorted_file <- sortBetaFileByCoordinates(
 #'     beta_file = "unsorted_beta.txt",
@@ -1023,7 +1020,6 @@ convertBetaToTabix <- function(beta_file,
 #'     beta_file = "epic_beta.txt",
 #'     array = "EPIC"
 #' )
-#' }
 #'
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
@@ -1158,7 +1154,6 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' }
 #'
 #' @examples
-#' \donttest{
 #' # Get sorted locations for 450K array (hg19)
 #' locs_450k <- getSortedGenomicLocs("450K")
 #'
@@ -1167,7 +1162,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #'
 #' # Get sorted locations for EPICv2 array
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
-#' }
+#'
 #' @export
 getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
@@ -1284,7 +1279,6 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
 #' @return Integer vector of ordered indices
 #'
 #' @examples
-#' \donttest{
 #' # Order CpG indices by genomic location
 #' cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
 #' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
@@ -1292,7 +1286,6 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
 #' # Order using pre-computed genomic locations
 #' locs <- getSortedGenomicLocs("EPIC", "hg38")
 #' ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
-#' }
 #'
 #' @export
 orderByLoc <- function(x,
@@ -1338,7 +1331,6 @@ orderByLoc <- function(x,
 #' batches to avoid overwhelming the API.
 #'
 #' @examples
-#' \donttest{
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
@@ -1349,12 +1341,11 @@ orderByLoc <- function(x,
 #' gc_content <- sapply(sequences, function(s) {
 #'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 #' })
-#' }
 #'
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size=0) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size = 0) {
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1501,7 +1492,6 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size=0) {
 #' Multiple overlapping genes are concatenated with commas.
 #'
 #' @examples
-#' \donttest{
 #' # Annotate DMRs with gene information
 #' dmrs <- data.frame(
 #'     chr = c("chr1", "chr2"),
@@ -1517,7 +1507,6 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size=0) {
 #'     promoter_upstream = 5000,
 #'     promoter_downstream = 1000
 #' )
-#' }
 #'
 #' @export
 annotateDMRsWithGenes <- function(dmrs, genome = "hg19",

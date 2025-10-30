@@ -24,7 +24,6 @@ if (getRversion() >= "2.15.1") {
 #' @return A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
 #'
 #' @examples
-#' \donttest{
 #' # Load DMR results
 #' dmrs <- readRDS("dmrs.rds")
 #'
@@ -36,7 +35,6 @@ if (getRversion() >= "2.15.1") {
 #'
 #' # Plot with extended region
 #' plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
-#' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
 #' @importFrom ggplot2 labs scale_color_gradient2 theme element_text scale_y_continuous
@@ -473,18 +471,16 @@ minmaxscale <- function(x) {
 #' @param ncol Integer. Number of columns in the grid (default: 1).
 #' @param ... Additional arguments passed to plotDMR or plotDMRWithBeta.
 #'
-#' @return If beta is NULL: A combined ggplot2 object (requires patchwork or gridExtra), or a list of ggplot objects.
+#' @return If beta is NULL: A gtable object.
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples
-#' \donttest{
 #' # Plot structure only
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
 #'
 #' # Plot with beta values heatmap
 #' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
-#' }
 #'
 #' @export
 plotDMRs <- function(dmrs,
@@ -561,7 +557,6 @@ plotDMRs <- function(dmrs,
 #'   or a list of plots if required packages are not available.
 #'
 #' @examples
-#' \donttest{
 #' # Using BetaHandler
 #' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
 #' plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)
@@ -571,7 +566,7 @@ plotDMRs <- function(dmrs,
 #'
 #' # Using a beta matrix
 #' plotDMRWithBeta(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
-#' }
+#'
 #' @export
 plotDMRWithBeta <- function(dmrs,
                             dmr_index,

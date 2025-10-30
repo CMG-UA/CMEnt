@@ -63,22 +63,16 @@
 #' }
 #'
 #' @examples
-#' \donttest{
 #' # Load example data
-#' if (!requireNamespace("DMRsegaldata", quietly = TRUE)) {
-#'     remotes::install_github("CMG-UA/DMRsegaldata")
-#' }
-#' library(DMRsegaldata)
-#' beta <- DMRsegaldata::beta
-#' dmps <- DMRsegaldata::dmps
-#' pheno <- DMRsegaldata::pheno
+#' load(system.file("data/beta.rda", package = "DMRsegal"))
+#' load(system.file("data/dmps.rda", package = "DMRsegal"))
+#' load(system.file("data/pheno.rda", package = "DMRsegal"))
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
 #'     dmps = dmps,
 #'     pheno = pheno
 #' )
-#' }
 #'
 #' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame findOverlaps
 #' @importFrom future.apply future_lapply future_mapply
@@ -101,9 +95,9 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
+  beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -325,8 +319,8 @@
             new_ccpgs <- dstream_exp - ustream_exp + 1
             .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs, level = 3)
             if (new_ccpgs < min_cpgs) {
-                ustream_stop_reason <- "min_cpgs_reached"
-                dstream_stop_reason <- "min_cpgs_reached"
+                ustream_stop_reason <- "min-cpgs-not-reached"
+                dstream_stop_reason <- "min-cpgs-not-reached"
                 .log_info("DMR could not reach min_cpgs=", min_cpgs, " after expansion (", new_ccpgs, "). Stopping expansion.", level = 3)
             }
 
@@ -342,15 +336,16 @@
         dmr["end_cpg"] <- dstream_exp + chr_start_base
         dmr["start"] <- chr_locs[ustream_exp, "start"]
         dmr["end"] <- chr_locs[dstream_exp, "start"]
-
     } else {
         dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
         dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
         dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
         dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     }
-    dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
+    dmr["upstream_cpg_expansion"] <- dmr_start_ind - ustream_exp
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
+    dmr["downstream_cpg_expansion"] <- dstream_exp - dmr_end_ind
+    dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
     dmr
 }
@@ -483,14 +478,11 @@
                 if (!is.null(tries_seed)) {
                     set.seed(tries_seed)
                 }
-                on.exit(
-                    {
-                        if (old_seed_exists) {
-                            assign(".Random.seed", old_seed, envir = .GlobalEnv)
-                        }
-                    },
-                    add = TRUE
-                )
+                withr::defer({
+                    if (old_seed_exists) {
+                        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+                    }
+                })
                 counts_ge <- integer(n_pairs)
                 counts_eq <- integer(n_pairs)
                 # Number of samples in this group
@@ -520,23 +512,25 @@
                         ntries <- 500
                     }
                 }
+                maxval <- max(y_mat, na.rm = TRUE)
+                minval <- min(y_mat, na.rm = TRUE)
+                abs_cors <- abs(cors)
                 for (b in seq_len(ntries)) {
                     # Permute sample labels (columns) only for y; x remains fixed
                     if (do_permutations) {
                         perm <- sample.int(m, size = m, replace = FALSE)
                         yp <- y_mat[, perm, drop = FALSE]
                     } else {
-                        yp <- matrix(runif(n = nrow(y_mat) * m, min = min(y_mat, na.rm = TRUE), max = max(y_mat, na.rm = TRUE)), nrow = nrow(y_mat), ncol = m)
+                        yp <- matrix(runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
                     }
-                    ym <- rowMeans(yp, na.rm = TRUE)
-                    yc <- sweep(yp, 1L, ym, FUN = "-")
+                    yc <- yp - rowMeans(yp, na.rm = TRUE)
                     sxy <- rowSums(x_centered * yc, na.rm = TRUE)
                     sy2 <- rowSums(yc^2, na.rm = TRUE)
                     rperm <- sxy / sqrt(sum_x2 * sy2)
                     comp_mask <- is.finite(rperm)
                     if (any(comp_mask)) {
                         ap <- abs(rperm[comp_mask])
-                        ao <- abs(cors[comp_mask])
+                        ao <- abs_cors[comp_mask]
                         counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
                         counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
                     }
@@ -674,7 +668,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                               aggfun = c("median", "mean"),
                               ignored_sample_groups = NULL,
                               output_prefix = NULL,
-                              njobs = future::availableCores() - 1,
+                              njobs = getOption("DMRsegal.njobs", future::availableCores() - 1),
                               memory_threshold_mb = 500,
                               beta_row_names_file = NULL,
                               annotate_with_genes = TRUE,
@@ -690,7 +684,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         includes <- "#include <sys/wait.h>"
         code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
         wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
-        on.exit(wait(), add = TRUE)
+        withr::defer(wait())
     }
     options(DMRsegal.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
@@ -707,16 +701,23 @@ findDMRsFromSeeds <- function(beta = NULL,
             .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
             future::plan(future::multisession, workers = njobs)
         }
-        on.exit(future::plan(future::sequential), add = TRUE)
-        globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
-        .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
-        options(future.globals.maxSize = globals_maxsize)
+        withr::defer(future::plan(future::sequential))
+        # if version of future.apply is less than 1.20.0-9003, set maxsize to Inf (due to a bug in that package)
+        if (utils::packageVersion("future.apply") < "1.20.0-9003") {
+            .log_info("Setting future.globals.maxSize to Inf due to future.apply version < 1.20.0-9003 (see https://github.com/futureverse/future.apply/issues/126)", level = 2)
+            options(future.globals.maxSize = Inf)
+            withr::defer(options(future.globals.maxSize = old_globals_maxsize))
+        } else {
+            globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
+            .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
+            options(future.globals.maxSize = globals_maxsize)
+        }
     } else {
         .log_info("Using sequential processing (njobs=1)", level = 1)
         future::plan(future::sequential)
         options(future.globals.maxSize = Inf)
     }
-    on.exit(options(future.globals.maxSize = old_globals_maxsize), add = TRUE)
+    withr::defer(options(future.globals.maxSize = old_globals_maxsize))
 
     if (is.null(dmps) || is.null(pheno)) {
         stop("dmps and pheno parameters are required")
@@ -865,7 +866,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
 
 
-
     # Check if dmps_tsv has any rows
     if (nrow(dmps_tsv) == 0) {
         .log_warn("Provided DMPs file has no data rows. Not proceeding.")
@@ -989,10 +989,10 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_info("Number of provided DMPs: ", length(dmps), level = 2)
 
     .log_success("Input preparation complete.", level = 1)
-    .log_step("Connecting DMPs to form initial DMRs..", level = 1)
+    .log_step("Stage 1: Connecting DMPs to form initial DMRs..", level = 1)
 
     # Set up progress tracking for DMP connection
-    chromosomes <- unique(dmps_locs[,"chr"])
+    chromosomes <- unique(dmps_locs[, "chr"])
 
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "01_dmrs_from_connected_dmps.tsv"))) {
         .log_info("Loading debug DMRs from file...", level = 2)
@@ -1008,9 +1008,13 @@ findDMRsFromSeeds <- function(beta = NULL,
     } else {
         # Use progressr for cross-platform progress reporting
         .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-
+        p_con <- NULL
         if (verbose > 0) {
-            p_con <- progressr::progressor(steps = length(chromosomes))
+            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
+
+            if (packageVersion("progressr") >= "0.17.0-9002") {
+                p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting DMPs to form DMRs..")
+            }
         }
         # Split by chromosome for parallel processing
         dmps_list <- split(dmps, dmps_locs[, "chr"])
@@ -1045,7 +1049,9 @@ findDMRsFromSeeds <- function(beta = NULL,
                 ".testConnectivityBatch",
                 ".log_step",
                 ".log_success",
-                ".log_info"
+                ".log_info",
+                "p_con",
+                "verbose"
             ),
             FUN = function(chr, cdmps, cdmps_beta, cdmps_locs) {
                 op <- options(warn = 2)$warn
@@ -1120,7 +1126,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                         level = 3
                     )
                 }
-                if (verbose > 0 && exists("p_con")) p_con()
+                if (verbose > 0 && !is.null(p_con)) p_con()
                 dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
                 if (nrow(dmrs)) {
                     rownames(dmrs) <- seq_len(nrow(dmrs))
@@ -1167,15 +1173,15 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
 
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
-    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
-    .log_step("Expanding DMRs on neighborhood CpGs..", level = 1)
+    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
+    .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "connectivity_array.rds"))) {
         .log_info("Loading debug connectivity array from file...", level = 2)
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
     } else {
-        .log_step("Building connectivity array..", level = 1)
+        .log_step("Building connectivity array..", level = 2)
         connectivity_array <- .buildConnectivityArray(
             beta_handler = beta_handler,
             group_inds = group_inds,
@@ -1200,9 +1206,16 @@ findDMRsFromSeeds <- function(beta = NULL,
         saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
     }
     stopifnot(nrow(connectivity_array) != nrow(sorted_locs))
-    .log_step("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
+    .log_info("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
     if (verbose > 0) {
-        p_ext <- progressr::progressor(steps = n_dmrs)
+        p_ext <- NULL
+        if (verbose > 0) {
+            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_ext will not be used
+
+            if (packageVersion("progressr") >= "0.17.0-9002") {
+                p_ext <- progressr::progressor(steps = n_dmrs, message = "Expanding DMRs to proximal CpGs..")
+            }
+        }
     }
     ret <- list()
     for (chr in unique(dmrs$chr)) {
@@ -1214,7 +1227,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         if (bigmemory::is.big.matrix(sorted_locs)) {
             chr_locs <- bigmemory::sub.big.matrix(
                 sorted_locs,
-                firstRow  = first_row,
+                firstRow = first_row,
                 lastRow = last_row
             )
         } else {
@@ -1222,12 +1235,23 @@ findDMRsFromSeeds <- function(beta = NULL,
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
 
-        chr_ret <- future.apply::future_apply(
+        chr_ret <- future.apply::future_mapply(
             X = chr_dmrs,
             MARGIN = 1,
             simplify = FALSE,
             future.seed = TRUE,
-            future.scheduling = ceiling(n_dmrs / njobs),
+            future.globals = c(
+                ".expandDMRs",
+                "chr_array",
+                "expansion_step",
+                "min_cpgs",
+                "min_cpg_delta_beta",
+                "chr_locs",
+                "chr_start_base",
+                "verbose",
+                "p_ext"
+            ),
+            # future.scheduling = ceiling(n_dmrs / njobs),
             FUN = function(dmr) {
                 op <- options(warn = 2)$warn
                 x <- .expandDMRs(
@@ -1240,13 +1264,15 @@ findDMRsFromSeeds <- function(beta = NULL,
                     chr_start_base = chr_start_base
                 )
                 options(warn = op)
-                if (verbose > 0 && exists("p_ext")) p_ext()
+                if (verbose > 0 && !is.null(p_ext)) p_ext()
                 x
             }
         )
         ret <- c(ret, chr_ret)
     }
-    .log_success("DMR expansion complete.", level = 2)
+    .log_success("DMR expansion complete.", level = 1)
+    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x$upstream_cpg_expansion))), collapse = "\n\t"), level = 2)
+    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x$downstream_cpg_expansion))), collapse = "\n\t"), level = 2)
 
     .log_step("Post-processing extended DMRs..", level = 2)
     if (inherits(ret, "try-error")) {
@@ -1301,22 +1327,34 @@ findDMRsFromSeeds <- function(beta = NULL,
         na.rm = TRUE
     )
 
-    .log_step("Merging overlapping extended DMRs..", level = 2)
+    .log_step("Stage 3: Merging overlapping extended DMRs..", level = 1)
     extended_dmrs_ranges_reduced <- GenomicRanges::reduce(extended_dmrs_ranges, ignore.strand = TRUE)
     hits <- GenomicRanges::findOverlaps(extended_dmrs_ranges_reduced, extended_dmrs_ranges, ignore.strand = TRUE)
     qh <- S4Vectors::queryHits(hits)
     sh <- S4Vectors::subjectHits(hits)
     orig_mcols <- as.data.frame(GenomicRanges::mcols(extended_dmrs_ranges))
     mcol_names <- colnames(orig_mcols)
-    agg_df <- data.frame(matrix(NA, nrow = length(extended_dmrs_ranges_reduced), ncol = length(mcol_names)))
-    colnames(agg_df) <- mcol_names
+    agg_df <- data.frame(matrix(NA, nrow = length(extended_dmrs_ranges_reduced), ncol = length(mcol_names) + 1))
+    colnames(agg_df) <- c(mcol_names, "merged_dmrs_num")
+    # ranges that do not need to be merged will have only one hit
+    tqh <- table(qh)
+    .log_info("Frequency of N-DMRs overlap:\n", paste(capture.output(print(table(tqh))), collapse = "\n"), level = 2)
+    single_hits <- which(tqh == 1)
+    if (length(single_hits) > 0) {
+        # get the corresponding indices in the original extended_dmrs_ranges
+        .log_info("Copying over ", length(single_hits), " non-overlapping extended DMRs...", level = 2)
+        # do it vectorizedly
+        agg_df[single_hits, ] <- orig_mcols[sh[qh %in% single_hits], ]
+        agg_df[single_hits, "merged_dmrs_num"] <- 1
+    }
 
-    for (i in seq_len(length(extended_dmrs_ranges_reduced))) {
+    multiple_hits <- which(tqh > 1)
+    .log_info("Merging ", length(multiple_hits), " overlapping extended DMRs...", level = 2)
+    for (i in multiple_hits) {
         inds <- sh[qh == i]
         cols_vals <- orig_mcols[inds, ]
         agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
         agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
-        agg_df[i, "sup_cpgs_num"] <- agg_df[i, "end_cpg_ind"] - agg_df[i, "start_cpg_ind"] + 1
         agg_df[i, "start_dmp"] <- cols_vals$start_dmp[[1]]
         agg_df[i, "end_dmp"] <- cols_vals$end_dmp[[length(inds)]]
         agg_df[i, "start_dmp_pos"] <- cols_vals$start_dmp_pos[[1]]
@@ -1328,22 +1366,26 @@ findDMRsFromSeeds <- function(beta = NULL,
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
         agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
         agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
-        agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
+        agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
         agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
+        agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
+        agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
-
+    agg_df[, "sup_cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
     agg_df[, "id"] <- paste0(seqnames(extended_dmrs_ranges_reduced), ":", agg_df$start_cpg_ind, "-", agg_df$end_cpg_ind)
 
     GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
+    .log_success("Overlapping extended DMRs merged: ", length(extended_dmrs_ranges), " final extended DMRs.", level = 1)
+    .log_step("Stage 4: Annotating and filtering resulting DMRs..", level = 1)
     if (bigmemory::is.big.matrix(sorted_locs)) {
         # Change seqnames from factor to character
         extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
             extended_dmrs_ranges, CHROMOSOMES[as.integer(GenomeInfoDb::seqlevels(extended_dmrs_ranges))]
         )
     }
-    .log_step("Finding GC content of DMRs..", level = 1)
+    .log_step("Finding GC content of DMRs..", level = 2)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
     GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
@@ -1360,8 +1402,8 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     extended_dmrs$dmps_num_adj <- ceiling(extended_dmrs$cpgs_num / extended_dmrs$sup_cpgs_num * extended_dmrs$dmps_num)
 
-    .log_success("CpG content calculated.", level = 1)
-    .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 1)
+    .log_success("CpG content calculated.", level = 2)
+    .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 2)
     if (verbose >= 2) {
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
@@ -1454,14 +1496,14 @@ findDMRsFromSeeds <- function(beta = NULL,
     dmrs <- do.call(rbind, dmrs_with_beta_stats)
     .log_success("DMR delta-beta information added.", level = 2)
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        dmrs$chr  <- CHROMOSOMES[dmrs$chr]
+        dmrs$chr <- CHROMOSOMES[dmrs$chr]
         start_dmps <- as.integer(dmrs$start_dmp)
         end_dmps <- as.integer(dmrs$end_dmp)
         dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[start_dmps, "chr"]], ":", sorted_locs[start_dmps, "start"])
         dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[end_dmps, "chr"]], ":", sorted_locs[end_dmps, "start"])
         start_cpgs <- as.integer(dmrs$start_cpg)
         end_cpgs <- as.integer(dmrs$end_cpg)
-        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":",  sorted_locs[start_cpgs, "start"])
+        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":", sorted_locs[start_cpgs, "start"])
         dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[end_cpgs, "chr"]], ":", sorted_locs[end_cpgs, "start"])
         dmrs$tmp_id <- seq_len(nrow(dmrs))
         dmrs$dmps_unlisted <- sapply(dmrs$dmps, function(dmp_ids) {
@@ -1497,11 +1539,11 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
-
-    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
+    .log_success("Annotation and filtering complete. Final number of DMRs: ", nrow(dmrs), level = 1)
+    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
-        .log_step("Saving DMRs to ", dmrs_file, "..")
+        .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
         gz <- gzfile(dmrs_file, "w")
         write.table(
             dmrs,
@@ -1513,7 +1555,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             row.names = FALSE
         )
         close(gz)
-        .log_success("DMRs saved.")
+        .log_success("DMRs saved.", level = 2)
     }
 
 

@@ -64,7 +64,7 @@ test_that("plotDMR works with different genome versions", {
     expect_s3_class(p2, "ggplot")
 })
 
-test_that("plotDMR works with custom title", {
+test_that("plotDMR works without a title", {
     skip_if_not_installed("ggplot2")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
@@ -124,15 +124,13 @@ test_that("plotDMRs respects ncol parameter", {
 
 
 test_that("plotDMRWithBeta works", {
-    skip_if_not_installed("DMRsegaldata")
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
-    pheno <- DMRsegaldata::pheno
-    beta <- DMRsegaldata::beta
+    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    load(system.file("data/beta.rda", package = "DMRsegal"))
 
     p <- suppressWarnings(plotDMRWithBeta(
         dmrs = dmrs,
@@ -143,8 +141,7 @@ test_that("plotDMRWithBeta works", {
     )
     )
 
-    expect_true(!is.null(p))
-    expect_true(inherits(p, "list") || inherits(p, "patchwork") || inherits(p, "ggplot") || inherits(p, "gg"))
+    expect_true(inherits(p, "gtable"))
 })
 
 
