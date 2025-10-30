@@ -382,7 +382,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#'   a default cache directory at `~/.cache/c/DMRsegal/bed_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
 #'
@@ -479,7 +479,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
 
     if (is.null(output_dir)) {
         if (getOption("DMRsegal.bed_cache_dir", TRUE)) {
-            cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "bed_cache"))
+            cache_dir <- getOption("DMRsegal.bed_cache_dir", file.path(path.expand("~"), ".cache", "c", "DMRsegal", "bed_cache"))
         } else {
             cache_dir <- tempdir()
         }
@@ -641,7 +641,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
 #'
 #' The chunk-based processing ensures that even very large beta files (millions of CpGs)
 #' can be converted without running out of memory. The cache directory is located at
-#' \code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the R session.
+#' \code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the c session.
 #' Files are named based on the MD5 hash of the input beta file, ensuring that identical
 #' files reuse the same cached version.
 #'
@@ -688,7 +688,7 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
+        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "c", "DMRsegal", "tabix_cache"))
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -1112,7 +1112,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 .liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
+        ".cache", "c", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1172,7 +1172,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     }
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
+        ".cache", "c", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1345,7 +1345,7 @@ orderByLoc <- function(x,
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size = 0) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0) {
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1360,8 +1360,19 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size = 0) {
     # Rename chromosomes to match BSgenome naming
     GenomeInfoDb::seqlevels(dmrs) <- sub("^chr", "", GenomeInfoDb::seqlevels(dmrs))
     GenomeInfoDb::seqlevels(dmrs) <- paste0("chr", GenomeInfoDb::seqlevels(dmrs))
-    if (flank_size > 0) {
-        dmrs <- GenomicRanges::flank(dmrs, width = flank_size, both = TRUE)
+    if (uflank_size > 0 || dflank_size > 0) {
+        flanked_start <- GenomicRanges::start(dmrs) - uflank_size
+        flanked_end <- GenomicRanges::end(dmrs) + dflank_size
+        add_na_to_the_start <- (flanked_start < 1) * (1 - flanked_start)
+        seqls <- GenomeInfoDb::seqlengths(dmrs)[as.character(GenomeInfoDb::seqnames(dmrs))]
+        add_na_to_the_end <- (flanked_end > seqls) * (flanked_end - seqls)
+        dmrs <- GenomicRanges::GRanges(
+            seqnames = GenomeInfoDb::seqnames(dmrs),
+            ranges = IRanges::IRanges(
+                start = pmax(flanked_start, 1),
+                end = pmin(flanked_end, seqls)
+            )
+        )
     }
     use_bsgenome <- FALSE
 
@@ -1395,11 +1406,23 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, flank_size = 0) {
         if (is.list(sequences)) {
             sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
         }
-        return(sequences)
+    } else {
+        .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
+        sequences <- .getSequencesFromUCSC(dmrs, genome)
     }
-
-    .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
-    sequences <- .getSequencesFromUCSC(dmrs, genome)
+    if (uflank_size > 0 || dflank_size > 0) {
+        sequences <- mapply(function(seq, na_start, na_end) {
+            if (is.na(seq)) {
+                return(NA_character_)
+            }
+            seq <- paste0(
+                paste(rep("N", na_start), collapse = ""),
+                seq,
+                paste(rep("N", na_end), collapse = "")
+            )
+            seq
+        }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
+    }
     sequences
 }
 
@@ -1514,7 +1537,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
                                   promoter_downstream = 200) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
+        ".cache", "c", "DMRsegal", "annotations"
     ))
     dmrs_df_provided <- is.data.frame(dmrs)
     if (dmrs_df_provided) {
@@ -1684,15 +1707,49 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     return(dmrs)
 }
 
+id_to_genomic_locs_index <- function(cpg_ids, genomic_locs) {
+    if (bigmemory::is.big.matrix(genomic_locs)) {
+        numeric_mask <- !is.na(as.numeric(cpg_ids))
+        counts <- sum(numeric_mask)
+        if (counts != length(cpg_ids) && counts != 0) {
+            stop("When using big.matrix for genomic_locs, cpg_ids must be all numeric or all 'chr:pos' IDs. Mixed types are not allowed. Provided cpg_ids have ", counts, " numeric IDs and ", length(cpg_ids) - counts, " non-numeric IDs.")
+        }
+        is_numeric <- counts == length(cpg_ids)
 
-
-# @TODO keep on working on this function
-extractDMRMotifs <- function(dmrs, beta, genome = "hg19", array = "450k", genomic_locs = NULL, flank_size = 5) {
-    if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
-        genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = NULL)
+        if (is_numeric) {
+            indices <- as.numeric(cpg_ids)
+        } else {
+            indices <- match(cpg_ids, rownames(genomic_locs))
+        }
+    } else {
+        indices <- match(cpg_ids, rownames(genomic_locs))
     }
-    beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = genomic_locs)
-    sequences <- getDMRSequences(dmrs, genome, flank_size = flank_size)
-
-
+    indices
 }
+
+
+BASE_LEVELS <- c("A", "T", "G", "C")
+
+
+convert_to_granges <- function(obj, genome) {
+    input_is_df <- is.data.frame(obj)
+    if (input_is_df) {
+        gr <- GenomicRanges::makeGRangesFromDataFrame(obj,
+            keep.extra.columns = TRUE,
+            seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
+            na.rm = TRUE
+        )
+    } else {
+        if (!is(gr, "GRanges")) {
+            stop("dmrs must be a data.frame or GRanges object")
+        }
+        # if the genome info in the gr is different from the specified genome, update the locations with liftOver
+        grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(gr))[[1]]
+        if (grs_genome != genome) {
+            gr <- .liftOverFromGenomeToGenome(gr, grs_genome, genome)
+        }
+    }
+    gr
+}
+
+

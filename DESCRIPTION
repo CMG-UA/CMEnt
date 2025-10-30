@@ -66,7 +66,8 @@ Imports:
     optparse,
     R.utils,
     jsonlite,
-    gridExtra
+    gridExtra,
+    BioCircos
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
@@ -91,6 +92,7 @@ Collate:
     'utils.R'
     'beta_handler.R'
     'dmrs_finder_from_seeds.R'
+    'dmrs_interaction.R'
     'find_dmrs_from_seeds.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'
