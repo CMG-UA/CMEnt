@@ -954,7 +954,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr, width = 100) {
+.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr, width = 10000) {
     chr_list <- list()
     start_list <- list()
     end_list <- list()
