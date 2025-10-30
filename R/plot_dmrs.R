@@ -811,14 +811,19 @@ plotDMRsCircos <- function(dmrs,
 
     if (!is.null(arc_data)) {
         .log_step("Adding arc track...", level = 3)
+        # Make colors gradient based on delta_beta, red for positive, blue for negative, and white for zero
+        positive_delta <- grDevices::colorRampPalette(c("white", "#801414"))
+        negative_delta <- grDevices::colorRampPalette(c("#055709", "white"))
+        arc_colors <- ifelse(arc_data$delta_beta > 0, positive_delta(10)[as.numeric(cut(arc_data$delta_beta, breaks = 10))],
+                             negative_delta(10)[as.numeric(cut(arc_data$delta_beta, breaks = 10))])
         tracklist <- tracklist + BioCircos::BioCircosArcTrack(
             trackname = "DMRs",
             chromosomes = arc_data$chr,
             starts = arc_data$start,
             ends = arc_data$end,
-            minRadius = 0.95,
-            maxRadius = 0.80,
-            colors = "#E41A1C",
+            minRadius = 0.80,
+            maxRadius = 0.95,
+            colors = arc_colors,
             ...
         )
         .log_success("Arc track added", level = 3)
@@ -829,15 +834,18 @@ plotDMRsCircos <- function(dmrs,
         .log_step("Adding heatmap track...", level = 3)
         hminradius <- 0.5
         hmaxradius <- 0.75
-        for (row in seq_len(nrow(heatmap_data))) {
+        nsamples <- nrow(heatmap_data$value)
+        .log_info("Adding a track for each of the ", nsamples, " samples...", level = 3)
+        for (row in seq_len(nsamples)) {
             tracklist <- tracklist + BioCircos::BioCircosHeatmapTrack(
                 trackname = "Beta_Values",
                 chromosomes = heatmap_data$chr,
                 starts = heatmap_data$start,
                 ends = heatmap_data$end,
                 values = heatmap_data$value[row, ],
-                minRadius = hminradius + (row - 1) * (hmaxradius - hminradius) / nrow(heatmap_data),
-                maxRadius = hminradius + row * (hmaxradius - hminradius) / nrow(heatmap_data),
+                minRadius = hminradius + (row - 1) * (hmaxradius - hminradius) / nsamples,
+                maxRadius = hminradius + row * (hmaxradius - hminradius) / nsamples,
+                labels = rownames(pheno)[row],
                 ...
             )
         }
@@ -988,7 +996,7 @@ plotDMRsCircos <- function(dmrs,
         chr = unlist(chr_list),
         start = unlist(start_list),
         end = unlist(end_list),
-        value = beta_data
+        value = t(beta_data)
     )
 }
 
@@ -998,7 +1006,7 @@ plotDMRsCircos <- function(dmrs,
         chr = as.character(GenomicRanges::seqnames(dmrs)),
         start = GenomicRanges::start(dmrs),
         end = GenomicRanges::end(dmrs),
-        value = abs(S4Vectors::mcols(dmrs)$delta_beta)
+        delta_beta = abs(S4Vectors::mcols(dmrs)$delta_beta)
     )
 }
 
