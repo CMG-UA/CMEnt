@@ -703,9 +703,16 @@ findDMRsFromSeeds <- function(beta = NULL,
             future::plan(future::multisession, workers = njobs)
         }
         withr::defer(future::plan(future::sequential))
-        globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
-        .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
-        options(future.globals.maxSize = globals_maxsize)
+        # if version of future.apply is less than 1.20.0-9003, set maxsize to Inf (due to a bug in that package)
+        if (utils::packageVersion("future.apply") < "1.20.0-9003") {
+            .log_info("Setting future.globals.maxSize to Inf due to future.apply version < 1.20.0-9003 (see https://github.com/futureverse/future.apply/issues/126)", level = 2)
+            options(future.globals.maxSize = Inf)
+            withr::defer(options(future.globals.maxSize = old_globals_maxsize))
+            } else { 
+            globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
+            .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
+            options(future.globals.maxSize = globals_maxsize)
+        }
     } else {
         .log_info("Using sequential processing (njobs=1)", level = 1)
         future::plan(future::sequential)
@@ -1222,6 +1229,17 @@ findDMRsFromSeeds <- function(beta = NULL,
             MARGIN = 1,
             simplify = FALSE,
             future.seed = TRUE,
+            future.globals = c(
+                ".expandDMRs",
+                "chr_array",
+                "expansion_step",
+                "min_cpgs",
+                "min_cpg_delta_beta",
+                "chr_locs",
+                "chr_start_base",
+                "verbose",
+                "p_ext"
+            ),
             # future.scheduling = ceiling(n_dmrs / njobs),
             FUN = function(dmr) {
                 op <- options(warn = 2)$warn
@@ -1303,10 +1321,23 @@ findDMRsFromSeeds <- function(beta = NULL,
     sh <- S4Vectors::subjectHits(hits)
     orig_mcols <- as.data.frame(GenomicRanges::mcols(extended_dmrs_ranges))
     mcol_names <- colnames(orig_mcols)
-    agg_df <- data.frame(matrix(NA, nrow = length(extended_dmrs_ranges_reduced), ncol = length(mcol_names)))
-    colnames(agg_df) <- mcol_names
+    agg_df <- data.frame(matrix(NA, nrow = length(extended_dmrs_ranges_reduced), ncol = length(mcol_names) + 1))
+    colnames(agg_df) <- c(mcol_names, "merged_dmrs_num")
+    # ranges that do not need to be merged will have only one hit
+    tqh <- table(qh)
+    .log_info("Frequency of N-DMRs overlap:\n", paste(capture.output(print(table(tqh))), collapse = "\n"), level = 2)
+    single_hits <- which(tqh == 1)
+    if (length(single_hits) > 0) {
+        # get the corresponding indices in the original extended_dmrs_ranges
+        .log_info("Copying over ", length(single_hits), " non-overlapping extended DMRs...", level = 2)
+        # do it vectorizedly
+        agg_df[single_hits, ] <- orig_mcols[sh[qh %in% single_hits], ]
+        agg_df[single_hits, "merged_dmrs_num"] <- 1
+    }
 
-    for (i in seq_len(length(extended_dmrs_ranges_reduced))) {
+    multiple_hits <- which(tqh > 1)
+    .log_info("Merging ", length(multiple_hits), " overlapping extended DMRs...", level = 2)
+    for (i in multiple_hits) {
         inds <- sh[qh == i]
         cols_vals <- orig_mcols[inds, ]
         agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
