@@ -835,15 +835,14 @@ plotDMRsCircos <- function(dmrs,
         hmaxradius <- 0.75
         nsamples <- nrow(heatmap_data$value)
         .log_info("Adding a track for each of the ", nsamples, " samples...", level = 3)
-        beta_palette <- colorRampPalette(c("white", "red"))
-        beta_colors <- beta_palette(100)
         for (row in seq_len(nsamples)) {
             tracklist <- tracklist + BioCircos::BioCircosHeatmapTrack(
                 trackname = "Beta_Values",
                 chromosomes = heatmap_data$chr,
                 starts = heatmap_data$start,
                 ends = heatmap_data$end,
-                color = beta_colors[as.numeric(cut(heatmap_data$value[row, ], breaks = 100))],
+                values = heatmap_data$value[row, ],
+                color = c("white", "red"),
                 minRadius = hminradius + (row - 1) * (hmaxradius - hminradius) / nsamples,
                 maxRadius = hminradius + row * (hmaxradius - hminradius) / nsamples,
                 labels = rownames(pheno)[row],
@@ -866,7 +865,10 @@ plotDMRsCircos <- function(dmrs,
         link_data$color_group <- cut(link_data$corr, breaks = 3, labels = c("low", "medium", "high"))
         link_colors <- c("low" = "#89adc2", "medium" = "#62b0f0", "high" = "#1696e0")
         for (color_group in c("low", "medium", "high")) {
-            group_data <- link_data[link_data$color_group == color_group, ]
+            group_data <- link_data[link_data$color_group == color_group, , drop = FALSE]
+            if (nrow(group_data) == 0) {
+                next
+            }
             tracklist <- tracklist + BioCircos::BioCircosLinkTrack(
                 trackname = paste0("Interactions_", color_group),
                 gene1Chromosomes = group_data$chr1,
