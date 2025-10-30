@@ -68,7 +68,10 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     }
     # Remove CpG position
     pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
-    lsa::cosine(pwms)
+    ret <- lsa::cosine(pwms)
+    # set upper triangle and diagonal to NA
+    ret[upper.tri(ret, diag = TRUE)] <- NA
+    return(ret)
 }
 
 
@@ -83,7 +86,6 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
-#' @param correction Character. Multiple testing correction method (default: "BH")
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @return Data frame of motif-based DMR interactions with columns:
 #' \itemize{
@@ -105,24 +107,24 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     end_cpg = c("cg13426503", "cg08730726")
 #' )
 #' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
-#' interactions <- computeMotifBasedDMRsInteraction(
+#' interactions <- computeDMRsInteraction(
 #'     dmrs_with_motifs,
 #'     genome = "hg19",
 #'     array = "450K",
 #' )
 #' @export
-computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, min_sim = 0.7, genomic_locs = NULL, correction = "BH", flank_size = 5) {
+computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5) {
     dmrs <- convert_to_granges(dmrs, genome)
-    if (! "pwm" %in% colnames(mcols(dmrs))) {
+    if (!"pwm" %in% colnames(mcols(dmrs))) {
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
-    similarity_matrix <- .extractMotifsSimilarity(dmrs,  flank_size = flank_size)
+    similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
     mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
     if (all(!mask, na.rm = TRUE)) {
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
-    g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected", diag = FALSE)
+    g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "lower", diag = FALSE)
     components <- igraph::components(g1)
     # compute consensus sequence for each connected component
     # create a dataframe with columns component_id, dmrs
@@ -154,8 +156,8 @@ computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, min_sim = 0.7,
         end1 = GenomicRanges::end(start_dmrs),
         chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
         start2 = GenomicRanges::start(end_dmrs),
-        end2  = GenomicRanges::end(end_dmrs),
-        corr = similarity_matrix[rowcol_df],
+        end2 = GenomicRanges::end(end_dmrs),
+        corr = similarity_matrix[rowcol_df]
     )
     list(
         interactions = interaction_data_frame,

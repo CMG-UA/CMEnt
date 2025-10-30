@@ -28,8 +28,7 @@ if (length(dmrs) > 0) {
         pheno = pheno,
         array = array_type,
         genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = FALSE
+        sample_group_col = "Sample_Group"
     )
     
     print(plot_obj)

@@ -835,13 +835,15 @@ plotDMRsCircos <- function(dmrs,
         hmaxradius <- 0.75
         nsamples <- nrow(heatmap_data$value)
         .log_info("Adding a track for each of the ", nsamples, " samples...", level = 3)
+        beta_palette <- colorRampPalette(c("white", "red"))
+        beta_colors <- beta_palette(100)
         for (row in seq_len(nsamples)) {
             tracklist <- tracklist + BioCircos::BioCircosHeatmapTrack(
                 trackname = "Beta_Values",
                 chromosomes = heatmap_data$chr,
                 starts = heatmap_data$start,
                 ends = heatmap_data$end,
-                values = heatmap_data$value[row, ],
+                color = beta_colors[as.numeric(cut(heatmap_data$value[row, ], breaks = 100))],
                 minRadius = hminradius + (row - 1) * (hmaxradius - hminradius) / nsamples,
                 maxRadius = hminradius + row * (hmaxradius - hminradius) / nsamples,
                 labels = rownames(pheno)[row],
@@ -862,10 +864,8 @@ plotDMRsCircos <- function(dmrs,
         }
         # make 3 splits based on corr values for color gradation
         link_data$color_group <- cut(link_data$corr, breaks = 3, labels = c("low", "medium", "high"))
-        link_data$color <- ifelse(link_data$color_group == "low", "#FF0000",
-            ifelse(link_data$color_group == "medium", "#FF7F00", "#FFFF00")
-        )
-        for (color_group in unique(link_data$color_group)) {
+        link_colors <- c("low" = "#89adc2", "medium" = "#62b0f0", "high" = "#1696e0")
+        for (color_group in c("low", "medium", "high")) {
             group_data <- link_data[link_data$color_group == color_group, ]
             tracklist <- tracklist + BioCircos::BioCircosLinkTrack(
                 trackname = paste0("Interactions_", color_group),
@@ -876,7 +876,7 @@ plotDMRsCircos <- function(dmrs,
                 gene2Starts = group_data$start2,
                 gene2Ends = group_data$end2,
                 maxRadius = 0.45,
-                color = unique(group_data$color),
+                color = link_colors[color_group],
                 ...
             )
         }
@@ -890,7 +890,7 @@ plotDMRsCircos <- function(dmrs,
         genomeFillColor = "Spectral",
         chrPad = 0.05,
         displayGenomeBorder = FALSE,
-        genomeTicksDisplay = TRUE,
+        genomeTicksDisplay = FALSE,
         genomeTicksLen = 3,
         genomeTicksTextSize = 0,
         genomeTicksScale = 1e6
@@ -1013,7 +1013,7 @@ plotDMRsCircos <- function(dmrs,
 .prepareBioCircosLinkData <- function(dmrs, genome, array, min_sim, flank_size, sorted_locs) {
     ret <- tryCatch(
         {
-            computeMotifBasedDMRsInteraction(
+            computeDMRsInteraction(
                 dmrs = dmrs,
                 genome = genome,
                 array = array,
