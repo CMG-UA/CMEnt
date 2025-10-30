@@ -4,7 +4,13 @@
 \alias{getDMRSequences}
 \title{Extract DNA Sequences for DMRs}
 \usage{
-getDMRSequences(dmrs, genome, use_online = FALSE, flank_size = 0)
+getDMRSequences(
+  dmrs,
+  genome,
+  use_online = FALSE,
+  uflank_size = 0,
+  dflank_size = 0
+)
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}

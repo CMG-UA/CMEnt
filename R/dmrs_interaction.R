@@ -25,7 +25,7 @@
 #'     end_cpg = c("cg13426503", "cg08730726")
 #' )
 #' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
-#'' # Access motif frequencies for the first DMR
+#' # Access motif frequencies for the first DMR
 #' motif_freqs_dmr1 <- dmrs_with_motifs$motif_frequencies[[1]]
 #' @export
 extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, flank_size = 5) {

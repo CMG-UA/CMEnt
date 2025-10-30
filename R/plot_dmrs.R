@@ -708,3 +708,424 @@ plotDMRWithBeta <- function(dmrs,
     grid::grid.draw(combined)
     invisible(combined)
 }
+
+
+#' Plot BioCircos Visualization of DMRs
+#'
+#' @description Creates a circular genome plot (BioCircos) showing DMRs with multiple tracks:
+#' from outer to inner: scatter plots of DMPs (red) and supporting CpGs (gray),
+#' beta value heatmaps, DMR arcs, and motif-based interaction links between DMRs.
+#'
+#' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
+#' @param beta BetaHandler object, character path to beta file, or beta values matrix.
+#' @param pheno Data frame or character path to phenotype file. Sample information with
+#'   rownames matching beta column names (required for beta track).
+#' @param array Character. Array platform type (default: "450K").
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39"). Supports any genome with a corresponding TxDb package.
+#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
+#' @param plot_interactions Logical. Whether to compute and plot motif-based DMR interactions (default: TRUE).
+#' @param min_fdr Numeric. Minimum FDR threshold for motif-based interactions (default: 0.05).
+#' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
+#' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).
+#' @param genome_label Character. Label for the genome (default: genome parameter value).
+#' @param chr_order Character vector. Order of chromosomes to display (default: chr1-22, X, Y).
+#' @param ... Additional arguments passed to BioCircos functions.
+#'
+#' @return A BioCircos plot object.
+#'
+#' @examples
+#' # Load DMR results
+#' dmrs <- readRDS("dmrs.rds")
+#'
+#' # Basic BioCircos plot
+#' plotDMRsBioCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+#'
+#' # Without interactions
+#' plotDMRsBioCircos(dmrs, beta = "beta.txt", pheno = pheno_df, plot_interactions = FALSE)
+#'
+#' @importFrom BioCircos BioCircos
+#' @export
+plotDMRsBioCircos <- function(dmrs,
+                              beta,
+                              pheno,
+                              array = c("450K", "27K", "EPIC", "EPICv2"),
+                              genome = c("hg19", "hg38", "mm10", "mm39"),
+                              sample_group_col = "Sample_Group",
+                              plot_interactions = TRUE,
+                              min_fdr = 0.05,
+                              flank_size = 5,
+                              max_cpgs_per_dmr = 100,
+                              genome_label = NULL,
+                              chr_order = NULL,
+                              ...) {
+    
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    
+    if (is.null(genome_label)) {
+        genome_label <- genome
+    }
+    
+    if (is.null(chr_order)) {
+        chr_order <- c(paste0("chr", 1:22), "chrX", "chrY")
+    }
+    
+    if (inherits(dmrs, "data.frame")) {
+        dmrs <- GenomicRanges::makeGRangesFromDataFrame(
+            dmrs,
+            keep.extra.columns = TRUE,
+            seqnames.field = "chr",
+            start.field = "start",
+            end.field = "end"
+        )
+    }
+    
+    if (is.character(beta) && length(beta) == 1) {
+        if (!file.exists(beta)) {
+            stop("Beta file does not exist: ", beta)
+        }
+        beta_handler <- getBetaHandler(
+            beta = beta,
+            array = array,
+            genome = genome
+        )
+    } else if (is.matrix(beta) || is.data.frame(beta)) {
+        beta_handler <- getBetaHandler(
+            beta = beta,
+            array = array,
+            genome = genome
+        )
+    } else if ("BetaHandler" %in% class(beta)) {
+        beta_handler <- beta
+    } else {
+        stop("beta must be either a file path (character), matrix, data frame, or a BetaHandler object")
+    }
+    
+    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+        pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+    }
+    if (!is.data.frame(pheno)) {
+        stop("pheno must be a data frame or a valid file path to a phenotype table")
+    }
+    if (!(sample_group_col %in% colnames(pheno))) {
+        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    }
+    
+    sorted_locs <- beta_handler$getGenomicLocs()
+    
+    .log_step("Preparing data for BioCircos plot...")
+    
+    genome_lengths <- .getGenomeLengths(genome, as.character(GenomicRanges::seqnames(dmrs)))
+    
+    scatter_data <- .prepareBioCircosScatterData(dmrs, sorted_locs, max_cpgs_per_dmr)
+    
+    heatmap_data <- .prepareBioCircosHeatmapData(
+        dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr
+    )
+    
+    arc_data <- .prepareBioCircosArcData(dmrs)
+    
+    link_data <- NULL
+    if (plot_interactions) {
+        .log_step("Computing motif-based DMR interactions...")
+        link_data <- .prepareBioCircosLinkData(
+            dmrs, genome, array, min_fdr, flank_size, sorted_locs
+        )
+    }
+    
+    .log_step("Creating BioCircos plot...")
+    
+    tracklist <- BioCircos::BioCircosTracklist()
+    
+    if (!is.null(scatter_data)) {
+        tracklist <- tracklist + BioCircos::BioCircosSNPTrack(
+            trackname = "CpGs",
+            chromosomes = scatter_data$chr,
+            positions = scatter_data$start,
+            values = scatter_data$value,
+            colors = scatter_data$color,
+            minRadius = 0.75,
+            maxRadius = 0.95,
+            ...
+        )
+    }
+    
+    if (!is.null(heatmap_data)) {
+        tracklist <- tracklist + BioCircos::BioCircosHeatmapTrack(
+            trackname = "Beta_Values",
+            chromosomes = heatmap_data$chr,
+            starts = heatmap_data$start,
+            ends = heatmap_data$end,
+            values = heatmap_data$value,
+            minRadius = 0.5,
+            maxRadius = 0.7,
+            ...
+        )
+    }
+    
+    if (!is.null(arc_data)) {
+        tracklist <- tracklist + BioCircos::BioCircosArcTrack(
+            trackname = "DMRs",
+            chromosomes = arc_data$chr,
+            starts = arc_data$start,
+            ends = arc_data$end,
+            minRadius = 0.35,
+            maxRadius = 0.45,
+            colors = "#E41A1C",
+            ...
+        )
+    }
+    
+    if (!is.null(link_data)) {
+        tracklist <- tracklist + BioCircos::BioCircosLinkTrack(
+            trackname = "Interactions",
+            gene1Chromosomes = link_data$chr1,
+            gene1Starts = link_data$start1,
+            gene1Ends = link_data$end1,
+            gene2Chromosomes = link_data$chr2,
+            gene2Starts = link_data$start2,
+            gene2Ends = link_data$end2,
+            maxRadius = 0.3,
+            color = "#984EA3",
+            ...
+        )
+    }
+    
+    plot_obj <- BioCircos::BioCircos(
+        tracklist = tracklist,
+        genome = genome_lengths,
+        yChr = TRUE,
+        genomeFillColor = "Spectral",
+        chrPad = 0.05,
+        displayGenomeBorder = FALSE,
+        genomeTicksDisplay = TRUE,
+        genomeTicksLen = 3,
+        genomeTicksTextSize = 0,
+        genomeTicksScale = 1e6
+    )
+    
+    .log_success("BioCircos plot created successfully")
+    
+    return(plot_obj)
+}
+
+
+.getGenomeLengths <- function(genome, chromosomes) {
+    
+    supported_organisms <- Organism.dplyr::supportedOrganisms()
+    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), , drop = FALSE]
+    
+    if (nrow(matched_row) == 0) {
+        .log_warn("Unsupported genome: ", genome, ". Using default genome string.")
+        return(genome)
+    }
+    
+    txdb_pkg <- matched_row$TxDb[1]
+    
+    if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
+        .log_warn("TxDb package ", txdb_pkg, " not installed. Using default genome string.")
+        return(genome)
+    }
+    
+    txdb <- tryCatch({
+        if (!isNamespaceLoaded(txdb_pkg)) {
+            loadNamespace(txdb_pkg)
+        }
+        getExportedValue(txdb_pkg, txdb_pkg)
+    }, error = function(e) {
+        .log_warn("Failed to load TxDb: ", e$message)
+        return(NULL)
+    })
+    
+    if (is.null(txdb)) {
+        return(genome)
+    }
+    
+    seqinfo <- GenomeInfoDb::seqinfo(txdb)
+    seqlengths <- GenomeInfoDb::seqlengths(seqinfo)
+    
+    unique_chrs <- unique(chromosomes)
+    unique_chrs <- unique_chrs[unique_chrs %in% names(seqlengths)]
+    
+    if (length(unique_chrs) == 0) {
+        .log_warn("No valid chromosomes found in DMRs. Using default genome.")
+        return(genome)
+    }
+    
+    genome_lengths <- as.list(seqlengths[unique_chrs])
+    
+    .log_info("Using custom genome with ", length(genome_lengths), " chromosomes from ", txdb_pkg)
+    
+    return(genome_lengths)
+}
+
+
+.prepareBioCircosScatterData <- function(dmrs, sorted_locs, max_cpgs_per_dmr) {
+    chr_list <- list()
+    pos_list <- list()
+    val_list <- list()
+    col_list <- list()
+    
+    for (i in seq_along(dmrs)) {
+        dmr <- dmrs[i]
+        dmr_data <- S4Vectors::mcols(dmr)
+        
+        chr <- as.character(GenomicRanges::seqnames(dmr))
+        start_cpg <- dmr_data$start_cpg
+        end_cpg <- dmr_data$end_cpg
+        
+        start_cpg_ind <- which(rownames(sorted_locs) == start_cpg)
+        end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
+        
+        if (length(start_cpg_ind) == 0 || length(end_cpg_ind) == 0) {
+            next
+        }
+        
+        cpg_range <- start_cpg_ind:end_cpg_ind
+        num_cpgs <- length(cpg_range)
+        
+        if (num_cpgs > max_cpgs_per_dmr) {
+            step <- ceiling(num_cpgs / max_cpgs_per_dmr)
+            cpg_range <- cpg_range[seq(1, num_cpgs, by = step)]
+        }
+        
+        cpg_ids <- rownames(sorted_locs)[cpg_range]
+        cpg_locs <- sorted_locs[cpg_range, ]
+        
+        dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
+        is_dmp <- cpg_ids %in% dmp_ids
+        
+        chr_list[[i]] <- as.character(cpg_locs$chr)
+        pos_list[[i]] <- cpg_locs$start
+        val_list[[i]] <- ifelse(is_dmp, 1, 0.5)
+        col_list[[i]] <- ifelse(is_dmp, "#E41A1C", "#999999")
+    }
+    
+    if (length(chr_list) == 0) {
+        return(NULL)
+    }
+    
+    list(
+        chr = unlist(chr_list),
+        start = unlist(pos_list),
+        value = unlist(val_list),
+        color = unlist(col_list)
+    )
+}
+
+
+.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr) {
+    
+    chr_list <- list()
+    start_list <- list()
+    end_list <- list()
+    val_list <- list()
+    
+    beta_col_names <- beta_handler$getBetaColNames()
+    pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
+    
+    if (nrow(pheno) == 0) {
+        .log_warn("No samples in pheno match the samples in beta values. Skipping heatmap track.")
+        return(NULL)
+    }
+    
+    for (i in seq_along(dmrs)) {
+        dmr <- dmrs[i]
+        dmr_data <- S4Vectors::mcols(dmr)
+        
+        chr <- as.character(GenomicRanges::seqnames(dmr))
+        start_cpg <- dmr_data$start_cpg
+        end_cpg <- dmr_data$end_cpg
+        
+        start_cpg_ind <- which(rownames(sorted_locs) == start_cpg)
+        end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
+        
+        if (length(start_cpg_ind) == 0 || length(end_cpg_ind) == 0) {
+            next
+        }
+        
+        cpg_range <- start_cpg_ind:end_cpg_ind
+        num_cpgs <- length(cpg_range)
+        
+        if (num_cpgs > max_cpgs_per_dmr) {
+            step <- ceiling(num_cpgs / max_cpgs_per_dmr)
+            cpg_range <- cpg_range[seq(1, num_cpgs, by = step)]
+        }
+        
+        cpg_ids <- rownames(sorted_locs)[cpg_range]
+        cpg_locs <- sorted_locs[cpg_range, ]
+        
+        dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
+        shown_cpgs <- unique(c(dmp_ids, cpg_ids))
+        shown_cpgs <- shown_cpgs[shown_cpgs %in% rownames(sorted_locs)]
+        
+        beta_data <- beta_handler$getBeta(
+            row_names = shown_cpgs,
+            col_names = rownames(pheno)
+        )
+        
+        beta_mean <- rowMeans(beta_data, na.rm = TRUE)
+        
+        shown_locs <- sorted_locs[shown_cpgs, ]
+        
+        chr_list[[i]] <- as.character(shown_locs$chr)
+        start_list[[i]] <- shown_locs$start
+        end_list[[i]] <- shown_locs$start + 1
+        val_list[[i]] <- beta_mean
+    }
+    
+    if (length(chr_list) == 0) {
+        return(NULL)
+    }
+    
+    list(
+        chr = unlist(chr_list),
+        start = unlist(start_list),
+        end = unlist(end_list),
+        value = unlist(val_list)
+    )
+}
+
+
+.prepareBioCircosArcData <- function(dmrs) {
+    list(
+        chr = as.character(GenomicRanges::seqnames(dmrs)),
+        start = GenomicRanges::start(dmrs),
+        end = GenomicRanges::end(dmrs),
+        value = abs(S4Vectors::mcols(dmrs)$delta_beta)
+    )
+}
+
+
+.prepareBioCircosLinkData <- function(dmrs, genome, array, min_fdr, flank_size, sorted_locs) {
+    
+    interactions <- tryCatch({
+        computeMotifBasedDMRsInteraction(
+            dmrs = dmrs,
+            genome = genome,
+            array = array,
+            min_fdr = min_fdr,
+            genomic_locs = sorted_locs,
+            flank_size = flank_size
+        )
+    }, error = function(e) {
+        .log_warn("Failed to compute motif-based interactions: ", e$message)
+        return(NULL)
+    })
+    
+    if (is.null(interactions) || nrow(interactions) == 0) {
+        .log_warn("No significant interactions found at FDR <= ", min_fdr)
+        return(NULL)
+    }
+    
+    .log_success("Found ", nrow(interactions), " motif-based interactions")
+    
+    list(
+        chr1 = interactions$start_chr,
+        start1 = interactions$start,
+        end1 = interactions$end,
+        chr2 = interactions$end_chr,
+        start2 = interactions$end,
+        end2 = interactions$end_end
+    )
+}
