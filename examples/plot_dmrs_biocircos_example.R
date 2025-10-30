@@ -22,7 +22,6 @@ if (file.exists("data/beta.rda")) {
 if (length(dmrs) > 0) {
     dmrs_subset <- dmrs
     
-    cat("Creating BioCircos plot without interactions...\n")
     plot_obj <- plotDMRsCircos(
         dmrs = dmrs_subset,
         beta = beta,
@@ -34,20 +33,7 @@ if (length(dmrs) > 0) {
     )
     
     print(plot_obj)
-    computeMotifBasedDMRsInteraction(dmrs_subset, genome = "hg19", array = array_type, max_fdr = 0.05)
-    cat("\n\nCreating BioCircos plot with motif-based interactions...\n")
-    plot_obj_with_interactions <- plotDMRsCircos(
-        dmrs = dmrs_subset,
-        beta = beta,
-        pheno = pheno,
-        array = array_type,
-        genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = TRUE,
-        max_fdr = 0.05
-    )
     
-    print(plot_obj_with_interactions)
 } else {
     cat("No DMRs found in the example data.\n")
 }

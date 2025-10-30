@@ -12,11 +12,10 @@ plotDMRsCircos(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   sample_group_col = "Sample_Group",
   plot_interactions = TRUE,
-  max_fdr = 0.05,
+  min_sim = 0.7,
   flank_size = 5,
   max_cpgs_per_dmr = 100,
   genome_label = NULL,
-  chr_order = NULL,
   ...
 )
 }

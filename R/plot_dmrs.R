@@ -723,10 +723,9 @@ plotDMRWithBeta <- function(dmrs,
 #' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39"). Supports any genome with a corresponding TxDb package.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
-#' @param max_fdr Numeric. Minimum FDR threshold for motif-based interactions (default: 0.05).
+#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).
-#' @param chr_order Character vector. Order of chromosomes to display (default: chr1-22, X, Y).
 #' @param ... Additional arguments passed to BioCircos functions.
 #'
 #' @return A BioCircos plot object.
@@ -750,7 +749,7 @@ plotDMRsCircos <- function(dmrs,
                            array = "450K",
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
-                           max_fdr = 0.05,
+                           min_sim = 0.7,
                            flank_size = 5,
                            max_cpgs_per_dmr = 100,
                            max_interactions = 30,
@@ -801,7 +800,7 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareBioCircosLinkData(
-        dmrs, genome, array, max_fdr, flank_size, sorted_locs
+        dmrs, genome, array, min_sim, flank_size, sorted_locs
     )
     .log_success("DMR interactions data prepared", level = 2)
 
@@ -859,7 +858,7 @@ plotDMRsCircos <- function(dmrs,
         link_data <- link_data[order(link_data$corr), ]
         if (nrow(link_data) > max_interactions) {
             link_data <- link_data[1:max_interactions, ]
-            .log_info("Limiting to top ", max_interactions, " interactions based on FDR", level = 2)
+            .log_info("Limiting to top ", max_interactions, " interactions based on similarity", level = 2)
         }
         # make 3 splits based on corr values for color gradation
         link_data$color_group <- cut(link_data$corr, breaks = 3, labels = c("low", "medium", "high"))
@@ -1011,14 +1010,14 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareBioCircosLinkData <- function(dmrs, genome, array, max_fdr, flank_size, sorted_locs) {
+.prepareBioCircosLinkData <- function(dmrs, genome, array, min_sim, flank_size, sorted_locs) {
     ret <- tryCatch(
         {
             computeMotifBasedDMRsInteraction(
                 dmrs = dmrs,
                 genome = genome,
                 array = array,
-                max_fdr = max_fdr,
+                min_sim = min_sim,
                 genomic_locs = sorted_locs,
                 flank_size = flank_size
             )
@@ -1030,7 +1029,7 @@ plotDMRsCircos <- function(dmrs,
     )
 
     if (is.null(ret) || nrow(ret$interactions) == 0) {
-        .log_warn("No significant interactions found at FDR <= ", max_fdr)
+        .log_warn("No significant interactions found at similarity >=", min_sim, ". Skipping link track.")
         return(NULL)
     }
 

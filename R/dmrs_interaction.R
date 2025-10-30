@@ -59,23 +59,8 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     invisible(dmrs)
 }
 
-# from https://stackoverflow.com/a/13486833/6758862
-.corr_significance <- function(x, dfr = nrow(x) - 2, correction="BH") {
-    corr_mat <- cor(x)
-    above <- row(corr_mat) < col(corr_mat)
-    r2 <- corr_mat[above]^2
-    fstat <- r2 * dfr / (1 - r2)
-    sig_mat <- matrix(NA, nrow = ncol(x), ncol = ncol(x))
-    sig_mat[above] <- 1 - pf(fstat, 1, dfr)
-    if (!is.null(correction)){
-        sig_mat[above] <- p.adjust(sig_mat[above], method=correction)
-    }
-    sig_mat <- t(sig_mat)
-    sig_mat[upper.tri(sig_mat)] <- NA
-    list("corr_mat" = corr_mat, "sig_mat" = sig_mat)
-}
 
-.extractMotifsSimilaritySignificance <- function(dmrs, correction = "BH", flank_size = 5) {
+.extractMotifsSimilarity <- function(dmrs, flank_size = 5) {
     if (inherits(dmrs, "GRanges")) {
         pwms <- mcols(dmrs)$pwm
     } else {
@@ -83,19 +68,19 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     }
     # Remove CpG position
     pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
-    .corr_significance(pwms, correction = correction)
+    lsa::cosine(pwms)
 }
 
 
 #' Compute Motif-Based DMR Interactions
 #'
 #' @description Computes motif-based interactions between DMRs based on their
-#' motif correlation. Identifies pairs of DMRs with significant motif correlation
+#' motif similarity. Identifies pairs of DMRs with significant motif similarity
 #' and returns a data frame of interactions.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
-#' @param max_fdr Numeric. Minimum FDR threshold for considering motif correlation significant (default: 0.05)
+#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param correction Character. Multiple testing correction method (default: "BH")
@@ -108,8 +93,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'   \item end_chr: Chromosome of the end DMR
 #'   \item end: Start position of the end DMR
 #'   \item end_end: End position of the end DMR
-#'   \item corr: Correlation value of the motif between the DMRs
-#'   \item fdr: FDR value of the motif correlation between the DMRs
+#'   \item sim: Similarity value of the motif PWMs between the DMRs
 #' }
 #' @examples
 #' # Compute motif-based interactions for DMRs
@@ -125,20 +109,17 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     dmrs_with_motifs,
 #'     genome = "hg19",
 #'     array = "450K",
-#'     max_fdr = 0.05
 #' )
 #' @export
-computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, max_fdr = 0.05, min_corr = 0.7, genomic_locs = NULL, correction = "BH", flank_size = 5) {
+computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, min_sim = 0.7, genomic_locs = NULL, correction = "BH", flank_size = 5) {
     dmrs <- convert_to_granges(dmrs, genome)
     if (! "pwm" %in% colnames(mcols(dmrs))) {
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
-    corr_ret <- .extractMotifsSimilaritySignificance(dmrs,  correction = correction, flank_size = flank_size)
-    correlation_matrix <- corr_ret$corr_mat
-    significance_matrix <- corr_ret$sig_mat
-    mask <- !is.na(significance_matrix) & (significance_matrix <= max_fdr) & (abs(correlation_matrix) >= min_corr)
+    similarity_matrix <- .extractMotifsSimilarity(dmrs,  flank_size = flank_size)
+    mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
     if (all(!mask, na.rm = TRUE)) {
-        .log_warn("No significant motif-based interactions found between DMRs at FDR <=", max_fdr)
+        .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
     g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected", diag = FALSE)
@@ -174,8 +155,7 @@ computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, max_fdr = 0.05
         chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
         start2 = GenomicRanges::start(end_dmrs),
         end2  = GenomicRanges::end(end_dmrs),
-        corr = correlation_matrix[rowcol_df],
-        fdr = significance_matrix[rowcol_df]
+        corr = similarity_matrix[rowcol_df],
     )
     list(
         interactions = interaction_data_frame,
