@@ -45,7 +45,7 @@ test_that("plotDMRsCircos works with interactions", {
         genome = "hg19",
         sample_group_col = "Sample_Group",
         plot_interactions = TRUE,
-        min_fdr = 0.05
+        max_fdr = 0.05
     )
 
     expect_true(!is.null(plot_obj))

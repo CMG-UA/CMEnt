@@ -12,7 +12,7 @@ plotDMRsCircos(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   sample_group_col = "Sample_Group",
   plot_interactions = TRUE,
-  min_fdr = 0.05,
+  max_fdr = 0.05,
   flank_size = 5,
   max_cpgs_per_dmr = 100,
   genome_label = NULL,
@@ -36,7 +36,7 @@ rownames matching beta column names (required for beta track).}
 
 \item{plot_interactions}{Logical. Whether to compute and plot motif-based DMR interactions (default: TRUE).}
 
-\item{min_fdr}{Numeric. Minimum FDR threshold for motif-based interactions (default: 0.05).}
+\item{max_fdr}{Numeric. Minimum FDR threshold for motif-based interactions (default: 0.05).}
 
 \item{flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
 

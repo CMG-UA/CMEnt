@@ -8,7 +8,7 @@ computeMotifBasedDMRsInteraction(
   dmrs,
   genome,
   array,
-  min_fdr = 0.05,
+  max_fdr = 0.05,
   genomic_locs = NULL,
   correction = "BH",
   flank_size = 5
@@ -21,7 +21,7 @@ computeMotifBasedDMRsInteraction(
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")}
 
-\item{min_fdr}{Numeric. Minimum FDR threshold for considering motif similarity significant (default: 0.05)}
+\item{max_fdr}{Numeric. Minimum FDR threshold for considering motif similarity significant (default: 0.05)}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
@@ -61,6 +61,6 @@ interactions <- computeMotifBasedDMRsInteraction(
     dmrs_with_motifs,
     genome = "hg19",
     array = "450K",
-    min_fdr = 0.05
+    max_fdr = 0.05
 )
 }

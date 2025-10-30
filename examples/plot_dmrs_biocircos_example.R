@@ -34,7 +34,7 @@ if (length(dmrs) > 0) {
     )
     
     print(plot_obj)
-    
+    computeMotifBasedDMRsInteraction(dmrs_subset, genome = "hg19", array = array_type, max_fdr = 0.05)
     cat("\n\nCreating BioCircos plot with motif-based interactions...\n")
     plot_obj_with_interactions <- plotDMRsCircos(
         dmrs = dmrs_subset,
@@ -44,7 +44,7 @@ if (length(dmrs) > 0) {
         genome = "hg19",
         sample_group_col = "Sample_Group",
         plot_interactions = TRUE,
-        min_fdr = 0.05
+        max_fdr = 0.05
     )
     
     print(plot_obj_with_interactions)

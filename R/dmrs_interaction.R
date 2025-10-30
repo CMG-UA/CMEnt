@@ -61,26 +61,28 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 
 # from https://stackoverflow.com/a/13486833/6758862
 .corr_significance <- function(x, dfr = nrow(x) - 2, correction="BH") {
-    c <- cor(x)
-    above <- row(c) < col(c)
-    r2 <- c[above]^2
+    corr_mat <- cor(x)
+    above <- row(corr_mat) < col(corr_mat)
+    r2 <- corr_mat[above]^2
     fstat <- r2 * dfr / (1 - r2)
-    c[above] <- 1 - pf(fstat, 1, dfr)
+    sig_mat <- matrix(NA, nrow = ncol(x), ncol = ncol(x))
+    sig_mat[above] <- 1 - pf(fstat, 1, dfr)
     if (!is.null(correction)){
-        c[above] <- p.adjust(c[above], method=correction)
+        sig_mat[above] <- p.adjust(sig_mat[above], method=correction)
     }
-    corr_mat <- t(c)
-    corr_mat[upper.tri(corr_mat)] <- NA
-    cor
+    sig_mat <- t(sig_mat)
+    sig_mat[upper.tri(sig_mat)] <- NA
+    list("corr_mat" = corr_mat, "sig_mat" = sig_mat)
 }
 
-.extractMotifsSimilaritySignificance <- function(dmrs_with_motifs, correction = "BH"){
-    if (inherits(dmrs_with_motifs, "GRanges")) {
-        pwms <- mcols(dmrs_with_motifs)$pwm
+.extractMotifsSimilaritySignificance <- function(dmrs, correction = "BH", flank_size = 5) {
+    if (inherits(dmrs, "GRanges")) {
+        pwms <- mcols(dmrs)$pwm
     } else {
-        pwms <- dmrs_with_motifs[, "pwm"]
+        pwms <- dmrs[, "pwm"]
     }
-    pwms <- do.call(rbind, lapply(pwms, unlist))
+    # Remove CpG position
+    pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
     .corr_significance(pwms, correction = correction)
 }
 
@@ -88,12 +90,12 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' Compute Motif-Based DMR Interactions
 #'
 #' @description Computes motif-based interactions between DMRs based on their
-#' motif similarity. Identifies pairs of DMRs with significant motif similarity
+#' motif correlation. Identifies pairs of DMRs with significant motif correlation
 #' and returns a data frame of interactions.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
-#' @param min_fdr Numeric. Minimum FDR threshold for considering motif similarity significant (default: 0.05)
+#' @param max_fdr Numeric. Minimum FDR threshold for considering motif correlation significant (default: 0.05)
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param correction Character. Multiple testing correction method (default: "BH")
@@ -106,7 +108,8 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'   \item end_chr: Chromosome of the end DMR
 #'   \item end: Start position of the end DMR
 #'   \item end_end: End position of the end DMR
-#'   \item fdr: FDR value of the motif similarity between the DMRs
+#'   \item corr: Correlation value of the motif between the DMRs
+#'   \item fdr: FDR value of the motif correlation between the DMRs
 #' }
 #' @examples
 #' # Compute motif-based interactions for DMRs
@@ -122,30 +125,60 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     dmrs_with_motifs,
 #'     genome = "hg19",
 #'     array = "450K",
-#'     min_fdr = 0.05
+#'     max_fdr = 0.05
 #' )
 #' @export
-computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, min_fdr = 0.05,  genomic_locs = NULL, correction = "BH", flank_size = 5) {
+computeMotifBasedDMRsInteraction <- function(dmrs, genome, array, max_fdr = 0.05, min_corr = 0.7, genomic_locs = NULL, correction = "BH", flank_size = 5) {
     dmrs <- convert_to_granges(dmrs, genome)
     if (! "pwm" %in% colnames(mcols(dmrs))) {
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
-    significance_matrix <- .extractMotifsSimilaritySignificance(dmrs,  correction = correction)
-    rowcol_df <- which(!is.na(significance_matrix) && significance_matrix <= min_fdr,  arr.ind = TRUE)
-    if (nrow(rowcol_df) == 0) {
-        .log_warn("No significant motif-based interactions found between DMRs at FDR <=", min_fdr)
+    corr_ret <- .extractMotifsSimilaritySignificance(dmrs,  correction = correction, flank_size = flank_size)
+    correlation_matrix <- corr_ret$corr_mat
+    significance_matrix <- corr_ret$sig_mat
+    mask <- !is.na(significance_matrix) & (significance_matrix <= max_fdr) & (abs(correlation_matrix) >= min_corr)
+    if (all(!mask, na.rm = TRUE)) {
+        .log_warn("No significant motif-based interactions found between DMRs at FDR <=", max_fdr)
         return(NULL)
     }
+    g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected", diag = FALSE)
+    components <- igraph::components(g1)
+    # compute consensus sequence for each connected component
+    # create a dataframe with columns component_id, dmrs
+    components_df <- data.frame(
+        component_id = seq_along(components$csize),
+        size = components$csize
+    )
+    components_df$indices <- lapply(seq_along(components$csize), function(i) {
+        which(components$membership == i)
+    })
+    # Find the average PWM for each component
+    components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
+        pwms <- mcols(dmrs)[idxs, "pwm"]
+        Reduce("+", pwms) / length(pwms)
+    })
+    components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
+        paste(BASE_LEVELS[apply(pwm, 2, which.max)], collapse = "")
+    })
+    # Order by component size
+    components_df <- components_df[order(-components_df$size), ]
+
+
+    rowcol_df <- which(mask, arr.ind = TRUE)
     start_dmrs <- dmrs[rowcol_df[, 1], ]
     end_dmrs <- dmrs[rowcol_df[, 2], ]
     interaction_data_frame <- data.frame(
-        start_chr = as.character(GenomeInfoDb::seqnames(start_dmrs)),
-        start = GenomicRanges::start(start_dmrs),
-        end = GenomicRanges::end(start_dmrs),
-        end_chr = as.character(GenomeInfoDb::seqnames(end_dmrs)),
-        end = GenomicRanges::start(end_dmrs),
-        end_end = GenomicRanges::end(end_dmrs),
+        chr1 = as.character(GenomeInfoDb::seqnames(start_dmrs)),
+        start1 = GenomicRanges::start(start_dmrs),
+        end1 = GenomicRanges::end(start_dmrs),
+        chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
+        start2 = GenomicRanges::start(end_dmrs),
+        end2  = GenomicRanges::end(end_dmrs),
+        corr = correlation_matrix[rowcol_df],
         fdr = significance_matrix[rowcol_df]
     )
-    interaction_data_frame
+    list(
+        interactions = interaction_data_frame,
+        components = components_df
+    )
 }
