@@ -70,8 +70,6 @@ Imports:
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
-    IlluminaHumanMethylationEPICv2anno.20a1.hg38,
-    IlluminaHumanMethylation27kanno.ilmn12.hg19,
     BiocManager,
     devtools,
     knitr,
@@ -83,7 +81,6 @@ Suggests:
     DMRcate,
     doParallel,
     bumphunter,
-    minfiData,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     BSgenome.Hsapiens.UCSC.hg19,
