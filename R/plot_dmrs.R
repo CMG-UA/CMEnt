@@ -949,7 +949,6 @@ plotDMRsCircos <- function(dmrs,
     chr_list <- list()
     start_list <- list()
     end_list <- list()
-    val_list <- list()
 
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
