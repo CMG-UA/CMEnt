@@ -17,7 +17,7 @@ Description: DMRsegal implements a method for identifying Differentially
     Positions (DMPs). The package uses a correlation-based approach to 
     expand regions around significant DMPs, considering both statistical 
     significance and biological relevance of methylation changes. It supports 
-    both standard beta value files and tabix-indexed files for efficient 
+    standard beta value files and methylation bed files for efficient 
     processing of large datasets.
 URL: https://github.com/CMG-UA/DMRsegal
 BugReports: https://github.com/CMG-UA/DMRsegal/issues
@@ -27,7 +27,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 Config/testthat/parallel: true
-biocViews: DNAMethylation, Epigenetics, DifferentialMethylation, Microarray
+biocViews: DNAMethylation, DifferentialMethylation, Epigenetics, StatisticalMethod, WorkflowStep, Annotation
 LazyData: true
 LazyDataCompression: xz
 Depends:
