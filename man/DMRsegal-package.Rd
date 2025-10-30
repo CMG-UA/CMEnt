@@ -55,4 +55,14 @@ Useful links:
 }
 
 }
+\author{
+\strong{Maintainer}: Vasileios Lemonidis \email{vasileios.lemonidis@uantwerpen.be} (\href{https://orcid.org/0000-0002-6446-3536}{ORCID}) [copyright holder]
+
+Other contributors:
+\itemize{
+  \item Center for Oncological Research, University of Antwerp [copyright holder, funder]
+  \item Stichting Tegen Kanker [funder]
+}
+
+}
 \keyword{internal}

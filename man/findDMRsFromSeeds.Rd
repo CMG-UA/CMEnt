@@ -47,7 +47,7 @@ findDMRsFromSeeds(
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
-  njobs = future::availableCores() - 1,
+  njobs = getOption("DMRsegal.njobs", future::availableCores() - 1),
   memory_threshold_mb = 500,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
@@ -160,7 +160,6 @@ and filtering internally using the min_cpg_delta_beta parameter if needed.
 
 \examples{
 # Load example data
-
 load(system.file("data/beta.rda", package = "DMRsegal"))
 load(system.file("data/dmps.rda", package = "DMRsegal"))
 load(system.file("data/pheno.rda", package = "DMRsegal"))

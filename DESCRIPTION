@@ -47,7 +47,7 @@ Imports:
     future,
     future.apply,
     inline,
-    progressr(>= 0.17.0-9002),
+    progressr,
     minfi,
     bedr,
     bigmemory,

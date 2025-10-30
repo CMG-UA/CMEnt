@@ -95,9 +95,9 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
+  beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -342,9 +342,9 @@
         dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
         dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     }
-    dmr['upstream_cpg_expansion'] <- dmr_start_ind - ustream_exp
+    dmr["upstream_cpg_expansion"] <- dmr_start_ind - ustream_exp
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
-    dmr['downstream_cpg_expansion'] <- dstream_exp - dmr_end_ind
+    dmr["downstream_cpg_expansion"] <- dstream_exp - dmr_end_ind
     dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
     dmr
@@ -478,13 +478,11 @@
                 if (!is.null(tries_seed)) {
                     set.seed(tries_seed)
                 }
-                withr::defer(
-                    {
-                        if (old_seed_exists) {
-                            assign(".Random.seed", old_seed, envir = .GlobalEnv)
-                        }
+                withr::defer({
+                    if (old_seed_exists) {
+                        assign(".Random.seed", old_seed, envir = .GlobalEnv)
                     }
-                )
+                })
                 counts_ge <- integer(n_pairs)
                 counts_eq <- integer(n_pairs)
                 # Number of samples in this group
@@ -514,7 +512,7 @@
                         ntries <- 500
                     }
                 }
-                maxval <-  max(y_mat, na.rm = TRUE)
+                maxval <- max(y_mat, na.rm = TRUE)
                 minval <- min(y_mat, na.rm = TRUE)
                 abs_cors <- abs(cors)
                 for (b in seq_len(ntries)) {
@@ -868,7 +866,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
 
 
-
     # Check if dmps_tsv has any rows
     if (nrow(dmps_tsv) == 0) {
         .log_warn("Provided DMPs file has no data rows. Not proceeding.")
@@ -1011,9 +1008,13 @@ findDMRsFromSeeds <- function(beta = NULL,
     } else {
         # Use progressr for cross-platform progress reporting
         .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-
+        p_con <- NULL
         if (verbose > 0) {
-            p_con <- progressr::progressor(steps = length(chromosomes))
+            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
+
+            if (packageVersion("progressr") >= "0.17.0-9002") {
+                p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting DMPs to form DMRs..")
+            }
         }
         # Split by chromosome for parallel processing
         dmps_list <- split(dmps, dmps_locs[, "chr"])
@@ -1048,7 +1049,9 @@ findDMRsFromSeeds <- function(beta = NULL,
                 ".testConnectivityBatch",
                 ".log_step",
                 ".log_success",
-                ".log_info"
+                ".log_info",
+                "p_con",
+                "verbose"
             ),
             FUN = function(chr, cdmps, cdmps_beta, cdmps_locs) {
                 op <- options(warn = 2)$warn
@@ -1123,7 +1126,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                         level = 3
                     )
                 }
-                if (verbose > 0 && exists("p_con")) p_con()
+                if (verbose > 0 && !is.null(p_con)) p_con()
                 dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
                 if (nrow(dmrs)) {
                     rownames(dmrs) <- seq_len(nrow(dmrs))
@@ -1205,7 +1208,14 @@ findDMRsFromSeeds <- function(beta = NULL,
     stopifnot(nrow(connectivity_array) != nrow(sorted_locs))
     .log_info("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
     if (verbose > 0) {
-        p_ext <- progressr::progressor(steps = n_dmrs)
+        p_ext <- NULL
+        if (verbose > 0) {
+            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_ext will not be used
+
+            if (packageVersion("progressr") >= "0.17.0-9002") {
+                p_ext <- progressr::progressor(steps = n_dmrs, message = "Expanding DMRs to proximal CpGs..")
+            }
+        }
     }
     ret <- list()
     for (chr in unique(dmrs$chr)) {
@@ -1217,7 +1227,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         if (bigmemory::is.big.matrix(sorted_locs)) {
             chr_locs <- bigmemory::sub.big.matrix(
                 sorted_locs,
-                firstRow  = first_row,
+                firstRow = first_row,
                 lastRow = last_row
             )
         } else {
@@ -1225,7 +1235,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
 
-        chr_ret <- future.apply::future_apply(
+        chr_ret <- future.apply::future_mapply(
             X = chr_dmrs,
             MARGIN = 1,
             simplify = FALSE,
@@ -1254,7 +1264,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     chr_start_base = chr_start_base
                 )
                 options(warn = op)
-                if (verbose > 0 && exists("p_ext")) p_ext()
+                if (verbose > 0 && !is.null(p_ext)) p_ext()
                 x
             }
         )
@@ -1486,14 +1496,14 @@ findDMRsFromSeeds <- function(beta = NULL,
     dmrs <- do.call(rbind, dmrs_with_beta_stats)
     .log_success("DMR delta-beta information added.", level = 2)
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        dmrs$chr  <- CHROMOSOMES[dmrs$chr]
+        dmrs$chr <- CHROMOSOMES[dmrs$chr]
         start_dmps <- as.integer(dmrs$start_dmp)
         end_dmps <- as.integer(dmrs$end_dmp)
         dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[start_dmps, "chr"]], ":", sorted_locs[start_dmps, "start"])
         dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[end_dmps, "chr"]], ":", sorted_locs[end_dmps, "start"])
         start_cpgs <- as.integer(dmrs$start_cpg)
         end_cpgs <- as.integer(dmrs$end_cpg)
-        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":",  sorted_locs[start_cpgs, "start"])
+        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":", sorted_locs[start_cpgs, "start"])
         dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[end_cpgs, "chr"]], ":", sorted_locs[end_cpgs, "start"])
         dmrs$tmp_id <- seq_len(nrow(dmrs))
         dmrs$dmps_unlisted <- sapply(dmrs$dmps, function(dmp_ids) {

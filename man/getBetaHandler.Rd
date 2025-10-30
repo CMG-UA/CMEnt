@@ -37,7 +37,6 @@ Create a new BetaHandler object that manages methylation beta values
 from various input formats (files, matrices, tabix) with memory-efficient access patterns.
 }
 \examples{
-
 beta_matrix <- load(system.file("data/beta.rda", package = "DMRsegal"))
 
 beta_handler <- getBetaHandler(
