@@ -336,15 +336,16 @@
         dmr["end_cpg"] <- dstream_exp + chr_start_base
         dmr["start"] <- chr_locs[ustream_exp, "start"]
         dmr["end"] <- chr_locs[dstream_exp, "start"]
-
     } else {
         dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
         dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
         dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
         dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     }
-    dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
+    dmr['upstream_cpg_expansion'] <- dmr_start_ind - ustream_exp
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
+    dmr['downstream_cpg_expansion'] <- dstream_exp - dmr_end_ind
+    dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
     dmr
 }
@@ -1260,6 +1261,8 @@ findDMRsFromSeeds <- function(beta = NULL,
         ret <- c(ret, chr_ret)
     }
     .log_success("DMR expansion complete.", level = 1)
+    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x$upstream_cpg_expansion))), collapse = "\n\t"), level = 2)
+    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x$downstream_cpg_expansion))), collapse = "\n\t"), level = 2)
 
     .log_step("Post-processing extended DMRs..", level = 2)
     if (inherits(ret, "try-error")) {
@@ -1342,7 +1345,6 @@ findDMRsFromSeeds <- function(beta = NULL,
         cols_vals <- orig_mcols[inds, ]
         agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
         agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
-        agg_df[i, "sup_cpgs_num"] <- agg_df[i, "end_cpg_ind"] - agg_df[i, "start_cpg_ind"] + 1
         agg_df[i, "start_dmp"] <- cols_vals$start_dmp[[1]]
         agg_df[i, "end_dmp"] <- cols_vals$end_dmp[[length(inds)]]
         agg_df[i, "start_dmp_pos"] <- cols_vals$start_dmp_pos[[1]]
@@ -1354,11 +1356,13 @@ findDMRsFromSeeds <- function(beta = NULL,
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
         agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
         agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
+        agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
         agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
+        agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
         agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
-
+    agg_df[, "sup_cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
     agg_df[, "id"] <- paste0(seqnames(extended_dmrs_ranges_reduced), ":", agg_df$start_cpg_ind, "-", agg_df$end_cpg_ind)
 
     GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
