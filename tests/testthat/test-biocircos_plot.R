@@ -1,4 +1,4 @@
-test_that("plotDMRsCircos creates a BioCircos plot", {
+test_that("plotDMRsCircos creates a circos plot", {
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
     load(system.file("data/array_type.rda", package = "DMRsegal"))
@@ -11,17 +11,16 @@ test_that("plotDMRsCircos creates a BioCircos plot", {
 
     dmrs_subset <- dmrs[seq_len(min(5, length(dmrs)))]
 
-    plot_obj <- plotDMRsCircos(
-        dmrs = dmrs_subset,
-        beta = beta,
-        pheno = pheno,
-        array = array_type,
-        genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = FALSE
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group"
+        )
     )
-
-    expect_true(!is.null(plot_obj))
 })
 
 test_that("plotDMRsCircos works with interactions", {
@@ -35,20 +34,19 @@ test_that("plotDMRsCircos works with interactions", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[1:min(5, length(dmrs))]
+    dmrs_subset <- dmrs[seq_len(min(5, length(dmrs)))]
 
-    plot_obj <- plotDMRsCircos(
-        dmrs = dmrs_subset,
-        beta = beta,
-        pheno = pheno,
-        array = array_type,
-        genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = TRUE,
-        min_sim = 0.7
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            min_sim = 0.7
+        )
     )
-
-    expect_true(!is.null(plot_obj))
 })
 
 test_that("plotDMRsCircos handles BetaHandler input", {
@@ -62,21 +60,20 @@ test_that("plotDMRsCircos handles BetaHandler input", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[1:min(3, length(dmrs))]
+    dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
 
-    plot_obj <- plotDMRsCircos(
-        dmrs = dmrs_subset,
-        beta = beta_handler,
-        pheno = pheno,
-        array = array_type,
-        genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = FALSE
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta_handler,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group"
+        )
     )
-
-    expect_true(!is.null(plot_obj))
 })
 
 test_that("plotDMRsCircos handles data frame DMRs input", {
@@ -90,21 +87,20 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[1:min(3, length(dmrs))]
+    dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
     dmrs_df <- as.data.frame(dmrs_subset)
     colnames(dmrs_df)[1] <- "chr"
 
-    plot_obj <- plotDMRsCircos(
-        dmrs = dmrs_df,
-        beta = beta,
-        pheno = pheno,
-        array = array_type,
-        genome = "hg19",
-        sample_group_col = "Sample_Group",
-        plot_interactions = FALSE
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_df,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group"
+        )
     )
-
-    expect_true(!is.null(plot_obj))
 })
 
 test_that("plotDMRsCircos validates inputs", {
@@ -117,7 +113,7 @@ test_that("plotDMRsCircos validates inputs", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[1:min(3, length(dmrs))]
+    dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
 
     expect_error(
         plotDMRsCircos(

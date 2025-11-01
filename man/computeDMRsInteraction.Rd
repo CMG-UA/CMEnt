@@ -6,11 +6,10 @@
 \usage{
 computeDMRsInteraction(
   dmrs,
-  genome,
-  array,
-  max_fdr = 0.05,
+  genome = "hg19",
+  array = "450K",
+  min_sim = 0.7,
   genomic_locs = NULL,
-  correction = "BH",
   flank_size = 5
 )
 }
@@ -21,12 +20,10 @@ computeDMRsInteraction(
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")}
 
-\item{max_fdr}{Numeric. Minimum FDR threshold for considering motif similarity significant (default: 0.05)}
+\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
-
-\item{correction}{Character. Multiple testing correction method (default: "BH")}
 
 \item{flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
 }
@@ -39,7 +36,7 @@ Data frame of motif-based DMR interactions with columns:
 \item end_chr: Chromosome of the end DMR
 \item end: Start position of the end DMR
 \item end_end: End position of the end DMR
-\item fdr: FDR value of the motif similarity between the DMRs
+\item sim: Similarity value of the motif PWMs between the DMRs
 }
 }
 \description{
@@ -61,6 +58,5 @@ interactions <- computeDMRsInteraction(
     dmrs_with_motifs,
     genome = "hg19",
     array = "450K",
-    max_fdr = 0.05
 )
 }

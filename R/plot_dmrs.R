@@ -14,7 +14,7 @@ if (getRversion() >= "2.15.1") {
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
 #' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if sorted_locs is provided.
-#' @param genome Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19"). Ignored if sorted_locs is provided.
+#' @param genome Character. Genome version (default: "hg19"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
@@ -43,7 +43,7 @@ if (getRversion() >= "2.15.1") {
 plotDMR <- function(dmrs,
                     dmr_index = 1,
                     array = c("450K", "27K", "EPIC", "EPICv2"),
-                    genome = c("hg19", "hg38", "mm10", "mm39"),
+                    genome = "hg19",
                     sorted_locs = NULL,
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
@@ -64,7 +64,6 @@ plotDMR <- function(dmrs,
     # Get genomic locations if not provided
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
-        genome <- strex::match_arg(genome, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 
@@ -710,37 +709,41 @@ plotDMRWithBeta <- function(dmrs,
 }
 
 
-#' Plot BioCircos Visualization of DMRs
+#' Plot Circos Visualization of DMRs
 #'
-#' @description Creates a circular genome plot (BioCircos) showing DMRs with multiple tracks:
-#' from outer to inner: scatter plots of DMPs (red) and supporting CpGs (gray),
-#' beta value heatmaps, DMR arcs, and motif-based interaction links between DMRs.
+#' @description Creates a circular genome plot using circlize showing DMRs with multiple tracks:
+#' ideogram track with chromosome bands, DMR arcs colored by delta beta,
+#' beta value heatmaps for each sample, and motif-based interaction links between DMRs.
 #'
 #' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
 #'   rownames matching beta column names (required for beta track).
 #' @param array Character. Array platform type (default: "450K").
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39"). Supports any genome with a corresponding TxDb package.
+#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39").
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).
-#' @param ... Additional arguments passed to BioCircos functions.
+#' @param max_interactions Integer. Maximum number of interactions to plot (default: 30).
+#' @param ... Additional arguments (currently unused).
 #'
-#' @return A BioCircos plot object.
+#' @return NULL (creates plot in graphics device).
 #'
 #' @examples
+#' \dontrun{
 #' # Load DMR results
 #' dmrs <- readRDS("dmrs.rds")
 #'
-#' # Basic BioCircos plot
+#' # Basic circos plot
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #'
-#' # Without interactions
-#' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+#' # With custom genome
+#' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
+#' }
 #'
-#' @importFrom BioCircos BioCircos
+#' @importFrom circlize circos.initializeWithIdeogram circos.trackPlotRegion circos.genomicHeatmap
+#' @importFrom circlize circos.genomicLink circos.clear colorRamp2 circos.rect circos.link CELL_META
 #' @export
 plotDMRsCircos <- function(dmrs,
                            beta,
@@ -751,7 +754,7 @@ plotDMRsCircos <- function(dmrs,
                            sample_group_col = "Sample_Group",
                            min_sim = 0.7,
                            flank_size = 5,
-                           max_cpgs_per_dmr = 100,
+                           max_cpgs_per_dmr = 5,
                            max_interactions = 30,
                            ...) {
     if (inherits(dmrs, "data.frame")) {
@@ -783,124 +786,193 @@ plotDMRsCircos <- function(dmrs,
     if (is.null(sorted_locs)) {
         sorted_locs <- beta_handler$getGenomicLocs()
     }
-    .log_step("Preparing data for BioCircos plot...")
+
+    .log_step("Preparing data for Circos plot...")
     .log_info("Total DMRs to plot: ", length(dmrs), level = 2)
 
-    genome_lengths <- .getGenomeLengths(genome, as.character(GenomicRanges::seqnames(dmrs)))
+    cytoband <- .getCytobandData(genome)
 
     .log_step("Preparing DMRs data...", level = 2)
-    arc_data <- .prepareBioCircosArcData(dmrs)
+    arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
 
     .log_step("Preparing heatmap data...", level = 2)
-    heatmap_data <- .prepareBioCircosHeatmapData(
-        dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr
+    heatmap_data <- .prepareCircosHeatmapData(
+        dmrs, beta_handler, pheno, sample_group_col,
+        sorted_locs, max_cpgs_per_dmr
     )
     .log_success("Heatmap data prepared", level = 2)
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
-    link_data <- .prepareBioCircosLinkData(
+    link_data <- .prepareCircosLinkData(
         dmrs, genome, array, min_sim, flank_size, sorted_locs
     )
     .log_success("DMR interactions data prepared", level = 2)
 
-    .log_step("Creating BioCircos plot...")
+    .log_step("Creating Circos plot...")
 
-    tracklist <- BioCircos::BioCircosTracklist()
+    unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
+
+    if (!is.null(cytoband)) {
+        cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
+        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("ideogram", "labels"))
+    } else {
+        circlize::circos.initializeWithIdeogram(species = genome, plotType = c("ideogram", "labels"))
+    }
 
     if (!is.null(arc_data)) {
-        .log_step("Adding arc track...", level = 3)
-        # Make colors gradient based on delta_beta, red for positive, blue for negative, and white for zero
-        positive_delta <- grDevices::colorRampPalette(c("white", "#801414"))
-        negative_delta <- grDevices::colorRampPalette(c("#055709", "white"))
-        arc_colors <- ifelse(arc_data$delta_beta > 0, positive_delta(10)[as.numeric(cut(arc_data$delta_beta, breaks = 10))],
-                             negative_delta(10)[as.numeric(cut(arc_data$delta_beta, breaks = 10))])
-        tracklist <- tracklist + BioCircos::BioCircosArcTrack(
-            trackname = "DMRs",
-            chromosomes = arc_data$chr,
-            starts = arc_data$start,
-            ends = arc_data$end,
-            minRadius = 0.80,
-            maxRadius = 0.95,
-            colors = arc_colors,
-            ...
+        .log_step("Adding DMR arc track...", level = 3)
+
+        positive_delta <- grDevices::colorRampPalette(c("white", "#801414"))(100)
+        negative_delta <- grDevices::colorRampPalette(c("#055709", "white"))(100)
+
+        arc_colors <- ifelse(
+            arc_data$delta_beta > 0,
+            positive_delta[pmin(100, ceiling(abs(arc_data$delta_beta) * 100))],
+            negative_delta[pmin(100, ceiling(abs(arc_data$delta_beta) * 100))]
+        )
+
+        arc_df <- data.frame(
+            chr = arc_data$chr,
+            start = arc_data$start,
+            end = arc_data$end,
+            delta_beta = arc_data$delta_beta,
+            color = arc_colors,
+            stringsAsFactors = FALSE
+        )
+
+        circlize::circos.trackPlotRegion(
+            sectors = unique_chrs,
+            bg.border = NA,
+            bg.col = "#ffe7c1",
+            track.height = 0.15,
+            ylim = c(0, 1),
+            panel.fun = function(x, y) {
+                chr <- circlize::CELL_META$sector.index
+                dmr_chr <- arc_df[arc_df$chr == chr, ]
+                if (nrow(dmr_chr) > 0) {
+                    for (i in seq_len(nrow(dmr_chr))) {
+                        circlize::circos.rect(
+                            xleft = dmr_chr$start[i],
+                            xright = dmr_chr$end[i],
+                            ybottom = 0,
+                            ytop = 1,
+                            col = dmr_chr$color[i],
+                            border = dmr_chr$color[i]
+                        )
+                    }
+                }
+            }
         )
         .log_success("Arc track added", level = 3)
     }
 
-
-    if (!is.null(heatmap_data)) {
+    if (!is.null(heatmap_data) && nrow(heatmap_data) > 0) {
         .log_step("Adding heatmap track...", level = 3)
-        hminradius <- 0.5
-        hmaxradius <- 0.75
-        nsamples <- nrow(heatmap_data$value)
-        .log_info("Adding a track for each of the ", nsamples, " samples...", level = 3)
-        for (row in seq_len(nsamples)) {
-            tracklist <- tracklist + BioCircos::BioCircosHeatmapTrack(
-                trackname = "Beta_Values",
-                chromosomes = heatmap_data$chr,
-                starts = heatmap_data$start,
-                ends = heatmap_data$end,
-                values = heatmap_data$value[row, ],
-                color = c("white", "red"),
-                minRadius = hminradius + (row - 1) * (hmaxradius - hminradius) / nsamples,
-                maxRadius = hminradius + row * (hmaxradius - hminradius) / nsamples,
-                labels = rownames(pheno)[row],
-                ...
-            )
-        }
+        col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
 
+        circlize::circos.genomicHeatmap(
+            bed = heatmap_data,
+            col = col_fun,
+            border = "white",
+            side = "inside"
+        )
         .log_success("Heatmap track added", level = 3)
     }
 
-
-    if (!is.null(link_data)) {
+    if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 3)
-        link_data <- link_data[order(link_data$corr), ]
+        link_data <- link_data[order(link_data$corr, decreasing = TRUE), ]
         if (nrow(link_data) > max_interactions) {
             link_data <- link_data[1:max_interactions, ]
             .log_info("Limiting to top ", max_interactions, " interactions based on similarity", level = 2)
         }
-        # make 3 splits based on corr values for color gradation
-        link_data$color_group <- cut(link_data$corr, breaks = 3, labels = c("low", "medium", "high"))
-        link_colors <- c("low" = "#89adc2", "medium" = "#62b0f0", "high" = "#1696e0")
-        for (color_group in c("low", "medium", "high")) {
-            group_data <- link_data[link_data$color_group == color_group, , drop = FALSE]
-            if (nrow(group_data) == 0) {
-                next
-            }
-            tracklist <- tracklist + BioCircos::BioCircosLinkTrack(
-                trackname = paste0("Interactions_", color_group),
-                gene1Chromosomes = group_data$chr1,
-                gene1Starts = group_data$start1,
-                gene1Ends = group_data$end1,
-                gene2Chromosomes = group_data$chr2,
-                gene2Starts = group_data$start2,
-                gene2Ends = group_data$end2,
-                maxRadius = 0.45,
-                color = link_colors[color_group],
-                ...
+
+        link_colors <- circlize::colorRamp2(
+            c(min(link_data$corr), median(link_data$corr), max(link_data$corr)),
+            c("#89adc2", "#62b0f0", "#1696e0")
+        )
+
+        for (i in seq_len(nrow(link_data))) {
+            circlize::circos.link(
+                sector.index1 = link_data$chr1[i],
+                point1 = c(link_data$start1[i], link_data$end1[i]),
+                sector.index2 = link_data$chr2[i],
+                point2 = c(link_data$start2[i], link_data$end2[i]),
+                col = link_colors(link_data$corr[i]),
+                border = NA
             )
         }
         .log_success("Link track added", level = 3)
     }
 
-    plot_obj <- BioCircos::BioCircos(
-        tracklist = tracklist,
-        genome = genome_lengths,
-        yChr = TRUE,
-        genomeFillColor = "Spectral",
-        chrPad = 0.05,
-        displayGenomeBorder = FALSE,
-        genomeTicksDisplay = FALSE,
-        genomeTicksLen = 3,
-        genomeTicksTextSize = 0,
-        genomeTicksScale = 1e6
+    .log_success("Circos plot created successfully")
+
+    circlize::circos.clear()
+
+    invisible(NULL)
+}
+
+
+.getCytobandData <- function(genome) {
+    cache_dir <- tools::R_user_dir("DMRsegal", which = "cache")
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE)
+    }
+
+    cache_file <- file.path(cache_dir, paste0("cytoband_", genome, ".rds"))
+
+    if (file.exists(cache_file)) {
+        .log_info("Loading cached cytoband data for ", genome, level = 3)
+        return(readRDS(cache_file))
+    }
+
+    .log_step("Downloading cytoband data from UCSC for ", genome, "...", level = 3)
+
+    tryCatch(
+        {
+            url <- paste0("https://hgdownload.cse.ucsc.edu/goldenpath/", genome, "/database/cytoBandIdeo.txt.gz")
+
+            temp_file <- tempfile(fileext = ".txt.gz")
+            result <- tryCatch(
+                {
+                    download.file(url, temp_file, quiet = TRUE, mode = "wb")
+                    TRUE
+                },
+                error = function(e) {
+                    .log_warn("cytoBandIdeo not found, trying cytoBand table...")
+                    FALSE
+                }
+            )
+
+            if (!result) {
+                url <- paste0("https://hgdownload.cse.ucsc.edu/goldenpath/", genome, "/database/cytoBand.txt.gz")
+                download.file(url, temp_file, quiet = TRUE, mode = "wb")
+            }
+
+            cytoband <- read.table(temp_file, sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+
+            if (ncol(cytoband) >= 5) {
+                colnames(cytoband) <- c("V1", "V2", "V3", "V4", "V5")
+            } else if (ncol(cytoband) == 4) {
+                colnames(cytoband) <- c("V1", "V2", "V3", "V4")
+                cytoband$V5 <- ""
+            } else {
+                stop("Unexpected cytoband format")
+            }
+
+            unlink(temp_file)
+
+            saveRDS(cytoband, cache_file)
+            .log_success("Cytoband data downloaded and cached", level = 3)
+
+            return(cytoband)
+        },
+        error = function(e) {
+            .log_warn("Failed to download cytoband data: ", e$message, ". Using default ideogram.")
+            return(NULL)
+        }
     )
-
-    .log_success("BioCircos plot created successfully")
-
-    return(plot_obj)
 }
 
 
@@ -954,10 +1026,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareBioCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_cpgs_per_dmr, width = 10000) {
-    chr_list <- list()
-    start_list <- list()
-    end_list <- list()
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side=2) {
 
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
@@ -967,42 +1036,46 @@ plotDMRsCircos <- function(dmrs,
         return(NULL)
     }
     available_cpgs <- beta_handler$getBetaRowNames()
-    starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
-    ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
-    betas_to_extract <- c()
+    cpg_starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
+    dmps_inds <- lapply(S4Vectors::mcols(dmrs)$dmps, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
+    cpg_ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
+    dmrs_cpgs <- c()
     ids <- c()
     for (i in seq_along(dmrs)) {
-        start_cpg_ind <- starts[[i]]
-        end_cpg_ind <- ends[[i]]
-        betas_to_extract <- c(betas_to_extract, available_cpgs[start_cpg_ind:end_cpg_ind])
-        ids <- c(ids, rep(i, length(start_cpg_ind:end_cpg_ind)))
+        dmr_dmps_inds <- dmps_inds[[i]]
+        start_cpg_ind <- cpg_starts[[i]]
+        end_cpg_ind <- cpg_ends[[i]]
+        start_dmp_ind <- dmps_inds[[i]][1]
+        end_dmp_ind <- dmps_inds[[i]][length(dmps_inds[[i]])]
+        start_step <- 1
+        if ((start_dmp_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
+            start_step <- ceiling((start_dmp_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
+        }
+        end_step <- 1
+        if ((end_cpg_ind - end_dmp_ind) > max_sup_cpgs_per_dmr_side) {
+            end_step <- ceiling((end_cpg_ind - end_dmp_ind) / max_sup_cpgs_per_dmr_side)
+        }
+
+        sup_cpg_inds_to_show <- c(
+            seq(start_cpg_ind, start_dmp_ind, by=start_step),
+            dmr_dmps_inds[2:(length(dmr_dmps_inds) - 1)],
+            seq(end_dmp_ind, end_cpg_ind, by=end_step)
+        )
+        
+        dmrs_cpgs <- c(dmrs_cpgs, available_cpgs[sup_cpg_inds_to_show])
+        ids <- c(ids, rep(i, length(sup_cpg_inds_to_show)))
     }
+
+    shown_locs <- sorted_locs[dmrs_cpgs, c("chr", "start", "end"), drop = FALSE]
     beta_data <- beta_handler$getBeta(
-        row_names = betas_to_extract,
+        row_names = dmrs_cpgs,
         col_names = rownames(pheno)
     )
-    shown_locs <- sorted_locs[betas_to_extract, ]
-    shown_locs$start <- pmax(shown_locs$start - as.integer(width / 2), 0)
-    shown_locs$end <- shown_locs$end + as.integer(width / 2)
-
-    chr_list <- split(as.character(shown_locs$chr), ids)
-    start_list <- split(shown_locs$start, ids)
-    end_list <- split(shown_locs$end, ids)
-
-    if (length(chr_list) == 0) {
-        return(NULL)
-    }
-
-    list(
-        chr = unlist(chr_list),
-        start = unlist(start_list),
-        end = unlist(end_list),
-        value = t(beta_data)
-    )
+    cbind(shown_locs, beta_data)
 }
 
 
-.prepareBioCircosArcData <- function(dmrs) {
+.prepareCircosArcData <- function(dmrs) {
     list(
         chr = as.character(GenomicRanges::seqnames(dmrs)),
         start = GenomicRanges::start(dmrs),
@@ -1012,7 +1085,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareBioCircosLinkData <- function(dmrs, genome, array, min_sim, flank_size, sorted_locs) {
+.prepareCircosLinkData <- function(dmrs, genome, array, min_sim, flank_size, sorted_locs) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(

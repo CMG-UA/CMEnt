@@ -1,12 +1,9 @@
 library(DMRsegal)
 
-# For development, load the package
 if (file.exists("R/plot_dmrs.R")) {
     devtools::load_all(".")
 }
 
-# For development, load data directly
-# When package is installed, use: system.file("data/beta.rda", package = "DMRsegal")
 if (file.exists("data/beta.rda")) {
     load("data/beta.rda")
     load("data/pheno.rda")
@@ -22,7 +19,7 @@ if (file.exists("data/beta.rda")) {
 if (length(dmrs) > 0) {
     dmrs_subset <- dmrs
     
-    plot_obj <- plotDMRsCircos(
+    plotDMRsCircos(
         dmrs = dmrs_subset,
         beta = beta,
         pheno = pheno,
@@ -30,8 +27,6 @@ if (length(dmrs) > 0) {
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
-    
-    print(plot_obj)
     
 } else {
     cat("No DMRs found in the example data.\n")

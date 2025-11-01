@@ -165,15 +165,17 @@ Data frame of genomic locations
 \subsection{Method \code{getBeta()}}{
 Extract beta values for specific CpG sites and samples
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(row_names = NULL, col_names = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(row_names = NULL, col_names = NULL, allow_missing = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{row_names}}{Character vector of CpG IDs to extract}
+\item{\code{row_names}}{Character vector of CpG IDs to extract. If numeric, treated as row indices of the \strong{total genomic locations}.}
 
 \item{\code{col_names}}{Character vector of sample IDs to extract (default: NULL for all)}
+
+\item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
 }
 \if{html}{\out{</div>}}
 }
