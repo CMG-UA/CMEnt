@@ -708,6 +708,22 @@ plotDMRWithBeta <- function(dmrs,
     invisible(combined)
 }
 
+.filterDMRsForCircos <- function(dmrs, max_dmrs_per_chr) {
+    dmrs_split <- split(seq_along(dmrs), as.character(GenomicRanges::seqnames(dmrs)))
+    filtered_dmrs_list <- lapply(dmrs_split, function(inds) {
+        chr_dmrs <- dmrs[inds]
+        if (length(chr_dmrs) <= max_dmrs_per_chr) {
+            return(chr_dmrs)
+        }
+        abs_delta_beta <- abs(chr_dmrs$delta_beta)
+        score <- minmaxscale(abs_delta_beta)
+        ord <- order(score, decreasing = TRUE)
+        selected_indices <- ord[1:max_dmrs_per_chr]
+        chr_dmrs[selected_indices]
+    })
+    filtered_dmrs <- unlist(GenomicRanges::GRangesList(filtered_dmrs_list))
+    filtered_dmrs
+}
 
 #' Plot Circos Visualization of DMRs
 #'
@@ -754,18 +770,13 @@ plotDMRsCircos <- function(dmrs,
                            sample_group_col = "Sample_Group",
                            min_sim = 0.7,
                            flank_size = 5,
+                           max_num_samples = 20, #@TODO implement that
+                           max_dmrs_per_chr = 5,
                            max_cpgs_per_dmr = 5,
                            max_interactions = 30,
                            ...) {
-    if (inherits(dmrs, "data.frame")) {
-        dmrs <- GenomicRanges::makeGRangesFromDataFrame(
-            dmrs,
-            keep.extra.columns = TRUE,
-            seqnames.field = "chr",
-            start.field = "start",
-            end.field = "end"
-        )
-    }
+    dmrs <- convertToGRanges(dmrs, genome)
+
     verbose <- getOption("DMRsegal.verbose", default = 2)
     beta_handler <- getBetaHandler(
         beta = beta,
@@ -788,6 +799,11 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Preparing data for Circos plot...")
+
+    .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
+    dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
+    .log_success("DMRs filtered for Circos plot", level = 2)
+
     .log_info("Total DMRs to plot: ", length(dmrs), level = 2)
 
     cytoband <- .getCytobandData(genome)
@@ -858,7 +874,7 @@ plotDMRsCircos <- function(dmrs,
             sectors = unique_chrs,
             bg.border = NA,
             bg.col = "#ffe7c1",
-            track.height = 0.15,
+            track.height = 0.05,
             ylim = c(0, 1),
             panel.fun = function(x, y) {
                 chr <- circlize::CELL_META$sector.index
@@ -888,31 +904,42 @@ plotDMRsCircos <- function(dmrs,
             bed = heatmap_data,
             col = col_fun,
             border = "white",
-            side = "inside"
+            side = "inside",
+            border_lwd = 0.2,
+            line_lwd = 0.2,
+            heatmap_height = 0.2
         )
         .log_success("Heatmap track added", level = 2)
     }
 
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
-        link_data <- link_data[order(link_data$corr, decreasing = TRUE), ]
+        link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
         if (nrow(link_data) > max_interactions) {
             link_data <- link_data[1:max_interactions, ]
             .log_info("Limiting to top ", max_interactions, " interactions based on similarity", level = 2)
         }
 
         link_colors <- circlize::colorRamp2(
-            c(min(link_data$corr), median(link_data$corr), max(link_data$corr)),
+            c(min(link_data$sim), median(link_data$sim), max(link_data$sim)),
             c("#89adc2", "#62b0f0", "#1696e0")
         )
 
         for (i in seq_len(nrow(link_data))) {
+            point1 <- c(link_data$start1[i], link_data$end1[i])
+            point2 <- c(link_data$start2[i], link_data$end2[i])
+            if (point1[2] - point1[1] < 1e5) {
+                point1 <- mean(point1)
+            }
+            if (point2[2] - point2[1] < 1e5) {
+                point2 <- mean(point2)
+            }
             circlize::circos.link(
                 sector.index1 = link_data$chr1[i],
-                point1 = c(link_data$start1[i], link_data$end1[i]),
+                point1 = point1,
                 sector.index2 = link_data$chr2[i],
-                point2 = c(link_data$start2[i], link_data$end2[i]),
-                col = link_colors(link_data$corr[i]),
+                point2 = point2,
+                col = link_colors(link_data$sim[i]),
                 border = NA
             )
         }

@@ -30,13 +30,13 @@
 #' @export
 extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, flank_size = 5) {
     input_is_df <- is.data.frame(dmrs)
-    dmrs <- convert_to_granges(dmrs, genome)
+    dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
         genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = genomic_locs)
     }
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
-    start_inds <- id_to_genomic_locs_index(mcols(dmrs)$start_cpg, genomic_locs)
-    end_inds <- id_to_genomic_locs_index(mcols(dmrs)$end_cpg, genomic_locs)
+    start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, genomic_locs)
+    end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, genomic_locs)
     for (i in seq_along(dmrs)) {
         if (is.na(start_inds[i]) || is.na(end_inds[i])) {
             next
@@ -114,7 +114,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' )
 #' @export
 computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5) {
-    dmrs <- convert_to_granges(dmrs, genome)
+    dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
@@ -157,7 +157,7 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
         start2 = GenomicRanges::start(end_dmrs),
         end2 = GenomicRanges::end(end_dmrs),
-        corr = similarity_matrix[rowcol_df]
+        sim = similarity_matrix[rowcol_df]
     )
     list(
         interactions = interaction_data_frame,

@@ -1707,7 +1707,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     return(dmrs)
 }
 
-id_to_genomic_locs_index <- function(cpg_ids, genomic_locs) {
+idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
     if (bigmemory::is.big.matrix(genomic_locs)) {
         numeric_mask <- !is.na(as.numeric(cpg_ids))
         counts <- sum(numeric_mask)
@@ -1731,8 +1731,8 @@ id_to_genomic_locs_index <- function(cpg_ids, genomic_locs) {
 BASE_LEVELS <- c("A", "T", "G", "C")
 
 
-convert_to_granges <- function(obj, genome) {
-    input_is_df <- is.data.frame(obj)
+convertToGRanges <- function(obj, genome) {
+    input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,

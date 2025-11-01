@@ -15,7 +15,7 @@ if (file.exists("data/beta.rda")) {
     load(system.file("data/array_type.rda", package = "DMRsegal"))
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 }
-options("DMRsegal.verbose" = 2)
+options("DMRsegal.verbose" = 3)
 
 if (length(dmrs) > 0) {
     dmrs_subset <- dmrs
