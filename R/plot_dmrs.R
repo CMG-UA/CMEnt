@@ -798,7 +798,7 @@ plotDMRsCircos <- function(dmrs,
     if (verbose >= 3) {
         dir.create("debug", showWarnings = FALSE)
         write.table(arc_data, file = "debug/circos_arc_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
-    }   
+    }
 
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
