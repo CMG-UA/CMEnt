@@ -15,6 +15,7 @@ if (file.exists("data/beta.rda")) {
     load(system.file("data/array_type.rda", package = "DMRsegal"))
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 }
+options("DMRsegal.verbose" = 2)
 
 if (length(dmrs) > 0) {
     dmrs_subset <- dmrs
@@ -25,7 +26,8 @@ if (length(dmrs) > 0) {
         pheno = pheno,
         array = array_type,
         genome = "hg19",
-        sample_group_col = "Sample_Group"
+        sample_group_col = "Sample_Group",
+        max_cps_per_dmr = 0
     )
     
 } else {

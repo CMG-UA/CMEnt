@@ -766,7 +766,7 @@ plotDMRsCircos <- function(dmrs,
             end.field = "end"
         )
     }
-
+    verbose <- getOption("DMRsegal.verbose", default = 2)
     beta_handler <- getBetaHandler(
         beta = beta,
         array = array,
@@ -795,6 +795,10 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
+    if (verbose >= 3) {
+        dir.create("debug", showWarnings = FALSE)
+        write.table(arc_data, file = "debug/circos_arc_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+    }   
 
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
@@ -802,12 +806,21 @@ plotDMRsCircos <- function(dmrs,
         sorted_locs, max_cpgs_per_dmr
     )
     .log_success("Heatmap data prepared", level = 2)
+    .log_info("Total heatmap entries: ", nrow(heatmap_data), level = 2)
+    if (verbose >= 3) {
+        dir.create("debug", showWarnings = FALSE)
+        write.table(heatmap_data, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+    }
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
         dmrs, genome, array, min_sim, flank_size, sorted_locs
     )
     .log_success("DMR interactions data prepared", level = 2)
+    if (verbose >= 3) {
+        dir.create("debug", showWarnings = FALSE)
+        write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+    }
 
     .log_step("Creating Circos plot...")
 
@@ -821,7 +834,7 @@ plotDMRsCircos <- function(dmrs,
     }
 
     if (!is.null(arc_data)) {
-        .log_step("Adding DMR arc track...", level = 3)
+        .log_step("Adding DMR arc track...", level = 2)
 
         positive_delta <- grDevices::colorRampPalette(c("white", "#801414"))(100)
         negative_delta <- grDevices::colorRampPalette(c("#055709", "white"))(100)
@@ -864,11 +877,11 @@ plotDMRsCircos <- function(dmrs,
                 }
             }
         )
-        .log_success("Arc track added", level = 3)
+        .log_success("Arc track added", level = 2)
     }
 
     if (!is.null(heatmap_data) && nrow(heatmap_data) > 0) {
-        .log_step("Adding heatmap track...", level = 3)
+        .log_step("Adding heatmap track...", level = 2)
         col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
 
         circlize::circos.genomicHeatmap(
@@ -877,11 +890,11 @@ plotDMRsCircos <- function(dmrs,
             border = "white",
             side = "inside"
         )
-        .log_success("Heatmap track added", level = 3)
+        .log_success("Heatmap track added", level = 2)
     }
 
     if (!is.null(link_data) && nrow(link_data) > 0) {
-        .log_step("Adding link track...", level = 3)
+        .log_step("Adding link track...", level = 2)
         link_data <- link_data[order(link_data$corr, decreasing = TRUE), ]
         if (nrow(link_data) > max_interactions) {
             link_data <- link_data[1:max_interactions, ]
@@ -903,7 +916,7 @@ plotDMRsCircos <- function(dmrs,
                 border = NA
             )
         }
-        .log_success("Link track added", level = 3)
+        .log_success("Link track added", level = 2)
     }
 
     .log_success("Circos plot created successfully")
