@@ -1419,7 +1419,7 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     extended_dmrs[extended_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
 
-    extended_dmrs$dmps_num_adj <- ceiling(extended_dmrs$cpgs_num / extended_dmrs$sup_cpgs_num * extended_dmrs$dmps_num)
+    extended_dmrs$dmps_num_adj <- ceiling(extended_dmrs[, "cpgs_num"] / extended_dmrs[, "sup_cpgs_num"] * extended_dmrs[, "dmps_num"])
 
     .log_success("CpG content calculated.", level = 2)
     .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted DMPs number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 2)

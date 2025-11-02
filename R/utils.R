@@ -1400,14 +1400,8 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
         start_off_limit <- (flanked_start < 1) * (1 - flanked_start)
         seqls <- GenomeInfoDb::seqlengths(granges)[as.character(GenomeInfoDb::seqnames(granges))]
         end_off_limit <- (flanked_end > seqls) * (flanked_end - seqls)
-        granges <- GenomicRanges::GRanges(
-            seqnames = GenomeInfoDb::seqnames(granges),
-            ranges = IRanges::IRanges(
-                start = pmax(flanked_start, 1),
-                end = pmin(flanked_end, seqls)
-            ),
-            seqinfo = GenomeInfoDb::seqinfo(granges)
-        )
+        BiocGenerics::start(granges) <- pmax(flanked_start, 1)
+        BiocGenerics::end(granges) <- pmin(flanked_end, seqls)
         ret <- list(granges=granges, start_off_limit=start_off_limit, end_off_limit=end_off_limit)
         return(ret)
     } else {
