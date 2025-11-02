@@ -948,6 +948,7 @@ convertBetaToTabix <- function(beta_file,
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
             .log_info("Expected output compressed file: ", output_file, level = 3)
+            error_file <- tempfile(fileext = ".log")
             status_code <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = error_file)
             unlink(temp_sorted)
             if (status_code != 0) {
@@ -1829,7 +1830,7 @@ convertToGRanges <- function(obj, genome) {
         }
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
         grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))[[1]]
-        if (is.null(grs_genome) || grs_genome == "") {
+        if (is.na(grs_genome)) {
             .log_warn("Input GRanges object has no genome information. Assuming genome: ", genome)
             grs_genome <- genome
         }

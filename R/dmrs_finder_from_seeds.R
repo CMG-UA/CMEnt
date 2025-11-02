@@ -1336,6 +1336,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         keep.extra.columns = TRUE,
         ignore.strand = TRUE,
         seqnames.field = "chr",
+        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     )
 
