@@ -9,7 +9,8 @@ extractDMRMotifs(
   genome,
   array = "450k",
   genomic_locs = NULL,
-  flank_size = 5
+  flank_size = 5,
+  plot.dir = NULL
 )
 }
 \arguments{
@@ -27,8 +28,8 @@ locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 \value{
 The input Dataframe/GRanges object with an additional metadata column:
 \itemize{
-\item motif_frequencies: A list column where each entry is a matrix of base frequencies
-(rows: positions relative to CpG, columns: bases A, T, G, C)
+\item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, T, G, C)
+\item consensus_sequence: A character string representing the consensus sequence derived from the PWM
 }
 }
 \description{
@@ -44,9 +45,12 @@ dmrs <- data.frame(
     start = c(53468112, 37459206),
     end = c(53468712, 37493431),
     start_cpg = c("cg00000029", "cg00000108"),
-    end_cpg = c("cg13426503", "cg08730726")
+    start_dmp = c("cg00000029", "cg00000108"),
+    end_cpg = c("cg13426503", "cg08730726"),
+    end_dmp = c("cg13426503", "cg08730726"),
+    dmps = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
 dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 # Access motif frequencies for the first DMR
-motif_freqs_dmr1 <- dmrs_with_motifs$motif_frequencies[[1]]
+motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 }

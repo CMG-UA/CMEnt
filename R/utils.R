@@ -1300,6 +1300,82 @@ orderByLoc <- function(x,
     stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
 }
 
+
+#' Get Supporting CpG Sites for DMRs
+#'
+#' @description For each Differentially Methylated Region (DMR) in a GRanges object,
+#' retrieves the CpG sites that support the DMR, including upstream and downstream
+#' CpGs as well as the CpGs within the DMR itself. The function allows for limiting
+#' the number of supporting CpGs on each side of the DMR.
+#' @param dmrs GRanges object containing DMRs with metadata columns:
+#' \itemize{
+#'   \item start_cpg: ID of the first CpG in the DMR
+#'   \item end_cpg: ID of the last CpG in the DMR
+#'   \item dmps: Comma-separated string of CpG IDs within the DMR
+#' }
+#' @param available_cpgs Character vector of all available CpG IDs in genomic order
+#' @param max_sup_cpgs_per_dmr_side Integer. Maximum number of supporting CpGs to retrieve
+#'   upstream and downstream of each DMR (default: NULL, meaning no limit)
+#' @param ret_index Logical. If TRUE, returns indices of CpGs in available_cpgs instead of IDs (default: FALSE)
+#' @param separate_by_section Logical. If TRUE, returns a list with separate entries for upstream,
+#'   downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)
+#' @return A list where each element corresponds to a DMR and contains:
+#' \itemize{
+#'   \item upstream: Vector of upstream supporting CpG IDs or indices
+#'   \item downstream: Vector of downstream supporting CpG IDs or indices
+#'   \item dmps: Vector of CpG IDs or indices within the DMR
+#' }
+#' @examples
+#' # Assume dmrs is a GRanges object with appropriate metadata columns
+#' available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
+#' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
+#' @export
+getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = NULL, ret_index = FALSE, separate_by_section = TRUE) {
+    cpg_starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
+    dmps_inds <- lapply(S4Vectors::mcols(dmrs)$dmps, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
+    cpg_ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
+    dmrs_cpgs <- list()
+    for (i in seq_along(dmrs)) {
+        dmr_dmps_inds <- dmps_inds[[i]]
+        start_cpg_ind <- cpg_starts[[i]]
+        end_cpg_ind <- cpg_ends[[i]]
+        start_dmp_ind <- dmps_inds[[i]][1]
+        end_dmp_ind <- dmps_inds[[i]][length(dmps_inds[[i]])]
+        start_step <- 1
+        if (!is.null(max_sup_cpgs_per_dmr_side) && (start_dmp_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
+            start_step <- ceiling((start_dmp_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
+        }
+        end_step <- 1
+        if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_dmp_ind) > max_sup_cpgs_per_dmr_side) {
+            end_step <- ceiling((end_cpg_ind - end_dmp_ind) / max_sup_cpgs_per_dmr_side)
+        }
+        if (start_cpg_ind < start_dmp_ind - 1) {
+            upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_dmp_ind - 1, by = start_step)
+        } else {
+            upstream_sup_cpgs_inds <- c()
+        }
+        if (end_dmp_ind + 1 < end_cpg_ind) {
+            downstream_sup_cpgs_inds <- seq(end_dmp_ind + 1, end_cpg_ind, by = end_step)
+        } else {
+            downstream_sup_cpgs_inds <- c()
+        }
+        if (ret_index) {
+            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, downstream = downstream_sup_cpgs_inds, dmps = dmr_dmps_inds)
+        } else {
+            dmrs_cpgs[[i]] <- list(
+                upstream = available_cpgs[upstream_sup_cpgs_inds],
+                downstream = available_cpgs[downstream_sup_cpgs_inds],
+                dmps = available_cpgs[dmr_dmps_inds]
+            )
+        }
+        if (!separate_by_section) {
+            dmrs_cpgs[[i]] <- unlist(dmrs_cpgs[[i]])
+        }
+    }
+    dmrs_cpgs
+}
+
+
 #' Extract DNA Sequences for DMRs
 #'
 #' @description Retrieves the DNA sequences corresponding to genomic regions
@@ -1312,8 +1388,10 @@ orderByLoc <- function(x,
 #' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
 #'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
 #'   fallback when packages are unavailable (default: FALSE)
-#' @param flank_size Integer. Number of base pairs to add as flanking regions
-#'   on both sides of each DMR (default: 0)
+#' @param uflank_size Integer. Number of base pairs to add as flanking regions
+#'   upstream of each DMR (default: 0)
+#' @param dflank_size Integer. Number of base pairs to add as flanking regions
+#'   downstream of each DMR (default: 0)
 #' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
@@ -1751,5 +1829,3 @@ convertToGRanges <- function(obj, genome) {
     }
     obj
 }
-
-

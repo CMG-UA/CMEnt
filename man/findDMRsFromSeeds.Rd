@@ -126,15 +126,26 @@ A GRanges object containing identified DMRs with metadata columns:
 \itemize{
 \item cpgs_num: Number of CpGs in the region
 \item dmps_num: Number of DMPs in the region
-\item delta_beta: Mean methylation difference (aggregated using the specified aggregation function)
+\item delta_beta: Aggregated methylation difference (using the specified aggregation function)
 \item delta_beta_min: Minimum methylation difference
 \item delta_beta_max: Maximum methylation difference
 \item delta_beta_sd: Standard deviation of methylation differences
-\item pval_adj: Adjusted p-value (if available in DMPs file)
 \item cases_beta: Mean beta value in cases
 \item controls_beta: Mean beta value in controls
 \item start_dmp: ID of the first DMP in the region
 \item end_dmp: ID of the last DMP in the region
+\item start_dmp_pos: Genomic position of the first DMP in the region
+\item end_dmp_pos: Genomic position of the last DMP in the region
+\item dmps: Comma-separated list of DMP IDs in the region
+\item connection_corr_pval: Aggregated correlation p-value of connected DMPs
+\item stop_connection_reason: Reasons for stopping the connection of DMPs
+\item start_cpg: ID of the starting CpG after expansion
+\item end_cpg: ID of the ending CpG after expansion
+\item upstream_cpg_expansion: Number of CpGs expanded upstream
+\item upstream_cpg_expansion_stop_reason: Reason for stopping upstream expansion
+\item downstream_cpg_expansion: Number of CpGs expanded downstream
+\item downstream_cpg_expansion_stop_reason: Reason for stopping downstream expansion
+\item merged_dmrs_num: Number of merged DMRs
 }
 
 Data frame of identified DMRs.
@@ -169,5 +180,6 @@ dmrs <- findDMRsFromSeeds(
     dmps = dmps,
     pheno = pheno
 )
+
 
 }

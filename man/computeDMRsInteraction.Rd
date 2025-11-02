@@ -10,7 +10,8 @@ computeDMRsInteraction(
   array = "450K",
   min_sim = 0.7,
   genomic_locs = NULL,
-  flank_size = 5
+  flank_size = 5,
+  plot.dir = NULL
 )
 }
 \arguments{

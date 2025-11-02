@@ -19,36 +19,18 @@ if (getRversion() >= "2.15.1") {
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).
-#' @param .ret_details Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMRWithBeta (default: FALSE).
+#' @param .ret_details Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMR (default: FALSE).
 #'
 #' @return A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
-#'
-#' @examples
-#' # Load DMR results
-#' dmrs <- readRDS("dmrs.rds")
-#'
-#' # Plot first DMR with title
-#' plotDMR(dmrs, dmr_index = 1)
-#'
-#' # Plot without title (title will be logged)
-#' plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
-#'
-#' # Plot with extended region
-#' plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
-#'
-#' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text theme_minimal
-#' @importFrom ggplot2 labs scale_color_gradient2 theme element_text scale_y_continuous
-#' @importFrom GenomicRanges mcols start end seqnames
-#' @export
-plotDMR <- function(dmrs,
-                    dmr_index = 1,
-                    array = c("450K", "27K", "EPIC", "EPICv2"),
-                    genome = "hg19",
-                    sorted_locs = NULL,
-                    extend_by_dmr_size_ratio = 0.2,
-                    min_extension_bp = 50,
-                    plot_title = TRUE,
-                    .ret_details = FALSE) {
+.plotDMRStructure <- function(dmrs,
+                              dmr_index = 1,
+                              array = c("450K", "27K", "EPIC", "EPICv2"),
+                              genome = "hg19",
+                              sorted_locs = NULL,
+                              extend_by_dmr_size_ratio = 0.2,
+                              min_extension_bp = 50,
+                              plot_title = TRUE,
+                              .ret_details = FALSE) {
     showtext::showtext_auto()
 
 
@@ -435,9 +417,7 @@ plotDMR <- function(dmrs,
         labels = breaks_labels
     )
     p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]))
-    p <- p + ggplot2::labs(
-        x = sprintf("Genomic Position on %s (bp)", chr)
-    )
+
     if (!plot_title) {
         .log_info("Title of the generated plot:\n", title)
     }
@@ -450,8 +430,113 @@ plotDMR <- function(dmrs,
     invisible(p)
 }
 
+
+# Create beta heatmap plot
+.plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, sample_group_col = "Sample_Group") {
+    cpg_ids <- rownames(total_shown_positions)
+    cpg_locs <- total_shown_positions[, c("chr", "start")]
+
+
+    # Mark DMPs
+    dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
+    is_dmp <- cpg_ids %in% dmp_ids
+
+    # Create heatmap
+    # Prepare data
+    beta_data <- as.data.frame(beta_data)
+    beta_data[, "CpG"] <- rownames(beta_data)
+    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
+    colnames(beta_melted) <- c("CpG", "Sample", "Beta")
+    beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
+    beta_melted$is_DMP <- is_dmp[match(beta_melted$CpG, cpg_ids)]
+    if (!is.null(pheno) && !is.null(sample_group_col)) {
+        beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
+        # Order samples by group
+        sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
+        beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
+    }
+
+    heatmap_plot <- ggplot2::ggplot(beta_melted) +
+        ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
+        ggplot2::scale_fill_gradient(
+            low = "white", high = "red",
+            limits = c(min(beta_melted$Beta), max(beta_melted$Beta)),
+            name = "\u03b2-values"
+        ) +
+        ggplot2::labs(
+            y = "Sample"
+        ) +
+        ggplot2::theme_minimal(base_size = 10) +
+        ggplot2::theme(
+            axis.text.y = ggplot2::element_text(size = 7)
+        ) +
+        ggplot2::theme(
+            axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5, vjust = 0.5)
+        )
+    # Add vertical lines for DMPs
+    if (any(is_dmp)) {
+        dmp_positions <- unique(beta_melted$Position[beta_melted$is_DMP])
+        heatmap_plot <- heatmap_plot +
+            ggplot2::geom_vline(
+                xintercept = dmp_positions,
+                color = "yellow",
+                linetype = "dashed",
+                linewidth = 0.5,
+                alpha = 0.7
+            )
+    }
+    return(heatmap_plot)
+}
+
+
 minmaxscale <- function(x) {
     (x - min(x)) / max(max(x) - min(x), 1e-10)
+}
+
+.plotPWM <- function(dmr, genome, array, sorted_locs, motif_flank_size = 5) {
+    # Extract DMR motifs if not already present
+    if (!"pwm" %in% colnames(S4Vectors::mcols(dmr))) {
+        dmr <- extractDMRMotifs(dmr,
+            genome = genome, array = array,
+            genomic_locs = sorted_locs, flank_size = motif_flank_size
+        )
+    }
+    pwm <- mcols(dmr)$pwm[[1]]
+    
+    if (is.null(pwm) || !is.matrix(pwm)) {
+        return(NULL)
+    }
+
+    n_positions <- ncol(pwm)
+    if (n_positions == 0) {
+        return(NULL)
+    }
+
+    position_labels <- c(seq(-motif_flank_size, 0), seq(0, motif_flank_size))
+
+    rownames(pwm) <- BASE_LEVELS
+
+    base_colors <- c("A" = "#109648", "C" = "#255C99", "G" = "#F7B32B", "T" = "#D62839")
+
+    pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
+        ggplot2::scale_fill_manual(values = base_colors) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+            panel.grid.major.x = ggplot2::element_blank(),
+            panel.grid.minor = ggplot2::element_blank(),
+            axis.text.x = ggplot2::element_text(size = 10),
+            axis.text.y = ggplot2::element_text(size = 10),
+            axis.title = ggplot2::element_text(size = 11, face = "bold"),
+            plot.title = ggplot2::element_text(size = 12, face = "bold", hjust = 0.5)
+        ) +
+        ggplot2::labs(
+            x = "Position Relative to CpG",
+            y = "Information Content (bits)",
+            title = "Supporting CpG Motif PWM"
+        ) +
+        ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
+
+    return(pwm_plot)
 }
 
 #' Plot Multiple DMRs in a Grid
@@ -468,7 +553,7 @@ minmaxscale <- function(x) {
 #' @param genome Character. Genome version (default: "hg19").
 #' @param array Character. Array platform type (default: "450K").
 #' @param ncol Integer. Number of columns in the grid (default: 1).
-#' @param ... Additional arguments passed to plotDMR or plotDMRWithBeta.
+#' @param ... Additional arguments passed to .plotDMRStructure or plotDMRWithBeta.
 #'
 #' @return If beta is NULL: A gtable object.
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
@@ -512,7 +597,7 @@ plotDMRs <- function(dmrs,
         }
         plot_list <- lapply(seq_along(dmr_indices), function(idx) {
             i <- dmr_indices[idx]
-            plotDMRWithBeta(
+            plotDMR(
                 dmrs = dmrs,
                 dmr_index = i,
                 beta = beta,
@@ -522,21 +607,18 @@ plotDMRs <- function(dmrs,
             )
         })
         invisible(plot_list)
-    } else {
-        plot_list <- lapply(dmr_indices, function(i) {
-            plotDMR(dmrs, dmr_index = i, ...)
-        })
-        invisible(gridExtra::grid.arrange(grobs = plot_list, ncol = ncol))
     }
 }
 
 
-#' Plot DMR with Beta Values Heatmap
+#' Plot DMR
 #'
 #' @description Creates a detailed DMR plot with an integrated heatmap showing
 #' beta values across samples for DMPs and surrounding CpGs. The plot consists of
 #' two panels: the top panel shows the DMR structure with DMPs and extended CpGs,
-#' and the bottom panel displays a heatmap of beta values for all samples.
+#' and the bottom panel displays a heatmap of beta values for all samples, if beta values are provided.
+#' Additionally, if motif information is available or can be extracted, a sequence logo
+#' plot is added showing the nucleotide composition and information content around CpG sites in the DMR.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
 #' @param dmr_index Integer. Which DMR to plot.
@@ -550,71 +632,86 @@ plotDMRs <- function(dmrs,
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
 #' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
+#' @param plot_motif Logical. Whether to plot the sequence logo motif (default: TRUE).
+#' @param motif_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #'
-#' @return A combined plot object (gridExtra) containing the DMR structure plot and beta values heatmap,
-#'   or a list of plots if required packages are not available.
+#' @return A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),
+#'   and sequence logo motif plot (if motif information is available and plot_motif is TRUE).
 #'
 #' @examples
 #' # Using BetaHandler
 #' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
-#' plotDMRWithBeta(dmrs, 1, beta = beta_handler, pheno = pheno_df)
+#' plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 #'
 #' # Using a file path (handler created automatically)
-#' plotDMRWithBeta(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
+#' plotDMR(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
 #'
 #' # Using a beta matrix
-#' plotDMRWithBeta(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
+#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
+#'
+#' # With custom flank size for motif extraction
+#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_flank_size = 10)
+#'
+#' # Without motif plot
+#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
 #'
 #' @export
-plotDMRWithBeta <- function(dmrs,
-                            dmr_index,
-                            beta,
-                            pheno,
-                            sorted_locs = NULL,
-                            array = c("450K", "27K", "EPIC", "EPICv2"),
-                            genome = c("hg19", "hg38", "mm10", "mm39"),
-                            sample_group_col = "Sample_Group",
-                            extend_by_dmr_size_ratio = 0.2,
-                            min_extension_bp = 50,
-                            max_cpgs = 100,
-                            plot_title = TRUE) {
+plotDMR <- function(dmrs,
+                    dmr_index,
+                    beta = NULL,
+                    pheno = NULL,
+                    sorted_locs = NULL,
+                    array = c("450K", "27K", "EPIC", "EPICv2"),
+                    genome = c("hg19", "hg38", "mm10", "mm39"),
+                    sample_group_col = "Sample_Group",
+                    extend_by_dmr_size_ratio = 0.2,
+                    min_extension_bp = 50,
+                    max_cpgs = 100,
+                    plot_motif = TRUE,
+                    motif_flank_size = 5,
+                    plot_title = TRUE) {
     showtext::showtext_auto()
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
 
     # Create BetaHandler if a file path or matrix was provided
-    if (is.character(beta) && length(beta) == 1 && file.exists(beta) || is.matrix(beta) || is.data.frame(beta)) {
-        beta_handler <- getBetaHandler(
-            beta = beta,
-            array = array,
-            genome = genome
-        )
-    } else if (!"BetaHandler" %in% class(beta)) {
-        stop("beta_handler must be either a file path (character) or a BetaHandler object")
-    }
-    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-        pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
-    }
-    if (!is.data.frame(pheno)) {
-        stop("pheno must be a data frame or a valid file path to a phenotype table")
-    }
-    if (!(sample_group_col %in% colnames(pheno))) {
-        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    if (!is.null(beta)) {
+        if ((is.character(beta) && length(beta) == 1 && file.exists(beta)) || is.matrix(beta) || is.data.frame(beta)) {
+            beta_handler <- getBetaHandler(
+                beta = beta,
+                array = array,
+                genome = genome
+            )
+        } else if (!"BetaHandler" %in% class(beta)) {
+            stop("beta_handler must be either a file path (character) or a BetaHandler object")
+        } else {
+            beta_handler <- beta
+        }
     }
 
-    # Extract DMR
+    if (!is.null(pheno) && !(sample_group_col %in% colnames(pheno))) {
+        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    }
     dmr <- dmrs[dmr_index]
     dmr_data <- S4Vectors::mcols(dmr)
 
-    pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
-    if (nrow(pheno) == 0) {
-        stop("No samples in pheno match the samples in beta values")
+    if (!is.null(pheno)) {
+        if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+        }
+        if (!is.data.frame(pheno)) {
+            stop("pheno must be a data frame or a valid file path to a phenotype table")
+        }
+        pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
+        if (nrow(pheno) == 0) {
+            stop("No samples in pheno match the samples in beta values")
+        }
     }
 
 
     # Create structure plot
-    ret <- plotDMR(
+    ret <- .plotDMRStructure(
         dmrs = dmrs,
         dmr_index = dmr_index,
         array = array,
@@ -628,81 +725,51 @@ plotDMRWithBeta <- function(dmrs,
     breaks <- ret$breaks
     breaks_labels <- ret$breaks_labels
     total_shown_positions <- ret$total_locs
-    cpg_ids <- rownames(total_shown_positions)
-    cpg_locs <- total_shown_positions[, c("chr", "start")]
-
-    # Read beta values using BetaHandler
-    beta_data <- beta_handler$getBeta(
-        row_names = rownames(total_shown_positions),
-        col_names = rownames(pheno)
-    )
-
-    # Mark DMPs
-    dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
-    is_dmp <- cpg_ids %in% dmp_ids
 
 
-    chr <- ret$chr
-    # Remove x-axis title for combined plot
-    structure_plot <- structure_plot +
-        ggplot2::theme(
-            axis.title.x = ggplot2::element_blank(),
-            axis.text.x = ggplot2::element_blank()
+    if (!is.null(beta)) {
+        # Read beta values using BetaHandler
+        beta_data <- beta_handler$getBeta(
+            row_names = rownames(total_shown_positions),
+            col_names = if (is.null(pheno)) NULL else rownames(pheno)
         )
-
-    # Create heatmap
-    # Prepare data
-    beta_data <- as.data.frame(beta_data)
-    beta_data[, "CpG"] <- rownames(beta_data)
-    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
-    colnames(beta_melted) <- c("CpG", "Sample", "Beta")
-    beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
-    beta_melted$is_DMP <- is_dmp[match(beta_melted$CpG, cpg_ids)]
-    beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
-
-    # Order samples by group
-    sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
-    beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
-
-    heatmap_plot <- ggplot2::ggplot(beta_melted) +
-        ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
-        ggplot2::scale_fill_gradient(
-            low = "white", high = "red",
-            limits = c(min(beta_melted$Beta), max(beta_melted$Beta)),
-            name = "\u03b2-values"
-        ) +
-        ggplot2::labs(
-            y = "Sample",
-            x = sprintf("Genomic Position on %s (bp)", chr)
-        ) +
-        ggplot2::theme_minimal(base_size = 10) +
-        ggplot2::theme(
-            axis.text.y = ggplot2::element_text(size = 7)
-        ) +
-        ggplot2::scale_x_continuous(
-            breaks = breaks,
-            labels = breaks_labels
-        ) +
-        ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)])) +
-        ggplot2::theme(
-            axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5, vjust = 0.5)
+        heatmap_plot <- .plotBetaHeatmap(
+            dmr_data = dmr_data,
+            beta_data = beta_data,
+            pheno = pheno,
+            sample_group_col = sample_group_col,
+            total_shown_positions = total_shown_positions
         )
-    # Add vertical lines for DMPs
-    if (any(is_dmp)) {
-        dmp_positions <- unique(beta_melted$Position[beta_melted$is_DMP])
         heatmap_plot <- heatmap_plot +
-            ggplot2::geom_vline(
-                xintercept = dmp_positions,
-                color = "yellow",
-                linetype = "dashed",
-                linewidth = 0.5,
-                alpha = 0.7
+            ggplot2::scale_x_continuous(
+                breaks = breaks,
+                labels = breaks_labels
+            ) +
+            ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)])) +
+            ggplot2::labs(
+                x = sprintf("Genomic Position on %s (bp)", ret$chr)
             )
+
+        g1 <- ggplot2::ggplotGrob(structure_plot)
+        g2 <- ggplot2::ggplotGrob(heatmap_plot)
+        grobs <- list(g1, g2)
+    } else {
+        structure_plot <- structure_plot + ggplot2::labs(
+            x = sprintf("Genomic Position on %s (bp)", ret$chr)
+        )
+        warning("Beta values not provided. Only the DMR structure plot will be returned.")
+        grobs <- list(ggplot2::ggplotGrob(structure_plot))
     }
-    g1 <- ggplot2::ggplotGrob(structure_plot)
-    g2 <- ggplot2::ggplotGrob(heatmap_plot)
-    max_width <- grid::unit.pmax(g1$widths, g2$widths)
-    combined <- gridExtra::gtable_rbind(g1, g2)
+
+    if (plot_motif) {
+        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, sorted_locs = sorted_locs, motif_flank_size = motif_flank_size)
+        if (!is.null(pwm_plot)) {
+            grobs <- c(grobs, list(ggplot2::ggplotGrob(pwm_plot)))
+        }
+    }
+
+    max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
+    combined <- do.call(gridExtra::gtable_rbind, grobs)
     combined$widths <- max_width
     grid::grid.draw(combined)
     invisible(combined)
@@ -770,7 +837,7 @@ plotDMRsCircos <- function(dmrs,
                            sample_group_col = "Sample_Group",
                            min_sim = 0.7,
                            flank_size = 5,
-                           max_num_samples = 20, #@TODO implement that
+                           max_num_samples = 20, # @TODO implement that
                            max_dmrs_per_chr = 5,
                            max_cpgs_per_dmr = 5,
                            max_interactions = 30,
@@ -1065,9 +1132,7 @@ plotDMRsCircos <- function(dmrs,
     genome_lengths
 }
 
-
-.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side=2) {
-
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2) {
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
 
@@ -1076,35 +1141,15 @@ plotDMRsCircos <- function(dmrs,
         return(NULL)
     }
     available_cpgs <- beta_handler$getBetaRowNames()
-    cpg_starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
-    dmps_inds <- lapply(S4Vectors::mcols(dmrs)$dmps, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
-    cpg_ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
-    dmrs_cpgs <- c()
-    ids <- c()
-    for (i in seq_along(dmrs)) {
-        dmr_dmps_inds <- dmps_inds[[i]]
-        start_cpg_ind <- cpg_starts[[i]]
-        end_cpg_ind <- cpg_ends[[i]]
-        start_dmp_ind <- dmps_inds[[i]][1]
-        end_dmp_ind <- dmps_inds[[i]][length(dmps_inds[[i]])]
-        start_step <- 1
-        if ((start_dmp_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
-            start_step <- ceiling((start_dmp_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
-        }
-        end_step <- 1
-        if ((end_cpg_ind - end_dmp_ind) > max_sup_cpgs_per_dmr_side) {
-            end_step <- ceiling((end_cpg_ind - end_dmp_ind) / max_sup_cpgs_per_dmr_side)
-        }
+    dmrs_cpgs_list <- getSupportingSites(
+        dmrs, 
+        available_cpgs,
+        max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
+        ret_index = TRUE,
+        separate_by_section = FALSE
+    )
+    dmrs_cpgs <- unlist(dmrs_cpgs_list)
 
-        sup_cpg_inds_to_show <- c(
-            seq(start_cpg_ind, start_dmp_ind, by=start_step),
-            dmr_dmps_inds[2:(length(dmr_dmps_inds) - 1)],
-            seq(end_dmp_ind, end_cpg_ind, by=end_step)
-        )
-        
-        dmrs_cpgs <- c(dmrs_cpgs, available_cpgs[sup_cpg_inds_to_show])
-        ids <- c(ids, rep(i, length(sup_cpg_inds_to_show)))
-    }
 
     shown_locs <- sorted_locs[dmrs_cpgs, c("chr", "start", "end"), drop = FALSE]
     beta_data <- beta_handler$getBeta(

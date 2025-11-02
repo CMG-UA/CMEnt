@@ -68,6 +68,7 @@ Imports:
     R.utils,
     jsonlite,
     gridExtra,
+    ggseqlogo,
     circlize
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,

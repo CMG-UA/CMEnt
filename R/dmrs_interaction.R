@@ -12,8 +12,8 @@
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @return The input Dataframe/GRanges object with an additional metadata column:
 #' \itemize{
-#'   \item motif_frequencies: A list column where each entry is a matrix of base frequencies
-#'     (rows: positions relative to CpG, columns: bases A, T, G, C)
+#'   \item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, T, G, C)
+#'   \item consensus_sequence: A character string representing the consensus sequence derived from the PWM
 #' }
 #' @examples
 #' # Extract motif frequencies for DMRs
@@ -22,32 +22,36 @@
 #'     start = c(53468112, 37459206),
 #'     end = c(53468712, 37493431),
 #'     start_cpg = c("cg00000029", "cg00000108"),
-#'     end_cpg = c("cg13426503", "cg08730726")
+#'     start_dmp = c("cg00000029", "cg00000108"),
+#'     end_cpg = c("cg13426503", "cg08730726"),
+#'     end_dmp = c("cg13426503", "cg08730726"),
+#'     dmps = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 #' )
 #' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 #' # Access motif frequencies for the first DMR
-#' motif_freqs_dmr1 <- dmrs_with_motifs$motif_frequencies[[1]]
+#' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
-extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, flank_size = 5) {
+extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, flank_size = 5, plot.dir = NULL) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
         genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = genomic_locs)
     }
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
+    dmrs_cpgs_inds <- getSupportingSites(dmrs, rownames(genomic_locs), ret_index=TRUE, separate_by_section = FALSE)
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, genomic_locs)
     end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, genomic_locs)
     for (i in seq_along(dmrs)) {
         if (is.na(start_inds[i]) || is.na(end_inds[i])) {
             next
         }
-        cpg_range <- start_inds[[i]]:end_inds[[i]]
+        absolute_cpg_inds <- dmrs_cpgs_inds[[i]]
         sequence <- sequences[[i]]
         start_loc_base <- genomic_locs[start_inds[[i]], "start"]
-        seq_cpg_inds <- genomic_locs[cpg_range, "start"] - start_loc_base + 1 + flank_size
-        cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size)
+        seq_cpg_inds <- genomic_locs[absolute_cpg_inds, "start"] - start_loc_base + 1 + flank_size
+        cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
-        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 1, byrow = FALSE)
+        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = BASE_LEVELS)))) # nolint
         mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
         mcols(dmrs)$consensus_sequence[[i]] <- paste(BASE_LEVELS[apply(frequencies, 2, which.max)], collapse = "")
@@ -113,12 +117,24 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     array = "450K",
 #' )
 #' @export
-computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5) {
+computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5, plot.dir = NULL) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
+    if (!is.na(plot.dir)){
+        dir.create(plot.dir, showWarnings = FALSE, recursive = TRUE)
+        sim_melt <- reshape2::melt(similarity_matrix, na.rm = TRUE)
+        colnames(sim_melt) <- c("DMR1", "DMR2", "Similarity")
+        p <- ggplot2::ggplot(sim_melt, ggplot2::aes(x = DMR1, y = DMR2, fill = Similarity)) +
+            ggplot2::geom_tile() +
+            ggplot2::scale_fill_viridis_c() +
+            ggplot2::theme_minimal() +
+            ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust=1)) +
+            ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
+        ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
+    }
     mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
     if (all(!mask, na.rm = TRUE)) {
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)

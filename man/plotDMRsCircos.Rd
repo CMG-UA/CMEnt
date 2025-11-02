@@ -14,9 +14,10 @@ plotDMRsCircos(
   sample_group_col = "Sample_Group",
   min_sim = 0.7,
   flank_size = 5,
-  max_cpgs_per_dmr = 100,
+  max_num_samples = 20,
+  max_dmrs_per_chr = 5,
+  max_cpgs_per_dmr = 5,
   max_interactions = 30,
-  heatmap_bar_max_width = 1e+06,
   ...
 )
 }
@@ -41,8 +42,6 @@ rownames matching beta column names (required for beta track).}
 \item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).}
 
 \item{max_interactions}{Integer. Maximum number of interactions to plot (default: 30).}
-
-\item{heatmap_bar_max_width}{Integer. Maximum width for heatmap bars in bp (default: 1e6).}
 
 \item{...}{Additional arguments (currently unused).}
 }
