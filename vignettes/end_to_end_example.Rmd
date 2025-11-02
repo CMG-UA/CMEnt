@@ -22,7 +22,7 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-End-to-end DMR discovery with the same dataset and steps as in the benchmark, including DMP selection via `minfi::dmpFinder`, and visualization with `plotDMRs` and `plotDMRWithBeta`.
+End-to-end DMR discovery with the same dataset and steps as in the benchmark, including DMP selection via `minfi::dmpFinder`, and visualization with `plotDMRs`.
 
 ## Load data and prepare inputs
 
@@ -94,11 +94,11 @@ if (length(dmrs) > 0) {
 }
 ```
 
-## Plot a DMR with beta heatmap
+## Plot a DMR with beta heatmap and motif PWM
 
 ```{r plot_beta}
 if (length(dmrs) > 0) {
-    plotDMRWithBeta(
+    plotDMR(
         dmrs,
         dmr_index = 1,
         beta = beta_handler,

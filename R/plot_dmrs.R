@@ -551,9 +551,10 @@ minmaxscale <- function(x) {
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param genome Character. Genome version (default: "hg19").
-#' @param array Character. Array platform type (default: "450K").
+#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param ncol Integer. Number of columns in the grid (default: 1).
-#' @param ... Additional arguments passed to .plotDMRStructure or plotDMRWithBeta.
+#' @param ... Additional arguments passed to plotDMR.
 #'
 #' @return If beta is NULL: A gtable object.
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
@@ -573,13 +574,15 @@ plotDMRs <- function(dmrs,
                      beta = NULL,
                      pheno = NULL,
                      sample_group_col = "Sample_Group",
-                     genome = c("hg19", "hg38", "mm10", "mm39"),
+                     genome = "hg19",
                      array = c("450K", "27K", "EPIC", "EPICv2"),
+                     sorted_locs = NULL,
                      ncol = 1,
                      ...) {
     showtext::showtext_auto()
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    if (is.null(sorted_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+    }
     if (is.null(dmr_indices)) {
         score <- minmaxscale(abs(dmrs$delta_beta))
         ord <- order(score, decreasing = TRUE)
@@ -588,26 +591,32 @@ plotDMRs <- function(dmrs,
 
     # Create individual plots
     if (!is.null(beta)) {
-        if (is.character(beta)) {
-            beta <- getBetaHandler(
-                beta = beta,
-                array = array,
-                genome = genome
-            )
-        }
-        plot_list <- lapply(seq_along(dmr_indices), function(idx) {
-            i <- dmr_indices[idx]
-            plotDMR(
-                dmrs = dmrs,
-                dmr_index = i,
-                beta = beta,
-                pheno = pheno,
-                sample_group_col = sample_group_col,
-                ...
-            )
-        })
-        invisible(plot_list)
+        beta <- getBetaHandler(
+            beta = beta,
+            array = array,
+            genome = genome,
+            sorted_locs = sorted_locs
+        )
+        sorted_locs <- beta$getGenomicLocs()
     }
+    plot_list <- lapply(seq_along(dmr_indices), function(idx) {
+        i <- dmr_indices[idx]
+        plotDMR(
+            dmrs = dmrs,
+            dmr_index = i,
+            beta = beta,
+            pheno = pheno,
+            sorted_locs = sorted_locs,
+            sample_group_col = sample_group_col,
+            ...
+        )
+    })
+    ret <- gridExtra::grid.arrange(
+        grobs = lapply(plot_list, function(x) x$combined_plot),
+        ncol = ncol
+    )
+    ret$max
+    invisible(plot_list)
 }
 
 
@@ -625,9 +634,9 @@ plotDMRs <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
-#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
-#' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (default: "hg19").
+#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
@@ -661,26 +670,31 @@ plotDMR <- function(dmrs,
                     dmr_index,
                     beta = NULL,
                     pheno = NULL,
-                    sorted_locs = NULL,
+                    genome = "hg19",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
-                    genome = c("hg19", "hg38", "mm10", "mm39"),
+                    sorted_locs = NULL,
                     sample_group_col = "Sample_Group",
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
                     max_cpgs = 100,
                     plot_motif = TRUE,
                     motif_flank_size = 5,
-                    plot_title = TRUE) {
+                    plot_title = TRUE,
+                    draw = TRUE) {
     showtext::showtext_auto()
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
-
+    if (is.null(sorted_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+    } else {
+        array <- NULL
+    }
     # Create BetaHandler if a file path or matrix was provided
     if (!is.null(beta)) {
         if ((is.character(beta) && length(beta) == 1 && file.exists(beta)) || is.matrix(beta) || is.data.frame(beta)) {
             beta_handler <- getBetaHandler(
                 beta = beta,
                 array = array,
+                sorted_locs = sorted_locs,
                 genome = genome
             )
         } else if (!"BetaHandler" %in% class(beta)) {
@@ -716,6 +730,7 @@ plotDMR <- function(dmrs,
         dmr_index = dmr_index,
         array = array,
         genome = genome,
+        sorted_locs = sorted_locs,
         plot_title = plot_title,
         extend_by_dmr_size_ratio = extend_by_dmr_size_ratio,
         min_extension_bp = min_extension_bp,
@@ -771,7 +786,9 @@ plotDMR <- function(dmrs,
     max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
     combined <- do.call(gridExtra::gtable_rbind, grobs)
     combined$widths <- max_width
-    grid::grid.draw(combined)
+    if (draw) {
+        grid::grid.draw(combined)
+    }
     invisible(combined)
 }
 
@@ -832,7 +849,7 @@ plotDMRsCircos <- function(dmrs,
                            beta,
                            pheno,
                            genome = "hg19",
-                           array = "450K",
+                           array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
                            min_sim = 0.7,
@@ -843,7 +860,9 @@ plotDMRsCircos <- function(dmrs,
                            max_interactions = 30,
                            ...) {
     dmrs <- convertToGRanges(dmrs, genome)
-
+    if (is.null(sorted_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+    }
     verbose <- getOption("DMRsegal.verbose", default = 2)
     beta_handler <- getBetaHandler(
         beta = beta,
@@ -861,9 +880,7 @@ plotDMRsCircos <- function(dmrs,
     if (!(sample_group_col %in% colnames(pheno))) {
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
-    if (is.null(sorted_locs)) {
-        sorted_locs <- beta_handler$getGenomicLocs()
-    }
+    sorted_locs <- beta_handler$getBetaLocs()
 
     .log_step("Preparing data for Circos plot...")
 
@@ -897,7 +914,7 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, min_sim, flank_size, sorted_locs
+        dmrs, genome, array, sorted_locs, min_sim, flank_size
     )
     .log_success("DMR interactions data prepared", level = 2)
     if (verbose >= 3) {
@@ -1170,7 +1187,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, min_sim, flank_size, sorted_locs) {
+.prepareCircosLinkData <- function(dmrs, genome, array, sorted_locs, min_sim, flank_size) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(

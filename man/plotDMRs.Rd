@@ -36,7 +36,7 @@ plotDMRs(
 
 \item{ncol}{Integer. Number of columns in the grid (default: 1).}
 
-\item{...}{Additional arguments passed to .plotDMRStructure or plotDMRWithBeta.}
+\item{...}{Additional arguments passed to plotDMR.}
 }
 \value{
 If beta is NULL: A gtable object.

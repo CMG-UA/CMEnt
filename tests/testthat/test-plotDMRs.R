@@ -90,7 +90,7 @@ test_that("plotDMRs creates a combined plot", {
     p <- plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable"))
+    expect_true(inherits(p[[1]], "gtable"))
 })
 
 test_that("plotDMRs handles NULL dmr_indices", {
@@ -104,7 +104,7 @@ test_that("plotDMRs handles NULL dmr_indices", {
     p <- plotDMRs(dmrs, dmr_indices = NULL)
 
     expect_true(!is.null(p))
-    expect_true(inherits(p, "gtable"))
+    expect_true(inherits(p[[1]], "gtable"))
 })
 
 test_that("plotDMRs respects ncol parameter", {
@@ -120,28 +120,6 @@ test_that("plotDMRs respects ncol parameter", {
 
     p2 <- plotDMRs(dmrs, dmr_indices = 1:4, ncol = 4)
     expect_true(!is.null(p2))
-})
-
-
-test_that("plotDMRWithBeta works", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-
-    p <- suppressWarnings(plotDMRWithBeta(
-        dmrs = dmrs,
-        dmr_index = 1,
-        beta = beta,
-        pheno = pheno,
-        sample_group_col = "Sample_Group"
-    )
-    )
-
-    expect_true(inherits(p, "gtable"))
 })
 
 
