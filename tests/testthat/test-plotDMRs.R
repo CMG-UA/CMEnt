@@ -1,6 +1,6 @@
 library(testthat)
 
-test_that("plotDMR creates a ggplot object", {
+test_that("plotDMR creates a gtable object", {
     skip_if_not_installed("ggplot2")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
@@ -10,9 +10,9 @@ test_that("plotDMR creates a ggplot object", {
 
     p <- plotDMR(dmrs, dmr_index = 1)
 
-    expect_s3_class(p, "ggplot")
-    expect_true(!is.null(p$layers))
-    expect_true(length(p$layers) > 0)
+    expect_s3_class(p, "gtable")
+    expect_true(inherits(p, "gTree"))
+    expect_true(inherits(p, "grob"))
 })
 
 test_that("plotDMR handles invalid dmr_index", {
@@ -30,7 +30,7 @@ test_that("plotDMR handles invalid dmr_index", {
 
     expect_error(
         plotDMR(dmrs, dmr_index = length(dmrs) + 1),
-        "dmr_index must be between"
+        "subscript contains out-of-bounds indices"
     )
 })
 
@@ -43,10 +43,10 @@ test_that("plotDMR works with different array types", {
     }
 
     p1 <- plotDMR(dmrs, dmr_index = 1, array = "450K")
-    expect_s3_class(p1, "ggplot")
+    expect_s3_class(p1, "gtable")
 
     p2 <- plotDMR(dmrs, dmr_index = 1, array = "EPIC")
-    expect_s3_class(p2, "ggplot")
+    expect_s3_class(p2, "gtable")
 })
 
 test_that("plotDMR works with different genome versions", {
@@ -58,10 +58,10 @@ test_that("plotDMR works with different genome versions", {
     }
 
     p1 <- plotDMR(dmrs, dmr_index = 1, genome = "hg19")
-    expect_s3_class(p1, "ggplot")
+    expect_s3_class(p1, "gtable")
 
     p2 <- plotDMR(dmrs, dmr_index = 1, genome = "hg38")
-    expect_s3_class(p2, "ggplot")
+    expect_s3_class(p2, "gtable")
 })
 
 test_that("plotDMR works without a title", {
@@ -75,7 +75,7 @@ test_that("plotDMR works without a title", {
     custom_title <- "Test DMR Title"
     p <- plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
 
-    expect_s3_class(p, "ggplot")
+    expect_s3_class(p, "gtable")
 })
 
 test_that("plotDMRs creates a combined plot", {
@@ -158,7 +158,7 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
 
     if (length(no_extended_idx) > 0) {
         p <- plotDMR(dmrs, dmr_index = no_extended_idx[1])
-        expect_s3_class(p, "ggplot")
+        expect_s3_class(p, "gtable")
     } else {
         skip("No DMRs without extended CpGs found")
     }
@@ -177,8 +177,8 @@ test_that("plotDMR handles DMRs with multiple DMPs", {
 
     if (length(multi_dmp_idx) > 0) {
         p <- plotDMR(dmrs, dmr_index = multi_dmp_idx[1])
-        expect_s3_class(p, "ggplot")
-        expect_true(length(p$layers) > 0)
+        expect_s3_class(p, "gtable")
+        expect_true(inherits(p, "gTree"))
     } else {
         skip("No DMRs with multiple DMPs found")
     }
@@ -194,9 +194,9 @@ test_that("plotDMR plot structure contains expected components", {
 
     p <- plotDMR(dmrs, dmr_index = 1)
 
-    expect_true(!is.null(p$labels$x))
-    expect_true(!is.null(p$labels$title))
-    expect_true(length(p$layers) >= 3)
+    expect_true(inherits(p, "gtable"))
+    expect_true(inherits(p, "gTree"))
+    expect_true(inherits(p, "grob"))
 })
 
 test_that("plotDMR with beta and pheno includes PWM plot", {

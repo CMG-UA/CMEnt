@@ -1247,23 +1247,9 @@ findDMRsFromSeeds <- function(beta = NULL,
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
 
-        chr_ret <- future.apply::future_mapply(
+        chr_ret <- future.apply::future_apply(
             X = chr_dmrs,
             MARGIN = 1,
-            simplify = FALSE,
-            future.seed = TRUE,
-            future.globals = c(
-                ".expandDMRs",
-                "chr_array",
-                "expansion_step",
-                "min_cpgs",
-                "min_cpg_delta_beta",
-                "chr_locs",
-                "chr_start_base",
-                "verbose",
-                "p_ext"
-            ),
-            # future.scheduling = ceiling(n_dmrs / njobs),
             FUN = function(dmr) {
                 op <- options(warn = 2)$warn
                 x <- .expandDMRs(
@@ -1278,7 +1264,21 @@ findDMRsFromSeeds <- function(beta = NULL,
                 options(warn = op)
                 if (verbose > 0 && !is.null(p_ext)) p_ext()
                 x
-            }
+            },
+            simplify = FALSE,
+            future.seed = TRUE,
+            future.globals = c(
+                ".expandDMRs",
+                "chr_array",
+                "expansion_step",
+                "min_cpgs",
+                "min_cpg_delta_beta",
+                "chr_locs",
+                "chr_start_base",
+                "verbose",
+                "p_ext"
+            )
+            # future.scheduling = ceiling(n_dmrs / njobs),
         )
         ret <- c(ret, chr_ret)
     }
