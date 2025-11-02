@@ -361,8 +361,6 @@
     ret <- list(samplesheet = subset_samplesheet[, c(sample_group_col, "casecontrol")])
     ret
 }
-CHROMOSOMES <- c(as.character(1:22), "X", "Y", "MT") # nolint
-CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 
 #' Read and Process Custom Methylation BED Data
 #'
@@ -377,6 +375,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #'   methylation values. Can be gzipped (default: NULL)
 #' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
 #'   present in both the pheno rownames and BED file header will be processed
+#' @param genome Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")
 #' @param chrom_col Character. Name of the chromosome column in the BED file
 #'   (default: "#chrom")
 #' @param start_col Character. Name of the start position column in the BED file
@@ -385,6 +384,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #'   a default cache directory at `~/.cache/c/DMRsegal/bed_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
+#' @param chr_levels Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.
 #'
 #' @return A list with two elements:
 #' \itemize{
@@ -434,6 +434,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' # Process a custom BED file
 #' result <- readCustomMethylationBedData(
 #'     bed_file = "custom_methylation.bed.gz",
+#'     genome = "hg38",
 #'     pheno = pheno
 #' )
 #'
@@ -441,6 +442,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' result <- readCustomMethylationBedData(
 #'     bed_file = "custom_methylation.bed",
 #'     pheno = pheno,
+#'     genome = "hg38",
 #'     chrom_col = "chromosome",
 #'     start_col = "position"
 #' )
@@ -449,6 +451,7 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' result <- readCustomMethylationBedData(
 #'     bed_file = "custom_methylation.bed.gz",
 #'     pheno = pheno,
+#'     genome = "hg38",
 #'     output_dir = "/path/to/cache"
 #' )
 #'
@@ -461,8 +464,9 @@ CHROMOSOMES <- c(paste0("chr", CHROMOSOMES), CHROMOSOMES) # nolint
 #' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
 #'
 #' @export
-readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000) {
+readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom_col = "#chrom",
+                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
+                                         chr_levels = NULL) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -537,7 +541,14 @@ readCustomMethylationBedData <- function(bed_file, pheno, chrom_col = "#chrom",
     while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
         bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
         colnames(bed_data) <- bed_header
-        bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = CHROMOSOMES))
+        # Add chr in front of chromosome values if missing
+        if (all(!grepl("^chr", bed_data[[chrom_col]]))) {
+            bed_data[[chrom_col]] <- paste0("chr", bed_data[[chrom_col]])
+        }
+        if (is.null(chr_levels)) {
+            chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
+        }
+        bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = chr_levels))
         bed_data$start <- as.integer(bed_data[[start_col]])
         bed_data$end <- bed_data$start + 1
         bed_data$score <- "."
@@ -1382,6 +1393,29 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
 }
 
 
+.extendGRangesWithFlanks <- function(granges, uflank_size = 0, dflank_size = 0) {
+    if (uflank_size > 0 || dflank_size > 0) {
+        flanked_start <- GenomicRanges::start(granges) - uflank_size
+        flanked_end <- GenomicRanges::end(granges) + dflank_size
+        start_off_limit <- (flanked_start < 1) * (1 - flanked_start)
+        seqls <- GenomeInfoDb::seqlengths(granges)[as.character(GenomeInfoDb::seqnames(granges))]
+        end_off_limit <- (flanked_end > seqls) * (flanked_end - seqls)
+        granges <- GenomicRanges::GRanges(
+            seqnames = GenomeInfoDb::seqnames(granges),
+            ranges = IRanges::IRanges(
+                start = pmax(flanked_start, 1),
+                end = pmin(flanked_end, seqls)
+            ),
+            seqinfo = GenomeInfoDb::seqinfo(granges)
+        )
+        ret <- list(granges=granges, start_off_limit=start_off_limit, end_off_limit=end_off_limit)
+        return(ret)
+    } else {
+        ret <- list(granges=granges, start_off_limit=rep(0, length(granges)), end_off_limit=rep(0, length(granges)))
+        return(ret)
+    }
+}
+
 #' Extract DNA Sequences for DMRs
 #'
 #' @description Retrieves the DNA sequences corresponding to genomic regions
@@ -1442,23 +1476,10 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
     } else {
         pkg_name <- NULL
     }
-    # Rename chromosomes to match BSgenome naming
-    GenomeInfoDb::seqlevels(dmrs) <- sub("^chr", "", GenomeInfoDb::seqlevels(dmrs))
-    GenomeInfoDb::seqlevels(dmrs) <- paste0("chr", GenomeInfoDb::seqlevels(dmrs))
-    if (uflank_size > 0 || dflank_size > 0) {
-        flanked_start <- GenomicRanges::start(dmrs) - uflank_size
-        flanked_end <- GenomicRanges::end(dmrs) + dflank_size
-        add_na_to_the_start <- (flanked_start < 1) * (1 - flanked_start)
-        seqls <- GenomeInfoDb::seqlengths(dmrs)[as.character(GenomeInfoDb::seqnames(dmrs))]
-        add_na_to_the_end <- (flanked_end > seqls) * (flanked_end - seqls)
-        dmrs <- GenomicRanges::GRanges(
-            seqnames = GenomeInfoDb::seqnames(dmrs),
-            ranges = IRanges::IRanges(
-                start = pmax(flanked_start, 1),
-                end = pmin(flanked_end, seqls)
-            )
-        )
-    }
+    extended_ret <- .extendGRangesWithFlanks(dmrs, uflank_size, dflank_size)
+    dmrs <- extended_ret$granges
+    add_na_to_the_start <- extended_ret$start_off_limit
+    add_na_to_the_end <- extended_ret$end_off_limit
     use_bsgenome <- FALSE
 
     if (!use_online && !is.null(pkg_name)) {
@@ -1495,8 +1516,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
         sequences <- .getSequencesFromUCSC(dmrs, genome)
     }
-    if (uflank_size > 0 || dflank_size > 0) {
-        sequences <- mapply(function(seq, na_start, na_end) {
+    sequences <- mapply(function(seq, na_start, na_end) {
             if (is.na(seq)) {
                 return(NA_character_)
             }
@@ -1507,7 +1527,6 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
             )
             seq
         }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
-    }
     sequences
 }
 

@@ -645,13 +645,14 @@
 #' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
-#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.
 #' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
+#' @param chr_levels Character vector. Custom chromosome levels to use. Default is NULL.
+#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 
 #'
@@ -666,7 +667,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                               min_cpg_delta_beta = 0,
                               expansion_step = 500,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = c("hg19", "hg38", "mm10", "mm39"),
+                              genome = "hg19",
                               max_pval = 0.05,
                               pval_mode = c("parametric", "empirical"),
                               empirical_strategy = c("auto", "montecarlo", "permutations"),
@@ -687,10 +688,14 @@ findDMRsFromSeeds <- function(beta = NULL,
                               bed_provided = FALSE,
                               bed_chrom_col = "chrom",
                               bed_start_col = "start",
-                              .load_debug = FALSE,
-                              verbose = 1) {
+                              chr_levels = NULL,
+                              verbose = 1,
+                              .load_debug = FALSE
+                              ) {
+
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
+
     # Clean up any zombie processes on exit
     if (Sys.info()[["sysname"]] != "Windows") {
         includes <- "#include <sys/wait.h>"
@@ -782,7 +787,9 @@ findDMRsFromSeeds <- function(beta = NULL,
             paste(colnames(dmps_tsv), collapse = ",")
         )
     }
-
+    if (is.null(chr_levels)) {
+        chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
+    }
     if (inherits(beta, "BetaHandler")) {
         beta_handler <- beta
         sorted_locs <- beta_handler$getGenomicLocs()
@@ -801,8 +808,10 @@ findDMRsFromSeeds <- function(beta = NULL,
                 ret <- readCustomMethylationBedData(
                     bed_file = beta,
                     pheno = pheno,
+                    genome = genome,
                     chrom_col = bed_chrom_col,
-                    start_col = bed_start_col
+                    start_col = bed_start_col,
+                    chr_levels = chr_levels
                 )
                 beta <- ret$tabix_file
                 sorted_locs <- readRDS(ret$locations_file)
@@ -814,7 +823,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                 chroms_and_pos <- strsplit(dmp_ids, ":")
                 chroms <- sapply(chroms_and_pos, function(x) x[1])
                 positions <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
-                chroms <- as.integer(factor(chroms, levels = CHROMOSOMES))
+                chroms <- as.integer(factor(chroms, levels = chr_levels))
                 dmps_tsv <- dmps_tsv[order(chroms, positions), ]
                 converted_dmp_ids <- match(
                     paste0(chroms, ":", positions),
@@ -853,8 +862,6 @@ findDMRsFromSeeds <- function(beta = NULL,
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
 
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
     if (is.character(dmps) && length(dmps) == 1) {
         stopifnot(file.exists(dmps))
     }
@@ -1331,7 +1338,10 @@ findDMRsFromSeeds <- function(beta = NULL,
 
     .log_success("Post-processing complete.", level = 2)
 
-
+    if (bigmemory::is.big.matrix(sorted_locs)) {
+        # Change seqnames from factor to character
+        extended_dmrs[, "chr"] <- chr_levels[as.integer(extended_dmrs[, "chr"])]
+    }
     extended_dmrs_ranges <- GenomicRanges::makeGRangesFromDataFrame(
         extended_dmrs,
         keep.extra.columns = TRUE,
@@ -1393,19 +1403,14 @@ findDMRsFromSeeds <- function(beta = NULL,
     extended_dmrs_ranges <- extended_dmrs_ranges_reduced
     .log_success("Overlapping extended DMRs merged: ", length(extended_dmrs_ranges), " final extended DMRs.", level = 1)
     .log_step("Stage 4: Annotating and filtering resulting DMRs..", level = 1)
-    if (bigmemory::is.big.matrix(sorted_locs)) {
-        # Change seqnames from factor to character
-        extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
-            extended_dmrs_ranges, CHROMOSOMES[as.integer(GenomeInfoDb::seqlevels(extended_dmrs_ranges))]
-        )
-    }
+
     .log_step("Finding GC content of DMRs..", level = 2)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
-    GenomicRanges::end(extended_dmrs_ranges) <- GenomicRanges::end(extended_dmrs_ranges) + 1
+    extended_dmrs_ranges <- .extendGRangesWithFlanks(extended_dmrs_ranges, dflank_size = 1)$granges
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
     if (bigmemory::is.big.matrix(sorted_locs)) {
         extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
-            extended_dmrs_ranges, as.character(as.integer(factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = CHROMOSOMES)))
+            extended_dmrs_ranges, as.character(as.integer(factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = chr_levels)))
         )
     }
     extended_dmrs <- as.data.frame(extended_dmrs_ranges)
@@ -1510,15 +1515,15 @@ findDMRsFromSeeds <- function(beta = NULL,
     dmrs <- do.call(rbind, dmrs_with_beta_stats)
     .log_success("DMR delta-beta information added.", level = 2)
     if (bigmemory::is.big.matrix(sorted_locs)) {
-        dmrs$chr <- CHROMOSOMES[dmrs$chr]
+        dmrs$chr <- chr_levels[dmrs$chr]
         start_dmps <- as.integer(dmrs$start_dmp)
         end_dmps <- as.integer(dmrs$end_dmp)
-        dmrs$start_dmp <- paste0(CHROMOSOMES[sorted_locs[start_dmps, "chr"]], ":", sorted_locs[start_dmps, "start"])
-        dmrs$end_dmp <- paste0(CHROMOSOMES[sorted_locs[end_dmps, "chr"]], ":", sorted_locs[end_dmps, "start"])
+        dmrs$start_dmp <- paste0(chr_levels[sorted_locs[start_dmps, "chr"]], ":", sorted_locs[start_dmps, "start"])
+        dmrs$end_dmp <- paste0(chr_levels[sorted_locs[end_dmps, "chr"]], ":", sorted_locs[end_dmps, "start"])
         start_cpgs <- as.integer(dmrs$start_cpg)
         end_cpgs <- as.integer(dmrs$end_cpg)
-        dmrs$start_cpg <- paste0(CHROMOSOMES[sorted_locs[start_cpgs, "chr"]], ":", sorted_locs[start_cpgs, "start"])
-        dmrs$end_cpg <- paste0(CHROMOSOMES[sorted_locs[end_cpgs, "chr"]], ":", sorted_locs[end_cpgs, "start"])
+        dmrs$start_cpg <- paste0(chr_levels[sorted_locs[start_cpgs, "chr"]], ":", sorted_locs[start_cpgs, "start"])
+        dmrs$end_cpg <- paste0(chr_levels[sorted_locs[end_cpgs, "chr"]], ":", sorted_locs[end_cpgs, "start"])
         dmrs$tmp_id <- seq_len(nrow(dmrs))
         dmrs$dmps_unlisted <- sapply(dmrs$dmps, function(dmp_ids) {
             as.integer(unlist(strsplit(dmp_ids, ",")))
@@ -1527,7 +1532,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmps_exploded <- dmrs[, "tmp_id", drop = FALSE]
         dmps_exploded <- dmps_exploded[rep(seq_len(nrow(dmps_exploded)), times = sapply(dmrs$dmps_unlisted, length)), , drop = FALSE]
         dmps_exploded$dmps_unlisted <- as.integer(unlist(dmrs$dmps_unlisted))
-        dmps_exploded$chr <- CHROMOSOMES[sorted_locs[dmps_exploded$dmps_unlisted, "chr"]]
+        dmps_exploded$chr <- chr_levels[sorted_locs[dmps_exploded$dmps_unlisted, "chr"]]
         dmps_exploded$pos <- sorted_locs[dmps_exploded$dmps_unlisted, "start"]
         dmps_exploded$annotated_dmp <- paste0(dmps_exploded$chr, ":", dmps_exploded$pos)
         dmps_annotated_list <- split(dmps_exploded$annotated_dmp, dmps_exploded$tmp_id)

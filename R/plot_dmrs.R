@@ -681,7 +681,8 @@ plotDMR <- function(dmrs,
                     motif_flank_size = 5,
                     plot_title = TRUE,
                     draw = TRUE) {
-    showtext::showtext_auto()
+    showtext::showtext_auto(enable = TRUE)
+    showtext::showtext_opts(dpi = 300)
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
