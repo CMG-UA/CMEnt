@@ -1829,6 +1829,10 @@ convertToGRanges <- function(obj, genome) {
         }
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
         grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))[[1]]
+        if (is.null(grs_genome) || grs_genome == "") {
+            .log_warn("Input GRanges object has no genome information. Assuming genome: ", genome)
+            grs_genome <- genome
+        }
         if (grs_genome != genome) {
             obj <- .liftOverFromGenomeToGenome(obj, grs_genome, genome)
         }
