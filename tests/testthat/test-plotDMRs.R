@@ -8,7 +8,7 @@ test_that("plotDMR creates a gtable object", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- plotDMR(dmrs, dmr_index = 1)
+    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1))
 
     expect_s3_class(p, "gtable")
     expect_true(inherits(p, "gTree"))
@@ -42,10 +42,10 @@ test_that("plotDMR works with different array types", {
         skip("Benchmark DMRs not available")
     }
 
-    p1 <- plotDMR(dmrs, dmr_index = 1, array = "450K")
+    p1 <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, array = "450K"))
     expect_s3_class(p1, "gtable")
 
-    p2 <- plotDMR(dmrs, dmr_index = 1, array = "EPIC")
+    p2 <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, array = "EPIC"))
     expect_s3_class(p2, "gtable")
 })
 

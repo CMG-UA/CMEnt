@@ -502,6 +502,7 @@ minmaxscale <- function(x) {
         )
     }
     pwm <- mcols(dmr)$pwm[[1]]
+    consensus_seq <- mcols(dmr)$consensus_seq[[1]]
     
     if (is.null(pwm) || !is.matrix(pwm)) {
         return(NULL)
@@ -516,10 +517,8 @@ minmaxscale <- function(x) {
 
     rownames(pwm) <- BASE_LEVELS
 
-    base_colors <- c("A" = "#109648", "C" = "#255C99", "G" = "#F7B32B", "T" = "#D62839")
-
-    pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
-        ggplot2::scale_fill_manual(values = base_colors) +
+    suppressWarnings(suppressMessages({
+        pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
         ggplot2::theme_minimal() +
         ggplot2::theme(
             panel.grid.major.x = ggplot2::element_blank(),
@@ -532,9 +531,10 @@ minmaxscale <- function(x) {
         ggplot2::labs(
             x = "Position Relative to CpG",
             y = "Information Content (bits)",
-            title = "Supporting CpG Motif PWM"
+            title = paste0("Supporting CpG Motif PWM (consensus: ", consensus_seq, ")")
         ) +
         ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
+    }))
 
     return(pwm_plot)
 }
@@ -611,11 +611,6 @@ plotDMRs <- function(dmrs,
             ...
         )
     })
-    ret <- gridExtra::grid.arrange(
-        grobs = lapply(plot_list, function(x) x$combined_plot),
-        ncol = ncol
-    )
-    ret$max
     invisible(plot_list)
 }
 
@@ -773,7 +768,7 @@ plotDMR <- function(dmrs,
         structure_plot <- structure_plot + ggplot2::labs(
             x = sprintf("Genomic Position on %s (bp)", ret$chr)
         )
-        warning("Beta values not provided. Only the DMR structure plot will be returned.")
+        .log_info("Beta values not provided. Only the DMR structure plot will be returned.", level=2)
         grobs <- list(ggplot2::ggplotGrob(structure_plot))
     }
 
