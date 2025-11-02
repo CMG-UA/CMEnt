@@ -1282,14 +1282,15 @@ findDMRsFromSeeds <- function(beta = NULL,
         )
         ret <- c(ret, chr_ret)
     }
-    .log_success("DMR expansion complete.", level = 1)
-    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[, "upstream_cpg_expansion"]))), collapse = "\n\t"), level = 2)
-    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[, "downstream_cpg_expansion"]))), collapse = "\n\t"), level = 2)
-
-    .log_step("Post-processing extended DMRs..", level = 2)
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
+    .log_success("DMR expansion complete.", level = 1)
+    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[["upstream_cpg_expansion"]]))), collapse = "\n\t"), level = 2)
+    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[["downstream_cpg_expansion"]]))), collapse = "\n\t"), level = 2)
+
+    .log_step("Post-processing extended DMRs..", level = 2)
+
     extended_dmrs <- as.data.frame(do.call(rbind, ret))
     extended_dmrs$end <- as.numeric(extended_dmrs$end)
     extended_dmrs$start <- as.numeric(extended_dmrs$start)
