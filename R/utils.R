@@ -1429,7 +1429,7 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0) {
-    dmrs <- convertToGRanges(dmrs)
+    dmrs <- convertToGRanges(dmrs, genome)
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
