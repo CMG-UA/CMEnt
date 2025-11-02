@@ -30,3 +30,4 @@ DMRsegal.Rcheck/
 tests/testthat/test*.loader
 tests/testthat/Rplots.pdf
 Rplots.pdf
+..Rcheck
