@@ -57,10 +57,10 @@ test_that("plotDMR works with different genome versions", {
         skip("Benchmark DMRs not available")
     }
 
-    p1 <- plotDMR(dmrs, dmr_index = 1, genome = "hg19")
+    p1 <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, genome = "hg19"))
     expect_s3_class(p1, "gtable")
 
-    p2 <- plotDMR(dmrs, dmr_index = 1, genome = "hg38")
+    p2 <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, genome = "hg38"))
     expect_s3_class(p2, "gtable")
 })
 
@@ -73,7 +73,7 @@ test_that("plotDMR works without a title", {
     }
 
     custom_title <- "Test DMR Title"
-    p <- plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
+    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, plot_title = FALSE))
 
     expect_s3_class(p, "gtable")
 })
@@ -87,7 +87,7 @@ test_that("plotDMRs creates a combined plot", {
     }
 
     n_dmrs <- min(4, length(dmrs))
-    p <- plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2)
+    p <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2))
 
     expect_true(!is.null(p))
     expect_true(inherits(p[[1]], "gtable"))
@@ -101,7 +101,7 @@ test_that("plotDMRs handles NULL dmr_indices", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- plotDMRs(dmrs, dmr_indices = NULL)
+    p <- suppressWarnings(plotDMRs(dmrs, dmr_indices = NULL))
 
     expect_true(!is.null(p))
     expect_true(inherits(p[[1]], "gtable"))
@@ -115,10 +115,10 @@ test_that("plotDMRs respects ncol parameter", {
         skip("Benchmark DMRs not available")
     }
 
-    p1 <- plotDMRs(dmrs, dmr_indices = 1:4, ncol = 2)
+    p1 <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:4, ncol = 2))
     expect_true(!is.null(p1))
 
-    p2 <- plotDMRs(dmrs, dmr_indices = 1:4, ncol = 4)
+    p2 <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:4, ncol = 4))
     expect_true(!is.null(p2))
 })
 
@@ -135,7 +135,7 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
     no_extended_idx <- which(dmr_data$start_dmp == dmr_data$start_cpg & dmr_data$end_dmp == dmr_data$end_cpg)
 
     if (length(no_extended_idx) > 0) {
-        p <- plotDMR(dmrs, dmr_index = no_extended_idx[1])
+        p <- suppressWarnings(plotDMR(dmrs, dmr_index = no_extended_idx[1]))
         expect_s3_class(p, "gtable")
     } else {
         skip("No DMRs without extended CpGs found")
@@ -154,7 +154,7 @@ test_that("plotDMR handles DMRs with multiple DMPs", {
     multi_dmp_idx <- which(dmr_data$dmps_num >= 3)
 
     if (length(multi_dmp_idx) > 0) {
-        p <- plotDMR(dmrs, dmr_index = multi_dmp_idx[1])
+        p <- suppressWarnings(plotDMR(dmrs, dmr_index = multi_dmp_idx[1]))
         expect_s3_class(p, "gtable")
         expect_true(inherits(p, "gTree"))
     } else {
@@ -170,7 +170,7 @@ test_that("plotDMR plot structure contains expected components", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- plotDMR(dmrs, dmr_index = 1)
+    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1))
 
     expect_true(inherits(p, "gtable"))
     expect_true(inherits(p, "gTree"))

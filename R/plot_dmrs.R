@@ -678,9 +678,12 @@ plotDMR <- function(dmrs,
                     draw = TRUE) {
     showtext::showtext_auto(enable = TRUE)
     showtext::showtext_opts(dpi = 300)
+    dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        # Dropping DMRs not in sorted_locs
+        dmrs <- dmrs[GenomicRanges::start(dmrs) %in% sorted_locs$start & GenomicRanges::end(dmrs) %in% sorted_locs$end]
     } else {
         array <- NULL
     }
