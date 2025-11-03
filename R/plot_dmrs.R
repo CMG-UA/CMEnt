@@ -935,9 +935,11 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Creating Circos plot...")
     plot.new()
-    circle_size = grid::unit(1, "snpc")
-    grid::pushViewport(grid::viewport(x = 0, y = 0.5, width = circle_size, height = circle_size,
-    just = c("left", "center")))
+    circle_size <- grid::unit(1, "snpc")
+    grid::pushViewport(grid::viewport(
+        x = 0, y = 0.5, width = circle_size, height = circle_size,
+        just = c("left", "center")
+    ))
     circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
     par(omi = gridBase::gridOMI(), new = TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
@@ -999,7 +1001,8 @@ plotDMRsCircos <- function(dmrs,
             title_position = "topcenter",
             at = c(-1, -0.5, 0, 0.5, 1),
             labels = c("-1", "-0.5", "0", "0.5", "1"),
-            col_fun = circlize::colorRamp2(c(-1, 0, 1), c("#055709", "white", "#801414")))
+            col_fun = circlize::colorRamp2(c(-1, 0, 1), c("#055709", "white", "#801414"))
+        )
         legends <- c(legends, list(arc_legend))
 
         .log_success("Arc track added", level = 2)
@@ -1020,7 +1023,7 @@ plotDMRsCircos <- function(dmrs,
         )
 
         suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index(), panel.fun = function(x, y) {
-            if(circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
+            if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
                 groups <- reduced_pheno[[sample_group_col]]
                 unique_groups <- unique(groups)
 
@@ -1141,12 +1144,9 @@ plotDMRsCircos <- function(dmrs,
     }
     circlize::circos.clear()
     grid::upViewport()
-    lgd_list <- ComplexHeatmap::packLegend(legends)
+    lgd_list <- do.call(ComplexHeatmap::packLegend, legends)
     ComplexHeatmap::draw(lgd_list, x = circle_size, just = "left")
     .log_success("Circos plot created successfully")
-
-
-
 
 
     invisible(NULL)
@@ -1286,14 +1286,14 @@ plotDMRsCircos <- function(dmrs,
     sort(selection)
 }
 
-.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group=10) {
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group = 10) {
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
 
 
     if (nrow(pheno) == 0) {
         .log_warn("No samples in pheno match the samples in beta values. Skipping heatmap track.")
-        return(list(heatmap_df = NULL, reduced_pheno = NULL) )
+        return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     # Order pheno by sample group
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
@@ -1336,7 +1336,6 @@ plotDMRsCircos <- function(dmrs,
                 }
                 kmeans <- stats::kmeans(pcs, centers = max_num_samples_per_group, algorithm = "Lloyd", iter.max = 1000, nstart = 5)
                 group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
-
             }
             reduced_pheno <- rbind(reduced_pheno, pheno[group_samples, , drop = FALSE])
             selected_samples <- c(selected_samples, group_samples)
@@ -1345,7 +1344,7 @@ plotDMRsCircos <- function(dmrs,
     } else {
         reduced_pheno <- pheno
     }
-    list(heatmap_df=cbind(shown_locs, beta_data) , reduced_pheno=reduced_pheno)
+    list(heatmap_df = cbind(shown_locs, beta_data), reduced_pheno = reduced_pheno)
 }
 
 
@@ -1368,7 +1367,8 @@ plotDMRsCircos <- function(dmrs,
                 array = array,
                 min_sim = min_sim,
                 genomic_locs = sorted_locs,
-                flank_size = flank_size
+                flank_size = flank_size,
+                min_component_size = 2
             )
         },
         error = function(e) {

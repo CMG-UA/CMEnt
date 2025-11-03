@@ -195,6 +195,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
+#' @param min_component_size Integer. Minimum size of connected components to consider (default: 1)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
 #' @return Data frame of motif-based DMR interactions with columns:
 #' \itemize{
@@ -224,7 +225,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' @export
 computeDMRsInteraction <- function(
   dmrs, genome = "hg19", array = "450K", min_sim = 0.8, genomic_locs = NULL, flank_size = 5,
-  find_components = TRUE, query_components_with_jaspar = TRUE, plot.dir = NULL
+  find_components = TRUE, min_component_size = 1, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
@@ -255,6 +256,8 @@ computeDMRsInteraction <- function(
     if (find_components) {
         g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
         components <- igraph::components(g1)
+        # filter components by size
+        components <- components[components$csize >= min_component_size]
         # compute consensus sequence for each connected component
         # create a dataframe with columns component_id, dmrs
         components_df <- data.frame(

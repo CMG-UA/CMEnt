@@ -44,7 +44,7 @@ test_that("plotDMRsCircos works with interactions", {
             array = array_type,
             genome = "hg19",
             sample_group_col = "Sample_Group",
-            min_sim = 0.7
+            min_sim = 0.8
         )
     )
 })
