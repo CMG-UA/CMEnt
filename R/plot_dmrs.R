@@ -936,8 +936,8 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Creating Circos plot...")
     plot.new()
     circle_size = grid::unit(1, "snpc")
-    grid::pushViewport(grid::viewport(x = 0.5, y = 1, width = circle_size, height = circle_size,
-    just = c("center", "top")))
+    grid::pushViewport(grid::viewport(x = 0, y = 0.5, width = circle_size, height = circle_size,
+    just = c("left", "center")))
     circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
     par(omi = gridBase::gridOMI(), new = TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
@@ -1141,8 +1141,8 @@ plotDMRsCircos <- function(dmrs,
     }
     circlize::circos.clear()
     grid::upViewport()
-    lgd_list_horizontal <- ComplexHeatmap::packLegend(legends, direction = "horizontal")
-    ComplexHeatmap::draw(lgd_list_horizontal, y = unit(1, "npc") - circle_size, just = "top")
+    lgd_list <- ComplexHeatmap::packLegend(legends)
+    ComplexHeatmap::draw(lgd_list, x = circle_size, just = "left")
     .log_success("Circos plot created successfully")
 
 
