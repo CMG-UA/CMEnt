@@ -28,7 +28,7 @@ locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 \value{
 The input Dataframe/GRanges object with an additional metadata column:
 \itemize{
-\item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, T, G, C)
+\item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, C, G, T)
 \item consensus_sequence: A character string representing the consensus sequence derived from the PWM
 }
 }

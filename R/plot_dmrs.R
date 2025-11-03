@@ -515,7 +515,7 @@ minmaxscale <- function(x) {
 
     position_labels <- c(seq(-motif_flank_size, 0), seq(0, motif_flank_size))
 
-    rownames(pwm) <- BASE_LEVELS
+    rownames(pwm) <- DNA_BASES
 
     suppressWarnings(suppressMessages({
         pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
@@ -1100,7 +1100,7 @@ plotDMRsCircos <- function(dmrs,
         },
         error = function(e) {
             .log_warn("Failed to download cytoband data: ", e$message, ". Using default ideogram.")
-            return(NULL)
+            NULL
         }
     )
 }

@@ -1,19 +1,19 @@
 comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
-    cache <- options("DMRsegal.jaspar_cache_dir", file.path(
+    cache <- getOption("DMRsegal.jaspar_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "c", "DMRsegal", "jaspar_cache"
+        ".cache", "R", "DMRsegal", "jaspar_cache"
     ))
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-    pwms_file <- file.path(cache[[1]], "jaspar2024_pwms.rds")
+    pwms_file <- file.path(cache, "jaspar2024_pwms.rds")
     if (file.exists(pwms_file)) {
-        .log_info("Loading JASPAR PWMs from cache...", verbose = 3)
+        .log_info("Loading JASPAR PWMs from cache...", level = 3)
         jaspar_pwms <- readRDS(pwms_file)
     } else {
         db <- JASPAR2024::JASPAR2024()@db
         opts <- list()
         opts[["tax_group"]] <- "vertebrates"
         vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
-        vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type="prob")
+        vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
         saveRDS(vertebrate_pwms, pwms_file)
         jaspar_pwms <- vertebrate_pwms
     }
@@ -26,11 +26,16 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
         similar_motifs <- data.frame(
             query_index = found[, 2],
             jaspar_id = names(jaspar_pwms)[found[, 1]],
+            jaspar_name = sapply(found[, 1], function(x) jaspar_pwms[[x]]@name),
             correlation = similarities[found]
         )
         # group by query_index and return comma-separated jaspar_ids and correlations
-        similarities <- lapply(split(similar_motifs, similar_motifs$query_index), function(df) {
+        similarities <- lapply(split(similar_motifs, similar_motifs$query_index, drop=FALSE), function(df) {
+            if (is.data.frame(df)) {
+                df <- df[order(df$correlation, decreasing = TRUE),]
+            }
             list(
+                jaspar_names = paste(df$jaspar_name, collapse = ","),
                 jaspar_ids = paste(df$jaspar_id, collapse = ","),
                 jaspar_corr = paste(round(df$correlation, 3), collapse = ",")
             )
@@ -42,6 +47,7 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
             similarities[[as.character(i)]]
         } else {
             list(
+                jaspar_names = NA,
                 jaspar_ids = NA,
                 jaspar_corr = NA
             )
@@ -67,7 +73,7 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @return The input Dataframe/GRanges object with an additional metadata column:
 #' \itemize{
-#'   \item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, T, G, C)
+#'   \item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, C, G, T)
 #'   \item consensus_sequence: A character string representing the consensus sequence derived from the PWM
 #' }
 #' @examples
@@ -108,9 +114,9 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
         cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
-        frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = BASE_LEVELS)))) # nolint
+        frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = DNA_BASES)))) # nolint
         mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
-        mcols(dmrs)$consensus_sequence[[i]] <- paste(BASE_LEVELS[apply(frequencies, 2, which.max)], collapse = "")
+        mcols(dmrs)$consensus_sequence[[i]] <- paste(DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
     if (input_is_df) {
         dmrs <- as.data.frame(dmrs)
@@ -171,10 +177,11 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     array = "450K",
 #' )
 #' @export
-computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5, plot.dir = NULL) {
+computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5, 
+    find_components=TRUE, query_components_with_jaspar=TRUE, plot.dir = NULL) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
-        .log_info("DMR motifs not precomputed. Extracting motifs...", verbose = 2)
+        .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
@@ -195,30 +202,34 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
-    g1 <- igraph::graph_from_adjacency_matrix(mask)
-    components <- igraph::components(g1)
-    # compute consensus sequence for each connected component
-    # create a dataframe with columns component_id, dmrs
-    components_df <- data.frame(
-        component_id = seq_along(components$csize),
-        size = components$csize
-    )
-    components_df$indices <- lapply(seq_along(components$csize), function(i) {
-        which(components$membership == i)
-    })
-    # Find the average PWM for each component
-    components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
-        pwms <- mcols(dmrs)[idxs, "pwm"]
-        Reduce("+", pwms) / length(pwms)
-    })
-    components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
-        paste(BASE_LEVELS[apply(pwm, 2, which.max)], collapse = "")
-    })
-    # Order by component size
-    components_df <- components_df[order(-components_df$size), ]
-
-    # Find similarities to JASPAR motifs
-    components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
+    if (find_components) {
+        g1 <- igraph::graph_from_adjacency_matrix(mask)
+        components <- igraph::components(g1)
+        # compute consensus sequence for each connected component
+        # create a dataframe with columns component_id, dmrs
+        components_df <- data.frame(
+            component_id = seq_along(components$csize),
+            size = components$csize
+        )
+        components_df$indices <- lapply(seq_along(components$csize), function(i) {
+            which(components$membership == i)
+        })
+        # Find the average PWM for each component
+        components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
+            pwms <- mcols(dmrs)[idxs, "pwm"]
+            Reduce("+", pwms) / length(pwms)
+        })
+        components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
+            paste(DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
+        })
+        # Order by component size
+        components_df <- components_df[order(-components_df$size), ]
+        
+        if (query_components_with_jaspar){
+            # Find similarities to JASPAR motifs
+            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
+        }
+    }
 
 
     rowcol_df <- which(mask, arr.ind = TRUE)

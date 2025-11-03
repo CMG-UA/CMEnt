@@ -708,7 +708,7 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "c", "DMRsegal", "tabix_cache"))
+        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -1133,7 +1133,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 .liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "c", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1193,7 +1193,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     }
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "c", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1640,7 +1640,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
                                   promoter_downstream = 200) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
-        ".cache", "c", "DMRsegal", "annotations"
+        ".cache", "R", "DMRsegal", "annotations"
     ))
     dmrs_df_provided <- is.data.frame(dmrs)
     if (dmrs_df_provided) {
@@ -1831,7 +1831,7 @@ idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
 }
 
 
-BASE_LEVELS <- c("A", "T", "G", "C")
+DNA_BASES <- c("A", "C", "G", "T") # follow the order of TFBSTools
 
 
 convertToGRanges <- function(obj, genome) {
