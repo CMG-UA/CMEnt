@@ -3,15 +3,22 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
         path.expand("~"),
         ".cache", "R", "DMRsegal", "jaspar_cache"
     ))
+    tax_group <- getOption("DMRsegal.jaspar_tax_group", "vertebrates")
+    jaspar_version <- getOption("DMRsegal.jaspar_version", 2024)
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-    pwms_file <- file.path(cache, "jaspar2024_pwms.rds")
+    pwms_file <- file.path(cache, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
     if (file.exists(pwms_file)) {
         .log_info("Loading JASPAR PWMs from cache...", level = 3)
         jaspar_pwms <- readRDS(pwms_file)
     } else {
-        db <- JASPAR2024::JASPAR2024()@db
+        .log_info("Downloading JASPAR PWMs...", level = 2)
+        jaspar_pkg <- paste0("JASPAR", jaspar_version)
+        if (!requireNamespace(jaspar_pkg, quietly = TRUE)) {
+            BiocManager::install(jaspar_pkg, ask = FALSE, update = FALSE)
+        }
+        db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
         opts <- list()
-        opts[["tax_group"]] <- "vertebrates"
+        opts[["tax_group"]] <- tax_group
         vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
         vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
         saveRDS(vertebrate_pwms, pwms_file)
@@ -151,6 +158,8 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
+#' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
+#' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
 #' @return Data frame of motif-based DMR interactions with columns:
 #' \itemize{
 #'   \item start_chr: Chromosome of the start DMR
@@ -202,6 +211,7 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
+    components_df <- NULL
     if (find_components) {
         g1 <- igraph::graph_from_adjacency_matrix(mask)
         components <- igraph::components(g1)
@@ -224,10 +234,9 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         })
         # Order by component size
         components_df <- components_df[order(-components_df$size), ]
-        
         if (query_components_with_jaspar){
             # Find similarities to JASPAR motifs
-            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
+            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm, corr_threshold = min_sim))
         }
     }
 
