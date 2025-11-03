@@ -1,8 +1,6 @@
 library(testthat)
 
 test_that("computeDMRsInteraction returns correct structure with valid input", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -31,8 +29,6 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 })
 
 test_that("computeDMRsInteraction handles GRanges input", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -51,8 +47,6 @@ test_that("computeDMRsInteraction handles GRanges input", {
 })
 
 test_that("computeDMRsInteraction works with precomputed motifs", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -77,7 +71,6 @@ test_that("computeDMRsInteraction works with precomputed motifs", {
 })
 
 test_that("computeDMRsInteraction handles different similarity thresholds", {
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -106,8 +99,6 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
 })
 
 test_that("computeDMRsInteraction returns NULL when no interactions found", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -127,7 +118,6 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
 })
 
 test_that("computeDMRsInteraction handles custom flank_size", {
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -152,8 +142,6 @@ test_that("computeDMRsInteraction handles custom flank_size", {
 })
 
 test_that("computeDMRsInteraction validates similarity values", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -173,8 +161,6 @@ test_that("computeDMRsInteraction validates similarity values", {
 })
 
 test_that("computeDMRsInteraction components are ordered by size", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -188,11 +174,10 @@ test_that("computeDMRsInteraction components are ordered by size", {
     ))
 
     expect_true(is.unsorted(result$components$size, strictly = FALSE) == FALSE ||
-                all(diff(result$components$size) <= 0))
+        all(diff(result$components$size) <= 0))
 })
 
 test_that("computeDMRsInteraction consensus sequences are valid", {
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -213,8 +198,6 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
 })
 
 test_that("computeDMRsInteraction works with different array types", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -239,7 +222,6 @@ test_that("computeDMRsInteraction works with different array types", {
 })
 
 test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -266,8 +248,6 @@ test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
 })
 
 test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
-
-
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")

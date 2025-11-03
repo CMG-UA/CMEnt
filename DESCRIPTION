@@ -72,7 +72,8 @@ Imports:
     jsonlite,
     gridExtra,
     ggseqlogo,
-    circlize
+    circlize,
+    ComplexHeatmap
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,

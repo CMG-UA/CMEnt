@@ -202,18 +202,19 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
             ggplot2::geom_tile() +
             ggplot2::scale_fill_viridis_c() +
             ggplot2::theme_minimal() +
-            ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust=1)) +
+            ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)) +
             ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
         ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
     mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
+    mask[seq_len(nrow(mask)), seq_len(ncol(mask))] <- FALSE # remove self-loops, diag = FALSE doesn't work with igraph
     if (all(!mask, na.rm = TRUE)) {
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
     components_df <- NULL
     if (find_components) {
-        g1 <- igraph::graph_from_adjacency_matrix(mask)
+        g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
         components <- igraph::components(g1)
         # compute consensus sequence for each connected component
         # create a dataframe with columns component_id, dmrs
@@ -245,14 +246,20 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
     start_dmrs <- dmrs[rowcol_df[, 1], ]
     end_dmrs <- dmrs[rowcol_df[, 2], ]
     interaction_data_frame <- data.frame(
+        index1 = rowcol_df[, 1],
         chr1 = as.character(GenomeInfoDb::seqnames(start_dmrs)),
         start1 = GenomicRanges::start(start_dmrs),
         end1 = GenomicRanges::end(start_dmrs),
+        index2 = rowcol_df[, 2],
         chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
         start2 = GenomicRanges::start(end_dmrs),
         end2 = GenomicRanges::end(end_dmrs),
         sim = similarity_matrix[rowcol_df]
     )
+    if (find_components) {
+        interaction_data_frame$component_id <- sapply(interaction_data_frame$index1, function(x) 
+            which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]])
+    }
     list(
         interactions = interaction_data_frame,
         components = components_df

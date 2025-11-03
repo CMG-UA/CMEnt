@@ -503,7 +503,7 @@ minmaxscale <- function(x) {
     }
     pwm <- mcols(dmr)$pwm[[1]]
     consensus_seq <- mcols(dmr)$consensus_seq[[1]]
-    
+
     if (is.null(pwm) || !is.matrix(pwm)) {
         return(NULL)
     }
@@ -519,21 +519,21 @@ minmaxscale <- function(x) {
 
     suppressWarnings(suppressMessages({
         pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-            panel.grid.major.x = ggplot2::element_blank(),
-            panel.grid.minor = ggplot2::element_blank(),
-            axis.text.x = ggplot2::element_text(size = 10),
-            axis.text.y = ggplot2::element_text(size = 10),
-            axis.title = ggplot2::element_text(size = 11, face = "bold"),
-            plot.title = ggplot2::element_text(size = 12, face = "bold", hjust = 0.5)
-        ) +
-        ggplot2::labs(
-            x = "Position Relative to CpG",
-            y = "Information Content (bits)",
-            title = paste0("Supporting CpG Motif PWM (consensus: ", consensus_seq, ")")
-        ) +
-        ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
+            ggplot2::theme_minimal() +
+            ggplot2::theme(
+                panel.grid.major.x = ggplot2::element_blank(),
+                panel.grid.minor = ggplot2::element_blank(),
+                axis.text.x = ggplot2::element_text(size = 10),
+                axis.text.y = ggplot2::element_text(size = 10),
+                axis.title = ggplot2::element_text(size = 11, face = "bold"),
+                plot.title = ggplot2::element_text(size = 12, face = "bold", hjust = 0.5)
+            ) +
+            ggplot2::labs(
+                x = "Position Relative to CpG",
+                y = "Information Content (bits)",
+                title = paste0("Supporting CpG Motif PWM (consensus: ", consensus_seq, ")")
+            ) +
+            ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
     }))
 
     return(pwm_plot)
@@ -712,7 +712,7 @@ plotDMR <- function(dmrs,
     dmr_data <- S4Vectors::mcols(dmr)
 
     if (!is.null(pheno)) {
-        .log_info("Processing phenotype data...", level=3)
+        .log_info("Processing phenotype data...", level = 3)
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
             pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
         }
@@ -725,7 +725,7 @@ plotDMR <- function(dmrs,
         }
     }
 
-    .log_info(sprintf("Generating structure plot...", dmr_index), level=3)
+    .log_info(sprintf("Generating structure plot...", dmr_index), level = 3)
 
     # Create structure plot
     ret <- .plotDMRStructure(
@@ -747,12 +747,12 @@ plotDMR <- function(dmrs,
 
     if (!is.null(beta)) {
         # Read beta values using BetaHandler
-        .log_info("Fetching beta values for heatmap...", level=3)
+        .log_info("Fetching beta values for heatmap...", level = 3)
         beta_data <- beta_handler$getBeta(
             row_names = rownames(total_shown_positions),
             col_names = if (is.null(pheno)) NULL else rownames(pheno)
         )
-        .log_info("Generating beta values heatmap...", level=3)
+        .log_info("Generating beta values heatmap...", level = 3)
         heatmap_plot <- .plotBetaHeatmap(
             dmr_data = dmr_data,
             beta_data = beta_data,
@@ -777,12 +777,12 @@ plotDMR <- function(dmrs,
         structure_plot <- structure_plot + ggplot2::labs(
             x = sprintf("Genomic Position on %s (bp)", ret$chr)
         )
-        .log_info("Beta values not provided. Only the DMR structure plot will be returned.", level=2)
+        .log_info("Beta values not provided. Only the DMR structure plot will be returned.", level = 2)
         grobs <- list(ggplot2::ggplotGrob(structure_plot))
     }
 
     if (plot_motif) {
-        .log_info("Generating motif PWM plot...", level=3)
+        .log_info("Generating motif PWM plot...", level = 3)
         pwm_plot <- .plotPWM(dmr, genome = genome, array = array, sorted_locs = sorted_locs, motif_flank_size = motif_flank_size)
         if (!is.null(pwm_plot)) {
             grobs <- c(grobs, list(ggplot2::ggplotGrob(pwm_plot)))
@@ -920,8 +920,9 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, sorted_locs, min_sim, flank_size
+        dmrs, genome, array, sorted_locs, min_sim, flank_size, max_interactions
     )
+
     .log_success("DMR interactions data prepared", level = 2)
     if (verbose >= 3) {
         dir.create("debug", showWarnings = FALSE)
@@ -931,14 +932,14 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Creating Circos plot...")
 
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
-
+    circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
     if (!is.null(cytoband)) {
         cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
         circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("ideogram", "labels"))
     } else {
         circlize::circos.initializeWithIdeogram(species = genome, plotType = c("ideogram", "labels"))
     }
-
+    legends <- c()
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)
 
@@ -983,13 +984,23 @@ plotDMRsCircos <- function(dmrs,
                 }
             }
         )
+        # Add legend for arc colors
+        arc_legend <- ComplexHeatmap::Legend(
+            title = "DMR \u0394\u03b2",
+            title_position = "topcenter",
+            at = c(-1, -0.5, 0, 0.5, 1),
+            labels = c("-1", "-0.5", "0", "0.5", "1"),
+            col_fun = circlize::colorRamp2(c(-1, 0, 1), c("#055709", "white", "#801414")))
+        legends <- c(legends, list(arc_legend))
+        
+
         .log_success("Arc track added", level = 2)
     }
 
     if (!is.null(heatmap_data) && nrow(heatmap_data) > 0) {
         .log_step("Adding heatmap track...", level = 2)
         col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
-
+        heatmap_height <- 0.3
         circlize::circos.genomicHeatmap(
             bed = heatmap_data,
             col = col_fun,
@@ -997,23 +1008,101 @@ plotDMRsCircos <- function(dmrs,
             side = "inside",
             border_lwd = 0.2,
             line_lwd = 0.2,
-            heatmap_height = 0.2
+            heatmap_height = heatmap_height
         )
+
+        suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index(), panel.fun = function(x, y) {
+            if(circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
+                groups <- pheno[[sample_group_col]]
+                unique_groups <- unique(groups)
+                group_colors <- grDevices::rainbow(length(unique_groups))
+                names(group_colors) <- unique_groups
+                csum <- 0
+                for (i in seq_along(unique_groups)) {
+                    group <- unique_groups[i]
+                    group_size <- sum(groups == group)
+                    circlize::circos.rect(
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
+                        csum,
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
+                        csum + group_size,
+                        col = group_colors[group],
+                        border = NA
+                    )
+                    circlize::circos.text(
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
+                        csum + group_size / 2,
+                        group,
+                        cex = 0.5,
+                        facing = "clockwise"
+                    )
+                    csum <- csum + group_size
+                }
+            }
+        }, bg.border = NA))
+
+
+        # Make legend for heatmap
+        heatmap_legend <- ComplexHeatmap::Legend(
+            title = "Samples \u03b2-values",
+            at = c(0, 0.5, 1),
+            col_fun = col_fun,
+            title_position = "topcenter",
+            legend_height = grid::unit(4, "cm"),
+            labels_gp = grid::gpar(fontsize = 8),
+            title_gp = grid::gpar(fontsize = 10, fontface = "bold")
+        )
+        legends <- c(legends, list(heatmap_legend))
         .log_success("Heatmap track added", level = 2)
     }
 
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
-        link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
-        if (nrow(link_data) > max_interactions) {
-            link_data <- link_data[1:max_interactions, ]
-            .log_info("Limiting to top ", max_interactions, " interactions based on similarity", level = 2)
-        }
 
-        link_colors <- circlize::colorRamp2(
-            c(min(link_data$sim), median(link_data$sim), max(link_data$sim)),
-            c("#89adc2", "#62b0f0", "#1696e0")
+        # Assign different hue based on component_id, and different shade based on similarity
+        link_data$component_id <- as.factor(link_data$component_id)
+        n_components <- length(levels(link_data$component_id))
+        hues <- seq(15, 375, length = n_components + 1)
+        component_colors <- grDevices::hcl(h = hues, l = 65, c = 100)[1:n_components]
+        names(component_colors) <- levels(link_data$component_id)
+        link_colors <- function(sim_vector) {
+            sapply(seq_along(sim_vector), function(i) {
+                comp_id <- link_data$component_id[i]
+                base_color <- grDevices::col2rgb(component_colors[as.character(comp_id)]) / 255
+                shade_factor <- 0.5 + 0.5 * sim_vector[i]
+                shaded_color <- rgb(
+                    red = base_color[1] * shade_factor,
+                    green = base_color[2] * shade_factor,
+                    blue = base_color[3] * shade_factor
+                )
+                shaded_color
+            })
+        }
+        # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
+        link_legend_data <- data.frame(
+            component_id = levels(link_data$component_id),
+            consensus_seq = link_data$consensus_seq,
+            jaspar_names = link_data$jaspar_names,
+            stringsAsFactors = FALSE
         )
+        link_legend_colors <- link_colors(rep(1, nrow(link_legend_data)))
+        link_legend_labels <- sapply(seq_len(nrow(link_legend_data)), function(i) {
+            label <- paste0("Consensus : ", link_legend_data$consensus_seq[i])
+            if (!is.na(link_legend_data$jaspar_names[i]) && link_legend_data$jaspar_names[i] != "") {
+                label <- paste0(label, " (", link_legend_data$jaspar_names[i], ")")
+            }
+            label
+        })
+        link_legend <- ComplexHeatmap::Legend(
+            labels = link_legend_labels,
+            legend_gp = grid::gpar(fill = link_legend_colors),
+            title = "DMR Interaction",
+            title_position = "topcenter",
+            title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
+            labels_gp = grid::gpar(fontsize = 8)
+        )
+        legends <- c(legends, list(link_legend))
+
 
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
@@ -1035,10 +1124,18 @@ plotDMRsCircos <- function(dmrs,
         }
         .log_success("Link track added", level = 2)
     }
-
+    if (length(legends) > 0) {
+        ComplexHeatmap::draw(
+            do.call(ComplexHeatmap::packLegend, legends),
+            x = grid::unit(1, "npc") - grid::unit(2, "mm"),
+            y = grid::unit(2, "mm"),
+            just = c("right", "bottom")
+        )
+    }
     .log_success("Circos plot created successfully")
 
     circlize::circos.clear()
+
 
     invisible(NULL)
 }
@@ -1165,7 +1262,7 @@ plotDMRsCircos <- function(dmrs,
     }
     available_cpgs <- beta_handler$getBetaRowNames()
     dmrs_cpgs_list <- getSupportingSites(
-        dmrs, 
+        dmrs,
         available_cpgs,
         max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
         ret_index = FALSE,
@@ -1193,7 +1290,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, sorted_locs, min_sim, flank_size) {
+.prepareCircosLinkData <- function(dmrs, genome, array, sorted_locs, min_sim, flank_size, max_interactions) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(
@@ -1217,5 +1314,12 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_success("Found ", nrow(ret$interactions), " motif-based interactions")
-    ret$interactions
+    link_data <- ret$interactions
+    link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
+    if (nrow(link_data) > max_interactions) {
+        link_data <- rbind(split(link_data, link_data$component_id), function(x) x[seq_len(min(nrow(x), max_interactions)), ])
+        .log_info("Limiting to top ", max_interactions, " interactions per component based on similarity", level = 2)
+    }
+    link_data <- merge(link_data, ret$components, by = "component_id", all.x = TRUE, suffixes = c("", "_comp"))
+    link_data
 }

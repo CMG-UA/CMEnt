@@ -81,7 +81,7 @@
     } else {
         conn <- file(beta_file, "r")
     }
-    if (!is.null(sites)){
+    if (!is.null(sites)) {
         sites_inds <- which(beta_row_names %in% sites)
         sites_inds_steps <- diff(c(-1, sites_inds)) - 1
         beta_sites <- lapply(sites_inds_steps, function(step) {
@@ -1403,14 +1403,15 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
         flanked_end <- GenomicRanges::end(granges) + dflank_size
         start_off_limit <- (flanked_start < 1) * (1 - flanked_start)
         seqls <- GenomeInfoDb::seqlengths(granges)[
-            as.character(GenomeInfoDb::seqnames(granges))]
+            as.character(GenomeInfoDb::seqnames(granges))
+        ]
         end_off_limit <- (flanked_end > seqls) * (flanked_end - seqls)
         BiocGenerics::start(granges) <- pmax(flanked_start, 1)
         BiocGenerics::end(granges) <- pmin(flanked_end, seqls)
-        ret <- list(granges=granges, start_off_limit=start_off_limit, end_off_limit=end_off_limit)
+        ret <- list(granges = granges, start_off_limit = start_off_limit, end_off_limit = end_off_limit)
         return(ret)
     } else {
-        ret <- list(granges=granges, start_off_limit=rep(0, length(granges)), end_off_limit=rep(0, length(granges)))
+        ret <- list(granges = granges, start_off_limit = rep(0, length(granges)), end_off_limit = rep(0, length(granges)))
         return(ret)
     }
 }
@@ -1516,16 +1517,16 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         sequences <- .getSequencesFromUCSC(dmrs, genome)
     }
     sequences <- mapply(function(seq, na_start, na_end) {
-            if (is.na(seq)) {
-                return(NA_character_)
-            }
-            seq <- paste0(
-                paste(rep("N", na_start), collapse = ""),
-                seq,
-                paste(rep("N", na_end), collapse = "")
-            )
-            seq
-        }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
+        if (is.na(seq)) {
+            return(NA_character_)
+        }
+        seq <- paste0(
+            paste(rep("N", na_start), collapse = ""),
+            seq,
+            paste(rep("N", na_end), collapse = "")
+        )
+        seq
+    }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
     sequences
 }
 
