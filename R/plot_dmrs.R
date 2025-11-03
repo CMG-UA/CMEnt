@@ -913,11 +913,13 @@ plotDMRsCircos <- function(dmrs,
         dmrs, beta_handler, pheno, sample_group_col,
         sorted_locs, max_cpgs_per_dmr, max_num_samples_per_group
     )
+    heatmap_df <- heatmap_data$heatmap_df
+    reduced_pheno <- heatmap_data$reduced_pheno
     .log_success("Heatmap data prepared", level = 2)
-    .log_info("Total heatmap entries: ", nrow(heatmap_data), level = 2)
+    .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
     if (verbose >= 3) {
         dir.create("debug", showWarnings = FALSE)
-        write.table(heatmap_data, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+        write.table(heatmap_df, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
@@ -932,9 +934,12 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Creating Circos plot...")
-
+    plot.new()
+    circle_size = grid::unit(1, "snpc")
+    grid::pushViewport(grid::viewport(x = 0.5, y = 1, width = circle_size, height = circle_size,
+    just = c("center", "top")))
     circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
-    par(mar = c(circle_size, circle_size, circle_size, 8.1), xpd=TRUE)
+    par(omi = gridBase::gridOMI(), new = TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
     if (!is.null(cytoband)) {
@@ -997,16 +1002,15 @@ plotDMRsCircos <- function(dmrs,
             col_fun = circlize::colorRamp2(c(-1, 0, 1), c("#055709", "white", "#801414")))
         legends <- c(legends, list(arc_legend))
 
-
         .log_success("Arc track added", level = 2)
     }
 
-    if (!is.null(heatmap_data) && nrow(heatmap_data) > 0) {
+    if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
         col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
         heatmap_height <- 0.3
         circlize::circos.genomicHeatmap(
-            bed = heatmap_data,
+            bed = heatmap_df,
             col = col_fun,
             border = "white",
             side = "inside",
@@ -1017,7 +1021,7 @@ plotDMRsCircos <- function(dmrs,
 
         suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index(), panel.fun = function(x, y) {
             if(circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
-                groups <- pheno[[sample_group_col]]
+                groups <- reduced_pheno[[sample_group_col]]
                 unique_groups <- unique(groups)
 
                 group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
@@ -1136,8 +1140,9 @@ plotDMRsCircos <- function(dmrs,
         .log_success("Link track added", level = 2)
     }
     circlize::circos.clear()
-
-    ComplexHeatmap::draw(do.call(ComplexHeatmap::packLegend, legends), x = circle_size, just = "left")
+    grid::upViewport()
+    lgd_list_horizontal <- ComplexHeatmap::packLegend(legends, direction = "horizontal")
+    ComplexHeatmap::draw(lgd_list_horizontal, y = unit(1, "npc") - circle_size, just = "top")
     .log_success("Circos plot created successfully")
 
 
@@ -1285,10 +1290,13 @@ plotDMRsCircos <- function(dmrs,
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
 
+
     if (nrow(pheno) == 0) {
         .log_warn("No samples in pheno match the samples in beta values. Skipping heatmap track.")
-        return(NULL)
+        return(list(heatmap_df = NULL, reduced_pheno = NULL) )
     }
+    # Order pheno by sample group
+    pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
     available_cpgs <- beta_handler$getBetaRowNames()
     dmrs_cpgs_list <- getSupportingSites(
         dmrs,
@@ -1309,6 +1317,7 @@ plotDMRsCircos <- function(dmrs,
         selected_samples <- c()
         groups <- pheno[[sample_group_col]]
         unique_groups <- unique(groups)
+        reduced_pheno <- data.frame()
         for (group in unique_groups) {
             group_samples <- rownames(pheno)[groups == group]
             if (length(group_samples) > max_num_samples_per_group) {
@@ -1329,11 +1338,14 @@ plotDMRsCircos <- function(dmrs,
                 group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
 
             }
+            reduced_pheno <- rbind(reduced_pheno, pheno[group_samples, , drop = FALSE])
             selected_samples <- c(selected_samples, group_samples)
         }
         beta_data <- beta_data[, selected_samples, drop = FALSE]
+    } else {
+        reduced_pheno <- pheno
     }
-    cbind(shown_locs, beta_data)
+    list(heatmap_df=cbind(shown_locs, beta_data) , reduced_pheno=reduced_pheno)
 }
 
 
