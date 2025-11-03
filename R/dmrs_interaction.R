@@ -2,9 +2,9 @@
     top <- colSums((pwm1 - 0.25) * (pwm2 - 0.25))
     bottom <- sqrt(colSums((pwm1 - 0.25)^2) * colSums((pwm2 - 0.25)^2))
     r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
-    return(r)
+    r
 }
-.motif_corr <- function(pwmSubjectMatrixList, pwmQuery) {
+.motifCorr <- function(pwmSubjectMatrixList, pwmQuery) {
     sapply(pwmSubjectMatrixList, function(pwmSubject) {
         pwm1 <- pwmSubject@profileMatrix
         pwm2 <- pwmQuery
@@ -51,14 +51,14 @@ comparePWMToJaspar <- function(pwm_queries) {
         saveRDS(vertebrate_pwms, pwms_file)
         jaspar_pwms <- vertebrate_pwms
     }
-    similarities <- sapply(pwm_queries, function(query) .motif_corr(jaspar_pwms, query))
+    similarities <- sapply(pwm_queries, function(query) .motifCorr(jaspar_pwms, query))
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
     revcomp_queries <- lapply(pwm_queries, function(pwm) {
         pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(nrow(pwm)))]
         rownames(pwm_revcomp) <- rownames(pwm)
         pwm_revcomp
     })
-    revcomp_similarities <- sapply(revcomp_queries, function(query) .motif_corr(jaspar_pwms, query))
+    revcomp_similarities <- sapply(revcomp_queries, function(query) .motifCorr(jaspar_pwms, query))
     similarities <- pmax(similarities, revcomp_similarities)
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
@@ -98,7 +98,7 @@ comparePWMToJaspar <- function(pwm_queries) {
     })
     results <- do.call(rbind, lapply(results, as.data.frame))
 
-    return(results)
+    results
 }
 
 
@@ -301,7 +301,7 @@ computeDMRsInteraction <- function(
     )
     if (find_components) {
         interaction_data_frame$component_id <- sapply(interaction_data_frame$index1, function(x) {
-            which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]]
+            components_df[which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]], "component_id"]
         })
     }
     list(

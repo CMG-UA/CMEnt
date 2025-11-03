@@ -944,13 +944,84 @@ plotDMRsCircos <- function(dmrs,
     par(omi = gridBase::gridOMI(), new = TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
+
+    legends <- c()
+
     if (!is.null(cytoband)) {
         cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
-        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("ideogram", "labels"))
+        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"))
     } else {
-        circlize::circos.initializeWithIdeogram(species = genome, plotType = c("ideogram", "labels"))
+        circlize::circos.initializeWithIdeogram(species = genome, plotType = c("labels", "axis"))
     }
-    legends <- c()
+
+    if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
+        .log_step("Adding heatmap track...", level = 2)
+        col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
+        heatmap_height <- 0.3
+        circlize::circos.genomicHeatmap(
+            bed = heatmap_df,
+            col = col_fun,
+            border = "white",
+            side = "outside",
+            border_lwd = 0.2,
+            line_lwd = 0.2,
+            heatmap_height = heatmap_height,
+        )
+
+        suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index() - 1, panel.fun = function(x, y) {
+            if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
+                groups <- reduced_pheno[[sample_group_col]]
+                unique_groups <- unique(groups)
+
+                group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
+                names(group_colors) <- unique_groups
+                csum <- 0
+                for (i in seq_along(unique_groups)) {
+                    group <- unique_groups[i]
+                    group_size <- sum(groups == group)
+                    circlize::circos.rect(
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
+                        csum,
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
+                        csum + group_size,
+                        col = group_colors[group],
+                        border = NA
+                    )
+                    circlize::circos.text(
+                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
+                        csum + group_size / 2,
+                        group,
+                        cex = 0.5,
+                        facing = "clockwise"
+                    )
+                    csum <- csum + group_size
+                }
+            }
+        }, bg.border = NA))
+
+
+        # Make legend for heatmap
+        heatmap_legend <- ComplexHeatmap::Legend(
+            title = "Samples \u03b2-values",
+            at = c(0, 0.5, 1),
+            col_fun = col_fun,
+            title_position = "topcenter",
+            legend_height = grid::unit(4, "cm"),
+            labels_gp = grid::gpar(fontsize = 8),
+            title_gp = grid::gpar(fontsize = 10, fontface = "bold")
+        )
+        legends <- c(legends, list(heatmap_legend))
+        .log_success("Heatmap track added", level = 2)
+    }
+
+    if (!is.null(cytoband)) {
+        cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
+        circlize::circos.genomicIdeogram(cytoband = cytoband_subset)
+    } else {
+        circlize::circos.genomicIdeogram(species = genome)
+    }
+
+    
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)
 
@@ -1008,65 +1079,6 @@ plotDMRsCircos <- function(dmrs,
         .log_success("Arc track added", level = 2)
     }
 
-    if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
-        .log_step("Adding heatmap track...", level = 2)
-        col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
-        heatmap_height <- 0.3
-        circlize::circos.genomicHeatmap(
-            bed = heatmap_df,
-            col = col_fun,
-            border = "white",
-            side = "inside",
-            border_lwd = 0.2,
-            line_lwd = 0.2,
-            heatmap_height = heatmap_height
-        )
-
-        suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index(), panel.fun = function(x, y) {
-            if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
-                groups <- reduced_pheno[[sample_group_col]]
-                unique_groups <- unique(groups)
-
-                group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
-                names(group_colors) <- unique_groups
-                csum <- 0
-                for (i in seq_along(unique_groups)) {
-                    group <- unique_groups[i]
-                    group_size <- sum(groups == group)
-                    circlize::circos.rect(
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
-                        csum,
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
-                        csum + group_size,
-                        col = group_colors[group],
-                        border = NA
-                    )
-                    circlize::circos.text(
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
-                        csum + group_size / 2,
-                        group,
-                        cex = 0.5,
-                        facing = "clockwise"
-                    )
-                    csum <- csum + group_size
-                }
-            }
-        }, bg.border = NA))
-
-
-        # Make legend for heatmap
-        heatmap_legend <- ComplexHeatmap::Legend(
-            title = "Samples \u03b2-values",
-            at = c(0, 0.5, 1),
-            col_fun = col_fun,
-            title_position = "topcenter",
-            legend_height = grid::unit(4, "cm"),
-            labels_gp = grid::gpar(fontsize = 8),
-            title_gp = grid::gpar(fontsize = 10, fontface = "bold")
-        )
-        legends <- c(legends, list(heatmap_legend))
-        .log_success("Heatmap track added", level = 2)
-    }
 
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
@@ -1090,6 +1102,8 @@ plotDMRsCircos <- function(dmrs,
                 shaded_color
             })
         }
+        link_data$colors <- link_colors(link_data[,"sim"])
+
         # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
         comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_sequence", "jaspar_names", "jaspar_corr")]
         link_legend_data <- data.frame(
@@ -1136,7 +1150,7 @@ plotDMRsCircos <- function(dmrs,
                 point1 = point1,
                 sector.index2 = link_data$chr2[i],
                 point2 = point2,
-                col = link_colors(link_data$sim[i]),
+                col = link_data$colors[i],
                 border = NA
             )
         }
