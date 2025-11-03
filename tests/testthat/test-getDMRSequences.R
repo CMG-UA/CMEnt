@@ -11,7 +11,7 @@ test_that("getDMRSequences works with BSgenome packages when available", {
 
     expect_type(sequences, "character")
     expect_length(sequences, 1)
-    expect_equal(nchar(sequences[1]), 51)
+    expect_equal(as.integer(nchar(sequences[1])), 51)
 })
 
 test_that("getDMRSequences falls back to online API when BSgenome not available", {
@@ -28,8 +28,7 @@ test_that("getDMRSequences falls back to online API when BSgenome not available"
 
     expect_type(sequences, "character")
     expect_length(sequences, 1)
-    expect_equal(nchar(sequences[1]), 51)
-    expect_false(is.na(sequences[1]))
+    expect_equal(as.integer(nchar(sequences[1])), 51)
 })
 
 test_that("getDMRSequences handles multiple regions", {
@@ -46,8 +45,8 @@ test_that("getDMRSequences handles multiple regions", {
 
     expect_type(sequences, "character")
     expect_length(sequences, 2)
-    expect_equal(nchar(sequences[1]), 51)
-    expect_equal(nchar(sequences[2]), 51)
+    expect_equal(as.integer(nchar(sequences[1])), 51)
+    expect_equal(as.integer(nchar(sequences[2])), 51)
 })
 
 test_that("getDMRSequences works with different genomes", {
