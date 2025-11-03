@@ -257,7 +257,7 @@ computeDMRsInteraction <- function(
         g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
         components <- igraph::components(g1)
         # filter components by size
-        components <- components[components$csize >= min_component_size]
+        components <- components[components$csize >= min_component_size, ]
         # compute consensus sequence for each connected component
         # create a dataframe with columns component_id, dmrs
         components_df <- data.frame(
