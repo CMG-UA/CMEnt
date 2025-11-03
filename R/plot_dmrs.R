@@ -930,10 +930,9 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Creating Circos plot...")
-    plot.new()
+
     circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
-    grid::pushViewport(grid::viewport(x = 0.5, y = 1, width = circle_size, height = circle_size,
-        just = c("left", "center")))
+    par(mar = c(circle_size, circle_size, circle_size, 8.1), xpd=TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
     if (!is.null(cytoband)) {
@@ -1018,7 +1017,8 @@ plotDMRsCircos <- function(dmrs,
             if(circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
                 groups <- pheno[[sample_group_col]]
                 unique_groups <- unique(groups)
-                group_colors <- grDevices::rainbow(length(unique_groups))
+
+                group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
                 names(group_colors) <- unique_groups
                 csum <- 0
                 for (i in seq_along(unique_groups)) {
@@ -1134,9 +1134,8 @@ plotDMRsCircos <- function(dmrs,
         .log_success("Link track added", level = 2)
     }
     circlize::circos.clear()
-    grid::upViewport()
 
-    grid::draw(do.call(ComplexHeatmap::packLegend, legends), x = circle_size, just = "left")
+    ComplexHeatmap::draw(do.call(ComplexHeatmap::packLegend, legends), x = circle_size, just = "left")
     .log_success("Circos plot created successfully")
 
 
