@@ -1,3 +1,58 @@
+comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
+    cache <- options("DMRsegal.jaspar_cache_dir", file.path(
+        path.expand("~"),
+        ".cache", "c", "DMRsegal", "jaspar_cache"
+    ))
+    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+    pwms_file <- file.path(cache[[1]], "jaspar2024_pwms.rds")
+    if (file.exists(pwms_file)) {
+        .log_info("Loading JASPAR PWMs from cache...", verbose = 3)
+        jaspar_pwms <- readRDS(pwms_file)
+    } else {
+        db <- JASPAR2024::JASPAR2024()@db
+        opts <- list()
+        opts[["tax_group"]] <- "vertebrates"
+        vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
+        vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type="prob")
+        saveRDS(vertebrate_pwms, pwms_file)
+        jaspar_pwms <- vertebrate_pwms
+    }
+    similarities <- sapply(pwm_queries, function(query) TFBSTools::PWMSimilarity(jaspar_pwms, query, method = "Pearson"))
+    found <- which(similarities >= corr_threshold, arr.ind = TRUE)
+    if (nrow(found) == 0) {
+        .log_warn("No similar motifs found in JASPAR database with correlation >=", corr_threshold)
+        similarities <- c()
+    } else {
+        similar_motifs <- data.frame(
+            query_index = found[, 2],
+            jaspar_id = names(jaspar_pwms)[found[, 1]],
+            correlation = similarities[found]
+        )
+        # group by query_index and return comma-separated jaspar_ids and correlations
+        similarities <- lapply(split(similar_motifs, similar_motifs$query_index), function(df) {
+            list(
+                jaspar_ids = paste(df$jaspar_id, collapse = ","),
+                jaspar_corr = paste(round(df$correlation, 3), collapse = ",")
+            )
+        })
+    }
+    # Fill in results for all queries
+    results <- lapply(seq_along(pwm_queries), function(i) {
+        if (as.character(i) %in% names(similarities)) {
+            similarities[[as.character(i)]]
+        } else {
+            list(
+                jaspar_ids = NA,
+                jaspar_corr = NA
+            )
+        }
+    })
+    results <- do.call(rbind, lapply(results, as.data.frame))
+
+    return(results)
+}
+
+
 #' Extract DMR Motif Frequencies
 #'
 #' @description Extracts motif frequencies around CpG sites within DMRs.
@@ -37,6 +92,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
         genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = genomic_locs)
     }
+
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
     dmrs_cpgs_inds <- getSupportingSites(dmrs, rownames(genomic_locs), ret_index=TRUE, separate_by_section = FALSE)
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, genomic_locs)
@@ -73,8 +129,6 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     # Remove CpG position
     pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
     ret <- lsa::cosine(pwms)
-    # set upper triangle and diagonal to NA
-    ret[upper.tri(ret, diag = TRUE)] <- NA
     return(ret)
 }
 
@@ -120,14 +174,15 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5, plot.dir = NULL) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
+        .log_info("DMR motifs not precomputed. Extracting motifs...", verbose = 2)
         dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
-    if (!is.na(plot.dir)){
+    if (!is.null(plot.dir)) {
         dir.create(plot.dir, showWarnings = FALSE, recursive = TRUE)
         sim_melt <- reshape2::melt(similarity_matrix, na.rm = TRUE)
         colnames(sim_melt) <- c("DMR1", "DMR2", "Similarity")
-        p <- ggplot2::ggplot(sim_melt, ggplot2::aes(x = DMR1, y = DMR2, fill = Similarity)) +
+        p <- ggplot2::ggplot(sim_melt, ggplot2::aes_string(x = "DMR1", y = "DMR2", fill = "Similarity")) +
             ggplot2::geom_tile() +
             ggplot2::scale_fill_viridis_c() +
             ggplot2::theme_minimal() +
@@ -140,7 +195,7 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
     }
-    g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "lower", diag = FALSE)
+    g1 <- igraph::graph_from_adjacency_matrix(mask)
     components <- igraph::components(g1)
     # compute consensus sequence for each connected component
     # create a dataframe with columns component_id, dmrs
@@ -161,6 +216,9 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
     })
     # Order by component size
     components_df <- components_df[order(-components_df$size), ]
+
+    # Find similarities to JASPAR motifs
+    components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
 
 
     rowcol_df <- which(mask, arr.ind = TRUE)

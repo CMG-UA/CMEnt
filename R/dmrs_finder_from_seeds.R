@@ -823,6 +823,16 @@ findDMRsFromSeeds <- function(beta = NULL,
                 chroms_and_pos <- strsplit(dmp_ids, ":")
                 chroms <- sapply(chroms_and_pos, function(x) x[1])
                 positions <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
+                # Convert chroms to UCSC style if needed
+                if (!all(chroms %in% chr_levels)) {
+                    if (all(paste0("chr", chroms) %in% chr_levels)) {
+                        chroms <- paste0("chr", chroms)
+                    } else if (all(sub("^chr", "", chroms) %in% chr_levels)) {
+                        chroms <- sub("^chr", "", chroms)
+                    } else {
+                        stop("DMP IDs chromosomes in the dmps file/dataframe (using dmps_tsv_id_col: ", dmps_tsv_id_col, ") do not match the chromosome style of the provided bed beta file.")
+                    }
+                }
                 chroms <- as.integer(factor(chroms, levels = chr_levels))
                 dmps_tsv <- dmps_tsv[order(chroms, positions), ]
                 converted_dmp_ids <- match(

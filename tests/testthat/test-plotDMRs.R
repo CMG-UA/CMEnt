@@ -188,12 +188,12 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
 
     pheno_file <- system.file("data/pheno.rda", package = "DMRsegal")
     beta_file <- system.file("data/beta.rda", package = "DMRsegal")
-    
+
     if (!file.exists(pheno_file) || !file.exists(beta_file)) {
         pheno_file <- "../../data/pheno.rda"
         beta_file <- "../../data/beta.rda"
     }
-    
+
     if (!file.exists(pheno_file) || !file.exists(beta_file)) {
         skip("Data files not available")
     }
@@ -212,7 +212,7 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
     ))
 
     expect_true(inherits(p, "gtable"))
-    
+
     if ("pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
         expect_true(nrow(p) >= 3)
     }
