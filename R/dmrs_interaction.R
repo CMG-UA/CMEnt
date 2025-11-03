@@ -4,12 +4,9 @@
     r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
     return(r)
 }
-.motif_corr <- function(pwmSubjectList, pwmQuery) {
-    if (!is.list(pwmSubjectList)) {
-        pwmSubjectList <- list(pwmSubjectList)
-    }
-    sapply(pwmSubjectList, function(pwmSubject) {
-        pwm1 <- pwmSubject
+.motif_corr <- function(pwmSubjectMatrixList, pwmQuery) {
+    sapply(pwmSubjectMatrixList, function(pwmSubject) {
+        pwm1 <- pwmSubject@profileMatrix
         pwm2 <- pwmQuery
         widthMin <- min(ncol(pwm1), ncol(pwm2))
         ans <- c()
@@ -27,13 +24,14 @@
 }
 
 
-comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
+comparePWMToJaspar <- function(pwm_queries) {
     cache <- getOption("DMRsegal.jaspar_cache_dir", file.path(
         path.expand("~"),
         ".cache", "R", "DMRsegal", "jaspar_cache"
     ))
     tax_group <- getOption("DMRsegal.jaspar_tax_group", "vertebrates")
     jaspar_version <- getOption("DMRsegal.jaspar_version", 2024)
+    corr_threshold <- getOption("DMRsegal.jaspar_corr_threshold", corr_threshold)
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
     pwms_file <- file.path(cache, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
     if (file.exists(pwms_file)) {
@@ -269,9 +267,7 @@ computeDMRsInteraction <- function(
         # Find the average PWM for each component
         components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
             pwms <- mcols(dmrs)[idxs, "pwm"]
-            Reduce("+", pwms) / length(pwms)
-        })
-        components_df$avg_pwm <- lapply(components_df$avg_pwm, function(mat) {
+            mat <- Reduce("+", pwms) / length(pwms)
             mat / colSums(mat)
         })
         components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
@@ -281,7 +277,7 @@ computeDMRsInteraction <- function(
         components_df <- components_df[order(-components_df$size), ]
         if (query_components_with_jaspar) {
             # Find similarities to JASPAR motifs
-            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm, corr_threshold = min_sim))
+            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
         }
     }
 
