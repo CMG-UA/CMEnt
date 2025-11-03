@@ -256,8 +256,6 @@ computeDMRsInteraction <- function(
     if (find_components) {
         g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
         components <- igraph::components(g1)
-        # filter components by size
-        components <- components[components$csize >= min_component_size, ]
         # compute consensus sequence for each connected component
         # create a dataframe with columns component_id, dmrs
         components_df <- data.frame(
@@ -267,6 +265,8 @@ computeDMRsInteraction <- function(
         components_df$indices <- lapply(seq_along(components$csize), function(i) {
             which(components$membership == i)
         })
+        # filter components by size
+        components_df <- components_df[components_df$size >= min_component_size, ]
         # Find the average PWM for each component
         components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
             pwms <- mcols(dmrs)[idxs, "pwm"]
