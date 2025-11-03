@@ -56,7 +56,7 @@ test_that("plotDMR works with different genome versions", {
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
-
+    options("DMRsegal.verbose" = 2)
     p1 <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, genome = "hg19"))
     expect_s3_class(p1, "gtable")
 
@@ -95,7 +95,7 @@ test_that("plotDMRs creates a combined plot", {
 
 test_that("plotDMRs handles NULL dmr_indices", {
     skip_if_not_installed("ggplot2")
-
+    options("DMRsegal.verbose" = 3)
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")

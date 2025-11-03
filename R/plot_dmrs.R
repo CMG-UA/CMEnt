@@ -583,8 +583,9 @@ plotDMRs <- function(dmrs,
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
+    dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(dmrs$delta_beta))
+        score <- minmaxscale(abs(mcols(dmrs)$delta_beta))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -682,8 +683,6 @@ plotDMR <- function(dmrs,
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
-        # Dropping DMRs not in sorted_locs
-        dmrs <- dmrs[GenomicRanges::start(dmrs) %in% sorted_locs$start & GenomicRanges::end(dmrs) %in% sorted_locs$end]
     } else {
         array <- NULL
     }
@@ -706,10 +705,14 @@ plotDMR <- function(dmrs,
     if (!is.null(pheno) && !(sample_group_col %in% colnames(pheno))) {
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
+    if (dmr_index < 1 || dmr_index > length(dmrs)) {
+        stop("dmr_index (", dmr_index, ") is out of bounds. There are only ", length(dmrs), " DMRs available.")
+    }
     dmr <- dmrs[dmr_index]
     dmr_data <- S4Vectors::mcols(dmr)
 
     if (!is.null(pheno)) {
+        .log_info("Processing phenotype data...", level=3)
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
             pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
         }
@@ -722,6 +725,7 @@ plotDMR <- function(dmrs,
         }
     }
 
+    .log_info(sprintf("Generating structure plot...", dmr_index), level=3)
 
     # Create structure plot
     ret <- .plotDMRStructure(
@@ -743,10 +747,12 @@ plotDMR <- function(dmrs,
 
     if (!is.null(beta)) {
         # Read beta values using BetaHandler
+        .log_info("Fetching beta values for heatmap...", level=3)
         beta_data <- beta_handler$getBeta(
             row_names = rownames(total_shown_positions),
             col_names = if (is.null(pheno)) NULL else rownames(pheno)
         )
+        .log_info("Generating beta values heatmap...", level=3)
         heatmap_plot <- .plotBetaHeatmap(
             dmr_data = dmr_data,
             beta_data = beta_data,
@@ -776,6 +782,7 @@ plotDMR <- function(dmrs,
     }
 
     if (plot_motif) {
+        .log_info("Generating motif PWM plot...", level=3)
         pwm_plot <- .plotPWM(dmr, genome = genome, array = array, sorted_locs = sorted_locs, motif_flank_size = motif_flank_size)
         if (!is.null(pwm_plot)) {
             grobs <- c(grobs, list(ggplot2::ggplotGrob(pwm_plot)))
@@ -1161,7 +1168,7 @@ plotDMRsCircos <- function(dmrs,
         dmrs, 
         available_cpgs,
         max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
-        ret_index = TRUE,
+        ret_index = FALSE,
         separate_by_section = FALSE
     )
     dmrs_cpgs <- unlist(dmrs_cpgs_list)

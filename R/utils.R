@@ -76,23 +76,27 @@
     ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
     beta_col_names <- ret$beta_col_names
     cols_inds <- ret$beta_col_inds
-    sites_inds <- which(beta_row_names %in% sites)
-    sites_inds_steps <- diff(c(-1, sites_inds)) - 1
     if (endsWith(beta_file, "gz")) {
         conn <- gzfile(beta_file, "r")
     } else {
         conn <- file(beta_file, "r")
     }
-    beta_sites <- lapply(sites_inds_steps, function(step) {
-        l <- scan(
-            conn,
-            what = character(),
-            skip = step,
-            nlines = 1,
-            quiet = TRUE
-        )
-        as.numeric(l[cols_inds])
-    })
+    if (!is.null(sites)){
+        sites_inds <- which(beta_row_names %in% sites)
+        sites_inds_steps <- diff(c(-1, sites_inds)) - 1
+        beta_sites <- lapply(sites_inds_steps, function(step) {
+            l <- scan(
+                conn,
+                what = character(),
+                skip = step,
+                nlines = 1,
+                quiet = TRUE
+            )
+            as.numeric(l[cols_inds])
+        })
+    } else {
+        beta_sites <- readLines(conn)[2:length(beta_row_names) + 1]
+    }
     close(conn)
     beta_sites <- do.call(rbind, beta_sites)
     rownames(beta_sites) <- sites
@@ -1398,7 +1402,8 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
         flanked_start <- GenomicRanges::start(granges) - uflank_size
         flanked_end <- GenomicRanges::end(granges) + dflank_size
         start_off_limit <- (flanked_start < 1) * (1 - flanked_start)
-        seqls <- GenomeInfoDb::seqlengths(granges)[as.character(GenomeInfoDb::seqnames(granges))]
+        seqls <- GenomeInfoDb::seqlengths(granges)[
+            as.character(GenomeInfoDb::seqnames(granges))]
         end_off_limit <- (flanked_end > seqls) * (flanked_end - seqls)
         BiocGenerics::start(granges) <- pmax(flanked_start, 1)
         BiocGenerics::end(granges) <- pmin(flanked_end, seqls)
@@ -1846,6 +1851,7 @@ convertToGRanges <- function(obj, genome) {
         if (is.na(grs_genome)) {
             .log_warn("Input GRanges object has no genome information. Assuming genome: ", genome)
             grs_genome <- genome
+            GenomeInfoDb::seqinfo(obj) <- GenomeInfoDb::Seqinfo(genome = genome)
         }
         if (grs_genome != genome) {
             obj <- .liftOverFromGenomeToGenome(obj, grs_genome, genome)
