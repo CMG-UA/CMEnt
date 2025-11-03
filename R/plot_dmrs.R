@@ -1079,24 +1079,30 @@ plotDMRsCircos <- function(dmrs,
             })
         }
         # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
+        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_sequence", "jaspar_names", "jaspar_corr")]
         link_legend_data <- data.frame(
-            component_id = levels(link_data$component_id),
-            consensus_seq = link_data$consensus_seq,
-            jaspar_names = link_data$jaspar_names,
+            component_id = comp_data$component_id,
+            consensus_seq = comp_data$consensus_sequence,
+            jaspar_names = comp_data$jaspar_names,
+            jaspar_corr = comp_data$jaspar_corr,
             stringsAsFactors = FALSE
         )
-        link_legend_colors <- link_colors(rep(1, nrow(link_legend_data)))
+        link_legend_colors <- component_colors
         link_legend_labels <- sapply(seq_len(nrow(link_legend_data)), function(i) {
-            label <- paste0("Consensus : ", link_legend_data$consensus_seq[i])
+            label <- paste0("", link_legend_data$consensus_seq[i])
             if (!is.na(link_legend_data$jaspar_names[i]) && link_legend_data$jaspar_names[i] != "") {
-                label <- paste0(label, " (", link_legend_data$jaspar_names[i], ")")
+                names <- strsplit(link_legend_data$jaspar_names[i], ",")[[1]]
+                cors <- strsplit(link_legend_data$jaspar_corr[i], ",")[[1]]
+                for (j in seq_along(names)) {
+                    label <- paste0(label, " | ", names[j], " (", round(as.numeric(cors[j]), 3), ")")
+                }
             }
             label
         })
         link_legend <- ComplexHeatmap::Legend(
             labels = link_legend_labels,
             legend_gp = grid::gpar(fill = link_legend_colors),
-            title = "DMR Interaction",
+            title = "DMR Interaction Components \n with Motif Consensus and Jaspar Matches",
             title_position = "topcenter",
             title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
             labels_gp = grid::gpar(fontsize = 8)
@@ -1317,7 +1323,7 @@ plotDMRsCircos <- function(dmrs,
     link_data <- ret$interactions
     link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
     if (nrow(link_data) > max_interactions) {
-        link_data <- rbind(split(link_data, link_data$component_id), function(x) x[seq_len(min(nrow(x), max_interactions)), ])
+        link_data <- do.call(rbind, lapply(split(link_data, link_data$component_id), function(x) x[seq_len(min(nrow(x), max_interactions)), ]))
         .log_info("Limiting to top ", max_interactions, " interactions per component based on similarity", level = 2)
     }
     link_data <- merge(link_data, ret$components, by = "component_id", all.x = TRUE, suffixes = c("", "_comp"))

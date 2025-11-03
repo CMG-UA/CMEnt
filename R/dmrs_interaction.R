@@ -207,7 +207,8 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
     mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
-    mask[seq_len(nrow(mask)), seq_len(ncol(mask))] <- FALSE # remove self-loops, diag = FALSE doesn't work with igraph
+    # remove diagonal
+    diag(mask) <- FALSE
     if (all(!mask, na.rm = TRUE)) {
         .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
         return(NULL)
