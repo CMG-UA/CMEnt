@@ -1,3 +1,32 @@
+.PWMPearson <- function(pwm1, pwm2) {
+    top <- colSums((pwm1 - 0.25) * (pwm2 - 0.25))
+    bottom <- sqrt(colSums((pwm1 - 0.25)^2) * colSums((pwm2 - 0.25)^2))
+    r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
+    return(r)
+}
+.motif_corr <- function(pwmSubjectList, pwmQuery) {
+    if (!is.list(pwmSubjectList)) {
+        pwmSubjectList <- list(pwmSubjectList)
+    }
+    sapply(pwmSubjectList, function(pwmSubject) {
+        pwm1 <- pwmSubject
+        pwm2 <- pwmQuery
+        widthMin <- min(ncol(pwm1), ncol(pwm2))
+        ans <- c()
+        for (i in 1:(1 + ncol(pwm1) - widthMin)) {
+            for (j in 1:(1 + ncol(pwm2) - widthMin)) {
+                pwm1Temp <- pwm1[, i:(i + widthMin - 1)]
+                pwm2Temp <- pwm2[, j:(j + widthMin - 1)]
+                ansTemp <- .PWMPearson(pwm1Temp, pwm2Temp)
+                ans <- c(ans, ansTemp)
+            }
+        }
+        ans <- max(ans)
+        ans
+    })
+}
+
+
 comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
     cache <- getOption("DMRsegal.jaspar_cache_dir", file.path(
         path.expand("~"),
@@ -24,7 +53,16 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
         saveRDS(vertebrate_pwms, pwms_file)
         jaspar_pwms <- vertebrate_pwms
     }
-    similarities <- sapply(pwm_queries, function(query) TFBSTools::PWMSimilarity(jaspar_pwms, query, method = "Pearson"))
+    similarities <- sapply(pwm_queries, function(query) .motif_corr(jaspar_pwms, query))
+    complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
+    revcomp_queries <- lapply(pwm_queries, function(pwm) {
+        pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(nrow(pwm)))]
+        rownames(pwm_revcomp) <- rownames(pwm)
+        pwm_revcomp
+    })
+    revcomp_similarities <- sapply(revcomp_queries, function(query) .motif_corr(jaspar_pwms, query))
+    similarities <- pmax(similarities, revcomp_similarities)
+
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
     if (nrow(found) == 0) {
         .log_warn("No similar motifs found in JASPAR database with correlation >=", corr_threshold)
@@ -37,9 +75,9 @@ comparePWMToJaspar <- function(pwm_queries, corr_threshold = 0.7) {
             correlation = similarities[found]
         )
         # group by query_index and return comma-separated jaspar_ids and correlations
-        similarities <- lapply(split(similar_motifs, similar_motifs$query_index, drop=FALSE), function(df) {
+        similarities <- lapply(split(similar_motifs, similar_motifs$query_index, drop = FALSE), function(df) {
             if (is.data.frame(df)) {
-                df <- df[order(df$correlation, decreasing = TRUE),]
+                df <- df[order(df$correlation, decreasing = TRUE), ]
             }
             list(
                 jaspar_names = paste(df$jaspar_name, collapse = ","),
@@ -107,7 +145,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
     }
 
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
-    dmrs_cpgs_inds <- getSupportingSites(dmrs, rownames(genomic_locs), ret_index=TRUE, separate_by_section = FALSE)
+    dmrs_cpgs_inds <- getSupportingSites(dmrs, rownames(genomic_locs), ret_index = TRUE, separate_by_section = FALSE)
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, genomic_locs)
     end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, genomic_locs)
     for (i in seq_along(dmrs)) {
@@ -186,8 +224,10 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #'     array = "450K",
 #' )
 #' @export
-computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5, 
-    find_components=TRUE, query_components_with_jaspar=TRUE, plot.dir = NULL) {
+computeDMRsInteraction <- function(
+  dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5,
+  find_components = TRUE, query_components_with_jaspar = TRUE, plot.dir = NULL
+) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
@@ -231,12 +271,15 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
             pwms <- mcols(dmrs)[idxs, "pwm"]
             Reduce("+", pwms) / length(pwms)
         })
+        components_df$avg_pwm <- lapply(components_df$avg_pwm, function(mat) {
+            mat / colSums(mat)
+        })
         components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
             paste(DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
         })
         # Order by component size
         components_df <- components_df[order(-components_df$size), ]
-        if (query_components_with_jaspar){
+        if (query_components_with_jaspar) {
             # Find similarities to JASPAR motifs
             components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm, corr_threshold = min_sim))
         }
@@ -258,8 +301,9 @@ computeDMRsInteraction <- function(dmrs, genome = "hg19", array = "450K", min_si
         sim = similarity_matrix[rowcol_df]
     )
     if (find_components) {
-        interaction_data_frame$component_id <- sapply(interaction_data_frame$index1, function(x) 
-            which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]])
+        interaction_data_frame$component_id <- sapply(interaction_data_frame$index1, function(x) {
+            which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]]
+        })
     }
     list(
         interactions = interaction_data_frame,
