@@ -830,7 +830,9 @@ plotDMR <- function(dmrs,
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
-#' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).
+#' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
+#' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
+#' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).
 #' @param max_interactions Integer. Maximum number of interactions to plot (default: 30).
 #' @param ... Additional arguments (currently unused).
 #'
@@ -860,8 +862,8 @@ plotDMRsCircos <- function(dmrs,
                            sample_group_col = "Sample_Group",
                            min_sim = 0.7,
                            flank_size = 5,
-                           max_num_samples = 20, # @TODO implement that
-                           max_dmrs_per_chr = 5,
+                           max_num_samples_per_group = 5,
+                           max_dmrs_per_chr = 10,
                            max_cpgs_per_dmr = 5,
                            max_interactions = 30,
                            ...) {
@@ -909,7 +911,7 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
         dmrs, beta_handler, pheno, sample_group_col,
-        sorted_locs, max_cpgs_per_dmr
+        sorted_locs, max_cpgs_per_dmr, max_num_samples_per_group
     )
     .log_success("Heatmap data prepared", level = 2)
     .log_info("Total heatmap entries: ", nrow(heatmap_data), level = 2)
@@ -1257,7 +1259,29 @@ plotDMRsCircos <- function(dmrs,
     genome_lengths
 }
 
-.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2) {
+.closest_rows_indices_to_centroids <- function(beta_pcs, centers, verbose = FALSE) {
+    stopifnot(nrow(beta_pcs) >= nrow(centers))
+    selection <- integer()
+    assessed_pcs <- beta_pcs
+    assessed_centers <- centers
+    assessed_indices <- seq_len(nrow(beta_pcs))
+    while (length(selection) < nrow(centers)) {
+        nn <- FNN::get.knnx(assessed_pcs, assessed_centers, k = 1)
+        center_indices <- as.vector(nn$nn.index)
+        duplicated_centers <- duplicated(center_indices)
+        chosen_indices <- center_indices[!duplicated_centers]
+        selection <- c(selection, assessed_indices[chosen_indices])
+        if (any(duplicated_centers)) {
+            .log_info(sum(duplicated_centers), " duplicated nearest neighbours, retrying on the duplicates...", level = 3)
+            assessed_pcs <- assessed_pcs[-chosen_indices, , drop = FALSE]
+            assessed_indices <- assessed_indices[-chosen_indices]
+            assessed_centers <- assessed_centers[duplicated_centers, , drop = FALSE]
+        }
+    }
+    sort(selection)
+}
+
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group=10) {
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
 
@@ -1281,6 +1305,34 @@ plotDMRsCircos <- function(dmrs,
         row_names = dmrs_cpgs,
         col_names = rownames(pheno)
     )
+    if (max_num_samples_per_group > 0) {
+        selected_samples <- c()
+        groups <- pheno[[sample_group_col]]
+        unique_groups <- unique(groups)
+        for (group in unique_groups) {
+            group_samples <- rownames(pheno)[groups == group]
+            if (length(group_samples) > max_num_samples_per_group) {
+                # Do K-means KNN sampling, selecting max_num_samples_per_group samples that best represent the group
+                group_beta <- beta_data[, group_samples, drop = FALSE]
+                non_zero_cols <- apply(group_beta, 2, function(v) stats::var(v, na.rm = TRUE) != 0)
+                group_beta <- group_beta[, non_zero_cols, drop = FALSE]
+                # transpose to have samples as rows
+                group_beta <- t(group_beta)
+                pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
+
+                if (!exists(".Random.seed", envir = .GlobalEnv)) {
+                    set.seed(123)
+                } else {
+                    set.seed(.GlobalEnv$.Random.seed[1])
+                }
+                kmeans <- stats::kmeans(pcs, centers = max_num_samples_per_group, algorithm = "Lloyd", iter.max = 1000, nstart = 5)
+                group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
+
+            }
+            selected_samples <- c(selected_samples, group_samples)
+        }
+        beta_data <- beta_data[, selected_samples, drop = FALSE]
+    }
     cbind(shown_locs, beta_data)
 }
 

@@ -33,7 +33,7 @@ findDMRsFromSeeds(
   min_cpg_delta_beta = 0,
   expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genome = "hg19",
   max_pval = 0.05,
   pval_mode = c("parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
@@ -54,8 +54,9 @@ findDMRsFromSeeds(
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
-  .load_debug = FALSE,
-  verbose = 1
+  chr_levels = NULL,
+  verbose = 1,
+  .load_debug = FALSE
 )
 }
 \arguments{
@@ -117,9 +118,11 @@ findDMRsFromSeeds(
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
 
-\item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
+\item{chr_levels}{Character vector. Custom chromosome levels to use. Default is NULL.}
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.}
+
+\item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 }
 \value{
 A GRanges object containing identified DMRs with metadata columns:

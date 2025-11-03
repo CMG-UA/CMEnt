@@ -9,13 +9,13 @@ plotDMRsCircos(
   beta,
   pheno,
   genome = "hg19",
-  array = "450K",
+  array = c("450K", "27K", "EPIC", "EPICv2"),
   sorted_locs = NULL,
   sample_group_col = "Sample_Group",
   min_sim = 0.7,
   flank_size = 5,
-  max_num_samples = 20,
-  max_dmrs_per_chr = 5,
+  max_num_samples_per_group = 5,
+  max_dmrs_per_chr = 10,
   max_cpgs_per_dmr = 5,
   max_interactions = 30,
   ...
@@ -39,7 +39,11 @@ rownames matching beta column names (required for beta track).}
 
 \item{flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
 
-\item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 100).}
+\item{max_num_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 5).}
+
+\item{max_dmrs_per_chr}{Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.}
+
+\item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
 
 \item{max_interactions}{Integer. Maximum number of interactions to plot (default: 30).}
 

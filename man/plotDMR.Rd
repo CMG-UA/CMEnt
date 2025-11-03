@@ -9,16 +9,17 @@ plotDMR(
   dmr_index,
   beta = NULL,
   pheno = NULL,
-  sorted_locs = NULL,
+  genome = "hg19",
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
+  sorted_locs = NULL,
   sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
   max_cpgs = 100,
-  plot_title = TRUE,
   plot_motif = TRUE,
-  motif_flank_size = 5
+  motif_flank_size = 5,
+  plot_title = TRUE,
+  draw = TRUE
 )
 }
 \arguments{
@@ -31,11 +32,11 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
-
-\item{array}{Character. Array platform type (default: "450K").}
-
 \item{genome}{Character. Genome version (default: "hg19").}
+
+\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
+
+\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
@@ -45,11 +46,11 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
 
-\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
-
 \item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
 
 \item{motif_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
+
+\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 }
 \value{
 A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),

@@ -171,7 +171,7 @@ Extract beta values for specific CpG sites and samples
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{row_names}}{Character vector of CpG IDs to extract. If numeric, treated as row indices of the \strong{total genomic locations}.}
+\item{\code{row_names}}{Character vector of CpG IDs to extract. If numeric, treated as row indices.}
 
 \item{\code{col_names}}{Character vector of sample IDs to extract (default: NULL for all)}
 

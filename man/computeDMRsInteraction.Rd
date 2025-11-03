@@ -8,9 +8,11 @@ computeDMRsInteraction(
   dmrs,
   genome = "hg19",
   array = "450K",
-  min_sim = 0.7,
+  min_sim = 0.8,
   genomic_locs = NULL,
   flank_size = 5,
+  find_components = TRUE,
+  query_components_with_jaspar = TRUE,
   plot.dir = NULL
 )
 }
@@ -27,6 +29,10 @@ computeDMRsInteraction(
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
 \item{flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+
+\item{find_components}{Logical. Whether to identify connected components of interacting DMRs (default: TRUE)}
+
+\item{query_components_with_jaspar}{Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)}
 }
 \value{
 Data frame of motif-based DMR interactions with columns:

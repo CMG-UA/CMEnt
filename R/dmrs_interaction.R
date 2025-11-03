@@ -223,7 +223,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' )
 #' @export
 computeDMRsInteraction <- function(
-  dmrs, genome = "hg19", array = "450K", min_sim = 0.7, genomic_locs = NULL, flank_size = 5,
+  dmrs, genome = "hg19", array = "450K", min_sim = 0.8, genomic_locs = NULL, flank_size = 5,
   find_components = TRUE, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
