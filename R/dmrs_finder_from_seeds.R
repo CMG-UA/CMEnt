@@ -56,9 +56,9 @@
 #'   \item delta_beta_sd: Standard deviation of methylation differences
 #'   \item cases_beta: Mean beta value in cases
 #'   \item controls_beta: Mean beta value in controls
-#'   \item end_seed: ID of the first Seed in the region
+#'   \item start_seed: ID of the first Seed in the region
 #'   \item end_seed: ID of the last Seed in the region
-#'   \item end_seed_pos: Genomic position of the first Seed in the region
+#'   \item start_seed_pos: Genomic position of the first Seed in the region
 #'   \item end_seed_pos: Genomic position of the last Seed in the region
 #'   \item seeds: Comma-separated list of Seed IDs in the region
 #'   \item connection_corr_pval: Aggregated correlation p-value of connected seeds
@@ -206,7 +206,7 @@
                         expansion_step = 500,
                         chr_start_base = 0) {
     .log_step("Expanding DMR..", level = 4)
-    dmr_start <- dmr["end_seed"]
+    dmr_start <- dmr["start_seed"]
     dmr_end <- dmr["end_seed"]
     if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
         dmr_start_ind <- as.integer(dmr_start) - chr_start_base
@@ -1108,17 +1108,17 @@ findDMRsFromSeeds <- function(beta = NULL,
                 }
                 .log_success("Seed connectivity tested.", level = 3)
                 breakpoints <- c(which(!corr_ret$connected), nrow(cseeds_beta))
-                end_seed_ind <- 1
+                start_seed_ind <- 1
                 for (bp_ind in seq_len(length(breakpoints))) {
                     end_seed_ind <- breakpoints[bp_ind]
-                    if (end_seed_ind - end_seed_ind + 1 < min_seeds) {
-                        .log_info("Skipping DMR from Seed ", end_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[end_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - end_seed_ind + 1, " < ", min_seeds, ").", level = 4)
-                        end_seed_ind <- breakpoints[bp_ind] + 1
+                    if (end_seed_ind - start_seed_ind + 1 < min_seeds) {
+                        .log_info("Skipping DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - start_seed_ind + 1, " < ", min_seeds, ").", level = 4)
+                        start_seed_ind <- breakpoints[bp_ind] + 1
                         next
                     }
-                    .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from Seed ", end_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[end_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ")", level = 3)
-                    dmr_seeds_inds <- seq.int(end_seed_ind, end_seed_ind)
-                    if (end_seed_ind == end_seed_ind) {
+                    .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ")", level = 3)
+                    dmr_seeds_inds <- seq.int(start_seed_ind, end_seed_ind)
+                    if (end_seed_ind == start_seed_ind) {
                         connection_corr_pval <- NA
                     } else {
                         connection_corr_pval <- aggfun(corr_ret$pval[dmr_seeds_inds[-length(dmr_seeds_inds)]], na.rm = TRUE)
@@ -1130,9 +1130,9 @@ findDMRsFromSeeds <- function(beta = NULL,
                     }
                     new_dmr <- list(
                         chr = chr,
+                        start_seed = cseeds[[start_seed_ind]],
                         end_seed = cseeds[[end_seed_ind]],
-                        end_seed = cseeds[[end_seed_ind]],
-                        end_seed_pos = cseeds_locs[end_seed_ind, "start"],
+                        start_seed_pos = cseeds_locs[start_seed_ind, "start"],
                         end_seed_pos = cseeds_locs[end_seed_ind, "start"],
                         seeds_num = length(dmr_seeds_inds),
                         connection_corr_pval = connection_corr_pval,
@@ -1142,7 +1142,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     dmr_n <- dmr_n + 1L
                     if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
                     dmr_list[[dmr_n]] <- new_dmr
-                    end_seed_ind <- breakpoints[bp_ind] + 1
+                    start_seed_ind <- breakpoints[bp_ind] + 1
                     .log_success("DMR registered.",
                         level = 3
                     )
@@ -1301,7 +1301,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     extended_dmrs <- as.data.frame(do.call(rbind, ret))
     extended_dmrs$end <- as.numeric(extended_dmrs$end)
     extended_dmrs$start <- as.numeric(extended_dmrs$start)
-    extended_dmrs$end_seed_pos <- as.numeric(extended_dmrs$end_seed_pos)
+    extended_dmrs$start_seed_pos <- as.numeric(extended_dmrs$start_seed_pos)
     extended_dmrs$end_seed_pos <- as.numeric(extended_dmrs$end_seed_pos)
     extended_dmrs$seeds_num <- as.numeric(extended_dmrs$seeds_num)
     extended_dmrs$connection_corr_pval <- as.numeric(extended_dmrs$connection_corr_pval)
@@ -1379,9 +1379,9 @@ findDMRsFromSeeds <- function(beta = NULL,
         cols_vals <- orig_mcols[inds, ]
         agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
         agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
-        agg_df[i, "end_seed"] <- cols_vals$end_seed[[1]]
+        agg_df[i, "start_seed"] <- cols_vals$start_seed[[1]]
         agg_df[i, "end_seed"] <- cols_vals$end_seed[[length(inds)]]
-        agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[1]]
+        agg_df[i, "start_seed_pos"] <- cols_vals$start_seed_pos[[1]]
         agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[length(inds)]]
         agg_seeds <- unique(unlist(strsplit(cols_vals$seeds, ",")))
         agg_df[i, "seeds"] <- paste(agg_seeds, collapse = ",")
@@ -1518,7 +1518,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmrs$chr <- chr_levels[dmrs$chr]
         start_seeds <- as.integer(dmrs$end_seed)
         end_seeds <- as.integer(dmrs$end_seed)
-        dmrs$end_seed <- paste0(chr_levels[sorted_locs[start_seeds, "chr"]], ":", sorted_locs[start_seeds, "start"])
+        dmrs$start_seed <- paste0(chr_levels[sorted_locs[start_seeds, "chr"]], ":", sorted_locs[start_seeds, "start"])
         dmrs$end_seed <- paste0(chr_levels[sorted_locs[end_seeds, "chr"]], ":", sorted_locs[end_seeds, "start"])
         start_cpgs <- as.integer(dmrs$start_cpg)
         end_cpgs <- as.integer(dmrs$end_cpg)
