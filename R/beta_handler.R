@@ -465,7 +465,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     check.chr = FALSE,
                     verbose = FALSE
                 )
-                if (!is.null(row_names)){
+                if (!is.null(row_names)) {
                     if (allow_missing) {
                         if (nrow(beta_subset) == 0) {
                             return(data.frame())

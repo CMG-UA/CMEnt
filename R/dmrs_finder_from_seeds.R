@@ -106,9 +106,9 @@
 
 
 .buildConnectivityArray <- function(
-  beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+    beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -198,13 +198,14 @@
 
 #' @keywords internal
 #' @noRd
-.expandDMR <- function(dmr,
-                        chr_array,
-                        chr_locs,
-                        min_cpg_delta_beta = 0,
-                        min_cpgs = 3,
-                        expansion_step = 500,
-                        chr_start_base = 0) {
+.expandDMR <- function(
+        dmr,
+        chr_array,
+        chr_locs,
+        min_cpg_delta_beta = 0,
+        min_cpgs = 3,
+        expansion_step = 500,
+        chr_start_base = 0) {
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_seed"]
     dmr_end <- dmr["end_seed"]
@@ -640,46 +641,47 @@
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
 #' @param chr_levels Character vector. Custom chromosome levels to use. Default is NULL.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".
-#' @param output_indices_relative_to_all_cpgs Logical. If FALSE, output DMR indices will be relative to all CpGs in the array. If TRUE, indices will be relative to CpGs present in the beta file. Default is TRUE. Ignored if a bed file is provided as beta input.
+#' @param output_inds_rel_to_all_cpgs Logical. If FALSE, output DMR indices will be relative to all CpGs in the array. If TRUE, indices will be relative to CpGs present in the beta file. Default is TRUE. Ignored if a bed file is provided as beta input.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 
 #'
 #' @return Data frame of identified DMRs.
 #' @export
-findDMRsFromSeeds <- function(beta = NULL,
-                              seeds = NULL,
-                              pheno = NULL,
-                              seeds_id_col = NULL,
-                              sample_group_col = "Sample_Group",
-                              casecontrol_col = NULL,
-                              min_cpg_delta_beta = 0,
-                              expansion_step = 500,
-                              array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = "hg19",
-                              max_pval = 0.05,
-                              pval_mode = c("parametric", "empirical"),
-                              empirical_strategy = c("auto", "montecarlo", "permutations"),
-                              ntries = 200L,
-                              mid_p = FALSE,
-                              max_lookup_dist = 10000,
-                              min_seeds = 1,
-                              min_adj_seeds = 1,
-                              min_cpgs = 50,
-                              aggfun = c("median", "mean"),
-                              ignored_sample_groups = NULL,
-                              output_prefix = NULL,
-                              njobs = getOption("DMRsegal.njobs", future::availableCores() - 1),
-                              memory_threshold_mb = 500,
-                              beta_row_names_file = NULL,
-                              annotate_with_genes = TRUE,
-                              bed_provided = FALSE,
-                              bed_chrom_col = "chrom",
-                              bed_start_col = "start",
-                              chr_levels = NULL,
-                              verbose = NULL,
-                              output_indices_relative_to_all_cpgs = TRUE,
-                              .load_debug = FALSE
-                              ) {
+findDMRsFromSeeds <- function(
+    beta = NULL,
+    seeds = NULL,
+    pheno = NULL,
+    seeds_id_col = NULL,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = NULL,
+    min_cpg_delta_beta = 0,
+    expansion_step = 500,
+    array = c("450K", "27K", "EPIC", "EPICv2"),
+    genome = "hg19",
+    max_pval = 0.05,
+    pval_mode = c("parametric", "empirical"),
+    empirical_strategy = c("auto", "montecarlo", "permutations"),
+    ntries = 200L,
+    mid_p = FALSE,
+    max_lookup_dist = 10000,
+    min_seeds = 1,
+    min_adj_seeds = 1,
+    min_cpgs = 50,
+    aggfun = c("median", "mean"),
+    ignored_sample_groups = NULL,
+    output_prefix = NULL,
+    njobs = getOption("DMRsegal.njobs", future::availableCores() - 1),
+    memory_threshold_mb = 500,
+    beta_row_names_file = NULL,
+    annotate_with_genes = TRUE,
+    bed_provided = FALSE,
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    chr_levels = NULL,
+    verbose = NULL,
+    output_inds_rel_to_all_cpgs = TRUE,
+    .load_debug = FALSE
+) {
 
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
@@ -986,7 +988,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         seeds <- seeds_tsv[, seeds_id_col]
         seeds_inds <- seeds
     }
-    
+
     .log_step("Validating beta file sorting by position...", level = 2)
 
 
@@ -1257,7 +1259,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     ret <- list()
     for (chr in unique(dmrs$chr)) {
-        .log_info("Processing ", chr, level=2)
+        .log_info("Processing ", chr, level = 2)
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
         chr_mask <- beta_locs[, "chr"] == chr
         first_row <- which(chr_mask)[1]
@@ -1305,9 +1307,8 @@ findDMRsFromSeeds <- function(beta = NULL,
                 "verbose",
                 "p_ext"
             )
-            # future.scheduling = ceiling(n_dmrs / njobs),
         )
-        .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level=2)
+        .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
     }
     if (inherits(ret, "try-error")) {
@@ -1512,9 +1513,12 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmr$cases_beta_max <- max(beta_stats[dmr_seeds, "cases_beta"], na.rm = TRUE)
         dmr$controls_beta_min <- min(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
         dmr$controls_beta_max <- max(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
-        dmr_cpgs <- as.character(c(
-            seq.int(dmr$start_cpg_ind, dmrs_seeds_inds[[dmr_ind]][1]),
-            seq.int(dmrs_seeds_inds[[dmr_ind]][length(dmrs_seeds_inds[[dmr_ind]])], dmr$end_cpg_ind)))
+        dmr_cpgs <- as.character(
+            c(
+                seq.int(dmr$start_cpg_ind, dmrs_seeds_inds[[dmr_ind]][1]),
+                seq.int(dmrs_seeds_inds[[dmr_ind]][length(dmrs_seeds_inds[[dmr_ind]])], dmr$end_cpg_ind)
+            )
+        )
         dmr$cpgs_cases_beta <- aggfun(abs(beta_stats[dmr_cpgs, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "cases_beta"])))
         dmr$cpgs_controls_beta <- aggfun(abs(beta_stats[dmr_cpgs, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "controls_beta"])))
         dmr$cpgs_delta_beta <- dmr$cpgs_cases_beta - dmr$cpgs_controls_beta
@@ -1571,7 +1575,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
-    if (!bed_provided && output_indices_relative_to_all_cpgs) {
+    if (!bed_provided && output_inds_rel_to_all_cpgs) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
         dmrs_granges$start_cpg_ind <- match(dmrs_granges$start_cpg, rownames(sorted_locs))

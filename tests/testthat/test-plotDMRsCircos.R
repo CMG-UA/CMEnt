@@ -10,7 +10,7 @@ test_that("plotDMRsCircos creates a circos plot", {
     }
 
     dmrs_subset <- dmrs[seq_len(min(5, length(dmrs)))]
-    options("DMRsegal.verbose"=2)
+    options("DMRsegal.verbose" = 2)
     expect_no_error(
         plotDMRsCircos(
             dmrs = dmrs_subset,

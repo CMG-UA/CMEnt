@@ -12,7 +12,7 @@ create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
     seeds_subset
 }
 
-create_seeds_without_chr_prefix <- function(seeds, beta_mat, locs) {
+create_seeds_without_chr_prefix <- function(seeds, beta_mat, locs) { # nolint
     seed_row_names <- rownames(seeds)
     seed_indices <- match(seed_row_names, rownames(beta_mat))
     valid_indices <- !is.na(seed_indices)

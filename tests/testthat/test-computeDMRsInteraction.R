@@ -19,13 +19,21 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 
     if (!is.null(result$interactions)) {
         expect_s3_class(result$interactions, "data.frame")
-        expect_true(all(c("chr1", "start1", "end1", "chr2", "start2", "end2", "sim") %in%
-            colnames(result$interactions)))
+        expect_true(
+            all(
+                c("chr1", "start1", "end1", "chr2", "start2", "end2", "sim") %in%
+                    colnames(result$interactions)
+            )
+        )
     }
 
     expect_s3_class(result$components, "data.frame")
-    expect_true(all(c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
-        colnames(result$components)))
+    expect_true(
+        all(
+            c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
+                colnames(result$components)
+        )
+    )
 })
 
 test_that("computeDMRsInteraction handles GRanges input", {
@@ -173,8 +181,10 @@ test_that("computeDMRsInteraction components are ordered by size", {
         min_sim = 0.5
     ))
 
-    expect_true(is.unsorted(result$components$size, strictly = FALSE) == FALSE ||
-        all(diff(result$components$size) <= 0))
+    expect_true(
+        is.unsorted(result$components$size, strictly = FALSE) == FALSE ||
+            all(diff(result$components$size) <= 0)
+    )
 })
 
 test_that("computeDMRsInteraction consensus sequences are valid", {

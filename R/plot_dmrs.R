@@ -514,7 +514,7 @@ minmaxscale <- function(x) {
 
     position_labels <- c(seq(-motif_flank_size, 0), seq(0, motif_flank_size))
 
-    rownames(pwm) <- DNA_BASES
+    rownames(pwm) <- Biostrings::DNA_BASES
 
     suppressWarnings(suppressMessages({
         pwm_plot <- ggseqlogo::ggseqlogo(pwm, method = "custom", seq_type = "dna") +
@@ -595,7 +595,7 @@ plotDMRs <- function(dmrs,
             beta = beta,
             array = array,
             genome = genome,
-            beta_locs = beta_locs
+            sorted_locs = beta_locs
         )
         beta_locs <- beta$getGenomicLocs()
     }

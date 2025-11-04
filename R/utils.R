@@ -368,27 +368,28 @@
     ret
 }
 
-get_bed_cache_dir <- function(output_dir){
-        if (is.null(output_dir)) {
-            use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
-            if (!is.null(use_cache) && !isFALSE(use_cache)) {
-                if (is.character(use_cache)) {
-                    cache_dir <- use_cache
-                } else {
-                    cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
-                }
+
+.getBEDCacheDir <- function(output_dir) {
+    if (is.null(output_dir)) {
+        use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
+        if (!is.null(use_cache) && !isFALSE(use_cache)) {
+            if (is.character(use_cache)) {
+                cache_dir <- use_cache
             } else {
-                cache_dir <- tempdir()
+                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
             }
         } else {
-            cache_dir <- output_dir
+            cache_dir <- tempdir()
         }
-        cache_dir
+    } else {
+        cache_dir <- output_dir
     }
+    cache_dir
+}
 
 
 #' Create Genomic Location bigmemory::big.matrix Descriptor from Tabix BED File
-#' 
+#'
 #' @description This function creates a bigmemory::big.matrix descriptor from a Tabix-indexed BED file.
 #' It reads the genomic locations (chromosome, start, end) from the BED file in chunks and stores them in a bigmemory-backed matrix for efficient access.
 #' This is useful for handling large BED files without loading the entire dataset into memory.
@@ -398,8 +399,10 @@ get_bed_cache_dir <- function(output_dir){
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
 #' @return Character. Path to the RDS file containing the bigmemory::big.matrix descriptor. Loadable with bigmemory::attach.big.matrix(readRDS()).
+#' @keywords internal
+#' @noRd
 genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000){ # nolint
-    cache_dir <- get_bed_cache_dir(output_dir)
+    cache_dir <- .getBEDCacheDir(output_dir)
     options(bigmemory.allow.dimnames = TRUE)
     if (is.null(hash)) {
         hash <- .getFileHash(input_tabix)
@@ -570,7 +573,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         stop("tabix/bgzip not found in PATH. Cannot process BED file.")
     }
 
-    cache_dir <- get_bed_cache_dir(output_dir)
+    cache_dir <- .getBEDCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -657,11 +660,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     )
     locations_file <- genomicLocsFromTabixToDescriptor(
         tabix_file_path,
-        num_rows= num_rows, 
+        num_rows = num_rows,
         hash = hash,
-        output_dir = cache_dir, 
+        output_dir = cache_dir,
         chunk_size = chunk_size
-        )
+    )
 
 
     return(list(
@@ -1422,7 +1425,7 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
             downstream_sup_cpgs_inds <- c()
         }
         dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
-       
+
         if (!separate_by_section) {
             dmrs_cpgs[[i]] <- unlist(dmrs_cpgs[[i]])
         }
@@ -1863,9 +1866,6 @@ idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
     }
     indices
 }
-
-
-DNA_BASES <- c("A", "C", "G", "T") # follow the order of TFBSTools
 
 
 convertToGRanges <- function(obj, genome) {

@@ -9,7 +9,7 @@
 #'     install.packages("optparse")
 #' }
 #' library(optparse)
-#' 
+#'
 #' args <- list(
 #'     beta = "path/to/beta_values.rds",
 #'     seeds_file = "path/to/dmps.tsv",
@@ -22,7 +22,7 @@
 #'     njobs = 4,
 #'     verbose = 1
 #' )
-#' 
+#'
 #' findDMRsFromSeedsCLI(args)
 #'
 #' @export

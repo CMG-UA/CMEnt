@@ -106,7 +106,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
-    options("DMRsegal.random_seed"=42)
+    options("DMRsegal.random_seed" = 42)
     dmrs_seed1_run2 <- findDMRsFromSeeds(
         beta = beta,
         seeds = dmps,
@@ -122,7 +122,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         annotate_with_genes = FALSE
     )
     # Run with different seed
-    options("DMRsegal.random_seed"=123)
+    options("DMRsegal.random_seed" = 123)
     dmrs_seed2 <- findDMRsFromSeeds(
         beta = beta,
         seeds = dmps,

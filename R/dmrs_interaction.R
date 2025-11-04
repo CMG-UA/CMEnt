@@ -1,4 +1,4 @@
-.PWMPearson <- function(pwm1, pwm2) {
+.PWMPearson <- function(pwm1, pwm2) { # nolint
     top <- colSums((pwm1 - 0.25) * (pwm2 - 0.25))
     bottom <- sqrt(colSums((pwm1 - 0.25)^2) * colSums((pwm2 - 0.25)^2))
     r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
@@ -157,9 +157,9 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
-        frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = DNA_BASES)))) # nolint
+        frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
         mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
-        mcols(dmrs)$consensus_seq[[i]] <- paste(DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
+        mcols(dmrs)$consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
     if (input_is_df) {
         dmrs <- as.data.frame(dmrs)
@@ -224,8 +224,8 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #' )
 #' @export
 computeDMRsInteraction <- function(
-  dmrs, genome = "hg19", array = "450K", min_sim = 0.8, beta_locs = NULL, flank_size = 5,
-  find_components = TRUE, min_component_size = 1, query_components_with_jaspar = TRUE, plot.dir = NULL
+    dmrs, genome = "hg19", array = "450K", min_sim = 0.8, beta_locs = NULL, flank_size = 5,
+    find_components = TRUE, min_component_size = 1, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
@@ -274,7 +274,7 @@ computeDMRsInteraction <- function(
             mat / colSums(mat)
         })
         components_df$consensus_seq <- sapply(components_df$avg_pwm, function(pwm) {
-            paste(DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
+            paste(Biostrings::DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
         })
         # Order by component size
         components_df <- components_df[order(-components_df$size), ]
