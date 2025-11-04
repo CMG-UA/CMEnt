@@ -1515,7 +1515,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmr$cases_beta_max <- max(beta_stats[dmr_seeds, "cases_beta"], na.rm = TRUE)
         dmr$controls_beta_min <- min(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
         dmr$controls_beta_max <- max(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
-        dmr_cpgs <- c(seq.int(dmr$start_cpg_ind, dmr$start_dmp_ind), seq.int(dmr$end_dmp_ind, dmr$end_cpg_ind))
+        dmr_cpgs <- c(seq.int(dmr$start_cpg_ind, dmr$start_seed_ind), seq.int(dmr$end_seed_ind, dmr$end_cpg_ind))
         dmr$cpgs_cases_beta <- aggfun(abs(beta_stats[dmr_cpgs, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "cases_beta"])))
         dmr$cpgs_controls_beta <- aggfun(abs(beta_stats[dmr_cpgs, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "controls_beta"])))
         dmr$cpgs_delta_beta <- dmr$cpgs_cases_beta - dmr$cpgs_controls_beta
