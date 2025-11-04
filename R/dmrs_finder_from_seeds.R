@@ -376,7 +376,6 @@
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples
 #' @param ntries Integer. Number of tries when pval_mode = "empirical". Default is 500. If set to 0, uses 500 for Monte Carlo and min(2m!,500) for permutations, where m is the number of samples.
 #' @param mid_p Logical. Use mid-p adjustment for empirical p-values (reduces tie conservatism). Default is FALSE.
-#' @param tries_seed Integer or NULL. RNG seed for reproducible permutations when pval_mode = "empirical". Default is NULL.
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 #' @keywords internal
@@ -386,7 +385,7 @@
                                    max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean,
                                    pval_mode = c("parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
-                                   ntries = 0, mid_p = FALSE, tries_seed = NULL) {
+                                   ntries = 0, mid_p = FALSE) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     n_sites <- nrow(sites_beta)
@@ -482,19 +481,7 @@
             # Only compute for rows that are still connected and have finite cors
             mask <- is.finite(cors) & connected
             if (any(mask)) {
-                # RNG management
-                old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-                if (old_seed_exists) {
-                    old_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-                }
-                if (!is.null(tries_seed)) {
-                    set.seed(tries_seed)
-                }
-                withr::defer({
-                    if (old_seed_exists) {
-                        assign(".Random.seed", old_seed, envir = .GlobalEnv)
-                    }
-                })
+                set.seed(getOption("DMRsegal.random_seed", 42))
                 counts_ge <- integer(n_pairs)
                 counts_eq <- integer(n_pairs)
                 # Number of samples in this group

@@ -9,11 +9,11 @@
     }
 }
 
-utils::globalVariables(c(".Random.seed"))
+pdf.options(encoding = 'ISOLatin2.enc')
 
 
 update_package_option <- future:::update_package_option
-
+update_package_option("DMRsegal.random_seed", mode = "numeric", default = 42)
 update_package_option("DMRsegal.njobs", mode = "numeric", default = min(8, future::availableCores() - 1))
 update_package_option("DMRsegal.verbose", mode = "numeric", default = 1)
 update_package_option("DMRsegal.use_bed_cache", mode = "logical", default = FALSE)

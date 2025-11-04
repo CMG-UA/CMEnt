@@ -1342,12 +1342,7 @@ plotDMRsCircos <- function(dmrs,
                 # transpose to have samples as rows
                 group_beta <- t(group_beta)
                 pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
-
-                if (!exists(".Random.seed", envir = .GlobalEnv)) {
-                    set.seed(123)
-                } else {
-                    set.seed(.GlobalEnv$.Random.seed[1])
-                }
+                set.seed(getOption("DMRsegal.random_seed", 42))
                 kmeans <- stats::kmeans(pcs, centers = max_num_samples_per_group, algorithm = "Lloyd", iter.max = 1000, nstart = 5)
                 group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
             }
