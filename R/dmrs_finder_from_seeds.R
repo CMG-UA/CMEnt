@@ -1516,7 +1516,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     .log_success("DMR delta-beta information added.", level = 2)
     if (bigmemory::is.big.matrix(sorted_locs)) {
         dmrs$chr <- chr_levels[dmrs$chr]
-        start_seeds <- as.integer(dmrs$end_seed)
+        start_seeds <- as.integer(dmrs$start_seed)
         end_seeds <- as.integer(dmrs$end_seed)
         dmrs$start_seed <- paste0(chr_levels[sorted_locs[start_seeds, "chr"]], ":", sorted_locs[start_seeds, "start"])
         dmrs$end_seed <- paste0(chr_levels[sorted_locs[end_seeds, "chr"]], ":", sorted_locs[end_seeds, "start"])
