@@ -1399,8 +1399,8 @@ findDMRsFromSeeds <- function(beta = NULL,
         agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
         agg_df[i, "start_seed"] <- cols_vals$start_seed[[1]]
         agg_df[i, "end_seed"] <- cols_vals$end_seed[[length(inds)]]
-        agg_df[i, "start_seed_ind"] <- seeds_inds[[cols_vals$start_seed[[1]]]]
-        agg_df[i, "end_seed_ind"] <- seeds_inds[[cols_vals$end_seed[[length(inds)]]]]
+        agg_df[i, "start_seed_ind"] <- cols_vals$start_seed_ind[[1]]
+        agg_df[i, "end_seed_ind"] <- cols_vals$end_seed_ind[[length(inds)]]
         agg_df[i, "start_seed_pos"] <- cols_vals$start_seed_pos[[1]]
         agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[length(inds)]]
         agg_seeds <- unique(unlist(strsplit(cols_vals$seeds, ",")))
@@ -1513,7 +1513,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         dmr$cases_beta_max <- max(beta_stats[dmr_seeds, "cases_beta"], na.rm = TRUE)
         dmr$controls_beta_min <- min(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
         dmr$controls_beta_max <- max(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
-        dmr_cpgs <- c(seq.int(dmr$start_cpg_ind, dmr$start_dmp_ind),seq.int(dmr$end_dmp_ind, dmr$end_cpg_ind))
+        dmr_cpgs <- c(seq.int(dmr$start_cpg_ind, dmr$start_dmp_ind), seq.int(dmr$end_dmp_ind, dmr$end_cpg_ind))
         dmr$cpgs_cases_beta <- aggfun(abs(beta_stats[dmr_cpgs, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "cases_beta"])))
         dmr$cpgs_controls_beta <- aggfun(abs(beta_stats[dmr_cpgs, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "controls_beta"])))
         dmr$cpgs_delta_beta <- dmr$cpgs_cases_beta - dmr$cpgs_controls_beta

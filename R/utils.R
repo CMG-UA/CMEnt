@@ -1332,14 +1332,12 @@ orderByLoc <- function(x,
 #' the number of supporting CpGs on each side of the DMR.
 #' @param dmrs GRanges object containing DMRs with metadata columns:
 #' \itemize{
-#'   \item start_cpg: ID of the first CpG in the DMR
-#'   \item end_cpg: ID of the last CpG in the DMR
-#'   \item seeds: Comma-separated string of CpG IDs within the DMR
+#'   \item start_cpg_ind: ID of the first CpG in the DMR, index in the processed beta file
+#'   \item end_cpg_ind: ID of the last CpG in the DMR, index in the processed beta file
+#'   \item seeds_inds: Comma-separated string of CpG IDs within the DMR, index in the processed beta file
 #' }
-#' @param available_cpgs Character vector of all available CpG IDs in genomic order
 #' @param max_sup_cpgs_per_dmr_side Integer. Maximum number of supporting CpGs to retrieve
 #'   upstream and downstream of each DMR (default: NULL, meaning no limit)
-#' @param ret_index Logical. If TRUE, returns indices of CpGs in available_cpgs instead of IDs (default: FALSE)
 #' @param separate_by_section Logical. If TRUE, returns a list with separate entries for upstream,
 #'   downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)
 #' @return A list where each element corresponds to a DMR and contains:
@@ -1353,7 +1351,7 @@ orderByLoc <- function(x,
 #' available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
 #' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
 #' @export
-getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = NULL, ret_index = FALSE, separate_by_section = TRUE) {
+getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_by_section = TRUE) {
     cpg_starts <- mcols(dmrs)$start_cpg_ind
     seeds_inds <- lapply(S4Vectors::mcols(dmrs)$seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
     cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind
@@ -1382,15 +1380,8 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
         } else {
             downstream_sup_cpgs_inds <- c()
         }
-        if (ret_index) {
-            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
-        } else {
-            dmrs_cpgs[[i]] <- list(
-                upstream = available_cpgs[upstream_sup_cpgs_inds],
-                seeds = available_cpgs[dmr_seeds_inds],
-                downstream = available_cpgs[downstream_sup_cpgs_inds]
-            )
-        }
+        dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
+       
         if (!separate_by_section) {
             dmrs_cpgs[[i]] <- unlist(dmrs_cpgs[[i]])
         }

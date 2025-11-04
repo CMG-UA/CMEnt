@@ -46,6 +46,5 @@ the number of supporting CpGs on each side of the DMR.
 }
 \examples{
 # Assume dmrs is a GRanges object with appropriate metadata columns
-available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
-dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
+dmrs_cpgs <- getSupportingSites(dmrs, max_sup_cpgs_per_dmr_side = 2)
 }

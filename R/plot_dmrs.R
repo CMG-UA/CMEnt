@@ -13,9 +13,9 @@ if (getRversion() >= "2.15.1") {
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
-#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if sorted_locs is provided.
-#' @param genome Character. Genome version (default: "hg19"). Ignored if sorted_locs is provided.
-#' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
+#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.
+#' @param genome Character. Genome version (default: "hg19"). Ignored if beta_locs is provided.
+#' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).
@@ -26,7 +26,7 @@ if (getRversion() >= "2.15.1") {
                               dmr_index = 1,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
                               genome = "hg19",
-                              sorted_locs = NULL,
+                              beta_locs = NULL,
                               extend_by_dmr_size_ratio = 0.2,
                               min_extension_bp = 50,
                               plot_title = TRUE,
@@ -44,42 +44,42 @@ if (getRversion() >= "2.15.1") {
     dmr_data <- S4Vectors::mcols(dmr)
 
     # Get genomic locations if not provided
-    if (is.null(sorted_locs)) {
+    if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 
     # Extract DMR information
     chr <- as.character(GenomicRanges::seqnames(dmr))
-    sorted_locs <- sorted_locs[sorted_locs$chr == chr, , drop = FALSE]
+    beta_locs <- beta_locs[beta_locs$chr == chr, , drop = FALSE]
     dmr_start <- GenomicRanges::start(dmr)
     dmr_end <- GenomicRanges::end(dmr)
     start_cpg <- dmr_data$start_cpg
     end_cpg <- dmr_data$end_cpg
-    start_cpg_ind <- which(rownames(sorted_locs) == start_cpg)
-    start_cpg_pos <- sorted_locs[start_cpg_ind, "start"]
-    end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
-    end_cpg_pos <- sorted_locs[end_cpg_ind, "start"]
+    start_cpg_ind <- which(rownames(beta_locs) == start_cpg)
+    start_cpg_pos <- beta_locs[start_cpg_ind, "start"]
+    end_cpg_ind <- which(rownames(beta_locs) == end_cpg)
+    end_cpg_pos <- beta_locs[end_cpg_ind, "start"]
     start_seed <- dmr_data$start_seed
     end_seed <- dmr_data$end_seed
-    start_seed_ind <- which(rownames(sorted_locs) == start_seed)
-    end_seed_ind <- which(rownames(sorted_locs) == end_seed)
+    start_seed_ind <- which(rownames(beta_locs) == start_seed)
+    end_seed_ind <- which(rownames(beta_locs) == end_seed)
 
     # Extract seed IDs from the comma-separated string
     seed_ids <- unlist(strsplit(as.character(dmr_data$seeds), ","))
 
     # Get seed positions
-    seed_positions <- sorted_locs[seed_ids, "start"]
+    seed_positions <- beta_locs[seed_ids, "start"]
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
 
     if (start_seed_ind > start_cpg_ind) {
-        upstream_sup_cpgs <- sorted_locs[start_cpg_ind:(start_seed_ind - 1), ]
+        upstream_sup_cpgs <- beta_locs[start_cpg_ind:(start_seed_ind - 1), ]
     } else {
         upstream_sup_cpgs <- data.frame()
     }
     if (end_seed_ind < end_cpg_ind) {
-        downstream_sup_cpgs <- sorted_locs[(end_seed_ind + 1):end_cpg_ind, ]
+        downstream_sup_cpgs <- beta_locs[(end_seed_ind + 1):end_cpg_ind, ]
     } else {
         downstream_sup_cpgs <- data.frame()
     }
@@ -92,11 +92,11 @@ if (getRversion() >= "2.15.1") {
     ext <- max(ext, min_extension_bp)
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
-    nsup_cpgs <- sorted_locs[start_seed_ind:end_seed_ind, ]
+    nsup_cpgs <- beta_locs[start_seed_ind:end_seed_ind, ]
     nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !rownames(nsup_cpgs) %in% seed_ids), , drop = FALSE]
 
-    downstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start > dmr_end & sorted_locs$start <= plot_end), , drop = FALSE]
-    upstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start < dmr_start & sorted_locs$start >= plot_start), , drop = FALSE]
+    downstream_nsup_cpgs <- beta_locs[which(beta_locs$start > dmr_end & beta_locs$start <= plot_end), , drop = FALSE]
+    upstream_nsup_cpgs <- beta_locs[which(beta_locs$start < dmr_start & beta_locs$start >= plot_start), , drop = FALSE]
     extended_nsup_cpgs <- rbind(
         nsup_cpgs,
         upstream_nsup_cpgs,
@@ -406,8 +406,8 @@ if (getRversion() >= "2.15.1") {
     )
 
     # Add ticks for the seeds on the x-axis
-    breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "start"], plot_end)
-    cpgs_labs <- paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "start"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
+    breaks <- c(plot_start, beta_locs[start_cpg_ind:end_cpg_ind, "start"], plot_end)
+    cpgs_labs <- paste0(beta_locs[start_cpg_ind:end_cpg_ind, "start"], "\n(", rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
     breaks_labels <- c(
         as.character(plot_start), cpgs_labs,
         as.character(plot_end)
@@ -423,7 +423,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[seed_ids, , drop = FALSE])
+        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, beta_locs[seed_ids, , drop = FALSE])
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
@@ -492,12 +492,12 @@ minmaxscale <- function(x) {
     (x - min(x)) / max(max(x) - min(x), 1e-10)
 }
 
-.plotPWM <- function(dmr, genome, array, sorted_locs, motif_flank_size = 5) {
+.plotPWM <- function(dmr, genome, array, beta_locs, motif_flank_size = 5) {
     # Extract DMR motifs if not already present
     if (!"pwm" %in% colnames(S4Vectors::mcols(dmr))) {
         dmr <- extractDMRMotifs(dmr,
             genome = genome, array = array,
-            genomic_locs = sorted_locs, flank_size = motif_flank_size
+            beta_locs = beta_locs, flank_size = motif_flank_size
         )
     }
     pwm <- mcols(dmr)$pwm[[1]]
@@ -550,8 +550,8 @@ minmaxscale <- function(x) {
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param genome Character. Genome version (default: "hg19").
-#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
-#' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
+#' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
+#' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param ncol Integer. Number of columns in the grid (default: 1).
 #' @param ... Additional arguments passed to plotDMR.
 #'
@@ -575,11 +575,11 @@ plotDMRs <- function(dmrs,
                      sample_group_col = "Sample_Group",
                      genome = "hg19",
                      array = c("450K", "27K", "EPIC", "EPICv2"),
-                     sorted_locs = NULL,
+                     beta_locs = NULL,
                      ncol = 1,
                      ...) {
     showtext::showtext_auto()
-    if (is.null(sorted_locs)) {
+    if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
     dmrs <- convertToGRanges(dmrs, genome)
@@ -595,9 +595,9 @@ plotDMRs <- function(dmrs,
             beta = beta,
             array = array,
             genome = genome,
-            sorted_locs = sorted_locs
+            beta_locs = beta_locs
         )
-        sorted_locs <- beta$getGenomicLocs()
+        beta_locs <- beta$getGenomicLocs()
     }
     plot_list <- lapply(seq_along(dmr_indices), function(idx) {
         i <- dmr_indices[idx]
@@ -606,7 +606,7 @@ plotDMRs <- function(dmrs,
             dmr_index = i,
             beta = beta,
             pheno = pheno,
-            sorted_locs = sorted_locs,
+            beta_locs = beta_locs,
             sample_group_col = sample_group_col,
             ...
         )
@@ -630,8 +630,8 @@ plotDMRs <- function(dmrs,
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
 #' @param genome Character. Genome version (default: "hg19").
-#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
-#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
+#' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
+#' @param beta_locs Data frame. Genomic locations sorted by position (optional).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
@@ -668,7 +668,7 @@ plotDMR <- function(dmrs,
                     pheno = NULL,
                     genome = "hg19",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
-                    sorted_locs = NULL,
+                    beta_locs = NULL,
                     sample_group_col = "Sample_Group",
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
@@ -691,9 +691,9 @@ plotDMR <- function(dmrs,
         grDevices::cairo_pdf(width = width, height = height)
     }
 
-    if (is.null(sorted_locs)) {
+    if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
     } else {
         array <- NULL
     }
@@ -703,7 +703,7 @@ plotDMR <- function(dmrs,
             beta_handler <- getBetaHandler(
                 beta = beta,
                 array = array,
-                sorted_locs = sorted_locs,
+                beta_locs = beta_locs,
                 genome = genome
             )
         } else if (!"BetaHandler" %in% class(beta)) {
@@ -744,7 +744,7 @@ plotDMR <- function(dmrs,
         dmr_index = dmr_index,
         array = array,
         genome = genome,
-        sorted_locs = sorted_locs,
+        beta_locs = beta_locs,
         plot_title = plot_title,
         extend_by_dmr_size_ratio = extend_by_dmr_size_ratio,
         min_extension_bp = min_extension_bp,
@@ -794,7 +794,7 @@ plotDMR <- function(dmrs,
 
     if (plot_motif) {
         .log_info("Generating motif PWM plot...", level = 3)
-        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, sorted_locs = sorted_locs, motif_flank_size = motif_flank_size)
+        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_flank_size = motif_flank_size)
         if (!is.null(pwm_plot)) {
             grobs <- c(grobs, list(ggplot2::ggplotGrob(pwm_plot)))
         }
@@ -837,8 +837,9 @@ plotDMR <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
 #'   rownames matching beta column names (required for beta track).
-#' @param array Character. Array platform type (default: "450K").
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39").
+#' @param array Character. Array platform type (default: "450K").
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
@@ -881,10 +882,11 @@ plotDMRsCircos <- function(dmrs,
                            max_interactions = 30,
                            degenerate_resolution = 1e6,
                            output_file = NULL,
+                           verbose = NULL,
                            ...) {
     dmrs <- convertToGRanges(dmrs, genome)
-    if (is.null(sorted_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
+    if (!is.null(verbose)) {
+        options("DMRsegal.verbose" = verbose)
     }
     verbose <- getOption("DMRsegal.verbose", default = 2)
     beta_handler <- getBetaHandler(
@@ -903,7 +905,7 @@ plotDMRsCircos <- function(dmrs,
     if (!(sample_group_col %in% colnames(pheno))) {
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
-    sorted_locs <- beta_handler$getBetaLocs()
+    beta_locs <- beta_handler$getBetaLocs()
 
     .log_step("Preparing data for Circos plot...")
 
@@ -926,7 +928,7 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
         dmrs, beta_handler, pheno, sample_group_col,
-        sorted_locs, max_cpgs_per_dmr, max_num_samples_per_group
+        max_cpgs_per_dmr, max_num_samples_per_group
     )
     heatmap_df <- heatmap_data$heatmap_df
     reduced_pheno <- heatmap_data$reduced_pheno
@@ -939,7 +941,7 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, sorted_locs, min_sim, flank_size, max_interactions
+        dmrs, genome, array, beta_locs, min_sim, flank_size, max_interactions
     )
 
     .log_success("DMR interactions data prepared", level = 2)
@@ -1337,7 +1339,7 @@ plotDMRsCircos <- function(dmrs,
     sort(selection)
 }
 
-.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, sorted_locs, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group = 10) {
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group = 10) {
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
 
@@ -1348,21 +1350,17 @@ plotDMRsCircos <- function(dmrs,
     }
     # Order pheno by sample group
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    available_cpgs <- beta_handler$getBetaRowNames()
     dmrs_cpgs_list <- getSupportingSites(
         dmrs,
-        available_cpgs,
         max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
-        ret_index = FALSE,
         separate_by_section = FALSE
     )
-    dmrs_cpgs <- unlist(dmrs_cpgs_list)
-    dmrs_cpgs <- available_cpgs[available_cpgs %in% dmrs_cpgs]
+    dmrs_cpgs_inds <- unlist(dmrs_cpgs_list)
 
 
-    shown_locs <- sorted_locs[dmrs_cpgs, c("chr", "start", "end"), drop = FALSE]
+    shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]
     beta_data <- beta_handler$getBeta(
-        row_names = dmrs_cpgs,
+        row_names = dmrs_cpgs_inds,
         col_names = rownames(pheno)
     )
     if (max_num_samples_per_group > 0) {
@@ -1405,7 +1403,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, sorted_locs, min_sim, flank_size, max_interactions) {
+.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_sim, flank_size, max_interactions) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(
@@ -1413,7 +1411,7 @@ plotDMRsCircos <- function(dmrs,
                 genome = genome,
                 array = array,
                 min_sim = min_sim,
-                genomic_locs = sorted_locs,
+                beta_locs = beta_locs,
                 flank_size = flank_size,
                 min_component_size = 2
             )

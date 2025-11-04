@@ -111,7 +111,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and CpG indices
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
-#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
+#' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @return The input Dataframe/GRanges object with an additional metadata column:
@@ -135,25 +135,25 @@ comparePWMToJaspar <- function(pwm_queries) {
 #' # Access motif frequencies for the first DMR
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
-extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, flank_size = 5, plot.dir = NULL) {
+extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, flank_size = 5, plot.dir = NULL) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
-    if (is.null(genomic_locs) || (is.character(genomic_locs) && length(genomic_locs) == 1 && file.exists(genomic_locs))) {
-        genomic_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = genomic_locs)
+    if (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1 && file.exists(beta_locs))) {
+        beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)
     }
 
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
-    dmrs_cpgs_inds <- getSupportingSites(dmrs, rownames(genomic_locs), ret_index = TRUE, separate_by_section = FALSE)
-    start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, genomic_locs)
-    end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, genomic_locs)
+    dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE)
+    start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, beta_locs)
+    end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, beta_locs)
     for (i in seq_along(dmrs)) {
         if (is.na(start_inds[i]) || is.na(end_inds[i])) {
             next
         }
         absolute_cpg_inds <- dmrs_cpgs_inds[[i]]
         sequence <- sequences[[i]]
-        start_loc_base <- genomic_locs[start_inds[[i]], "start"]
-        seq_cpg_inds <- genomic_locs[absolute_cpg_inds, "start"] - start_loc_base + 1 + flank_size
+        start_loc_base <- beta_locs[start_inds[[i]], "start"]
+        seq_cpg_inds <- beta_locs[absolute_cpg_inds, "start"] - start_loc_base + 1 + flank_size
         cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
@@ -191,7 +191,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
-#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
+#' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
@@ -224,13 +224,13 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", genomic_locs = NULL, 
 #' )
 #' @export
 computeDMRsInteraction <- function(
-  dmrs, genome = "hg19", array = "450K", min_sim = 0.8, genomic_locs = NULL, flank_size = 5,
+  dmrs, genome = "hg19", array = "450K", min_sim = 0.8, beta_locs = NULL, flank_size = 5,
   find_components = TRUE, min_component_size = 1, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
-        dmrs <- extractDMRMotifs(dmrs, genome, array, genomic_locs = genomic_locs, flank_size = flank_size)
+        dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, flank_size = flank_size)
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
     if (!is.null(plot.dir)) {
