@@ -1354,13 +1354,13 @@ orderByLoc <- function(x,
 #' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
 #' @export
 getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = NULL, ret_index = FALSE, separate_by_section = TRUE) {
-    cpg_starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
-    seeds_inds <- lapply(S4Vectors::mcols(dmrs)$seeds, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
-    cpg_ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
+    cpg_starts <- mcols(dmrs)$start_cpg_ind
+    seeds_inds <- lapply(S4Vectors::mcols(dmrs)$seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
+    cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind
     dmrs_cpgs <- list()
     for (i in seq_along(dmrs)) {
-        dmr_seeds_inds <- seeds_inds[[i]]
         start_cpg_ind <- cpg_starts[[i]]
+        dmr_seeds_inds <- seeds_inds[[i]]
         end_cpg_ind <- cpg_ends[[i]]
         start_seed_ind <- seeds_inds[[i]][1]
         end_seed_ind <- seeds_inds[[i]][length(seeds_inds[[i]])]
