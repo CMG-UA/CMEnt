@@ -6,7 +6,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
     load(system.file("data/pheno.rda", package = "DMRsegal"))
-    options("DMRsegal.verbose" = 2)
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
         beta = beta,
@@ -16,14 +15,16 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500 # Small threshold allows in-memory loading
+        memory_threshold_mb = 500, # Small threshold allows in-memory loading
+        njobs = 1,
+        verbose = 3
     )
 
     # Assertions
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_true(!is.null(dmrs))
+    expect_true(inherits(dmrs, "GRanges"))
+    expect_true(length(dmrs) > 0)
+    expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
@@ -270,7 +271,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             beta = beta,
-            dmps = NULL, # Missing
+            seeds = NULL, # Missing
             pheno = pheno
         ),
         "dmps"

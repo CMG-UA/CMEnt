@@ -48,7 +48,7 @@ dmrs <- data.frame(
     start_seed = c("cg00000029", "cg00000108"),
     end_cpg = c("cg13426503", "cg08730726"),
     end_seed = c("cg13426503", "cg08730726"),
-    dmps = c("cg00000029,cg13426503", "cg00000108,cg08730726")
+    seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
 dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 # Access motif frequencies for the first DMR

@@ -843,6 +843,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             array = array,
             genome = genome
         )
+        sorted_locs <- beta_handler$getGenomicLocs()
     }
 
     if (!is.function(aggfun)) {

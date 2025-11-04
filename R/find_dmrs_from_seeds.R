@@ -43,7 +43,7 @@ findDMRsFromSeedsCLI <- function(args) {
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta = args$beta,
-        dmps = args$seeds_file,
+        seeds = args$seeds_file,
         sample_group_col = args$sample_group_col,
         casecontrol_col = args$casecontrol_col,
         min_cpg_delta_beta = args$min_cpg_delta_beta,

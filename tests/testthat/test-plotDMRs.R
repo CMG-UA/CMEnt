@@ -25,7 +25,7 @@ test_that("plotDMR handles invalid dmr_index", {
 
     expect_error(
         plotDMR(dmrs, dmr_index = 0),
-        "dmr_index must be between"
+        "is out of bounds"
     )
 
     expect_error(
