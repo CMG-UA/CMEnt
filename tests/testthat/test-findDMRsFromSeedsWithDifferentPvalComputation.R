@@ -85,7 +85,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     }
 })
 
-test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibility", {
+test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibility", {
     skip_on_ci()
     load(system.file("data/beta.rda", package = "DMRsegal"))
     load(system.file("data/dmps.rda", package = "DMRsegal"))
@@ -103,11 +103,10 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        tries_seed = 42,
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
-
+    options("DMRsegal.random_seed"=42)
     dmrs_seed1_run2 <- findDMRsFromSeeds(
         beta = beta,
         dmps = dmps,
@@ -119,12 +118,11 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        tries_seed = 42,
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
-
     # Run with different seed
+    options("DMRsegal.random_seed"=123)
     dmrs_seed2 <- findDMRsFromSeeds(
         beta = beta,
         dmps = dmps,
@@ -136,7 +134,6 @@ test_that("findDMRsFromSeeds empirical mode respects tries_seed for reproducibil
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        tries_seed = 123,
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
@@ -184,7 +181,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 50,
-        tries_seed = 42,
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
@@ -200,7 +196,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 200,
-        tries_seed = 42,
         memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )

@@ -29,7 +29,6 @@
 #' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
-#' @param tries_seed Integer or NULL. RNG seed for reproducibility when pval_mode = "empirical". Default is NULL.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
 #' @param min_adj_dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
@@ -109,7 +108,7 @@
 .buildConnectivityArray <- function(
   beta_handler, group_inds, sorted_locs, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
   chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, tries_seed = 42, njobs = 1
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     # split sorted_locs into chunks of chunk_size, respecting chromosome boundaries
     splits <- c()
@@ -143,7 +142,6 @@
             "empirical_strategy",
             "ntries",
             "mid_p",
-            "tries_seed",
             "splits",
             "chr_ends",
             "verbose",
@@ -170,8 +168,7 @@
                 pval_mode = pval_mode,
                 empirical_strategy = empirical_strategy,
                 ntries = ntries,
-                mid_p = mid_p,
-                tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed)
+                mid_p = mid_p
             )
             if (split[2] %in% chr_ends) {
                 # if we are at the end of a chromosome, add a final row of FALSE to indicate end-of-input
@@ -623,7 +620,6 @@
 #' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
-#' @param tries_seed Integer or NULL. RNG seed for reproducibility when pval_mode = "empirical". Default is NULL.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent DMPs belonging to the same DMR. Default is 10000.
 #' @param min_dmps Numeric. Minimum number of connected DMPs in a DMR. Default is 1.
 #' @param min_adj_dmps Numeric. Minimum number of DMPs, adjusted by CpG density, in a DMR after extension. Default is 1.
@@ -660,7 +656,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                               empirical_strategy = c("auto", "montecarlo", "permutations"),
                               ntries = 200L,
                               mid_p = FALSE,
-                              tries_seed = NULL,
                               max_lookup_dist = 10000,
                               min_dmps = 1,
                               min_adj_dmps = 1,
@@ -1060,7 +1055,6 @@ findDMRsFromSeeds <- function(beta = NULL,
                 "empirical_strategy",
                 "ntries",
                 "mid_p",
-                "tries_seed",
                 "min_dmps",
                 ".testConnectivityBatch",
                 ".log_step",
@@ -1087,8 +1081,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                     pval_mode = pval_mode,
                     empirical_strategy = empirical_strategy,
                     ntries = ntries,
-                    mid_p = mid_p,
-                    tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed)
+                    mid_p = mid_p
                 )
                 stopifnot(nrow(corr_ret) == nrow(cdmps_beta) - 1)
                 if (verbose >= 3) {
@@ -1211,7 +1204,6 @@ findDMRsFromSeeds <- function(beta = NULL,
             empirical_strategy = empirical_strategy,
             ntries = ntries,
             mid_p = mid_p,
-            tries_seed = if (is.null(tries_seed)) NULL else as.integer(tries_seed),
             njobs = njobs
         )
         .log_success("Connectivity array built.", level = 2)

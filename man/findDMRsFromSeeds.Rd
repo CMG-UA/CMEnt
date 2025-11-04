@@ -19,7 +19,6 @@
   pval_mode = "empirical",
   ntries = 500,
   mid_p = TRUE,
-  tries_seed = 42,
   njobs = 1
 )
 
@@ -39,7 +38,6 @@ findDMRsFromSeeds(
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
   mid_p = FALSE,
-  tries_seed = NULL,
   max_lookup_dist = 10000,
   min_dmps = 1,
   min_adj_dmps = 1,
@@ -71,8 +69,6 @@ findDMRsFromSeeds(
 \item{pval_mode}{Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.}
 
 \item{ntries}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
-
-\item{tries_seed}{Integer or NULL. RNG seed for reproducibility when pval_mode = "empirical". Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
