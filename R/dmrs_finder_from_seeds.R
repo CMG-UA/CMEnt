@@ -198,7 +198,7 @@
 
 #' @keywords internal
 #' @noRd
-.expandDMRs <- function(dmr,
+.expandDMR <- function(dmr,
                         chr_array,
                         chr_locs,
                         min_cpg_delta_beta = 0,
@@ -300,7 +300,7 @@
         if (t == 0) { # first iteration, use min_cpgs and remove the DMRs that are not long enough
             ccpgs <- dstream_exp - ustream_exp + 1
             if (ccpgs < (min_cpgs)) {
-                .log_info("DMR  too short (", ccpgs, " CpGs). Expanding to reach min_cpgs=", min_cpgs, ".", level = 3)
+                .log_info("DMR  too short (", ccpgs, " CpGs). Expanding to reach min_cpgs=", min_cpgs, ".", level = 4)
                 exp_step <- min_cpgs - ccpgs
             }
             .log_info("Number of CpGs in DMR: ", ccpgs, level = 5)
@@ -328,20 +328,19 @@
         .log_success("Downstream expansion checked.", level = 5)
         if (t == 0) {
             new_ccpgs <- dstream_exp - ustream_exp + 1
-            .log_info("Number of CpGs in expanded DMR: ", new_ccpgs, " from ", ccpgs, level = 3)
+            .log_info("Number of CpGs in expanded DMR after first iteration: ", new_ccpgs, " from ", ccpgs, level = 4)
             if (new_ccpgs < min_cpgs) {
                 ustream_stop_reason <- "min-cpgs-not-reached"
                 dstream_stop_reason <- "min-cpgs-not-reached"
-                .log_info("DMR could not reach min_cpgs=", min_cpgs, " after expansion (", new_ccpgs, "). Stopping expansion.", level = 3)
+                .log_info("DMR could not reach min_cpgs=", min_cpgs, " after expansion (", new_ccpgs, "). Stopping expansion.", level = 4)
             }
-
             t <- 1
         }
         if (!is.null(ustream_stop_reason) && !is.null(dstream_stop_reason)) {
             break
         }
     }
-    .log_step("Finalizing expanded DMR.", level = 5)
+    .log_step("Finalizing expanded DMR.", level = 4)
     if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
         dmr["start_cpg"] <- ustream_exp + chr_start_base
         dmr["end_cpg"] <- dstream_exp + chr_start_base
@@ -357,7 +356,7 @@
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
     dmr["downstream_cpg_expansion"] <- dstream_exp - dmr_end_ind
     dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
-    .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 5)
+    .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 4)
     dmr
 }
 
@@ -1259,7 +1258,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             MARGIN = 1,
             FUN = function(dmr) {
                 op <- options(warn = 2)$warn
-                x <- .expandDMRs(
+                x <- .expandDMR(
                     dmr = dmr,
                     chr_array = chr_array,
                     expansion_step = expansion_step,
@@ -1275,7 +1274,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             simplify = FALSE,
             future.seed = TRUE,
             future.globals = c(
-                ".expandDMRs",
+                ".expandDMR",
                 "chr_array",
                 "expansion_step",
                 "min_cpgs",
