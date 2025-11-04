@@ -138,12 +138,14 @@ comparePWMToJaspar <- function(pwm_queries) {
 extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, flank_size = 5, plot.dir = NULL) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
+    use_abs <- FALSE
     if (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1 && file.exists(beta_locs))) {
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)
+        use_abs <- TRUE
     }
 
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
-    dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE)
+    dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE, use_absolute_indices = use_abs)
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, beta_locs)
     end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, beta_locs)
     for (i in seq_along(dmrs)) {

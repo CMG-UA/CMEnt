@@ -1384,6 +1384,9 @@ orderByLoc <- function(x,
 #'   upstream and downstream of each DMR (default: NULL, meaning no limit)
 #' @param separate_by_section Logical. If TRUE, returns a list with separate entries for upstream,
 #'   downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)
+#' @param use_absolute_indices Logical. If TRUE, uses absolute indices from metadata columns
+#'   (start_cpg_ind_abs, end_cpg_ind_abs, seeds_inds_abs). If FALSE, uses relative indices
+#'   (start_cpg_ind, end_cpg_ind, seeds_inds) (default: TRUE)
 #' @return A list where each element corresponds to a DMR and contains:
 #' \itemize{
 #'   \item upstream: Vector of upstream supporting CpG IDs or indices
@@ -1395,10 +1398,17 @@ orderByLoc <- function(x,
 #' available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
 #' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
 #' @export
-getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_by_section = TRUE) {
-    cpg_starts <- mcols(dmrs)$start_cpg_ind
-    seeds_inds <- lapply(S4Vectors::mcols(dmrs)$seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
-    cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind
+getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_by_section = TRUE, use_absolute_indices = TRUE) {
+    if (use_absolute_indices) {
+        cpg_starts <- S4Vectors::mcols(dmrs)$start_cpg_ind_abs
+        seeds_inds <- S4Vectors::mcols(dmrs)$seeds_inds_abs
+        cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind_abs
+    } else {
+        cpg_starts <- mcols(dmrs)$start_cpg_ind
+        seeds_inds <- mcols(dmrs)$seeds_inds
+        cpg_ends <- mcols(dmrs)$end_cpg_ind
+    }
+    seeds_inds <- lapply(seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
     dmrs_cpgs <- list()
     for (i in seq_along(dmrs)) {
         start_cpg_ind <- cpg_starts[[i]]

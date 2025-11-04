@@ -9,8 +9,6 @@
     }
 }
 
-pdf.options(encoding = 'ISOLatin2.enc')
-
 
 update_package_option <- future:::update_package_option
 update_package_option("DMRsegal.random_seed", mode = "numeric", default = 42)

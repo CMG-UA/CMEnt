@@ -30,7 +30,7 @@ test_that("plotDMR handles invalid dmr_index", {
 
     expect_error(
         plotDMR(dmrs, dmr_index = length(dmrs) + 1),
-        "subscript contains out-of-bounds indices"
+        "is out of bounds"
     )
 })
 

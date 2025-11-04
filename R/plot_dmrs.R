@@ -44,45 +44,51 @@ if (getRversion() >= "2.15.1") {
     dmr_data <- S4Vectors::mcols(dmr)
 
     # Get genomic locations if not provided
+    use_abs <- FALSE
     if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        use_abs <- TRUE
     }
 
     # Extract DMR information
+
+    supporting_sites <- getSupportingSites(
+        dmr,
+        max_sup_cpgs_per_dmr_side = NULL,
+        separate_by_section = TRUE,
+        use_absolute_indices = use_abs
+    )
+    upstream_sup_cpgs_inds <- supporting_sites[[1]]$upstream
+    downstream_sup_cpgs_inds <- supporting_sites[[1]]$downstream
+    upstream_sup_cpgs <- beta_locs[upstream_sup_cpgs_inds, ]
+    downstream_sup_cpgs <- beta_locs[downstream_sup_cpgs_inds, ]
+    seeds_inds <- supporting_sites[[1]]$seeds
+    start_cpg_ind <- min(upstream_sup_cpgs_inds)
+    end_cpg_ind <- max(downstream_sup_cpgs_inds)
+    start_seed_ind <- min(seeds_inds)
+    end_seed_ind <- max(seeds_inds)
+
+
     chr <- as.character(GenomicRanges::seqnames(dmr))
     beta_locs <- beta_locs[beta_locs$chr == chr, , drop = FALSE]
     dmr_start <- GenomicRanges::start(dmr)
     dmr_end <- GenomicRanges::end(dmr)
-    start_cpg <- dmr_data$start_cpg
-    end_cpg <- dmr_data$end_cpg
-    start_cpg_ind <- which(rownames(beta_locs) == start_cpg)
-    start_cpg_pos <- beta_locs[start_cpg_ind, "start"]
-    end_cpg_ind <- which(rownames(beta_locs) == end_cpg)
-    end_cpg_pos <- beta_locs[end_cpg_ind, "start"]
-    start_seed <- dmr_data$start_seed
-    end_seed <- dmr_data$end_seed
-    start_seed_ind <- which(rownames(beta_locs) == start_seed)
-    end_seed_ind <- which(rownames(beta_locs) == end_seed)
 
     # Extract seed IDs from the comma-separated string
-    seed_ids <- unlist(strsplit(as.character(dmr_data$seeds), ","))
 
-    # Get seed positions
-    seed_positions <- beta_locs[seed_ids, "start"]
+
+    # Get positions
+
+    start_cpg_pos <- beta_locs[start_cpg_ind, "start"]
+    end_cpg_pos <- beta_locs[end_cpg_ind, "start"]
+    seed_positions <- beta_locs[seeds_inds, "start"]
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
 
-    if (start_seed_ind > start_cpg_ind) {
-        upstream_sup_cpgs <- beta_locs[start_cpg_ind:(start_seed_ind - 1), ]
-    } else {
-        upstream_sup_cpgs <- data.frame()
-    }
-    if (end_seed_ind < end_cpg_ind) {
-        downstream_sup_cpgs <- beta_locs[(end_seed_ind + 1):end_cpg_ind, ]
-    } else {
-        downstream_sup_cpgs <- data.frame()
-    }
+
+
+
     if (extend_by_dmr_size_ratio > 0) {
         dmr_size <- dmr_end - dmr_start
         ext <- round(dmr_size * extend_by_dmr_size_ratio)
@@ -93,7 +99,7 @@ if (getRversion() >= "2.15.1") {
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
     nsup_cpgs <- beta_locs[start_seed_ind:end_seed_ind, ]
-    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !rownames(nsup_cpgs) %in% seed_ids), , drop = FALSE]
+    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !seq(start_seed_ind, end_seed_ind) %in% seeds_inds), , drop = FALSE]
 
     downstream_nsup_cpgs <- beta_locs[which(beta_locs$start > dmr_end & beta_locs$start <= plot_end), , drop = FALSE]
     upstream_nsup_cpgs <- beta_locs[which(beta_locs$start < dmr_start & beta_locs$start >= plot_start), , drop = FALSE]
@@ -107,7 +113,6 @@ if (getRversion() >= "2.15.1") {
     # Create plotting data frame
     # 1. seeds (stem plots at y=1)
     seeds_df <- data.frame(
-        cpg_id = seed_ids,
         start = seed_positions,
         y = 1,
         type = "seed",
@@ -170,7 +175,6 @@ if (getRversion() >= "2.15.1") {
     )
     if (nrow(extended_sup_cpgs) > 0) {
         extended_sup_cpgs_df <- data.frame(
-            cpg_id = rownames(extended_sup_cpgs),
             start = extended_sup_cpgs$start,
             y = 0.5,
             type = "Extended_CpG",
@@ -178,7 +182,6 @@ if (getRversion() >= "2.15.1") {
         )
     } else {
         extended_sup_cpgs_df <- data.frame(
-            cpg_id = character(0),
             start = numeric(0),
             y = numeric(0),
             type = character(0),
@@ -188,7 +191,6 @@ if (getRversion() >= "2.15.1") {
     # 4. Non-supporting CpGs in extended region
     if (nrow(extended_nsup_cpgs) > 0) {
         extended_nsup_cpgs_df <- data.frame(
-            cpg_id = rownames(extended_nsup_cpgs),
             start = extended_nsup_cpgs$start,
             y = 0.5,
             type = "Extended_CpG",
@@ -196,7 +198,6 @@ if (getRversion() >= "2.15.1") {
         )
     } else {
         extended_nsup_cpgs_df <- data.frame(
-            cpg_id = character(0),
             start = numeric(0),
             y = numeric(0),
             type = character(0),
@@ -423,7 +424,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, beta_locs[seed_ids, , drop = FALSE])
+        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, beta_locs[seeds_inds, , drop = FALSE])
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
@@ -1349,7 +1350,8 @@ plotDMRsCircos <- function(dmrs,
     dmrs_cpgs_list <- getSupportingSites(
         dmrs,
         max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
-        separate_by_section = FALSE
+        separate_by_section = FALSE,
+        use_absolute_indices = FALSE
     )
     dmrs_cpgs_inds <- unlist(dmrs_cpgs_list)
 

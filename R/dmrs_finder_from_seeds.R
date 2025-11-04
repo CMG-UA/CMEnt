@@ -641,7 +641,6 @@
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
 #' @param chr_levels Character vector. Custom chromosome levels to use. Default is NULL.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".
-#' @param output_inds_rel_to_all_cpgs Logical. If FALSE, output DMR indices will be relative to all CpGs in the array. If TRUE, indices will be relative to CpGs present in the beta file. Default is TRUE. Ignored if a bed file is provided as beta input.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 
 #'
@@ -679,7 +678,6 @@ findDMRsFromSeeds <- function(
     bed_start_col = "start",
     chr_levels = NULL,
     verbose = NULL,
-    output_inds_rel_to_all_cpgs = TRUE,
     .load_debug = FALSE
 ) {
 
@@ -1575,17 +1573,21 @@ findDMRsFromSeeds <- function(
         dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
-    if (!bed_provided && output_inds_rel_to_all_cpgs) {
+    if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
-        dmrs_granges$start_cpg_ind <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
-        dmrs_granges$end_cpg_ind <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
-        dmrs_granges$seeds_inds <- sapply(dmrs_granges$seeds, function(seed_ids) {
+        dmrs_granges$start_cpg_ind_absolute <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
+        dmrs_granges$end_cpg_ind_absolute <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
+        dmrs_granges$seeds_inds_absolute <- sapply(dmrs_granges$seeds, function(seed_ids) {
             seed_list <- unlist(strsplit(seed_ids, ","))
             seed_inds <- match(seed_list, rownames(sorted_locs))
             paste(seed_inds, collapse = ",")
         })
         .log_success("DMR CpG indices conversion completed.", level = 2)
+    } else {
+        dmrs_granges$start_cpg_ind_absolute <- dmrs_granges$start_cpg_ind
+        dmrs_granges$end_cpg_ind_absolute <- dmrs_granges$end_cpg_ind
+        dmrs_granges$seeds_inds_absolute <- dmrs_granges$seeds_inds
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
