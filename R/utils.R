@@ -368,6 +368,89 @@
     ret
 }
 
+get_bed_cache_dir <- function(output_dir){
+        if (is.null(output_dir)) {
+            use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
+            if (!is.null(use_cache) && !isFALSE(use_cache)) {
+                if (is.character(use_cache)) {
+                    cache_dir <- use_cache
+                } else {
+                    cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
+                }
+            } else {
+                cache_dir <- tempdir()
+            }
+        } else {
+            cache_dir <- output_dir
+        }
+        cache_dir
+    }
+
+
+#' Create Genomic Location bigmemory::big.matrix Descriptor from Tabix BED File
+#' 
+#' @description This function creates a bigmemory::big.matrix descriptor from a Tabix-indexed BED file.
+#' It reads the genomic locations (chromosome, start, end) from the BED file in chunks and stores them in a bigmemory-backed matrix for efficient access.
+#' This is useful for handling large BED files without loading the entire dataset into memory.
+#' @param input_tabix Character. Path to the Tabix-indexed BED file.
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/c/DMRsegal/bed_cache/` (default: NULL)
+#' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
+#' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
+#' @return Character. Path to the RDS file containing the bigmemory::big.matrix descriptor. Loadable with bigmemory::attach.big.matrix(readRDS()).
+genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000){ # nolint
+    cache_dir <- get_bed_cache_dir(output_dir)
+    options(bigmemory.allow.dimnames = TRUE)
+    if (is.null(hash)) {
+        hash <- .getFileHash(input_tabix)
+    }
+    backing_file <- paste0("bed_locations_", hash)
+    descriptor_file <- paste0("bed_locations_", hash, ".desc")
+    backing_path_full <- file.path(cache_dir, backing_file)
+    descriptor_path_full <- file.path(cache_dir, descriptor_file)
+
+    if (file.exists(backing_path_full)) {
+        file.remove(backing_path_full)
+    }
+    if (file.exists(descriptor_path_full)) {
+        file.remove(descriptor_path_full)
+    }
+    if (is.null(num_rows)) {
+        # Quickly read number of rows in BED file
+        tmp_con <- gzfile(input_tabix, "r")
+        num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
+        close(tmp_con)
+    }
+    sorted_locs <- bigmemory::big.matrix(
+        nrow = num_rows, ncol = 3,
+        type = "integer",
+        backingfile = backing_file,
+        backingpath = cache_dir,
+        descriptorfile = descriptor_file,
+        dimnames = list(NULL, c("chr", "start", "end"))
+    )
+
+
+    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), "r")
+    bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
+    count <- 0
+    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
+        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
+        colnames(bed_data) <- bed_header
+        loc_data <- bed_data[, c("#chrom", "start", "end"), drop = FALSE]
+        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
+
+        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
+        count <- count + nrow(loc_data)
+    }
+    close(con)
+    rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
+    locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
+    saveRDS(bigmemory::describe(sorted_locs), file = locations_file)
+    locations_file
+}
+
+
 #' Read and Process Custom Methylation BED Data
 #'
 #' @description Reads methylation data from a custom BED file format, converts it to
@@ -487,20 +570,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         stop("tabix/bgzip not found in PATH. Cannot process BED file.")
     }
 
-    if (is.null(output_dir)) {
-        use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
-        if (!is.null(use_cache) && !isFALSE(use_cache)) {
-            if (is.character(use_cache)) {
-                cache_dir <- use_cache
-            } else {
-                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
-            }
-        } else {
-            cache_dir <- tempdir()
-        }
-    } else {
-        cache_dir <- output_dir
-    }
+    cache_dir <- get_bed_cache_dir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -576,56 +646,27 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     }
     close(con)
 
-
+    hash <- .getFileHash(bed_file)
+    tabix_file_path <- file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz"))
     # Convert to tabix
     convertBetaToTabix(
         .bed_file = normalized_bed_file,
-        output_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
+        output_file = tabix_file_path,
         chunk_size = chunk_size,
         njobs = 1
     )
-    options(bigmemory.allow.dimnames = TRUE)
-    backing_file <- paste0("bed_locations_", hash)
-    descriptor_file <- paste0("bed_locations_", hash, ".desc")
-    backing_path_full <- file.path(cache_dir, backing_file)
-    descriptor_path_full <- file.path(cache_dir, descriptor_file)
-
-    if (file.exists(backing_path_full)) {
-        file.remove(backing_path_full)
-    }
-    if (file.exists(descriptor_path_full)) {
-        file.remove(descriptor_path_full)
-    }
-
-    sorted_locs <- bigmemory::big.matrix(
-        nrow = num_rows, ncol = 3,
-        type = "integer",
-        backingfile = backing_file,
-        backingpath = cache_dir,
-        descriptorfile = descriptor_file,
-        dimnames = list(NULL, c("chr", "start", "end"))
-    )
+    locations_file <- genomicLocsFromTabixToDescriptor(
+        tabix_file_path,
+        num_rows= num_rows, 
+        hash = hash,
+        output_dir = cache_dir, 
+        chunk_size = chunk_size
+        )
 
 
-    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), "r")
-    bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
-    count <- 0
-    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
-        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
-        colnames(bed_data) <- bed_header
-        loc_data <- bed_data[, c("#chrom", "start", "end"), drop = FALSE]
-        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
-
-        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
-        count <- count + nrow(loc_data)
-    }
-    close(con)
-    rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
-
-    saveRDS(bigmemory::describe(sorted_locs), file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds")))
     return(list(
-        tabix_file = file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")),
-        locations_file = file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
+        tabix_file = tabix_file_path,
+        locations_file = locations_file
     ))
 }
 

@@ -630,8 +630,8 @@ plotDMRs <- function(dmrs,
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
 #' @param genome Character. Genome version (default: "hg19").
-#' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
-#' @param beta_locs Data frame. Genomic locations sorted by position (optional).
+#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
+#' @param sorted_locs Data frame. Genomic locations sorted by position (optional).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
@@ -668,7 +668,7 @@ plotDMR <- function(dmrs,
                     pheno = NULL,
                     genome = "hg19",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
-                    beta_locs = NULL,
+                    sorted_locs = NULL,
                     sample_group_col = "Sample_Group",
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
@@ -691,19 +691,14 @@ plotDMR <- function(dmrs,
         grDevices::cairo_pdf(width = width, height = height)
     }
 
-    if (is.null(beta_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
-        beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
-    } else {
-        array <- NULL
-    }
     # Create BetaHandler if a file path or matrix was provided
+    beta_locs <- NULL
     if (!is.null(beta)) {
         if ((is.character(beta) && length(beta) == 1 && file.exists(beta)) || is.matrix(beta) || is.data.frame(beta)) {
             beta_handler <- getBetaHandler(
                 beta = beta,
                 array = array,
-                beta_locs = beta_locs,
+                sorted_locs = sorted_locs,
                 genome = genome
             )
         } else if (!"BetaHandler" %in% class(beta)) {
@@ -711,6 +706,7 @@ plotDMR <- function(dmrs,
         } else {
             beta_handler <- beta
         }
+        beta_locs <- beta_handler$getBetaLocs()
     }
 
     if (!is.null(pheno) && !(sample_group_col %in% colnames(pheno))) {

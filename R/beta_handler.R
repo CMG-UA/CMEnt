@@ -1,3 +1,10 @@
+is_file <- function(file_path) {
+    is.character(file_path) && length(file_path) == 1 && file.exists(file_path)
+}
+file_is_tabix <- function(file_path) {
+    endsWith(file_path, ".gz") && file.exists(paste0(file_path, ".tbi"))
+}
+
 #' Beta Handler Class
 #'
 #' @description An R6 class to handle methylation beta value files efficiently,
@@ -24,8 +31,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         njobs = 1,
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix
-        #' @param array Array platform type. Ignored if sorted_locs have been provided.
-        #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs have been provided.
+        #' @param array Array platform type. Ignored if sorted_locs, or a tabix file have been provided.
+        #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.
         #' @param beta_row_names_file Path to row names file
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param memory_threshold_mb Memory threshold in MB
@@ -45,7 +52,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-            if (is.null(sorted_locs)) {
+            if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta))) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
                 genome <- strex::match_arg(genome, ignore_case = TRUE)
                 self$array <- array
@@ -55,6 +62,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
             # Set fields
             self$beta <- beta
+            self$njobs <- njobs
 
             self$beta_row_names_file <- beta_row_names_file
             if (!is.null(sorted_locs)) {
@@ -62,11 +70,15 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     sorted_locs <- readRDS(sorted_locs)
                     try(sorted_locs <- bigmemory::attach.big.matrix(sorted_locs), silent = TRUE)
                 }
+            } else if (is_file(beta) && file_is_tabix(beta)) {
+                .log_info("Loading genomic locations from tabix beta file...", level = 2)
+                sorted_locs <- bigmemory::attach(readRDS(genomicLocsFromTabixToDescriptor(
+                    input_tabix = beta
+                )))
             }
-            private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
             self$sorted_locs <- sorted_locs
+            private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
             self$memory_threshold_mb <- memory_threshold_mb
-            self$njobs <- njobs
 
             # Initialize private fields
             private$.beta_col_names <- NULL
@@ -91,9 +103,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.loaded <- TRUE
                 return(invisible(self))
             }
+
             # Check if beta file is tabix
-            if (!is.null(self$beta) && is.character(self$beta) && length(self$beta) == 1) {
-                if (endsWith(self$beta, ".gz") && file.exists(paste0(self$beta, ".tbi"))) {
+            if (is_file(self$beta)) {
+                if (file_is_tabix(self$beta)) {
                     .log_step("Beta file appears to be tabix-indexed. Using as tabix file...", level = 1)
                     private$.tabix_file <- self$beta
                 } else {
