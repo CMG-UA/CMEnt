@@ -373,16 +373,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @return Matrix of beta values
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
-            if (is.numeric(row_names) && !private$.sorted_locs_is_bigmatrix) {
-                row_names <- rownames(getBetaLocs(
-                    array = self$array,
-                    genome = self$genome
-                )[row_names, , drop = FALSE])
-            }
             # Use in-memory beta data if available
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
-                if (!is.null(row_names)){
+                if (!is.null(row_names)) {
                     if (is.numeric(row_names)) {
                         rcmp <- seq_len(nrow(private$.beta_file_in_memory))
                     } else {
