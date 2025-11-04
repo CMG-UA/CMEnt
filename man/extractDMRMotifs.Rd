@@ -45,9 +45,9 @@ dmrs <- data.frame(
     start = c(53468112, 37459206),
     end = c(53468712, 37493431),
     start_cpg = c("cg00000029", "cg00000108"),
-    start_dmp = c("cg00000029", "cg00000108"),
+    start_seed = c("cg00000029", "cg00000108"),
     end_cpg = c("cg13426503", "cg08730726"),
-    end_dmp = c("cg13426503", "cg08730726"),
+    end_seed = c("cg13426503", "cg08730726"),
     dmps = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
 dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")

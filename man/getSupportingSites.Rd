@@ -17,7 +17,7 @@ getSupportingSites(
 \itemize{
 \item start_cpg: ID of the first CpG in the DMR
 \item end_cpg: ID of the last CpG in the DMR
-\item dmps: Comma-separated string of CpG IDs within the DMR
+\item seeds: Comma-separated string of CpG IDs within the DMR
 }}
 
 \item{available_cpgs}{Character vector of all available CpG IDs in genomic order}
@@ -35,7 +35,7 @@ A list where each element corresponds to a DMR and contains:
 \itemize{
 \item upstream: Vector of upstream supporting CpG IDs or indices
 \item downstream: Vector of downstream supporting CpG IDs or indices
-\item dmps: Vector of CpG IDs or indices within the DMR
+\item seeds: Vector of CpG IDs or indices within the DMR
 }
 }
 \description{

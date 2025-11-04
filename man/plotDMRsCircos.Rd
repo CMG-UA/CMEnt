@@ -18,6 +18,8 @@ plotDMRsCircos(
   max_dmrs_per_chr = 10,
   max_cpgs_per_dmr = 5,
   max_interactions = 30,
+  degenerate_resolution = 1e+06,
+  output_file = NULL,
   ...
 )
 }
@@ -46,6 +48,8 @@ rownames matching beta column names (required for beta track).}
 \item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
 
 \item{max_interactions}{Integer. Maximum number of interactions to plot (default: 30).}
+
+\item{degenerate_resolution}{Integer. Resolution in base pairs for showing lines instead of ribbons/lines instead of rectangles (default: 1e6).}
 
 \item{...}{Additional arguments (currently unused).}
 }

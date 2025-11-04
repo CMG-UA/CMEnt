@@ -1334,7 +1334,7 @@ orderByLoc <- function(x,
 #' \itemize{
 #'   \item start_cpg: ID of the first CpG in the DMR
 #'   \item end_cpg: ID of the last CpG in the DMR
-#'   \item dmps: Comma-separated string of CpG IDs within the DMR
+#'   \item seeds: Comma-separated string of CpG IDs within the DMR
 #' }
 #' @param available_cpgs Character vector of all available CpG IDs in genomic order
 #' @param max_sup_cpgs_per_dmr_side Integer. Maximum number of supporting CpGs to retrieve
@@ -1346,7 +1346,7 @@ orderByLoc <- function(x,
 #' \itemize{
 #'   \item upstream: Vector of upstream supporting CpG IDs or indices
 #'   \item downstream: Vector of downstream supporting CpG IDs or indices
-#'   \item dmps: Vector of CpG IDs or indices within the DMR
+#'   \item seeds: Vector of CpG IDs or indices within the DMR
 #' }
 #' @examples
 #' # Assume dmrs is a GRanges object with appropriate metadata columns
@@ -1355,39 +1355,39 @@ orderByLoc <- function(x,
 #' @export
 getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = NULL, ret_index = FALSE, separate_by_section = TRUE) {
     cpg_starts <- match(S4Vectors::mcols(dmrs)$start_cpg, available_cpgs)
-    dmps_inds <- lapply(S4Vectors::mcols(dmrs)$dmps, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
+    seeds_inds <- lapply(S4Vectors::mcols(dmrs)$seeds, function(x) match(unlist(strsplit(as.character(x), ",")), available_cpgs))
     cpg_ends <- match(S4Vectors::mcols(dmrs)$end_cpg, available_cpgs)
     dmrs_cpgs <- list()
     for (i in seq_along(dmrs)) {
-        dmr_dmps_inds <- dmps_inds[[i]]
+        dmr_seeds_inds <- seeds_inds[[i]]
         start_cpg_ind <- cpg_starts[[i]]
         end_cpg_ind <- cpg_ends[[i]]
-        start_dmp_ind <- dmps_inds[[i]][1]
-        end_dmp_ind <- dmps_inds[[i]][length(dmps_inds[[i]])]
+        start_seed_ind <- seeds_inds[[i]][1]
+        end_seed_ind <- seeds_inds[[i]][length(seeds_inds[[i]])]
         start_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (start_dmp_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
-            start_step <- ceiling((start_dmp_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
+        if (!is.null(max_sup_cpgs_per_dmr_side) && (start_seed_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
+            start_step <- ceiling((start_seed_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
         }
         end_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_dmp_ind) > max_sup_cpgs_per_dmr_side) {
-            end_step <- ceiling((end_cpg_ind - end_dmp_ind) / max_sup_cpgs_per_dmr_side)
+        if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_seed_ind) > max_sup_cpgs_per_dmr_side) {
+            end_step <- ceiling((end_cpg_ind - end_seed_ind) / max_sup_cpgs_per_dmr_side)
         }
-        if (start_cpg_ind < start_dmp_ind - 1) {
-            upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_dmp_ind - 1, by = start_step)
+        if (start_cpg_ind < start_seed_ind - 1) {
+            upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_seed_ind - 1, by = start_step)
         } else {
             upstream_sup_cpgs_inds <- c()
         }
-        if (end_dmp_ind + 1 < end_cpg_ind) {
-            downstream_sup_cpgs_inds <- seq(end_dmp_ind + 1, end_cpg_ind, by = end_step)
+        if (end_seed_ind + 1 < end_cpg_ind) {
+            downstream_sup_cpgs_inds <- seq(end_seed_ind + 1, end_cpg_ind, by = end_step)
         } else {
             downstream_sup_cpgs_inds <- c()
         }
         if (ret_index) {
-            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, dmps = dmr_dmps_inds, downstream = downstream_sup_cpgs_inds)
+            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
         } else {
             dmrs_cpgs[[i]] <- list(
                 upstream = available_cpgs[upstream_sup_cpgs_inds],
-                dmps = available_cpgs[dmr_dmps_inds],
+                seeds = available_cpgs[dmr_seeds_inds],
                 downstream = available_cpgs[downstream_sup_cpgs_inds]
             )
         }
@@ -1809,7 +1809,6 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         dmrs <- as.data.frame(dmrs)
         colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
     }
-    .log_success("Gene annotation complete", level = 1)
     return(dmrs)
 }
 

@@ -132,7 +132,7 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
     }
 
     dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    no_extended_idx <- which(dmr_data$start_dmp == dmr_data$start_cpg & dmr_data$end_dmp == dmr_data$end_cpg)
+    no_extended_idx <- which(dmr_data$start_seed == dmr_data$start_cpg & dmr_data$end_seed == dmr_data$end_cpg)
 
     if (length(no_extended_idx) > 0) {
         p <- suppressWarnings(plotDMR(dmrs, dmr_index = no_extended_idx[1]))
@@ -142,7 +142,7 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
     }
 })
 
-test_that("plotDMR handles DMRs with multiple DMPs", {
+test_that("plotDMR handles DMRs with multiple seeds", {
     skip_if_not_installed("ggplot2")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
@@ -151,14 +151,14 @@ test_that("plotDMR handles DMRs with multiple DMPs", {
     }
 
     dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    multi_dmp_idx <- which(dmr_data$dmps_num >= 3)
+    multi_seed_idx <- which(dmr_data$seeds_num >= 3)
 
-    if (length(multi_dmp_idx) > 0) {
-        p <- suppressWarnings(plotDMR(dmrs, dmr_index = multi_dmp_idx[1]))
+    if (length(multi_seed_idx) > 0) {
+        p <- suppressWarnings(plotDMR(dmrs, dmr_index = multi_seed_idx[1]))
         expect_s3_class(p, "gtable")
         expect_true(inherits(p, "gTree"))
     } else {
-        skip("No DMRs with multiple DMPs found")
+        skip("No DMRs with multiple seeds found")
     }
 })
 

@@ -3,12 +3,12 @@ if (getRversion() >= "2.15.1") {
     utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start"))
 }
 
-#' Plot DMR Structure with DMPs and Extended CpGs
+#' Plot DMR Structure with seeds and Extended CpGs
 #'
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
-#' identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
+#' identified by findDMRsFromSeeds, showing the underlying seeds as stem plots connected
 #' by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
-#' The plot distinguishes between DMPs (differentially methylated positions), supporting
+#' The plot distinguishes between seeds (differentially methylated positions), supporting
 #' CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
@@ -60,26 +60,26 @@ if (getRversion() >= "2.15.1") {
     start_cpg_pos <- sorted_locs[start_cpg_ind, "start"]
     end_cpg_ind <- which(rownames(sorted_locs) == end_cpg)
     end_cpg_pos <- sorted_locs[end_cpg_ind, "start"]
-    start_dmp <- dmr_data$start_dmp
-    end_dmp <- dmr_data$end_dmp
-    start_dmp_ind <- which(rownames(sorted_locs) == start_dmp)
-    end_dmp_ind <- which(rownames(sorted_locs) == end_dmp)
+    start_seed <- dmr_data$start_seed
+    end_seed <- dmr_data$end_seed
+    start_seed_ind <- which(rownames(sorted_locs) == start_seed)
+    end_seed_ind <- which(rownames(sorted_locs) == end_seed)
 
-    # Extract DMP IDs from the comma-separated string
-    dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
+    # Extract seed IDs from the comma-separated string
+    seed_ids <- unlist(strsplit(as.character(dmr_data$seeds), ","))
 
-    # Get DMP positions
-    dmp_positions <- sorted_locs[dmp_ids, "start"]
-    start_dmp_pos <- dmr_data$start_dmp_pos
-    end_dmp_pos <- dmr_data$end_dmp_pos
+    # Get seed positions
+    seed_positions <- sorted_locs[seed_ids, "start"]
+    start_seed_pos <- dmr_data$start_seed_pos
+    end_seed_pos <- dmr_data$end_seed_pos
 
-    if (start_dmp_ind > start_cpg_ind) {
-        upstream_sup_cpgs <- sorted_locs[start_cpg_ind:(start_dmp_ind - 1), ]
+    if (start_seed_ind > start_cpg_ind) {
+        upstream_sup_cpgs <- sorted_locs[start_cpg_ind:(start_seed_ind - 1), ]
     } else {
         upstream_sup_cpgs <- data.frame()
     }
-    if (end_dmp_ind < end_cpg_ind) {
-        downstream_sup_cpgs <- sorted_locs[(end_dmp_ind + 1):end_cpg_ind, ]
+    if (end_seed_ind < end_cpg_ind) {
+        downstream_sup_cpgs <- sorted_locs[(end_seed_ind + 1):end_cpg_ind, ]
     } else {
         downstream_sup_cpgs <- data.frame()
     }
@@ -92,8 +92,8 @@ if (getRversion() >= "2.15.1") {
     ext <- max(ext, min_extension_bp)
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
-    nsup_cpgs <- sorted_locs[start_dmp_ind:end_dmp_ind, ]
-    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !rownames(nsup_cpgs) %in% dmp_ids), , drop = FALSE]
+    nsup_cpgs <- sorted_locs[start_seed_ind:end_seed_ind, ]
+    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !rownames(nsup_cpgs) %in% seed_ids), , drop = FALSE]
 
     downstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start > dmr_end & sorted_locs$start <= plot_end), , drop = FALSE]
     upstream_nsup_cpgs <- sorted_locs[which(sorted_locs$start < dmr_start & sorted_locs$start >= plot_start), , drop = FALSE]
@@ -105,19 +105,19 @@ if (getRversion() >= "2.15.1") {
 
 
     # Create plotting data frame
-    # 1. DMPs (stem plots at y=1)
-    dmp_df <- data.frame(
-        cpg_id = dmp_ids,
-        start = dmp_positions,
+    # 1. seeds (stem plots at y=1)
+    seeds_df <- data.frame(
+        cpg_id = seed_ids,
+        start = seed_positions,
         y = 1,
-        type = "DMP",
+        type = "seed",
         stringsAsFactors = FALSE
     )
 
-    # 2. DMR connection (horizontal line connecting DMPs at y=1)
+    # 2. DMR connection (horizontal line connecting seeds at y=1)
     dmr_line <- data.frame(
-        x = start_dmp_pos,
-        xend = end_dmp_pos,
+        x = start_seed_pos,
+        xend = end_seed_pos,
         y = 1,
         yend = 1,
         type = "DMR",
@@ -125,10 +125,10 @@ if (getRversion() >= "2.15.1") {
     )
 
     # 3. Extended supporting CpGs (vertical lines at y=0.5)
-    if (start_cpg_pos != start_dmp_pos) {
+    if (start_cpg_pos != start_seed_pos) {
         dmr_upstream_line <- data.frame(
             x = start_cpg_pos,
-            xend = start_dmp_pos,
+            xend = start_seed_pos,
             y = 0.5,
             yend = 1,
             type = "DMR_Extension",
@@ -144,9 +144,9 @@ if (getRversion() >= "2.15.1") {
             stringsAsFactors = FALSE
         )
     }
-    if (end_cpg_pos != end_dmp_pos) {
+    if (end_cpg_pos != end_seed_pos) {
         dmr_downstream_line <- data.frame(
-            x = end_dmp_pos,
+            x = end_seed_pos,
             xend = end_cpg_pos,
             y = 1,
             yend = 0.5,
@@ -217,9 +217,9 @@ if (getRversion() >= "2.15.1") {
         alpha = 0.8
     )
 
-    # Plot DMP stems
+    # Plot seed stems
     p <- p + ggplot2::geom_segment(
-        data = dmp_df,
+        data = seeds_df,
         ggplot2::aes(x = start, xend = start, y = 0, yend = y),
         color = "#377EB8",
         linewidth = 1.2,
@@ -248,9 +248,9 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    # Plot DMP points
+    # Plot seed points
     p <- p + ggplot2::geom_point(
-        data = dmp_df,
+        data = seeds_df,
         ggplot2::aes(x = start, y = y),
         color = "#377EB8",
         size = 3,
@@ -284,8 +284,8 @@ if (getRversion() >= "2.15.1") {
     # Add DMR region shading
     p <- p + ggplot2::annotate(
         "rect",
-        xmin = start_dmp_pos,
-        xmax = end_dmp_pos,
+        xmin = start_seed_pos,
+        xmax = end_seed_pos,
         ymin = 0,
         ymax = 1,
         alpha = 0.1,
@@ -311,7 +311,7 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_cpgs$start), start_dmp_pos, start_dmp_pos, min(upstream_sup_cpgs$start)),
+            x = c(min(upstream_sup_cpgs$start), start_seed_pos, start_seed_pos, min(upstream_sup_cpgs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -334,7 +334,7 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_dmp_pos, max(downstream_sup_cpgs$start), max(downstream_sup_cpgs$start), end_dmp_pos),
+            x = c(end_seed_pos, max(downstream_sup_cpgs$start), max(downstream_sup_cpgs$start), end_seed_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -343,12 +343,12 @@ if (getRversion() >= "2.15.1") {
 
     # Create title if not provided
     title <- sprintf(
-        "DMR #%d: %s:%s-%s\n%d DMPs, %d Sequence CpGs (\u0394\u03b2=%.3f)",
+        "DMR #%d: %s:%s-%s\n%d seeds, %d Sequence CpGs (\u0394\u03b2=%.3f)",
         dmr_index,
         chr,
         format(dmr_start, big.mark = ",", scientific = FALSE),
         format(dmr_end, big.mark = ",", scientific = FALSE),
-        dmr_data$dmps_num,
+        dmr_data$seeds_num,
         dmr_data$cpgs_num,
         dmr_data$delta_beta
     )
@@ -377,14 +377,14 @@ if (getRversion() >= "2.15.1") {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(0.5, 1),
-                labels = c("Array CpGs", "DMPs"),
+                labels = c("Array CpGs", "seeds"),
                 limits = c(-0.1, 1.15)
             )
     } else {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(1),
-                labels = c("DMPs"),
+                labels = c("seeds"),
                 limits = c(-0.1, 1.15)
             )
     }
@@ -405,7 +405,7 @@ if (getRversion() >= "2.15.1") {
         axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
     )
 
-    # Add ticks for the DMPs on the x-axis
+    # Add ticks for the seeds on the x-axis
     breaks <- c(plot_start, sorted_locs[start_cpg_ind:end_cpg_ind, "start"], plot_end)
     cpgs_labs <- paste0(sorted_locs[start_cpg_ind:end_cpg_ind, "start"], "\n(", rownames(sorted_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
     breaks_labels <- c(
@@ -423,7 +423,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[dmp_ids, , drop = FALSE])
+        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, sorted_locs[seed_ids, , drop = FALSE])
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
@@ -437,9 +437,9 @@ if (getRversion() >= "2.15.1") {
     cpg_locs <- total_shown_positions[, c("chr", "start")]
 
 
-    # Mark DMPs
-    dmp_ids <- unlist(strsplit(as.character(dmr_data$dmps), ","))
-    is_dmp <- cpg_ids %in% dmp_ids
+    # Mark seeds
+    seed_ids <- unlist(strsplit(as.character(dmr_data$seeds), ","))
+    is_seed <- cpg_ids %in% seed_ids
 
     # Create heatmap
     # Prepare data
@@ -448,7 +448,7 @@ if (getRversion() >= "2.15.1") {
     beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
     beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
-    beta_melted$is_DMP <- is_dmp[match(beta_melted$CpG, cpg_ids)]
+    beta_melted$is_seed <- is_seed[match(beta_melted$CpG, cpg_ids)]
     if (!is.null(pheno) && !is.null(sample_group_col)) {
         beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
         # Order samples by group
@@ -472,12 +472,12 @@ if (getRversion() >= "2.15.1") {
         ggplot2::theme(
             axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5, vjust = 0.5)
         )
-    # Add vertical lines for DMPs
-    if (any(is_dmp)) {
-        dmp_positions <- unique(beta_melted$Position[beta_melted$is_DMP])
+    # Add vertical lines for seeds
+    if (any(is_seed)) {
+        seed_positions <- unique(beta_melted$Position[beta_melted$is_seed])
         heatmap_plot <- heatmap_plot +
             ggplot2::geom_vline(
-                xintercept = dmp_positions,
+                xintercept = seed_positions,
                 color = "yellow",
                 linetype = "dashed",
                 linewidth = 0.5,
@@ -618,8 +618,8 @@ plotDMRs <- function(dmrs,
 #' Plot DMR
 #'
 #' @description Creates a detailed DMR plot with an integrated heatmap showing
-#' beta values across samples for DMPs and surrounding CpGs. The plot consists of
-#' two panels: the top panel shows the DMR structure with DMPs and extended CpGs,
+#' beta values across samples for seeds and surrounding CpGs. The plot consists of
+#' two panels: the top panel shows the DMR structure with seeds and extended CpGs,
 #' and the bottom panel displays a heatmap of beta values for all samples, if beta values are provided.
 #' Additionally, if motif information is available or can be extracted, a sequence logo
 #' plot is added showing the nucleotide composition and information content around CpG sites in the DMR.
@@ -676,26 +676,21 @@ plotDMR <- function(dmrs,
                     plot_motif = TRUE,
                     motif_flank_size = 5,
                     plot_title = TRUE,
-                    output_file = NULL) {
-    if (!is.null(output_file)) {
-        if (!is.null(beta)) {
-            grDevices::cairo_pdf(output_file, width = 8, height = 12)
-        } else {
-            grDevices::cairo_pdf(output_file, width = 8, height = 8)
-        }
-    }
-    if (.Device == "null device") {
-        if (!is.null(beta)) {
-            grDevices::cairo_pdf(width = 8, height = 12)
-        } else {
-            grDevices::cairo_pdf(width = 8, height = 8)
-        }
-    }
+                    output_file = NULL,
+                    width = 8,
+                    height = 12) {
+
+    dmrs <- convertToGRanges(dmrs, genome)
 
     showtext::showtext_auto(enable = TRUE)
     showtext::showtext_opts(dpi = 300)
+    if (!is.null(output_file)) {
+        grDevices::cairo_pdf(output_file, width = width, height = height)
+    }
+    if (.Device == "null device") {
+        grDevices::cairo_pdf(width = width, height = height)
+    }
 
-    dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -1156,6 +1151,10 @@ plotDMRsCircos <- function(dmrs,
                 cors <- strsplit(link_legend_data$jaspar_corr[i], ",")[[1]]
                 for (j in seq_along(names)) {
                     label <- paste0(label, " | ", names[j], " (", round(as.numeric(cors[j]), 3), ")")
+                    if (j == 3) {
+                        label <- paste0(label, " ...")
+                        break
+                    }
                 }
             }
             label
