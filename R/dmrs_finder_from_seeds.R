@@ -1406,6 +1406,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[length(inds)]]
         agg_seeds <- unique(unlist(strsplit(cols_vals$seeds, ",")))
         agg_df[i, "seeds"] <- paste(agg_seeds, collapse = ",")
+        agg_df[i, "seeds_inds"] <- paste(sort(as.integer(unique(unlist(strsplit(cols_vals$seeds_inds, ","))))), collapse = ",")
         agg_df[i, "seeds_num"] <- length(agg_seeds)
         agg_df[i, "connection_corr_pval"] <- aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE)
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
