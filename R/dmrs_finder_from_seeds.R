@@ -187,7 +187,7 @@
                 x <- rbind(x, add)
             }
             if (verbose > 0) {
-                with_timeout(p_ext(), 1)
+                p_ext()
             }
             x
         }
@@ -604,15 +604,6 @@
         cases_num = cases_num,
         controls_num = controls_num
     )
-}
-
-
-with_timeout <- function(expr, cpu = Inf, elapsed = Inf){
-  expr <- substitute(expr)
-  envir <- parent.frame()
-  setTimeLimit(cpu = cpu, elapsed = elapsed, transient = TRUE)
-  on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE))
-  eval(expr, envir = envir)
 }
 
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
@@ -1297,8 +1288,8 @@ findDMRsFromSeeds <- function(beta = NULL,
                     chr_locs = chr_locs,
                     chr_start_base = chr_start_base
                 )
-                with_timeout(options(warn = op), 1)
-                if (verbose > 0 && !is.null(p_ext)) with_timeout(p_ext(), 1)
+                options(warn = op)
+                if (verbose > 0 && !is.null(p_ext)) p_ext()
                 x
             },
             simplify = FALSE,
@@ -1585,7 +1576,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         sorted_locs <- beta_handler$getGenomicLocs()
         dmrs_granges$start_cpg_ind <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
         dmrs_granges$end_cpg_ind <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
-        dmrs_granges$seeds_inds <- sapply(dmrs_granges$seeds_inds, function(seed_ids) {
+        dmrs_granges$seeds_inds <- sapply(dmrs_granges$seeds, function(seed_ids) {
             seed_list <- unlist(strsplit(seed_ids, ","))
             seed_inds <- match(seed_list, rownames(sorted_locs))
             paste(seed_inds, collapse = ",")
