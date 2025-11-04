@@ -187,7 +187,7 @@
                 x <- rbind(x, add)
             }
             if (verbose > 0) {
-                p_ext()
+                with_timeout(p_ext(), 1)
             }
             x
         }
@@ -602,6 +602,14 @@
     )
 }
 
+
+with_timeout <- function(expr, cpu = Inf, elapsed = Inf){
+  expr <- substitute(expr)
+  envir <- parent.frame()
+  setTimeLimit(cpu = cpu, elapsed = elapsed, transient = TRUE)
+  on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE))
+  eval(expr, envir = envir)
+}
 
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
 #'
@@ -1218,7 +1226,7 @@ findDMRsFromSeeds <- function(beta = NULL,
         )
         .log_success("Connectivity array built.", level = 2)
     }
-    .log_info("Number of connected CpGs found: ", sum(connectivity_array$connected), level = 2)
+    .log_info("Number of underlying connected CpGs found: ", sum(connectivity_array$connected), level = 1)
     if (verbose > 1) {
         dir.create("debug", showWarnings = FALSE)
         saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
@@ -1237,6 +1245,7 @@ findDMRsFromSeeds <- function(beta = NULL,
     }
     ret <- list()
     for (chr in unique(dmrs$chr)) {
+        .log_info("Processing ", chr, level=2)
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
         chr_mask <- sorted_locs[, "chr"] == chr
         first_row <- which(chr_mask)[1]
@@ -1267,8 +1276,8 @@ findDMRsFromSeeds <- function(beta = NULL,
                     chr_locs = chr_locs,
                     chr_start_base = chr_start_base
                 )
-                options(warn = op)
-                if (verbose > 0 && !is.null(p_ext)) p_ext()
+                with_timeout(options(warn = op), 1)
+                if (verbose > 0 && !is.null(p_ext)) with_timeout(p_ext(), 1)
                 x
             },
             simplify = FALSE,
@@ -1286,6 +1295,7 @@ findDMRsFromSeeds <- function(beta = NULL,
             )
             # future.scheduling = ceiling(n_dmrs / njobs),
         )
+        .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret))
         ret <- c(ret, chr_ret)
     }
     if (inherits(ret, "try-error")) {
