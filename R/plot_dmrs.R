@@ -455,7 +455,6 @@ if (getRversion() >= "2.15.1") {
         sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
         beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
     }
-
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
         ggplot2::scale_fill_gradient(
@@ -640,6 +639,7 @@ plotDMRs <- function(dmrs,
 #' @param plot_motif Logical. Whether to plot the sequence logo motif (default: TRUE).
 #' @param motif_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
+#' @param output_file Character. If provided, saves the plot to the specified file path (PDF format).
 #'
 #' @return A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),
 #'   and sequence logo motif plot (if motif information is available and plot_motif is TRUE).
@@ -676,9 +676,25 @@ plotDMR <- function(dmrs,
                     plot_motif = TRUE,
                     motif_flank_size = 5,
                     plot_title = TRUE,
-                    draw = TRUE) {
+                    output_file = NULL) {
+    if (!is.null(output_file)) {
+        if (!is.null(beta)) {
+            grDevices::cairo_pdf(output_file, width = 8, height = 12)
+        } else {
+            grDevices::cairo_pdf(output_file, width = 8, height = 8)
+        }
+    }
+    if (.Device == "null device") {
+        if (!is.null(beta)) {
+            grDevices::cairo_pdf(width = 8, height = 12)
+        } else {
+            grDevices::cairo_pdf(width = 8, height = 8)
+        }
+    }
+
     showtext::showtext_auto(enable = TRUE)
     showtext::showtext_opts(dpi = 300)
+
     dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(sorted_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
@@ -792,8 +808,9 @@ plotDMR <- function(dmrs,
     max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
     combined <- do.call(gridExtra::gtable_rbind, grobs)
     combined$widths <- max_width
-    if (draw) {
-        grid::grid.draw(combined)
+    grid::grid.draw(combined)
+    if (!is.null(output_file)) {
+        grDevices::dev.off()
     }
     invisible(combined)
 }
@@ -834,6 +851,7 @@ plotDMR <- function(dmrs,
 #' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
 #' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).
 #' @param max_interactions Integer. Maximum number of interactions to plot (default: 30).
+#' @param degenerate_resolution Integer. Resolution in base pairs for showing lines instead of ribbons/lines instead of rectangles (default: 1e6).
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return NULL (creates plot in graphics device).
@@ -866,6 +884,8 @@ plotDMRsCircos <- function(dmrs,
                            max_dmrs_per_chr = 10,
                            max_cpgs_per_dmr = 5,
                            max_interactions = 30,
+                           degenerate_resolution = 1e6,
+                           output_file = NULL,
                            ...) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (is.null(sorted_locs)) {
@@ -932,10 +952,15 @@ plotDMRsCircos <- function(dmrs,
         dir.create("debug", showWarnings = FALSE)
         write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
-
+    circle_size <- grid::unit(1, "snpc")
+    if (!is.null(output_file)) {
+        grDevices::cairo_pdf(output_file, width = 12, height = 8)
+    }
+    if (.Device == "null device") {
+        grDevices::cairo_pdf(width = 12, height = 8)
+    }
     .log_step("Creating Circos plot...")
     plot.new()
-    circle_size <- grid::unit(1, "snpc")
     grid::pushViewport(grid::viewport(
         x = 0, y = 0.5, width = circle_size, height = circle_size,
         just = c("left", "center")
@@ -1021,7 +1046,7 @@ plotDMRsCircos <- function(dmrs,
         circlize::circos.genomicIdeogram(species = genome)
     }
 
-    
+
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)
 
@@ -1046,7 +1071,7 @@ plotDMRsCircos <- function(dmrs,
         circlize::circos.trackPlotRegion(
             sectors = unique_chrs,
             bg.border = NA,
-            bg.col = "#ffe7c1",
+            bg.col = "#87cec4",
             track.height = 0.05,
             ylim = c(0, 1),
             panel.fun = function(x, y) {
@@ -1054,14 +1079,24 @@ plotDMRsCircos <- function(dmrs,
                 dmr_chr <- arc_df[arc_df$chr == chr, ]
                 if (nrow(dmr_chr) > 0) {
                     for (i in seq_len(nrow(dmr_chr))) {
-                        circlize::circos.rect(
-                            xleft = dmr_chr$start[i],
-                            xright = dmr_chr$end[i],
-                            ybottom = 0,
-                            ytop = 1,
-                            col = dmr_chr$color[i],
-                            border = dmr_chr$color[i]
-                        )
+                        if (dmr_chr$end[1] - dmr_chr$start[1] < degenerate_resolution) {
+                            circlize::circos.lines(
+                                x = c((dmr_chr$start[i] + dmr_chr$end[i]) / 2, (dmr_chr$start[i] + dmr_chr$end[i]) / 2),
+                                y = c(0, 1),
+                                col = dmr_chr$color[i],
+                                border = NA
+                            )
+                        } else {
+                            circlize::circos.rect(
+                                xleft = dmr_chr$start[i],
+                                xright = dmr_chr$end[i],
+                                ybottom = 0,
+                                ytop = 1,
+                                col = dmr_chr$color[i],
+                                border = NA,
+                                density = NULL
+                            )
+                        }
                     }
                 }
             }
@@ -1102,7 +1137,7 @@ plotDMRsCircos <- function(dmrs,
                 shaded_color
             })
         }
-        link_data$colors <- link_colors(link_data[,"sim"])
+        link_data$colors <- link_colors(link_data[, "sim"])
 
         # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
         comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_sequence", "jaspar_names", "jaspar_corr")]
@@ -1139,10 +1174,10 @@ plotDMRsCircos <- function(dmrs,
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
             point2 <- c(link_data$start2[i], link_data$end2[i])
-            if (point1[2] - point1[1] < 1e5) {
+            if (point1[2] - point1[1] < degenerate_resolution) {
                 point1 <- mean(point1)
             }
-            if (point2[2] - point2[1] < 1e5) {
+            if (point2[2] - point2[1] < degenerate_resolution) {
                 point2 <- mean(point2)
             }
             circlize::circos.link(
@@ -1161,6 +1196,9 @@ plotDMRsCircos <- function(dmrs,
     lgd_list <- do.call(ComplexHeatmap::packLegend, legends)
     ComplexHeatmap::draw(lgd_list, x = circle_size, just = "left")
     .log_success("Circos plot created successfully")
+    if (!is.null(output_file)) {
+        grDevices::dev.off()
+    }
 
 
     invisible(NULL)
@@ -1278,7 +1316,7 @@ plotDMRsCircos <- function(dmrs,
     genome_lengths
 }
 
-.closest_rows_indices_to_centroids <- function(beta_pcs, centers, verbose = FALSE) {
+.closest_rows_indices_to_centroids <- function(beta_pcs, centers, verbose = FALSE) { # nolint
     stopifnot(nrow(beta_pcs) >= nrow(centers))
     selection <- integer()
     assessed_pcs <- beta_pcs
@@ -1320,6 +1358,7 @@ plotDMRsCircos <- function(dmrs,
         separate_by_section = FALSE
     )
     dmrs_cpgs <- unlist(dmrs_cpgs_list)
+    dmrs_cpgs <- available_cpgs[available_cpgs %in% dmrs_cpgs]
 
 
     shown_locs <- sorted_locs[dmrs_cpgs, c("chr", "start", "end"), drop = FALSE]

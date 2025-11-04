@@ -255,7 +255,9 @@
         return("")
     }
     if (secs < 0.001) {
-        sprintf(" (took %.2f\u03bcs)", secs * 1000000)
+        x <- " (took %.2f\u03bcs)"
+        Encoding(x) <- "UTF-8"
+        sprintf(x, secs * 1000000)
     } else if (secs < 1) {
         sprintf(" (took %.2fms)", secs * 1000)
     } else if (secs < 60) {
@@ -1381,12 +1383,12 @@ getSupportingSites <- function(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side =
             downstream_sup_cpgs_inds <- c()
         }
         if (ret_index) {
-            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, downstream = downstream_sup_cpgs_inds, dmps = dmr_dmps_inds)
+            dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, dmps = dmr_dmps_inds, downstream = downstream_sup_cpgs_inds)
         } else {
             dmrs_cpgs[[i]] <- list(
                 upstream = available_cpgs[upstream_sup_cpgs_inds],
-                downstream = available_cpgs[downstream_sup_cpgs_inds],
-                dmps = available_cpgs[dmr_dmps_inds]
+                dmps = available_cpgs[dmr_dmps_inds],
+                downstream = available_cpgs[downstream_sup_cpgs_inds]
             )
         }
         if (!separate_by_section) {
