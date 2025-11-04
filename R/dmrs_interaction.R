@@ -117,7 +117,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 #' @return The input Dataframe/GRanges object with an additional metadata column:
 #' \itemize{
 #'   \item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, C, G, T)
-#'   \item consensus_sequence: A character string representing the consensus sequence derived from the PWM
+#'   \item consensus_seq: A character string representing the consensus sequence derived from the PWM
 #' }
 #' @examples
 #' # Extract motif frequencies for DMRs
@@ -159,7 +159,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = DNA_BASES)))) # nolint
         mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
-        mcols(dmrs)$consensus_sequence[[i]] <- paste(DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
+        mcols(dmrs)$consensus_seq[[i]] <- paste(DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
     if (input_is_df) {
         dmrs <- as.data.frame(dmrs)
@@ -273,7 +273,7 @@ computeDMRsInteraction <- function(
             mat <- Reduce("+", pwms) / length(pwms)
             mat / colSums(mat)
         })
-        components_df$consensus_sequence <- sapply(components_df$avg_pwm, function(pwm) {
+        components_df$consensus_seq <- sapply(components_df$avg_pwm, function(pwm) {
             paste(DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
         })
         # Order by component size

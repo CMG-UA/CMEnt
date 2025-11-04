@@ -1133,10 +1133,10 @@ plotDMRsCircos <- function(dmrs,
         link_data$colors <- link_colors(link_data[, "sim"])
 
         # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
-        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_sequence", "jaspar_names", "jaspar_corr")]
+        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_seq", "jaspar_names", "jaspar_corr")]
         link_legend_data <- data.frame(
             component_id = comp_data$component_id,
-            consensus_seq = comp_data$consensus_sequence,
+            consensus_seq = comp_data$consensus_seq,
             jaspar_names = comp_data$jaspar_names,
             jaspar_corr = comp_data$jaspar_corr,
             stringsAsFactors = FALSE

@@ -24,7 +24,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
     }
 
     expect_s3_class(result$components, "data.frame")
-    expect_true(all(c("component_id", "size", "indices", "avg_pwm", "consensus_sequence") %in%
+    expect_true(all(c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
         colnames(result$components)))
 })
 
@@ -191,7 +191,7 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
     ))
 
     if (nrow(result$components) > 0) {
-        expect_true(all(sapply(result$components$consensus_sequence, function(x) {
+        expect_true(all(sapply(result$components$consensus_seq, function(x) {
             all(strsplit(x, "")[[1]] %in% c("A", "T", "G", "C"))
         })))
     }
