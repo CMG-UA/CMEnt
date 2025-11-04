@@ -1155,6 +1155,7 @@ findDMRsFromSeeds <- function(beta = NULL,
                         seeds_num = length(dmr_seeds_inds),
                         connection_corr_pval = connection_corr_pval,
                         stop_connection_reason = stop_reason,
+                        seeds_inds = paste(cseeds_inds[dmr_seeds_inds], collapse = ","),
                         seeds = paste(cseeds[dmr_seeds_inds], collapse = ",")
                     )
                     dmr_n <- dmr_n + 1L
