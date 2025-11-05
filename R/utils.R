@@ -1211,9 +1211,9 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
     dmrs <- convertToGRanges(dmrs, from_genome)
     from_array_locs <- getSortedGenomicLocs(array = from_array, genome = from_genome)
     to_array_locs <- getSortedGenomicLocs(array = to_array, genome = to_genome)
-    start_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$start_cpg_ind], rownames(to_array_locs))
-    end_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$end_cpg_ind], rownames(to_array_locs))
-    seeds_inds <- sapply(strsplit(mcols(dmrs)$seeds_inds, ","), function(seed) {
+    start_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$start_cpg_ind_abs], rownames(to_array_locs))
+    end_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$end_cpg_ind_abs], rownames(to_array_locs))
+    seeds_inds <- sapply(strsplit(mcols(dmrs)$seeds_inds_abs, ","), function(seed) {
         match(rownames(from_array_locs)[as.numeric(seed)], rownames(to_array_locs))
     })
     drop_missing <- sapply(start_cpgs, function(x) is.na(x)) | sapply(end_cpgs, function(x) is.na(x))
@@ -1239,9 +1239,9 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
     seeds_inds <- lapply(seeds_inds, function(seed) {
         seed[!is.na(seed)]
     })
-    mcols(dmrs)$start_cpg_ind <- start_cpgs
-    mcols(dmrs)$end_cpg_ind <- end_cpgs
-    mcols(dmrs)$seeds_inds <- sapply(seeds_inds, function(seed) {
+    mcols(dmrs)$start_cpg_ind_abs <- start_cpgs
+    mcols(dmrs)$end_cpg_ind_abs <- end_cpgs
+    mcols(dmrs)$seeds_inds_abs <- sapply(seeds_inds, function(seed) {
         paste(seed, collapse = ",")
     })
     mcols(dmrs)$seeds <- sapply(seeds, function(seed) {
