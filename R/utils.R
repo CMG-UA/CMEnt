@@ -95,7 +95,7 @@
             as.numeric(l[cols_inds])
         })
     } else {
-        beta_sites <- readLines(conn)[2:length(beta_row_names) + 1]
+        beta_sites <- readLines(conn)[2:(length(beta_row_names) + 1)]
     }
     close(conn)
     beta_sites <- do.call(rbind, beta_sites)
