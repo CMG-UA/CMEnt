@@ -1,35 +1,45 @@
-#' DMRsegal: Identify Differentially Methylated Regions from DMPs
+#' DMRsegal: Differentially Methylated Regions SEed Guided AssembLy
 #'
 #' DMRsegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
-#' from pre-computed Differentially Methylated Positions (DMPs). The package uses a
-#' correlation-based approach to expand regions around significant DMPs, considering both
+#' from genomic seeds, commonly Differentially Methylated Positions (DMPs). The package uses a
+#' correlation-based approach to expand regions around significant seeds, considering both
 #' statistical significance and biological relevance of methylation changes.
 #'
 #' @section Main Functions:
 #' \itemize{
-#'   \item \code{\link{findDMRsFromSeeds}}: The main function for identifying DMRs
+#'   \item \code{\link{findDMRsFromSeeds}}: Identify DMRs from genomic seeds
+#'   \item \code{\link{extractDMRMotifs}}: Extract sequence motifs from DMRs
+#'   \item \code{\link{computeDMRsInteraction}}: Compute motif-based DMR interactions
+#'   \item \code{\link{plotDMR}}: Visualize individual DMRs with structure, beta values, and motifs
+#'   \item \code{\link{plotDMRs}}: Create multi-panel DMR plots
+#'   \item \code{\link{plotDMRsCircos}}: Generate circos plots with DMR interactions
 #' }
 #'
 #' @section Input Data:
-#' The package accepts two types of methylation data input:
+#' The package accepts multiple types of methylation data input:
 #' \itemize{
 #'   \item Beta value files: Tab-separated files containing methylation beta values
 #'   \item Tabix files: Indexed bed.gz files for efficient access to large datasets
+#'   \item BED files: Custom methylation BED files (automatically converted to tabix)
+#'   \item Beta matrices: In-memory beta value matrices
 #' }
 #'
 #' @section Platform Support:
-#' The package supports methylation data from both major Illumina platforms:
+#' The package supports methylation data from multiple platforms:
 #' \itemize{
-#'   \item Illumina EPIC array (850k)
-#'   \item Illumina 450k array
-#'   \item Custom CpG positions (when provided in DMP data)
+#'   \item Illumina arrays: 450K, EPIC (850k), EPICv2, 27K
+#'   \item Mouse arrays: mm10, mm39 genomes
+#'   \item NGS data: Via tabix-indexed files
+#'   \item Custom platforms: Via BED file input
 #' }
 #'
 #' @section Workflow:
-#' 1. Start with pre-computed DMPs from any differential methylation analysis
-#' 2. Provide methylation data (beta values or tabix)
-#' 3. Define parameters for region expansion
+#' 1. Start with genomic seeds (e.g., DMPs) from any differential analysis
+#' 2. Provide methylation data (multiple formats supported)
+#' 3. Define parameters for region expansion and connectivity
 #' 4. Get DMRs as a GRanges object with comprehensive statistics
+#' 5. Optionally extract motifs and compute DMR interactions
+#' 6. Visualize with structure plots, heatmaps, and circos plots
 #'
 #' @keywords internal
 "_PACKAGE"

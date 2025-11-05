@@ -9,7 +9,7 @@
   dmr_index = 1,
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = "hg19",
-  sorted_locs = NULL,
+  beta_locs = NULL,
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
   plot_title = TRUE,
@@ -21,11 +21,11 @@
 
 \item{dmr_index}{Integer. Which DMR to plot (default: 1).}
 
-\item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if sorted_locs is provided.}
+\item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.}
 
-\item{genome}{Character. Genome version (default: "hg19"). Ignored if sorted_locs is provided.}
+\item{genome}{Character. Genome version (default: "hg19"). Ignored if beta_locs is provided.}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
+\item{beta_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
 \item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).}
 

@@ -63,9 +63,9 @@ Create a new BetaHandler object
 \describe{
 \item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix}
 
-\item{\code{array}}{Array platform type. Ignored if sorted_locs have been provided.}
+\item{\code{array}}{Array platform type. Ignored if sorted_locs, or a tabix file have been provided.}
 
-\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs have been provided.}
+\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.}
 
 \item{\code{beta_row_names_file}}{Path to row names file}
 

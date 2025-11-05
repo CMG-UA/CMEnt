@@ -6,29 +6,28 @@
 \usage{
 getSupportingSites(
   dmrs,
-  available_cpgs,
   max_sup_cpgs_per_dmr_side = NULL,
-  ret_index = FALSE,
-  separate_by_section = TRUE
+  separate_by_section = TRUE,
+  use_absolute_indices = TRUE
 )
 }
 \arguments{
 \item{dmrs}{GRanges object containing DMRs with metadata columns:
 \itemize{
-\item start_cpg: ID of the first CpG in the DMR
-\item end_cpg: ID of the last CpG in the DMR
-\item seeds: Comma-separated string of CpG IDs within the DMR
+\item start_cpg_ind: ID of the first CpG in the DMR, index in the processed beta file
+\item end_cpg_ind: ID of the last CpG in the DMR, index in the processed beta file
+\item seeds_inds: Comma-separated string of CpG IDs within the DMR, index in the processed beta file
 }}
-
-\item{available_cpgs}{Character vector of all available CpG IDs in genomic order}
 
 \item{max_sup_cpgs_per_dmr_side}{Integer. Maximum number of supporting CpGs to retrieve
 upstream and downstream of each DMR (default: NULL, meaning no limit)}
 
-\item{ret_index}{Logical. If TRUE, returns indices of CpGs in available_cpgs instead of IDs (default: FALSE)}
-
 \item{separate_by_section}{Logical. If TRUE, returns a list with separate entries for upstream,
 downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)}
+
+\item{use_absolute_indices}{Logical. If TRUE, uses absolute indices from metadata columns
+(start_cpg_ind_abs, end_cpg_ind_abs, seeds_inds_abs). If FALSE, uses relative indices
+(start_cpg_ind, end_cpg_ind, seeds_inds) (default: TRUE)}
 }
 \value{
 A list where each element corresponds to a DMR and contains:
@@ -46,5 +45,6 @@ the number of supporting CpGs on each side of the DMR.
 }
 \examples{
 # Assume dmrs is a GRanges object with appropriate metadata columns
-dmrs_cpgs <- getSupportingSites(dmrs, max_sup_cpgs_per_dmr_side = 2)
+available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
+dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
 }

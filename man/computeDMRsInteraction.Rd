@@ -9,10 +9,10 @@ computeDMRsInteraction(
   genome = "hg19",
   array = "450K",
   min_sim = 0.8,
-  genomic_locs = NULL,
+  beta_locs = NULL,
   flank_size = 5,
   find_components = TRUE,
-  min_component_size = 1,
+  min_component_size = 2,
   query_components_with_jaspar = TRUE,
   plot.dir = NULL
 )
@@ -26,14 +26,14 @@ computeDMRsInteraction(
 
 \item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
 
-\item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
+\item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
 \item{flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
 
 \item{find_components}{Logical. Whether to identify connected components of interacting DMRs (default: TRUE)}
 
-\item{min_component_size}{Integer. Minimum size of connected components to consider (default: 1)}
+\item{min_component_size}{Integer. Minimum size of connected components to consider (default: 2)}
 
 \item{query_components_with_jaspar}{Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)}
 }

@@ -130,9 +130,9 @@ A GRanges object containing identified DMRs with metadata columns:
 \item delta_beta_sd: Standard deviation of methylation differences
 \item cases_beta: Mean beta value in cases
 \item controls_beta: Mean beta value in controls
-\item end_seed: ID of the first Seed in the region
+\item start_seed: ID of the first Seed in the region
 \item end_seed: ID of the last Seed in the region
-\item end_seed_pos: Genomic position of the first Seed in the region
+\item start_seed_pos: Genomic position of the first Seed in the region
 \item end_seed_pos: Genomic position of the last Seed in the region
 \item seeds: Comma-separated list of Seed IDs in the region
 \item connection_corr_pval: Aggregated correlation p-value of connected seeds

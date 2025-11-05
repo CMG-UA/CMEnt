@@ -13,7 +13,7 @@ plotDMRs(
   sample_group_col = "Sample_Group",
   genome = "hg19",
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  sorted_locs = NULL,
+  beta_locs = NULL,
   ncol = 1,
   ...
 )
@@ -33,9 +33,9 @@ plotDMRs(
 
 \item{genome}{Character. Genome version (default: "hg19").}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
+\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
+\item{beta_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
 \item{ncol}{Integer. Number of columns in the grid (default: 1).}
 

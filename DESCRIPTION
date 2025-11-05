@@ -1,6 +1,6 @@
 Package: DMRsegal
 Type: Package
-Title: Identify Differentially Methylated Regions from DMPs
+Title: Differentially Methylated Regions SEed Guided AssembLy
 Version: 0.99.0
 Authors@R: c(
     person(given   = "Vasileios",
@@ -12,13 +12,15 @@ Authors@R: c(
            role = c("cph", "fnd")),
     person("Stichting Tegen Kanker",
            role = "fnd"))
-Description: DMRsegal implements a method for identifying Differentially 
-    Methylated Regions (DMRs) from pre-computed Differentially Methylated 
-    Positions (DMPs). The package uses a correlation-based approach to 
-    expand regions around significant DMPs, considering both statistical 
-    significance and biological relevance of methylation changes. It supports 
-    standard beta value files and methylation bed files for efficient 
-    processing of large datasets.
+Description: DMRsegal implements a correlation-based method for identifying 
+    Differentially Methylated Regions (DMRs) from genomic seeds, commonly 
+    Differentially Methylated Positions (DMPs). The package expands regions 
+    around significant seeds considering both statistical significance and 
+    biological relevance of methylation changes. It supports array-based 
+    (450K, EPIC, EPICv2) and NGS methylation data through tabix-indexed files, 
+    provides DMR interaction analysis via motif similarity, and includes 
+    comprehensive visualization tools including circos plots and beta value 
+    heatmaps.
 URL: https://github.com/CMG-UA/DMRsegal
 BugReports: https://github.com/CMG-UA/DMRsegal/issues
 License: GPL (>= 2)

@@ -20,6 +20,7 @@ plotDMRsCircos(
   max_interactions = 30,
   degenerate_resolution = 1e+06,
   output_file = NULL,
+  verbose = NULL,
   ...
 )
 }
@@ -34,6 +35,8 @@ rownames matching beta column names (required for beta track).}
 \item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39").}
 
 \item{array}{Character. Array platform type (default: "450K").}
+
+\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 

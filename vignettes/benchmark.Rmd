@@ -22,12 +22,16 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, specifically **DMRcate** and **bumphunter**. We'll use example data to run all three methods and compare their results in terms of:
+This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, 
+specifically **DMRcate** and **bumphunter**. DMRsegal uses a seed-guided assembly approach 
+starting from differentially methylated positions (seeds), expanding regions based on 
+correlation and statistical significance. We compare the methods in terms of:
 
 - Number of DMRs detected
-- DMR size distribution
+- DMR size distribution  
 - Overlap between methods
 - Selectivity and sensitivity metrics
+- Computational efficiency
 
 ## Setup
 

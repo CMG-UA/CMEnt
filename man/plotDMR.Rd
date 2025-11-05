@@ -11,7 +11,7 @@ plotDMR(
   pheno = NULL,
   genome = "hg19",
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  sorted_locs = NULL,
+  beta_locs = NULL,
   sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
@@ -36,9 +36,9 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{genome}{Character. Genome version (default: "hg19").}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
+\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional).}
+\item{beta_locs}{Data frame. Genomic locations sorted by position (optional).}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 

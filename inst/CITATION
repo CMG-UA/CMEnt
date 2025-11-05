@@ -2,9 +2,9 @@ citHeader("To cite DMRsegal in publications use:")
 
 bibentry(
   bibtype = "Manual",
-  title   = "DMRsegal: {An} {R} package to ...",
-  author  = c(person("Lemonidis Vasileios")),
+  title   = "DMRsegal: Differentially Methylated Regions SEed Guided AssembLy",
+  author  = c(person("Vasileios", "Lemonidis")),
   year    = "2025",
-  note    = "R package version 0.0.0.9000",
+  note    = "R package version 0.99.0",
   url     = "https://github.com/CMG-UA/DMRsegal"
 )

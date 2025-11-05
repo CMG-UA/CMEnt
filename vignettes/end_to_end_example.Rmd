@@ -22,12 +22,14 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-End-to-end DMR discovery with the same dataset and steps as in the benchmark, including DMP selection via `minfi::dmpFinder`, and visualization with `plotDMRs`.
+End-to-end DMR discovery from genomic seeds including DMP selection via `minfi::dmpFinder`, 
+DMR identification with `findDMRsFromSeeds`, motif extraction, interaction analysis, and 
+comprehensive visualization with `plotDMR` and `plotDMRsCircos`.
 
 ## Load data and prepare inputs
 
 ```{r load}
-devtools::load_all()
+library(DMRsegal)
 load(system.file("data/beta.rda", package = "DMRsegal"))
 load(system.file("data/pheno.rda", package = "DMRsegal"))
 load(system.file("data/array_type.rda", package = "DMRsegal"))
