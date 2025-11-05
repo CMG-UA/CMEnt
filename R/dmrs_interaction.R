@@ -62,9 +62,9 @@ comparePWMToJaspar <- function(pwm_queries) {
     similarities <- pmax(similarities, revcomp_similarities)
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
-    if (nrow(found) == 0) {
+    if (length(found) == 0) {
         .log_warn("No similar motifs found in JASPAR database with correlation >=", corr_threshold)
-        similarities <- c()
+        similarities <-  c()
     } else {
         similar_motifs <- data.frame(
             query_index = found[, 2],
@@ -197,7 +197,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
-#' @param min_component_size Integer. Minimum size of connected components to consider (default: 1)
+#' @param min_component_size Integer. Minimum size of connected components to consider (default: 2)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
 #' @return Data frame of motif-based DMR interactions with columns:
 #' \itemize{
@@ -227,7 +227,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #' @export
 computeDMRsInteraction <- function(
     dmrs, genome = "hg19", array = "450K", min_sim = 0.8, beta_locs = NULL, flank_size = 5,
-    find_components = TRUE, min_component_size = 1, query_components_with_jaspar = TRUE, plot.dir = NULL
+    find_components = TRUE, min_component_size = 2, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
@@ -237,7 +237,11 @@ computeDMRsInteraction <- function(
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
     if (!is.null(plot.dir)) {
         dir.create(plot.dir, showWarnings = FALSE, recursive = TRUE)
-        sim_melt <- reshape2::melt(similarity_matrix, na.rm = TRUE)
+        to_show <- similarity_matrix
+        diag(to_show) <- NA
+        to_show[lower.tri(to_show)] <- NA
+        to_show[abs(to_show) < min_sim] <- NA
+        sim_melt <- reshape2::melt(to_show, na.rm = TRUE)
         colnames(sim_melt) <- c("DMR1", "DMR2", "Similarity")
         p <- ggplot2::ggplot(sim_melt, ggplot2::aes_string(x = "DMR1", y = "DMR2", fill = "Similarity")) +
             ggplot2::geom_tile() +
@@ -250,11 +254,32 @@ computeDMRsInteraction <- function(
     mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
     # remove diagonal
     diag(mask) <- FALSE
-    if (all(!mask, na.rm = TRUE)) {
-        .log_warn("No motif-based interactions found between DMRs at similarity >=", min_sim)
-        return(NULL)
+    interactions_df <- data.frame()
+    components_df <- data.frame()
+    if ((!find_components || min_component_size > 1) && !any(mask)) {
+        .log_info("No motif similarities found above the threshold.", level = 2)
+        return(list(
+            interactions = interactions_df,
+            components = components_df
+        ))
     }
-    components_df <- NULL
+    if (any(mask)) {
+        rowcol_df <- which(mask, arr.ind = TRUE)
+        start_dmrs <- dmrs[rowcol_df[, 1], ]
+        end_dmrs <- dmrs[rowcol_df[, 2], ]
+        interactions_df <- data.frame(
+            index1 = rowcol_df[, 1],
+            chr1 = as.character(GenomeInfoDb::seqnames(start_dmrs)),
+            start1 = GenomicRanges::start(start_dmrs),
+            end1 = GenomicRanges::end(start_dmrs),
+            index2 = rowcol_df[, 2],
+            chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
+            start2 = GenomicRanges::start(end_dmrs),
+            end2 = GenomicRanges::end(end_dmrs),
+            sim = similarity_matrix[rowcol_df]
+        )
+    }
+
     if (find_components) {
         g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
         components <- igraph::components(g1)
@@ -269,45 +294,37 @@ computeDMRsInteraction <- function(
         })
         # filter components by size
         components_df <- components_df[components_df$size >= min_component_size, ]
-        # Find the average PWM for each component
-        components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
-            pwms <- mcols(dmrs)[idxs, "pwm"]
-            mat <- Reduce("+", pwms) / length(pwms)
-            mat / colSums(mat)
-        })
-        components_df$consensus_seq <- sapply(components_df$avg_pwm, function(pwm) {
-            paste(Biostrings::DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
-        })
-        # Order by component size
-        components_df <- components_df[order(-components_df$size), ]
-        if (query_components_with_jaspar) {
-            # Find similarities to JASPAR motifs
-            components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
+        if (nrow(components_df) == 0) {
+            .log_info("No connected components found with size >=", min_component_size, level = 2)
+            return(list(
+                interactions = data.frame(),
+                components = data.frame()
+            ))
+        } else {
+            # Find the average PWM for each component
+            components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
+                pwms <- mcols(dmrs)[idxs, "pwm"]
+                mat <- Reduce("+", pwms) / length(pwms)
+                mat / colSums(mat)
+            })
+            components_df$consensus_seq <- sapply(components_df$avg_pwm, function(pwm) {
+                paste(Biostrings::DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
+            })
+            # Order by component size
+            components_df <- components_df[order(-components_df$size), ]
+            if (query_components_with_jaspar) {
+                # Find similarities to JASPAR motifs
+                components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))
+            }
         }
     }
-
-
-    rowcol_df <- which(mask, arr.ind = TRUE)
-    start_dmrs <- dmrs[rowcol_df[, 1], ]
-    end_dmrs <- dmrs[rowcol_df[, 2], ]
-    interaction_data_frame <- data.frame(
-        index1 = rowcol_df[, 1],
-        chr1 = as.character(GenomeInfoDb::seqnames(start_dmrs)),
-        start1 = GenomicRanges::start(start_dmrs),
-        end1 = GenomicRanges::end(start_dmrs),
-        index2 = rowcol_df[, 2],
-        chr2 = as.character(GenomeInfoDb::seqnames(end_dmrs)),
-        start2 = GenomicRanges::start(end_dmrs),
-        end2 = GenomicRanges::end(end_dmrs),
-        sim = similarity_matrix[rowcol_df]
-    )
-    if (find_components) {
-        interaction_data_frame$component_id <- sapply(interaction_data_frame$index1, function(x) {
+    if (find_components && nrow(interactions_df) > 0) {
+        interactions_df$component_id <- sapply(interactions_df$index1, function(x) {
             components_df[which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]], "component_id"]
         })
     }
     list(
-        interactions = interaction_data_frame,
+        interactions = interactions_df,
         components = components_df
     )
 }

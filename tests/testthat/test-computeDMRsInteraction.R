@@ -51,7 +51,9 @@ test_that("computeDMRsInteraction handles GRanges input", {
 
     expect_type(result, "list")
     expect_true("interactions" %in% names(result))
+    expect_true(nrow(result$interactions) > 0)
     expect_true("components" %in% names(result))
+    expect_true(nrow(result$components) > 0)
 })
 
 test_that("computeDMRsInteraction works with precomputed motifs", {
@@ -88,7 +90,7 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.9
+        min_sim = 0.9,
     ))
 
     result_low <- suppressWarnings(computeDMRsInteraction(
