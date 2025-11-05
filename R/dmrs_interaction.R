@@ -31,7 +31,7 @@ comparePWMToJaspar <- function(pwm_queries) {
     ))
     tax_group <- getOption("DMRsegal.jaspar_tax_group", "vertebrates")
     jaspar_version <- getOption("DMRsegal.jaspar_version", 2024)
-    corr_threshold <- getOption("DMRsegal.jaspar_corr_threshold", corr_threshold)
+    corr_threshold <- getOption("DMRsegal.jaspar_corr_threshold", 0.9)
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
     pwms_file <- file.path(cache, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
     if (file.exists(pwms_file)) {
