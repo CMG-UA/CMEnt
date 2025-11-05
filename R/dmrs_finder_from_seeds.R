@@ -1576,18 +1576,18 @@ findDMRsFromSeeds <- function(
     if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
-        dmrs_granges$start_cpg_ind_absolute <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
-        dmrs_granges$end_cpg_ind_absolute <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
-        dmrs_granges$seeds_inds_absolute <- sapply(dmrs_granges$seeds, function(seed_ids) {
+        dmrs_granges$start_cpg_ind_abs <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
+        dmrs_granges$end_cpg_ind_abs <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
+        dmrs_granges$seeds_inds_abs <- sapply(dmrs_granges$seeds, function(seed_ids) {
             seed_list <- unlist(strsplit(seed_ids, ","))
             seed_inds <- match(seed_list, rownames(sorted_locs))
             paste(seed_inds, collapse = ",")
         })
         .log_success("DMR CpG indices conversion completed.", level = 2)
     } else {
-        dmrs_granges$start_cpg_ind_absolute <- dmrs_granges$start_cpg_ind
-        dmrs_granges$end_cpg_ind_absolute <- dmrs_granges$end_cpg_ind
-        dmrs_granges$seeds_inds_absolute <- dmrs_granges$seeds_inds
+        dmrs_granges$start_cpg_ind_abs <- dmrs_granges$start_cpg_ind
+        dmrs_granges$end_cpg_ind_abs <- dmrs_granges$end_cpg_ind
+        dmrs_granges$seeds_inds_abs <- dmrs_granges$seeds_inds
     }
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"

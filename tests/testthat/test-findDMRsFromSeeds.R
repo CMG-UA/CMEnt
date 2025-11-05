@@ -273,7 +273,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
             seeds = NULL, # Missing
             pheno = pheno
         ),
-        "dmps"
+        "seeds"
     )
 
     expect_error(

@@ -1175,8 +1175,86 @@ sortBetaFileByCoordinates <- function(beta_file,
     return(output_file)
 }
 
+#' Remap DMRs Between Different Methylation Arrays
+#'
+#' @description Remaps Differentially Methylated Regions (DMRs) identified on one
+#' methylation array platform to another array platform, adjusting CpG indices accordingly.
+#' This is useful when comparing results across different array types (e.g., 450K to EPIC).
+#'
+#' @param dmrs GRanges or data frame. DMRs identified on the source array platform
+#' @param from_array Character. Source array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
+#' @param to_array Character. Target array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
+#' @param from_genome Character. Genome version for source array (e.g., "hg19", "hg38", "mm10", "mm39")
+#' @param to_genome Character. Genome version for target array (e.g., "hg19", "hg38", "mm10", "mm39")
+#'
+#' @return GRanges. DMRs remapped to the target array platform with updated CpG indices
+#'
+#' @details
+#' The function performs the following steps:
+#' \enumerate{
+#'   \item Converts input DMRs to GRanges if provided as a data frame
+#'   \item Retrieves sorted genomic locations for both source and target arrays
+#'   \item Maps CpG indices from source to target array based on genomic coordinates
+#'   \item Updates DMR metadata with new CpG indices
+#' }
+#' @examples
+#' # Assume dmrs_450k is a GRanges object of DMRs from 450K array
+#' remapped_dmrs <- remapDMRsArray(
+#'     dmrs = dmrs_450k,
+#'     from_array = "450K",
+#'     to_array = "EPIC",
+#'     from_genome = "hg19",
+#'     to_genome = "hg38"
+#' )
+#' @export
+remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
+    dmrs <- convertToGRanges(dmrs, from_genome)
+    from_array_locs <- getSortedGenomicLocs(array = from_array, genome = from_genome)
+    to_array_locs <- getSortedGenomicLocs(array = to_array, genome = to_genome)
+    start_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$start_cpg_ind], rownames(to_array_locs))
+    end_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$end_cpg_ind], rownames(to_array_locs))
+    seeds_inds <- sapply(strsplit(mcols(dmrs)$seeds_inds, ","), function(seed) {
+        match(rownames(from_array_locs)[as.numeric(seed)], rownames(to_array_locs))
+    })
+    drop_missing <- sapply(start_cpgs, function(x) is.na(x)) | sapply(end_cpgs, function(x) is.na(x))
+    if (any(drop_missing)) {
+        .log_warn("Dropping ", sum(drop_missing), " DMRs that could not be mapped to the target array.")
+        dmrs <- dmrs[!drop_missing]
+        start_cpgs <- start_cpgs[!drop_missing]
+        end_cpgs <- end_cpgs[!drop_missing]
+        seeds_inds <- seeds_inds[!drop_missing]
+    }
+    if (length(dmrs) == 0) {
+        .log_warn("No DMRs could be mapped to the target array. Returning empty GRanges.")
+        return(GenomicRanges::GRanges())
+    }
+    # Remove seeds from mcols(dmrs)$seeds that are correspond to NA seeds_inds after mapping
+    seeds <- strsplit(mcols(dmrs)$seeds, ",")
+    seeds <- lapply(seq_along(seeds), function(i) {
+        seed <- seeds[[i]]
+        seed_inds <- seeds_inds[[i]]
+        seed[!is.na(seed_inds)]
+    })
+    # Clear seeds_inds from NA values
+    seeds_inds <- lapply(seeds_inds, function(seed) {
+        seed[!is.na(seed)]
+    })
+    mcols(dmrs)$start_cpg_ind <- start_cpgs
+    mcols(dmrs)$end_cpg_ind <- end_cpgs
+    mcols(dmrs)$seeds_inds <- sapply(seeds_inds, function(seed) {
+        paste(seed, collapse = ",")
+    })
+    mcols(dmrs)$seeds <- sapply(seeds, function(seed) {
+        paste(seed, collapse = ",")
+    })
+    dmrs <- .liftOverFromGenomeToGenome(dmrs, from_genome, to_genome)
+    dmrs
+}
 
 .liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
+    if (from_genome == to_genome) {
+        return(granges)
+    }
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
         ".cache", "R", "DMRsegal", "annotations"

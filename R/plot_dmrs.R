@@ -64,11 +64,18 @@ if (getRversion() >= "2.15.1") {
     upstream_sup_cpgs <- beta_locs[upstream_sup_cpgs_inds, ]
     downstream_sup_cpgs <- beta_locs[downstream_sup_cpgs_inds, ]
     seeds_inds <- supporting_sites[[1]]$seeds
-    start_cpg_ind <- min(upstream_sup_cpgs_inds)
-    end_cpg_ind <- max(downstream_sup_cpgs_inds)
     start_seed_ind <- min(seeds_inds)
     end_seed_ind <- max(seeds_inds)
-
+    if (is.null(upstream_sup_cpgs_inds)) {
+        start_cpg_ind <- start_seed_ind
+    } else {
+        start_cpg_ind <- min(upstream_sup_cpgs_inds)
+    }
+    if (is.null(downstream_sup_cpgs_inds)) {
+        end_cpg_ind <- end_seed_ind
+    } else {
+        end_cpg_ind <- max(downstream_sup_cpgs_inds)
+    }
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     beta_locs <- beta_locs[beta_locs$chr == chr, , drop = FALSE]
