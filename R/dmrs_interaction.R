@@ -63,7 +63,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
     if (length(found) == 0) {
-        .log_warn("No similar motifs found in JASPAR database with correlation >=", corr_threshold)
+        .log_info("No similar motifs found in JASPAR database with correlation >=", corr_threshold, level = 2)
         similarities <-  c()
     } else {
         similar_motifs <- data.frame(
