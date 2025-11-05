@@ -78,7 +78,6 @@ if (getRversion() >= "2.15.1") {
     }
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
-    beta_locs <- beta_locs[beta_locs$chr == chr, , drop = FALSE]
     dmr_start <- GenomicRanges::start(dmr)
     dmr_end <- GenomicRanges::end(dmr)
 
@@ -605,7 +604,7 @@ plotDMRs <- function(dmrs,
             genome = genome,
             sorted_locs = beta_locs
         )
-        beta_locs <- beta$getGenomicLocs()
+        beta_locs <- beta$getBetaLocs()
     }
     plot_list <- lapply(seq_along(dmr_indices), function(idx) {
         i <- dmr_indices[idx]
@@ -712,9 +711,6 @@ plotDMR <- function(dmrs,
             stop("beta_handler must be either a file path (character) or a BetaHandler object")
         } else {
             beta_handler <- beta
-        }
-        if (is.null(beta_locs)) {
-            beta_locs <- beta_handler$getGenomicLocs()
         }
         beta_locs <- beta_handler$getBetaLocs()
     }
