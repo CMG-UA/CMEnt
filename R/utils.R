@@ -1797,10 +1797,16 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 
     # Load required packages
     if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            install.packages("BiocManager")
+        }
         BiocManager::install(txdb_pkg)
     }
 
     if (!requireNamespace(orgdb_pkg, quietly = TRUE)) {
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            install.packages("BiocManager")
+        }
         BiocManager::install(orgdb_pkg)
     }
     .log_step("Loading gene annotations for ", genome, "...", level = 2)

@@ -41,6 +41,9 @@ comparePWMToJaspar <- function(pwm_queries) {
         .log_info("Downloading JASPAR PWMs...", level = 2)
         jaspar_pkg <- paste0("JASPAR", jaspar_version)
         if (!requireNamespace(jaspar_pkg, quietly = TRUE)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                install.packages("BiocManager")
+            }
             BiocManager::install(jaspar_pkg, ask = FALSE, update = FALSE)
         }
         db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
