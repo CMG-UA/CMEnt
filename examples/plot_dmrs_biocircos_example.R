@@ -27,7 +27,7 @@ if (length(dmrs) > 0) {
         array = array_type,
         genome = "hg19",
         sample_group_col = "Sample_Group",
-        max_cps_per_dmr = 0
+        max_cpgs_per_dmr = 0
     )
     
 } else {
