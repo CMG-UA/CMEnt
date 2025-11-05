@@ -4,7 +4,7 @@
 \alias{loadExampleInputData}
 \title{Load DMRsegal Data Resources}
 \usage{
-loadExampleInputData(resource, use_experiment_hub = TRUE)
+loadExampleInputData(resource)
 }
 \arguments{
 \item{resource}{Character. Name of the resource to load. Available resources:
@@ -23,15 +23,14 @@ The requested data object, or NULL if not found
 }
 \description{
 Helper function to load data resources from the package data folder.
-Resources are normally lazy loaded if they exist in the package. If a resource
-is not found in the package, it will attempt to query ExperimentHub. If that
-also fails, it provides instructions to generate the data using the make-data.R
-script from DMRsegaldata package.
+Resources are lazy loaded when the package is loaded, so they exist in the package
+namespace. If a resource is not found in the package, it will attempt to query
+ExperimentHub. If that also fails, it provides instructions to generate the data.
 }
 \details{
 The function follows this priority order:
 \enumerate{
-\item Check if the resource exists in the package's data folder (lazy loaded)
+\item Check if the resource exists in the package namespace (lazy loaded)
 \item If not found and use_experiment_hub is TRUE, query ExperimentHub
 \item If both fail, provide instructions for generating the data
 }
@@ -50,8 +49,5 @@ beta <- loadExampleInputData("beta")
 
 # Load phenotype data
 pheno <- loadExampleInputData("pheno")
-
-# List all available resources
-listDMRsegalData()
 
 }

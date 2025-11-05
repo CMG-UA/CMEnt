@@ -56,7 +56,7 @@ The function performs the following steps:
 
 The chunk-based processing ensures that even very large beta files (millions of CpGs)
 can be converted without running out of memory. The cache directory is located at
-\code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the R session.
+\code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the c session.
 Files are named based on the MD5 hash of the input beta file, ensuring that identical
 files reuse the same cached version.
 }

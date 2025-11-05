@@ -2024,9 +2024,6 @@ convertToGRanges <- function(obj, genome) {
 #' # Load phenotype data
 #' pheno <- loadExampleInputData("pheno")
 #'
-#' # List all available resources
-#' listDMRsegalData()
-#'
 #' @export
 loadExampleInputData <- function(resource) {
     available_resources <- c("beta", "pheno", "dmps", "array_type")
