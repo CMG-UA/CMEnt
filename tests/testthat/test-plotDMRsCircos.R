@@ -1,7 +1,7 @@
 test_that("plotDMRsCircos creates a circos plot", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -24,9 +24,9 @@ test_that("plotDMRsCircos creates a circos plot", {
 })
 
 test_that("plotDMRsCircos works with interactions", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -50,9 +50,9 @@ test_that("plotDMRsCircos works with interactions", {
 })
 
 test_that("plotDMRsCircos handles BetaHandler input", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -77,9 +77,9 @@ test_that("plotDMRsCircos handles BetaHandler input", {
 })
 
 test_that("plotDMRsCircos handles data frame DMRs input", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -104,8 +104,8 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
 })
 
 test_that("plotDMRsCircos validates inputs", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 

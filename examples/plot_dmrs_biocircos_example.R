@@ -10,9 +10,9 @@ if (file.exists("data/beta.rda")) {
     load("data/array_type.rda")
     dmrs <- readRDS("inst/extdata/example_output.rds")
 } else {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 }
 options("DMRsegal.verbose" = 3)

@@ -394,7 +394,7 @@
 #' It reads the genomic locations (chromosome, start, end) from the BED file in chunks and stores them in a bigmemory-backed matrix for efficient access.
 #' This is useful for handling large BED files without loading the entire dataset into memory.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/c/DMRsegal/bed_cache/` (default: NULL)
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
@@ -473,7 +473,7 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `~/.cache/c/DMRsegal/bed_cache/` (default: NULL)
+#'   a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
 #' @param chr_levels Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.
@@ -1980,4 +1980,105 @@ convertToGRanges <- function(obj, genome) {
         }
     }
     obj
+}
+
+#' Load DMRsegal Data Resources
+#'
+#' @description Helper function to load data resources from the package data folder.
+#' Resources are lazy loaded when the package is loaded, so they exist in the package
+#' namespace. If a resource is not found in the package, it will attempt to query
+#' ExperimentHub. If that also fails, it provides instructions to generate the data.
+#'
+#' @param resource Character. Name of the resource to load. Available resources:
+#' \itemize{
+#'   \item "beta": Example beta values matrix
+#'   \item "pheno": Example phenotype data
+#'   \item "dmps": Example differentially methylated positions
+#'   \item "array_type": Example array type annotation
+#' }
+#' @param use_experiment_hub Logical. Whether to attempt loading from ExperimentHub
+#'   if the resource is not found locally (default: TRUE)
+#'
+#' @return The requested data object, or NULL if not found
+#'
+#' @details
+#' The function follows this priority order:
+#' \enumerate{
+#'   \item Check if the resource exists in the package namespace (lazy loaded)
+#'   \item If not found and use_experiment_hub is TRUE, query ExperimentHub
+#'   \item If both fail, provide instructions for generating the data
+#' }
+#'
+#' Available resources correspond to .rda files in the data/ folder:
+#' \itemize{
+#'   \item beta.rda - Example methylation beta values
+#'   \item pheno.rda - Example phenotype/sample information
+#'   \item dmps.rda - Example differential methylation results
+#'   \item array_type.rda - Array platform type
+#' }
+#'
+#' @examples
+#' # Load beta values
+#' beta <- loadExampleInputData("beta")
+#'
+#' # Load phenotype data
+#' pheno <- loadExampleInputData("pheno")
+#'
+#' # List all available resources
+#' listDMRsegalData()
+#'
+#' @export
+loadExampleInputData <- function(resource) {
+    available_resources <- c("beta", "pheno", "dmps", "array_type")
+    if (!resource %in% available_resources) {
+        stop(
+            "Unknown resource: ", resource, "\n",
+            "Available resources: ", paste(available_resources, collapse = ", ")
+        )
+    }
+    # First, check if the resource exists in the package namespace (lazy loaded)
+    if (exists(resource, envir = asNamespace("DMRsegal"), inherits = FALSE)) {
+        .log_info("Loading ", resource, " from package namespace (lazy loaded)", level = 2)
+        return(get(resource, envir = asNamespace("DMRsegal"), inherits = FALSE))
+    }
+    # If not in namespace, try to load from data file directly
+    data_file <- paste0(resource, ".rda")
+    data_path <- system.file("data", data_file, package = "DMRsegal", mustWork = FALSE)
+    if (file.exists(data_path)) {
+        .log_info("Loading ", resource, " from package data file", level = 2)
+        env <- new.env()
+        load(data_path, envir = env)
+        return(get(resource, envir = env))
+    }
+    .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
+    if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
+        BiocManager::install("ExperimentHub")
+    } else {
+        tryCatch({
+            cache <- ExperimentHub::getExperimentHubOption("CACHE")
+            dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+            eh <- ExperimentHub::ExperimentHub()
+            # Query for DMRsegaldata resources
+            dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
+            # Find the specific resource
+            resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
+            if (length(resource_match) > 0) {
+                .log_success("Found resource in ExperimentHub", level = 2)
+                return(resource_match[[1]])
+            } else {
+                .log_warn("Resource '", resource, "' not found in ExperimentHub")
+            }
+        }, error = function(e) {
+            .log_warn("Failed to query ExperimentHub: ", e$message)
+        })
+    }
+    # If we get here, the resource was not found
+    .log_warn(
+        "Resource '", resource, "' not found.\n",
+        "To generate the data:\n",
+        "1. Install DMRsegaldata package (if available)\n",
+        "2. Run the make-data.R script: source(system.file('scripts/make-data.R', package='DMRsegaldata'))\n",
+        "3. Or download from the package repository"
+    )
+    return(NULL)
 }

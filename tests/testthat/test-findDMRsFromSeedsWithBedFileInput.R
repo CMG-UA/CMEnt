@@ -28,10 +28,10 @@ create_seeds_without_chr_prefix <- function(seeds, beta_mat, locs) { # nolint
 
 test_that("findDMRsFromSeeds works with minimal bed file", {
     skip_on_ci()
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -78,10 +78,10 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
 test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
     skip_on_ci()
 
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -134,10 +134,10 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
 
 test_that("findDMRsFromSeeds detects bed file by extension", {
     skip_on_ci()
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -185,10 +185,10 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
 
 test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format with bed file", {
     skip_on_ci()
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -230,10 +230,10 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
 
 test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosome names", {
     skip_on_ci()
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -282,10 +282,10 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
 
 test_that("findDMRsFromSeeds works with bed file and custom column names", {
     skip_on_ci()
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps<- loadExampleInputData("dmps")
+    pheno<- loadExampleInputData("pheno")
+    array_type<- loadExampleInputData("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())

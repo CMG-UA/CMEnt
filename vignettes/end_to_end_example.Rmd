@@ -30,9 +30,9 @@ comprehensive visualization with `plotDMR` and `plotDMRsCircos`.
 
 ```{r load}
 library(DMRsegal)
-load(system.file("data/beta.rda", package = "DMRsegal"))
-load(system.file("data/pheno.rda", package = "DMRsegal"))
-load(system.file("data/array_type.rda", package = "DMRsegal"))
+beta <- loadExampleInputData("beta")
+pheno<- loadExampleInputData("pheno")
+array_type<- loadExampleInputData("array_type")
 genome <- "hg19"
 
 beta_handler <- DMRsegal::getBetaHandler(beta = beta, array = array_type, genome = genome)
