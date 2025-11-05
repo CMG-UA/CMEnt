@@ -523,7 +523,7 @@
                         perm <- sample.int(m, size = m, replace = FALSE)
                         yp <- y_mat[, perm, drop = FALSE]
                     } else {
-                        yp <- matrix(runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
+                        yp <- matrix(stats::runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
                     }
                     yc <- yp - rowMeans(yp, na.rm = TRUE)
                     sxy <- rowSums(x_centered * yc, na.rm = TRUE)
@@ -1049,7 +1049,7 @@ findDMRsFromSeeds <- function(
         if (verbose > 0) {
             # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
 
-            if (packageVersion("progressr") >= "0.17.0-9002") {
+            if (utils::packageVersion("progressr") >= "0.17.0-9002") {
                 p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting seeds to form DMRs..")
             }
         }
@@ -1250,7 +1250,7 @@ findDMRsFromSeeds <- function(
         if (verbose > 0) {
             # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_ext will not be used
 
-            if (packageVersion("progressr") >= "0.17.0-9002") {
+            if (utils::packageVersion("progressr") >= "0.17.0-9002") {
                 p_ext <- progressr::progressor(steps = n_dmrs, message = "Expanding DMRs to proximal CpGs..")
             }
         }

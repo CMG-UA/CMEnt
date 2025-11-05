@@ -959,13 +959,13 @@ plotDMRsCircos <- function(dmrs,
         grDevices::cairo_pdf(width = 12, height = 8)
     }
     .log_step("Creating Circos plot...")
-    plot.new()
+    graphics::plot.new()
     grid::pushViewport(grid::viewport(
         x = 0, y = 0.5, width = circle_size, height = circle_size,
         just = c("left", "center")
     ))
     circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
-    par(omi = gridBase::gridOMI(), new = TRUE)
+    graphics::par(omi = gridBase::gridOMI(), new = TRUE)
     unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
 
@@ -1128,7 +1128,7 @@ plotDMRsCircos <- function(dmrs,
                 comp_id <- link_data$component_id[i]
                 base_color <- grDevices::col2rgb(component_colors[as.character(comp_id)]) / 255
                 shade_factor <- 0.5 + 0.5 * sim_vector[i]
-                shaded_color <- rgb(
+                shaded_color <- grDevices::rgb(
                     red = base_color[1] * shade_factor,
                     green = base_color[2] * shade_factor,
                     blue = base_color[3] * shade_factor
@@ -1230,7 +1230,7 @@ plotDMRsCircos <- function(dmrs,
             temp_file <- tempfile(fileext = ".txt.gz")
             result <- tryCatch(
                 {
-                    download.file(url, temp_file, quiet = TRUE, mode = "wb")
+                    utils::download.file(url, temp_file, quiet = TRUE, mode = "wb")
                     TRUE
                 },
                 error = function(e) {
@@ -1241,7 +1241,7 @@ plotDMRsCircos <- function(dmrs,
 
             if (!result) {
                 url <- paste0("https://hgdownload.cse.ucsc.edu/goldenpath/", genome, "/database/cytoBand.txt.gz")
-                download.file(url, temp_file, quiet = TRUE, mode = "wb")
+                utils::download.file(url, temp_file, quiet = TRUE, mode = "wb")
             }
 
             cytoband <- read.table(temp_file, sep = "\t", stringsAsFactors = FALSE, header = FALSE)

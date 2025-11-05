@@ -36,12 +36,20 @@ Depends:
     R (>= 4.5.0)
 Imports:
     strex,
+    BiocGenerics,
+    Biostrings,
+    FNN,
+    colorspace,
+    gridBase,
+    withr,
     GenomicRanges,
     S4Vectors,
     IRanges,
     methods,
     stats,
     utils,
+    grDevices,
+    graphics,
     tools,
     data.table,
     cli,
@@ -66,9 +74,7 @@ Imports:
     dplyr,
     readr,
     reshape2,
-    optparse,
     R.utils,
-    JASPAR2024,
     TFBSTools,
     lsa,
     jsonlite,
@@ -94,7 +100,9 @@ Suggests:
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
-    org.Hs.eg.db
+    org.Hs.eg.db,
+    JASPAR2024,
+    optparse
 Config/testthat/edition: 3
 Collate:
     'utils.R'
