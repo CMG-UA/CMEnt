@@ -191,7 +191,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #'
 #' @description Computes motif-based interactions between DMRs based on their
 #' motif similarity. Identifies pairs of DMRs with significant motif similarity
-#' and returns a data frame of interactions.
+#' and returns a data frame of interactions. Assigns directionality based on ranking, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
@@ -267,7 +267,22 @@ computeDMRsInteraction <- function(
         ))
     }
     if (any(mask)) {
+        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
+            ranks <- mcols(dmrs)$rank
+            for (i in seq_len(nrow(mask))) {
+                for (j in seq_len(ncol(mask))) {
+                    if (mask[i, j] && ranks[i] < ranks[j]) {
+                        mask[j, i] <- FALSE
+                    }
+                }
+            }
+        } else {
+            # remove lower triangle to avoid duplicate interactions
+            mask[lower.tri(mask)] <- FALSE
+        }
+
         rowcol_df <- which(mask, arr.ind = TRUE)
+
         start_dmrs <- dmrs[rowcol_df[, 1], ]
         end_dmrs <- dmrs[rowcol_df[, 2], ]
         interactions_df <- data.frame(
@@ -284,8 +299,12 @@ computeDMRsInteraction <- function(
     }
 
     if (find_components) {
-        g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "undirected")
-        components <- igraph::components(g1)
+        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
+            g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "directed")
+        } else {
+            g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "upper")
+        }
+        components <- igraph::components(g1, mode = "strong")
         # compute consensus sequence for each connected component
         # create a dataframe with columns component_id, dmrs
         components_df <- data.frame(
@@ -300,8 +319,8 @@ computeDMRsInteraction <- function(
         if (nrow(components_df) == 0) {
             .log_info("No connected components found with size >=", min_component_size, level = 2)
             return(list(
-                interactions = data.frame(),
-                components = data.frame()
+                interactions = interactions_df,
+                components = components_df
             ))
         } else {
             # Find the average PWM for each component

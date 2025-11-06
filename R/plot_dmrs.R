@@ -1176,7 +1176,11 @@ plotDMRsCircos <- function(dmrs,
         )
         legends <- c(legends, list(link_legend))
 
-
+        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
+            has_directionality <- TRUE
+        } else {
+            has_directionality <- FALSE
+        }
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
             point2 <- c(link_data$start2[i], link_data$end2[i])
@@ -1192,6 +1196,7 @@ plotDMRsCircos <- function(dmrs,
                 sector.index2 = link_data$chr2[i],
                 point2 = point2,
                 col = link_data$colors[i],
+                directional = has_directionality,
                 border = NA
             )
         }

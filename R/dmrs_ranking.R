@@ -92,6 +92,6 @@ rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_
         cv_results
     })
     mcols(dmrs)$accuracy <- accuracies
-    mcols(dmrs)$rank <- rank(-mcols(dmrs)$accuracy, ties.method = "first")
+    mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$accuracy, ties.method = "first")))
     return(dmrs[order(mcols(dmrs)$rank)])
 }
