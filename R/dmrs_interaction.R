@@ -229,7 +229,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #' )
 #' @export
 computeDMRsInteraction <- function(
-    dmrs, genome = "hg19", array = "450K", min_sim = 0.8, beta_locs = NULL, flank_size = 5,
+    dmrs, genome = "hg19", array = "450K", min_sim = getOption("DMRsegal.min_motif_similarity", 0.8), beta_locs = NULL, flank_size = 5,
     find_components = TRUE, min_component_size = 2, query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)

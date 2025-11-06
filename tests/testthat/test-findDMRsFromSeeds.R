@@ -8,6 +8,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     pheno <- loadExampleInputData("pheno")
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -39,6 +40,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     options("DMRsegal.use_tabix_cache" = FALSE)
 
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = sorted_beta_file,
         seeds = dmps,
         pheno = pheno,
@@ -86,6 +88,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     options("DMRsegal.verbose" = 2)
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta_handler,
         seeds = sig_dmps,
         pheno = pheno,
@@ -116,6 +119,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with strict min_seeds
     dmrs_strict <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -129,6 +133,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -142,6 +147,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -181,6 +187,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -195,6 +202,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -224,6 +232,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -238,6 +247,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -269,6 +279,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     # Test missing required parameters
     expect_error(
         findDMRsFromSeeds(
+            rank_dmrs = FALSE,
             beta = beta,
             seeds = NULL, # Missing
             pheno = pheno
@@ -278,6 +289,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
+            rank_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = NULL # Missing
@@ -291,6 +303,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
+            rank_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno_wrong,
@@ -307,6 +320,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -336,6 +350,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -361,6 +376,7 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
     pheno <- loadExampleInputData("pheno")
 
     dmrs_not_annotated <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,

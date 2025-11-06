@@ -80,7 +80,8 @@ Imports:
     gridExtra,
     ggseqlogo,
     circlize,
-    ComplexHeatmap
+    ComplexHeatmap,
+    e1071
 Suggests: 
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
@@ -108,6 +109,7 @@ Collate:
     'beta_handler.R'
     'dmrs_finder_from_seeds.R'
     'dmrs_interaction.R'
+    'dmrs_ranking.R'
     'find_dmrs_from_seeds.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'

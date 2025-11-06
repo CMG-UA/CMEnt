@@ -553,6 +553,28 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `rank_dmrs`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** Whether to rank DMRs based on their classification accuracy using cross-validated SVM. When enabled, each DMR is evaluated for its ability to discriminate between sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `accuracy` value represents how well the DMR's methylation pattern can classify samples into their correct groups.
+
+**Details:**
+- Uses stratified k-fold cross-validation (default: 5-fold)
+- Number of folds can be controlled with `options(DMRsegal.ranking_nfold = 5)`
+- Random seed is controlled with `options(DMRsegal.random_seed = 42)`
+- Accuracy values range from 0 to 1, where higher values indicate better discriminative power
+- Requires the `e1071` package for SVM classification
+
+**Example:**
+```{r}
+dmrs_ranked <- rankDMRs(
+    dmrs = dmrs,
+    beta = beta,
+    pheno = pheno,
+    sample_group_col = "group"
+)
+```
+
 ### `chr_levels`
 **Type:** Character vector  
 **Default:** `NULL`  
@@ -703,6 +725,24 @@ options("DMRsegal.make_debug_dir" = TRUE)
 
 ```{r}
 options("DMRsegal.random_seed" = 123)
+```
+
+## Option: `DMRsegal.ranking_nfold`
+**Type:** Integer  
+**Default:** `5`  
+**Description:** Number of folds for cross-validation when ranking DMRs.
+
+```{r}
+options("DMRsegal.ranking_nfold" = 3)
+```
+
+## Option: `DMRsegal.min_motif_similarity`
+**Type:** Numeric  
+**Default:** `0.8`  
+**Description:** Minimum motif similarity threshold for DMR interaction analysis.
+
+```{r}
+options("DMRsegal.min_motif_similarity" = 0.75)
 ```
 
 # Configuration Examples

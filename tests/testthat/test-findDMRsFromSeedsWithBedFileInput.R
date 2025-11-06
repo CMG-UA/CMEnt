@@ -53,6 +53,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
 
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -109,6 +110,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -161,6 +163,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -211,6 +214,7 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
 
     expect_error(
         findDMRsFromSeeds(
+            rank_dmrs = FALSE,
             beta = bed_file,
             seeds = dmps,
             pheno = pheno,
@@ -257,6 +261,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
     dmps_with_chr_pos <- create_seeds_without_chr_prefix(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -310,6 +315,7 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",

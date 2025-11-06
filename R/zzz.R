@@ -20,6 +20,8 @@ update_package_option("DMRsegal.use_tabix_cache", mode = "logical", default = FA
 update_package_option("DMRsegal.tabix_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
 update_package_option("DMRsegal.use_annotation_cache", mode = "logical", default = TRUE)
 update_package_option("DMRsegal.annotation_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "annotation_cache"))
+update_package_option("DMRsegal.ranking_nfold", mode = "numeric", default = 5)
+update_package_option("DMRsegal.min_motif_similarity", mode = "numeric", default = 0.8)
 update_package_option("DMRsegal.jaspar_cache_dir", mode = "character", default = file.path(
     path.expand("~"),
     ".cache", "R", "DMRsegal", "jaspar_cache"

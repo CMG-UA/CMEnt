@@ -84,7 +84,6 @@
 #'     pheno = pheno
 #' )
 #'
-#'
 #' @importFrom GenomicRanges GRanges makeGRangesFromDataFrame findOverlaps
 #' @importFrom future.apply future_lapply future_mapply
 #' @importFrom future availableCores
@@ -106,9 +105,9 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+  beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -198,14 +197,13 @@
 
 #' @keywords internal
 #' @noRd
-.expandDMR <- function(
-        dmr,
-        chr_array,
-        chr_locs,
-        min_cpg_delta_beta = 0,
-        min_cpgs = 3,
-        expansion_step = 500,
-        chr_start_base = 0) {
+.expandDMR <- function(dmr,
+                       chr_array,
+                       chr_locs,
+                       min_cpg_delta_beta = 0,
+                       min_cpgs = 3,
+                       expansion_step = 500,
+                       chr_start_base = 0) {
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_seed"]
     dmr_end <- dmr["end_seed"]
@@ -636,6 +634,7 @@
 #' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
+#' @param rank_dmrs Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
@@ -647,40 +646,40 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-    beta = NULL,
-    seeds = NULL,
-    pheno = NULL,
-    seeds_id_col = NULL,
-    sample_group_col = "Sample_Group",
-    casecontrol_col = NULL,
-    min_cpg_delta_beta = 0,
-    expansion_step = 500,
-    array = c("450K", "27K", "EPIC", "EPICv2"),
-    genome = "hg19",
-    max_pval = 0.05,
-    pval_mode = c("parametric", "empirical"),
-    empirical_strategy = c("auto", "montecarlo", "permutations"),
-    ntries = 200L,
-    mid_p = FALSE,
-    max_lookup_dist = 10000,
-    min_seeds = 1,
-    min_adj_seeds = 1,
-    min_cpgs = 50,
-    aggfun = c("median", "mean"),
-    ignored_sample_groups = NULL,
-    output_prefix = NULL,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    memory_threshold_mb = 500,
-    beta_row_names_file = NULL,
-    annotate_with_genes = TRUE,
-    bed_provided = FALSE,
-    bed_chrom_col = "chrom",
-    bed_start_col = "start",
-    chr_levels = NULL,
-    verbose = NULL,
-    .load_debug = FALSE
+  beta = NULL,
+  seeds = NULL,
+  pheno = NULL,
+  seeds_id_col = NULL,
+  sample_group_col = "Sample_Group",
+  casecontrol_col = NULL,
+  min_cpg_delta_beta = 0,
+  expansion_step = 500,
+  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = "hg19",
+  max_pval = 0.05,
+  pval_mode = c("parametric", "empirical"),
+  empirical_strategy = c("auto", "montecarlo", "permutations"),
+  ntries = 200L,
+  mid_p = FALSE,
+  max_lookup_dist = 10000,
+  min_seeds = 1,
+  min_adj_seeds = 1,
+  min_cpgs = 50,
+  aggfun = c("median", "mean"),
+  ignored_sample_groups = NULL,
+  output_prefix = NULL,
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  memory_threshold_mb = 500,
+  beta_row_names_file = NULL,
+  annotate_with_genes = TRUE,
+  rank_dmrs = TRUE,
+  bed_provided = FALSE,
+  bed_chrom_col = "chrom",
+  bed_start_col = "start",
+  chr_levels = NULL,
+  verbose = NULL,
+  .load_debug = FALSE
 ) {
-
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
 
@@ -1577,6 +1576,7 @@ findDMRsFromSeeds <- function(
         dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
+
     if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
@@ -1593,6 +1593,19 @@ findDMRsFromSeeds <- function(
         dmrs_granges$end_cpg_ind_abs <- dmrs_granges$end_cpg_ind
         dmrs_granges$seeds_inds_abs <- dmrs_granges$seeds_inds
     }
+    if (rank_dmrs) {
+        .log_step("Ranking DMRs...", level = 1)
+        dmrs_granges <- rankDMRs(
+            dmrs_granges,
+            beta = beta, pheno = pheno, genome = genome,
+            array = array, sorted_locs = sorted_locs,
+            sample_group_col = sample_group_col,
+            casecontrol_col = casecontrol_col
+        )
+        .log_success("DMR ranking completed.", level = 1)
+    }
+
+
     dmrs <- as.data.frame(dmrs_granges)
     colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
     .log_info("Final number of DMRs: ", nrow(dmrs), level = 1)

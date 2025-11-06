@@ -67,6 +67,7 @@ sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
 
 ## Find DMRs from seeds
 
+
 ```{r dmrs}
 set.seed(42)
 dmrs <- DMRsegal::findDMRsFromSeeds(
@@ -82,6 +83,7 @@ dmrs <- DMRsegal::findDMRsFromSeeds(
     max_lookup_dist = 10000,
     max_pval = 0.05,
     pval_mode = "parametric",
+    rank_dmrs = TRUE,
     njobs = 1
 )
 length(dmrs)
