@@ -1,0 +1,854 @@
+---
+title: "DMRsegal Configuration"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output: BiocStyle::html_document
+vignette: >
+  %\VignetteIndexEntry{DMRsegal Configuration}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    eval = FALSE
+)
+```
+
+# Overview
+
+This vignette provides a comprehensive guide to the configuration available in DMRsegal. Understanding these parameters will help you optimize the package for your specific analysis needs.
+
+# Function Parameters
+
+## Core Input Parameters
+
+### `beta`
+**Type:** Character, matrix, BetaHandler object, or BED file  
+**Required:** Yes  
+**Description:** Input methylation data. Can be:
+
+- Path to a beta value file (tab-separated)
+- Path to a tabix-indexed file (.bed.gz with .tbi index)
+- A beta matrix with CpG IDs as rownames and sample IDs as column names
+- A BetaHandler object (see `?BetaHandler`)
+- A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by sample columns, existing as row names in the provided pheno data
+
+**Example:**
+```{r}
+beta <- system.file("data/beta.rda", package = "DMRsegal")
+```
+
+### `seeds`
+**Type:** Character or data.frame  
+**Required:** Yes  
+**Description:** Differentially Methylated Positions (DMPs) to use as seeds for DMR detection. Can be:
+
+- Path to a TSV file with DMP results
+- A data.frame with DMP information (compatible with `dmpFinder` output)
+- Must contain CpG identifiers and at minimum a p-value column
+
+**Format requirements:**
+- Row names or first column should contain CpG IDs
+- Should include columns for statistical significance (e.g., p-values, adjusted p-values)
+
+**Example:**
+```{r}
+dmps <- loadExampleInputData("dmps")
+```
+
+### `pheno`
+**Type:** Data.frame  
+**Required:** Yes  
+**Description:** Sample phenotype information.
+
+**Format requirements:**
+- Row names should match column names in beta data
+- Must contain sample group information column (specified by `sample_group_col`)
+
+**Example:**
+```{r}
+pheno <- loadExampleInputData("pheno")
+```
+
+## Sample Grouping Parameters
+
+### `sample_group_col`
+**Type:** Character  
+**Default:** `"Sample_Group"`  
+**Description:** Column name in `pheno` that specifies sample groups (e.g., "case" vs "control", "treated" vs "untreated").
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group"
+)
+```
+
+### `casecontrol_col`
+**Type:** Character  
+**Default:** `NULL`  
+**Description:** Column name in `pheno` for case (TRUE/1) vs control (FALSE/0) status, for delta beta computations. If `NULL`, controls are assumed to be the first level found at `sample_group_col`.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = "casecontrol"
+)
+```
+
+### `ignored_sample_groups`
+**Type:** Character vector  
+**Default:** `NULL`  
+**Description:** Sample groups to exclude from the analysis.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    ignored_sample_groups = c("excluded_group1", "excluded_group2")
+)
+```
+
+## Array and Genome Parameters
+
+### `array`
+**Type:** Character  
+**Options:** `"450K"`, `"27K"`, `"EPIC"`, `"EPICv2"`  
+**Default:** `"450K"`  
+**Description:** Type of methylation array platform used. Ignored when using mouse genomes or when beta is provided as a BED file.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    array = "EPIC"
+)
+```
+
+### `genome`
+**Type:** Character
+**Default:** `"hg19"`  
+**Description:** Reference genome version.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    genome = "hg38"
+)
+```
+
+## Filtering Parameters
+
+### `min_cpg_delta_beta`
+**Type:** Numeric  
+**Default:** `0`  
+**Range:** 0 to 1  
+**Description:** Minimum absolute delta beta value for CpGs to be included in DMRs, during the **second stage** of DMR extension. Use this to filter out low-confidence DMRs.
+
+**Recommendation:** For most applications, 0 is appropriate, to extend DMRs independently of effect size. Consider using 0.05 or 0.1 for stricter filtering.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    min_cpg_delta_beta = 0.1
+)
+```
+
+### `min_seeds`
+**Type:** Integer  
+**Default:** `1`  
+**Description:** Minimum number of connected seeds required in a DMR.
+
+**Recommendation:** Increase this value (e.g., to 2 or 3) for higher-confidence DMRs.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    min_seeds = 2
+)
+```
+
+### `min_adj_seeds`
+**Type:** Integer  
+**Default:** `1`  
+**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    min_adj_seeds = 2
+)
+```
+
+### `min_cpgs`
+**Type:** Integer  
+**Default:** `50`  
+**Description:** Minimum number of CpGs required in a DMR after region expansion.
+
+**Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep higher (50+) for WGBS data.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    min_cpgs = 3
+)
+```
+
+## Region Building Parameters
+
+### `max_lookup_dist`
+**Type:** Integer  
+**Default:** `10000`  
+**Unit:** Base pairs  
+**Description:** Maximum genomic distance between adjacent seeds to be considered part of the same DMR.
+
+**Recommendation:**
+- 1,000-5,000 bp for tightly connected regions
+- 10,000 bp (default) for moderate spacing
+- 20,000+ bp for broader regions
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    max_lookup_dist = 5000
+)
+```
+
+### `expansion_step`
+**Type:** Integer  
+**Default:** `500`  
+**Unit:** Base pairs  
+**Description:** Step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
+
+**Trade-off:**
+- Smaller values (100-300): Lower memory, slower computation
+- Larger values (500-1000): Higher memory, faster computation
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    expansion_step = 1000
+)
+```
+
+## Statistical Parameters
+
+### `max_pval`
+**Type:** Numeric  
+**Default:** `0.05`  
+**Range:** 0 to 1  
+**Description:** Maximum p-value threshold for considering correlation between seeds as significant during the first stage of connectivity testing, and between proxial CpGs during the second stage DMR extension.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    max_pval = 0.01
+)
+```
+
+### `pval_mode`
+**Type:** Character  
+**Options:** `"parametric"`, `"empirical"`  
+**Default:** `"parametric"`  
+**Description:** Method for calculating p-values during connectivity testing:
+
+- `"parametric"`: Uses t-based correlation p-values (faster, assumes normal distribution)
+- `"empirical"`: Uses permutation-based p-values (slower, no distribution assumptions)
+
+**Recommendation:** Use `"parametric"` for most cases. Use `"empirical"` for small sample sizes or non-normal data.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    pval_mode = "empirical"
+)
+```
+
+### `empirical_strategy`
+**Type:** Character  
+**Options:** `"auto"`, `"montecarlo"`, `"permutations"`  
+**Default:** `"auto"`  
+**Description:** Strategy for empirical p-value calculation (only applies when `pval_mode = "empirical"`):
+
+- `"auto"`: Uses Monte Carlo for groups <6 samples, permutations for groups ≥6 samples
+- `"montecarlo"`: Always uses Monte Carlo simulation
+- `"permutations"`: Always uses exact permutations
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    pval_mode = "empirical",
+    empirical_strategy = "permutations"
+)
+```
+
+### `ntries`
+**Type:** Integer  
+**Default:** `200`  
+**Description:** Number of permutations/simulations when `pval_mode = "empirical"`.
+
+**Recommendation:**
+- 100-500: Faster, less precise
+- 1,000-10,000: Slower, more precise
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    pval_mode = "empirical",
+    ntries = 1000
+)
+```
+
+### `mid_p`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Whether to use mid-p correction in empirical p-value calculation.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    pval_mode = "empirical",
+    mid_p = TRUE
+)
+```
+
+### `aggfun`
+**Type:** Character or function  
+**Options:** `"median"`, `"mean"`, or a custom function  
+**Default:** `"median"`  
+**Description:** Aggregation function for calculating DMR-level statistics (delta beta, p-values).
+
+**Recommendation:** Median is more robust to outliers; mean may be more sensitive.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    aggfun = "mean"
+)
+```
+
+## Performance Parameters
+
+### `njobs`
+**Type:** Integer  
+**Default:** `getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))`  
+**Description:** Number of parallel jobs to use for computation.
+
+**Recommendation:**
+- Use `-1` to automatically use all available cores minus 1
+- Limit to avoid overwhelming system resources
+- Consider memory requirements when increasing parallelization
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    njobs = 4
+)
+```
+
+### `memory_threshold_mb`
+**Type:** Integer  
+**Default:** `500`  
+**Unit:** Megabytes  
+**Description:** Memory threshold for loading beta files. Files smaller than this will be loaded into memory.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    memory_threshold_mb = 1000
+)
+```
+
+### `verbose`
+**Type:** Integer  
+**Range:** 0 to 5  
+**Default:** `getOption("DMRsegal.verbose", 1)`  
+**Description:** Level of verbosity for logging messages:
+
+- `0`: No messages
+- `1`: Essential messages only
+- `2`: Standard progress information
+- `3`: Detailed progress information
+- `4-5`: Very detailed debugging information
+
+**Example:**
+```{r}
+options("DMRsegal.verbose" = 2)
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    verbose = 2
+)
+```
+
+## Input/Output Parameters
+
+### `seeds_id_col`
+**Type:** Character or integer  
+**Default:** `NULL`  
+**Description:** Column name or index for seed identifiers in the seeds file. If `NULL`, uses row names if present, otherwise the first column.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds_file,
+    pheno = pheno,
+    seeds_id_col = "CpG_ID"
+)
+```
+
+### `output_prefix`
+**Type:** Character  
+**Default:** `NULL`  
+**Description:** Prefix for output files. If provided, results will be saved to files with this prefix. If `NULL`, no files are saved.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    output_prefix = "my_analysis"
+)
+```
+
+### `beta_row_names_file`
+**Type:** Character  
+**Default:** `NULL`  
+**Description:** Path to a file containing row names for beta values. Useful for large beta files where reading row names separately is more efficient.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    pheno = pheno,
+    seeds = seeds,
+    beta_row_names_file = "beta_rownames.txt"
+)
+```
+
+## BED File Parameters
+
+### `bed_provided`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Whether the beta file is provided as a BED file. Automatically set to `TRUE` if the input file has a `.bed` extension.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = "methylation.bed",
+    seeds = seeds,
+    pheno = pheno,
+    bed_provided = TRUE
+)
+```
+
+### `bed_chrom_col`
+**Type:** Character  
+**Default:** `"chrom"`  
+**Description:** Column name for chromosome in BED files.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = "methylation.bed",
+    seeds = seeds,
+    pheno = pheno,
+    bed_chrom_col = "chr"
+)
+```
+
+### `bed_start_col`
+**Type:** Character  
+**Default:** `"start"`  
+**Description:** Column name for start position in BED files.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = "methylation.bed",
+    seeds = seeds,
+    pheno = pheno,
+    bed_start_col = "pos"
+)
+```
+
+## Annotation Parameters
+
+### `annotate_with_genes`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** Whether to annotate DMRs with overlapping genes.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    annotate_with_genes = FALSE
+)
+```
+
+### `chr_levels`
+**Type:** Character vector  
+**Default:** `NULL`  
+**Description:** Custom chromosome levels to use. If `NULL`, uses default chromosome ordering.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    chr_levels = c("chr1", "chr2", "chr3")
+)
+```
+
+## Advanced Parameters
+
+### `.load_debug`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Enable debug mode for loading beta files. For internal development use only.
+
+# Global Package Options
+
+DMRsegal uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
+
+## Option: `DMRsegal.njobs`
+**Type:** Integer  
+**Default:** `min(8, future::availableCores() - 1)`  
+**Description:** Default number of parallel jobs.
+
+```{r}
+options("DMRsegal.njobs" = 4)
+```
+
+## Option: `DMRsegal.verbose`
+**Type:** Integer  
+**Default:** `1`  
+**Description:** Default verbosity level.
+
+```{r}
+options("DMRsegal.verbose" = 2)
+```
+
+## Option: `DMRsegal.use_bed_cache`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Enable caching of BED file conversions.
+
+```{r}
+options("DMRsegal.use_bed_cache" = TRUE)
+```
+
+## Option: `DMRsegal.bed_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/bed_cache`  
+**Description:** Directory for BED file cache.
+
+```{r}
+options("DMRsegal.bed_cache_dir" = "/path/to/cache")
+```
+
+## Option: `DMRsegal.use_tabix_cache`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Enable caching of tabix-indexed files.
+
+```{r}
+options("DMRsegal.use_tabix_cache" = TRUE)
+```
+
+## Option: `DMRsegal.tabix_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
+**Description:** Directory for tabix file cache.
+
+```{r}
+options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
+```
+
+## Option: `DMRsegal.use_annotation_cache`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** Enable caching of gene annotations.
+
+```{r}
+options("DMRsegal.use_annotation_cache" = TRUE)
+```
+
+## Option: `DMRsegal.annotation_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/annotation_cache`  
+**Description:** Directory for annotation cache.
+
+```{r}
+options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
+```
+
+## Option: `DMRsegal.jaspar_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/jaspar_cache`  
+**Description:** Directory for JASPAR motif database cache.
+
+```{r}
+options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
+```
+
+## Option: `DMRsegal.jaspar_version`
+**Type:** Integer  
+**Default:** `2024`  
+**Description:** JASPAR database version to use for motif analysis.
+
+```{r}
+options("DMRsegal.jaspar_version" = 2024)
+```
+
+## Option: `DMRsegal.jaspar_tax_group`
+**Type:** Character  
+**Default:** `"vertebrates"`  
+**Description:** Taxonomic group for JASPAR motif filtering.
+
+```{r}
+options("DMRsegal.jaspar_tax_group" = "vertebrates")
+```
+
+## Option: `DMRsegal.jaspar_corr_threshold`
+**Type:** Numeric  
+**Default:** `0.9`  
+**Description:** Correlation threshold for JASPAR motif similarity.
+
+```{r}
+options("DMRsegal.jaspar_corr_threshold" = 0.85)
+```
+
+## Option: `DMRsegal.make_debug_dir`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Create debug directory for troubleshooting.
+
+```{r}
+options("DMRsegal.make_debug_dir" = TRUE)
+```
+
+## Option: `DMRsegal.random_seed`
+**Type:** Integer  
+**Default:** `42`  
+**Description:** Random seed for reproducibility.
+
+```{r}
+options("DMRsegal.random_seed" = 123)
+```
+
+# Configuration Examples
+
+## Example 1: High-Confidence DMRs with Strict Filtering
+
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    array = "EPIC",
+    genome = "hg38",
+    min_cpg_delta_beta = 0.1,
+    min_seeds = 3,
+    min_cpgs = 5,
+    max_lookup_dist = 5000,
+    max_pval = 0.01,
+    njobs = 4
+)
+```
+
+## Example 2: Broad Region Detection with Relaxed Parameters
+
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    min_seeds = 1,
+    min_cpgs = 3,
+    max_lookup_dist = 20000,
+    max_pval = 0.05,
+    njobs = 8
+)
+```
+
+## Example 3: Empirical P-values for Small Sample Sizes
+
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    pval_mode = "empirical",
+    empirical_strategy = "montecarlo",
+    ntries = 5000,
+    mid_p = TRUE,
+    njobs = 4
+)
+```
+
+## Example 4: Memory-Efficient Processing for Large Datasets
+
+```{r}
+options("DMRsegal.use_tabix_cache" = TRUE)
+options("DMRsegal.verbose" = 2)
+
+dmrs <- findDMRsFromSeeds(
+    beta = "large_dataset.bed.gz",
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    memory_threshold_mb = 500,
+    expansion_step = 1000,
+    njobs = 4
+)
+```
+
+## Example 5: Custom Aggregation Function
+
+```{r}
+weighted_mean <- function(x) {
+    weights <- abs(x - 0.5)
+    sum(x * weights) / sum(weights)
+}
+
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    aggfun = weighted_mean
+)
+```
+
+# Best Practices
+
+1. **Start with default parameters** and adjust based on your specific needs.
+
+2. **For array data** (450K, EPIC), use lower `min_cpgs` values (3-5) since CpG coverage is sparse.
+
+3. **For WGBS data**, keep `min_cpgs` higher (50+) to ensure robust regions.
+
+4. **Avoid heavy pre-filtering** of seeds based on effect size. Let DMRsegal handle filtering internally.
+
+5. **Use empirical p-values** for small sample sizes (<10 per group) or when normality assumptions are questionable.
+
+6. **Enable caching** for large datasets or when running multiple analyses.
+
+8. **Use parallel processing** (`njobs > 1`) for faster computation, but be mindful of memory requirements.
+
+9. **Save intermediate results** using `output_prefix` for large analyses.
+
+10. **Document your configuration** by saving parameter settings for reproducibility.
+
+# Troubleshooting
+
+## Issue: Out of Memory Errors
+
+**Solution:**
+- Decrease `njobs`
+- Decrease `memory_threshold_mb` to enable disk-based processing
+- Use tabix-indexed files for very large datasets
+- Enable caching options
+
+## Issue: DMRs Too Small
+
+**Solution:**
+- Increase `max_lookup_dist`
+- Increase `max_pval`
+- Decrease `min_cpg_delta_beta`
+
+## Issue: Too Many DMRs
+
+**Solution:**
+- Increase `min_seeds`
+- Increase `min_cpgs`
+- Increase `max_lookup_dist`
+- Increase `min_cpg_delta_beta`
+- Decrease `max_pval`
+
+## Issue: Slow Performance
+
+**Solution:**
+- Increase `njobs` for parallel processing
+- Increase `expansion_step`
+- Use `pval_mode = "parametric"` instead of `"empirical"`
+- Enable caching options
+- Consider using tabix-indexed files
+
+# Session Info
+
+```{r sessionInfo}
+sessionInfo()
+```

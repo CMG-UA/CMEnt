@@ -8,7 +8,7 @@ convertBetaToTabix(
   beta_file,
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genome = "hg19",
   locations_file = NULL,
   output_file = NULL,
   chunk_size = 50000,

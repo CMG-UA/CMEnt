@@ -14,8 +14,7 @@ annotateDMRsWithGenes(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates}
 
-\item{genome}{Character. Genome version to use for gene annotation.
-Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")}
+\item{genome}{Character. Genome version to use for gene annotation. (default: "hg19")}
 
 \item{promoter_upstream}{Integer. Number of base pairs upstream of TSS to
 define promoter region (default: 2000)}
@@ -36,14 +35,7 @@ using TxDb annotations. For each DMR, identifies genes whose promoters or
 gene bodies overlap with the DMR coordinates.
 }
 \details{
-The function uses genome-appropriate TxDb packages:
-\itemize{
-\item hg19: TxDb.Hsapiens.UCSC.hg19.knownGene
-\item hg38: TxDb.Hsapiens.UCSC.hg38.knownGene
-\item mm10: TxDb.Mmusculus.UCSC.mm10.knownGene
-\item mm39: TxDb.Mmusculus.UCSC.mm39.knownGene
-}
-
+The function uses genome-appropriate TxDb packages.
 Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.
 }

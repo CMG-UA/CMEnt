@@ -13,9 +13,9 @@ remapDMRsArray(dmrs, from_array, to_array, from_genome, to_genome)
 
 \item{to_array}{Character. Target array platform (e.g., "450K", "EPIC", "EPICv2", "27K")}
 
-\item{from_genome}{Character. Genome version for source array (e.g., "hg19", "hg38", "mm10", "mm39")}
+\item{from_genome}{Character. Genome version for source (e.g., "hg19")}
 
-\item{to_genome}{Character. Genome version for target array (e.g., "hg19", "hg38", "mm10", "mm39")}
+\item{to_genome}{Character. Genome version for target (e.g., "hg38")}
 }
 \value{
 GRanges. DMRs remapped to the target array platform with updated CpG indices

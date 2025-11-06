@@ -16,18 +16,22 @@
 # R Environment Variables ----
 .Renviron
 
-# User-specific files ----
-README.html
-inst/doc
-..Rcheck/00check.log
-.envrc
+# data folders ----
 benchmark_data
 debug
-DMRsegal.Rcheck/
-DMRsegal..Rcheck/
+
 
 # Temporary files created by testthat ----
 tests/testthat/test*.loader
 tests/testthat/Rplots.pdf
 Rplots.pdf
-..Rcheck
+DMRsegal.Rcheck/
+..Rcheck/00check.log
+
+# Generated documentation files ----
+vignettes/.build.timestamp
+vignettes/*.md
+vignettes/*.html
+README.html
+Rd2.tex
+

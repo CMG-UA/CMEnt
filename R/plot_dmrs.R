@@ -839,8 +839,8 @@ plotDMR <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
 #'   rownames matching beta column names (required for beta track).
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39").
-#' @param array Character. Array platform type (default: "450K").
+#' @param genome Character. Genome version (e.g., "hg19").
+#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).

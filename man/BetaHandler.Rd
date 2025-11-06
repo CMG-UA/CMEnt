@@ -15,7 +15,7 @@ with support for in-memory loading, tabix indexing, and various file formats.
 
 \item{\code{genome}}{Reference genome}
 
-\item{\code{array}}{Array platform, ignore for mouse genomes}
+\item{\code{array}}{Array platform, ignore for mouse genomes or when sorted_locs provided}
 
 \item{\code{beta_row_names_file}}{Path to row names file}
 
@@ -50,7 +50,7 @@ Create a new BetaHandler object
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$new(
   beta = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genome = "hg19",
   beta_row_names_file = NULL,
   sorted_locs = NULL,
   memory_threshold_mb = 500,
@@ -67,7 +67,7 @@ Create a new BetaHandler object
 
 \item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.}
 
-\item{\code{beta_row_names_file}}{Path to row names file}
+\item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 
 \item{\code{sorted_locs}}{Sorted genomic locations data frame. If NULL, will be retrieved automatically}
 

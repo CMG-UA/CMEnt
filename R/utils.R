@@ -729,7 +729,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = c("hg19", "hg38", "mm10", "mm39"),
+                               genome = "hg19",
                                locations_file = NULL,
                                output_file = NULL,
                                chunk_size = 50000,
@@ -781,7 +781,6 @@ convertBetaToTabix <- function(beta_file,
         {
             if (is.null(.bed_file)) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
-                genome <- strex::match_arg(genome, ignore_case = TRUE)
                 # Get sorted locations if not provided
                 if (is.null(sorted_locs)) {
                     sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -1092,11 +1091,9 @@ convertBetaToTabix <- function(beta_file,
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
                                       array = c("450K", "27K", "EPIC", "EPICv2"),
-                                      genome = c("hg19", "hg38", "mm10", "mm39"),
+                                      genome = "hg19",
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
     # Validate inputs
     if (!file.exists(beta_file)) {
         stop("Beta file does not exist: ", beta_file)
@@ -1129,6 +1126,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 
@@ -1184,8 +1182,8 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' @param dmrs GRanges or data frame. DMRs identified on the source array platform
 #' @param from_array Character. Source array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
 #' @param to_array Character. Target array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
-#' @param from_genome Character. Genome version for source array (e.g., "hg19", "hg38", "mm10", "mm39")
-#' @param to_genome Character. Genome version for target array (e.g., "hg19", "hg38", "mm10", "mm39")
+#' @param from_genome Character. Genome version for source (e.g., "hg19")
+#' @param to_genome Character. Genome version for target (e.g., "hg38")
 #'
 #' @return GRanges. DMRs remapped to the target array platform with updated CpG indices
 #'
@@ -1287,8 +1285,9 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' methylation array platform and genome version. Performs liftOver if necessary.
 #' The function caches the results.
 #'
-#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")
+#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome or when locations_file is provided
+#' @param genome Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided
+#' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
 #' \itemize{
@@ -1438,8 +1437,6 @@ orderByLoc <- function(x,
                        genome = c("hg19", "hg38", "mm10", "mm39"),
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
-        genome <- strex::match_arg(genome, ignore_case = TRUE)
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
     stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
@@ -1661,7 +1658,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #' UCSC Genome Browser REST API when BSgenome packages are not available.
 #'
 #' @param dmrs GRanges object containing genomic coordinates
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")
+#' @param genome Character. Genome version (e.g., "hg19", "mm39")
 #'
 #' @return Character vector of DNA sequences
 #'
@@ -1718,8 +1715,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #' gene bodies overlap with the DMR coordinates.
 #'
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation.
-#'   Supported values: "hg19", "hg38", "mm10", "mm39" (default: "hg19")
+#' @param genome Character. Genome version to use for gene annotation. (default: "hg19")
 #' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
 #'   define promoter region (default: 2000)
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
@@ -1732,14 +1728,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #' }
 #'
 #' @details
-#' The function uses genome-appropriate TxDb packages:
-#' \itemize{
-#'   \item hg19: TxDb.Hsapiens.UCSC.hg19.knownGene
-#'   \item hg38: TxDb.Hsapiens.UCSC.hg38.knownGene
-#'   \item mm10: TxDb.Mmusculus.UCSC.mm10.knownGene
-#'   \item mm39: TxDb.Mmusculus.UCSC.mm39.knownGene
-#' }
-#'
+#' The function uses genome-appropriate TxDb packages.
 #' Gene symbols are retrieved from the appropriate org.*.eg.db package.
 #' Multiple overlapping genes are concatenated with commas.
 #'

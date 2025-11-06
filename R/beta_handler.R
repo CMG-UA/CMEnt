@@ -19,7 +19,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         beta = NULL,
         #' @field genome Reference genome
         genome = "hg19",
-        #' @field array Array platform, ignore for mouse genomes
+        #' @field array Array platform, ignore for mouse genomes or when sorted_locs provided
         array = "450K",
         #' @field beta_row_names_file Path to row names file
         beta_row_names_file = NULL,
@@ -33,14 +33,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param beta Path to beta values file, or a tabix, or a beta matrix
         #' @param array Array platform type. Ignored if sorted_locs, or a tabix file have been provided.
         #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.
-        #' @param beta_row_names_file Path to row names file
+        #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = c("hg19", "hg38", "mm10", "mm39"),
+                              genome = "hg19",
                               beta_row_names_file = NULL,
                               sorted_locs = NULL,
                               memory_threshold_mb = 500,
@@ -54,7 +54,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta))) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
-                genome <- strex::match_arg(genome, ignore_case = TRUE)
                 self$array <- array
                 self$genome <- genome
             }

@@ -32,9 +32,9 @@ plotDMRsCircos(
 \item{pheno}{Data frame or character path to phenotype file. Sample information with
 rownames matching beta column names (required for beta track).}
 
-\item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39").}
+\item{genome}{Character. Genome version (e.g., "hg19").}
 
-\item{array}{Character. Array platform type (default: "450K").}
+\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
 
 \item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
