@@ -31,9 +31,9 @@ This vignette provides a comprehensive guide to the configuration available in D
 **Required:** Yes  
 **Description:** Input methylation data. Can be:
 
-- Path to a beta value file (tab-separated)
+- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `memory_threshold_mb` or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
-- A beta matrix with CpG IDs as rownames and sample IDs as column names
+- A beta matrix with CpG IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
 - A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by sample columns, existing as row names in the provided pheno data
 
