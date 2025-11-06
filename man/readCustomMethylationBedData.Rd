@@ -7,10 +7,12 @@
 readCustomMethylationBedData(
   bed_file,
   pheno,
+  genome = "hg19",
   chrom_col = "#chrom",
   start_col = "start",
   output_dir = NULL,
-  chunk_size = 50000
+  chunk_size = 50000,
+  chr_levels = NULL
 )
 }
 \arguments{
@@ -20,6 +22,8 @@ methylation values. Can be gzipped (default: NULL)}
 
 \item{pheno}{Data frame. Phenotype data with sample IDs as rownames. Only samples
 present in both the pheno rownames and BED file header will be processed}
+
+\item{genome}{Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")}
 
 \item{chrom_col}{Character. Name of the chromosome column in the BED file
 (default: "#chrom")}
@@ -32,6 +36,8 @@ a default cache directory at \verb{~/.cache/R/DMRsegal/bed_cache/} (default: NUL
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
 efficiency (default: 50000)}
+
+\item{chr_levels}{Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.}
 }
 \value{
 A list with two elements:
@@ -93,6 +99,7 @@ pheno <- data.frame(
 # Process a custom BED file
 result <- readCustomMethylationBedData(
     bed_file = "custom_methylation.bed.gz",
+    genome = "hg38",
     pheno = pheno
 )
 
@@ -100,6 +107,7 @@ result <- readCustomMethylationBedData(
 result <- readCustomMethylationBedData(
     bed_file = "custom_methylation.bed",
     pheno = pheno,
+    genome = "hg38",
     chrom_col = "chromosome",
     start_col = "position"
 )
@@ -108,6 +116,7 @@ result <- readCustomMethylationBedData(
 result <- readCustomMethylationBedData(
     bed_file = "custom_methylation.bed.gz",
     pheno = pheno,
+    genome = "hg38",
     output_dir = "/path/to/cache"
 )
 

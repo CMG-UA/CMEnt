@@ -22,15 +22,17 @@ knitr::opts_chunk$set(
 
 ## Overview
 
-End-to-end DMR discovery with the same dataset and steps as in the benchmark, including DMP selection via `minfi::dmpFinder`, and visualization with `plotDMRs` and `plotDMRWithBeta`.
+End-to-end DMR discovery from genomic seeds including DMP selection via `minfi::dmpFinder`, 
+DMR identification with `findDMRsFromSeeds`, motif extraction, interaction analysis, and 
+comprehensive visualization with `plotDMR` and `plotDMRsCircos`.
 
 ## Load data and prepare inputs
 
 ```{r load}
-
-load(system.file("data/beta.rda", package = "DMRsegal"))
-load(system.file("data/pheno.rda", package = "DMRsegal"))
-load(system.file("data/array_type.rda", package = "DMRsegal"))
+library(DMRsegal)
+beta <- loadExampleInputData("beta")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
 genome <- "hg19"
 
 beta_handler <- DMRsegal::getBetaHandler(beta = beta, array = array_type, genome = genome)
@@ -69,13 +71,13 @@ sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
 set.seed(42)
 dmrs <- DMRsegal::findDMRsFromSeeds(
     beta = beta_handler,
-    dmps = sig_dmps,
+    seeds = sig_dmps,
     pheno = pheno,
     sample_group_col = "group",
     array = array_type,
     genome = genome,
-    min_dmps = 2,
-    min_adj_dmps = 1,
+    min_seeds = 2,
+    min_adj_seeds = 1,
     min_cpgs = 3,
     max_lookup_dist = 10000,
     max_pval = 0.05,
@@ -85,20 +87,11 @@ dmrs <- DMRsegal::findDMRsFromSeeds(
 length(dmrs)
 ```
 
-## Plot multiple DMRs
-
-```{r plot_grid}
-if (length(dmrs) > 0) {
-    idx <- seq_len(min(4L, length(dmrs)))
-    plotDMRs(dmrs, dmr_indices = idx, ncol = 2)
-}
-```
-
-## Plot a DMR with beta heatmap
+## Plot a DMR with beta heatmap and motif PWM
 
 ```{r plot_beta}
 if (length(dmrs) > 0) {
-    plotDMRWithBeta(
+    plotDMR(
         dmrs,
         dmr_index = 1,
         beta = beta_handler,
@@ -108,6 +101,14 @@ if (length(dmrs) > 0) {
     )
 }
 ```
+
+## Plot DMRs interactions circos plot
+```{r plot_circos}
+if (length(dmrs) > 1) {
+    DMRsegal::plotDMRsCircos(dmrs, beta_handler, pheno, sample_group_col = "group", max_dmrs_per_chr = 10, max_cpgs_per_dmr = 5, max_interactions = 30)
+}
+```
+## Session Info
 ```{r session_info}
 sessionInfo()
 ```

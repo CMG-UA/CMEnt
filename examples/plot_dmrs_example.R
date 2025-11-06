@@ -48,7 +48,7 @@ cat("\n=== Example 3: Highlighting specific DMR features ===\n")
 
 # Find DMRs with high number of DMPs
 dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-high_dmp_idx <- which(dmr_data$dmps_num >= 3)[1:3]
+high_dmp_idx <- which(dmr_data$seeds_num >= 3)[1:3]
 
 cat("Plotting DMRs with high number of DMPs:\n")
 for (idx in high_dmp_idx) {
@@ -57,7 +57,7 @@ for (idx in high_dmp_idx) {
         fname <- sprintf("dmr_high_dmps_%d.png", idx)
         ggsave(fname, p, width = 10, height = 4, dpi = 300)
         cat(sprintf("  DMR #%d: %d DMPs, %d CpGs - saved to %s\n",
-                    idx, dmr_data$dmps_num[idx], dmr_data$cpgs_num[idx], fname))
+                    idx, dmr_data$seeds_num[idx], dmr_data$cpgs_num[idx], fname))
     }
 }
 
@@ -68,7 +68,7 @@ cat("\n=== Example 4: Publication-quality plot ===\n")
 
 # Select an interesting DMR (one with good stats)
 interesting_idx <- which(
-    dmr_data$dmps_num >= 2 & 
+    dmr_data$seeds_num >= 2 & 
     dmr_data$cpgs_num >= 10 & 
     abs(dmr_data$delta_beta) > 0.2
 )[1]
@@ -106,14 +106,14 @@ library(ggplot2)
 
 summary_data <- data.frame(
     dmr_id = seq_along(dmrs),
-    n_dmps = dmr_data$dmps_num,
+    n_seeds = dmr_data$seeds_num,
     n_cpgs = dmr_data$cpgs_num,
     delta_beta = dmr_data$delta_beta,
     width = GenomicRanges::width(dmrs)
 )
 
 # DMPs vs CpGs scatter plot
-p5a <- ggplot(summary_data, aes(x = n_dmps, y = n_cpgs)) +
+p5a <- ggplot(summary_data, aes(x = n_seeds, y = n_cpgs)) +
     geom_point(aes(color = abs(delta_beta)), size = 2, alpha = 0.7) +
     scale_color_gradient2(low = "blue", mid = "yellow", high = "red",
                          midpoint = 0.3, name = "|Delta Beta|") +
@@ -129,7 +129,7 @@ ggsave("dmr_summary_composition.png", p5a, width = 8, height = 6, dpi = 300)
 
 # Volcano-like plot
 p5b <- ggplot(summary_data, aes(x = delta_beta, y = neg_log10_pval)) +
-    geom_point(aes(size = n_cpgs, color = n_dmps), alpha = 0.6) +
+    geom_point(aes(size = n_cpgs, color = n_seeds), alpha = 0.6) +
     scale_color_gradient(low = "lightblue", high = "darkblue", name = "DMPs") +
     scale_size_continuous(name = "CpGs", range = c(1, 8)) +
     geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "red") +

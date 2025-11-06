@@ -11,9 +11,11 @@ getSortedGenomicLocs(
 )
 }
 \arguments{
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome}
+\item{array}{Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome or when locations_file is provided}
 
-\item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10", "mm39")}
+\item{genome}{Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided}
+
+\item{locations_file}{Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)}
 }
 \value{
 A data frame containing sorted genomic locations with rownames as CpG IDs and columns:

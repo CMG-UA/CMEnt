@@ -2,60 +2,87 @@
 % Please edit documentation in R/plot_dmrs.R
 \name{plotDMR}
 \alias{plotDMR}
-\title{Plot DMR Structure with DMPs and Extended CpGs}
+\title{Plot DMR}
 \usage{
 plotDMR(
   dmrs,
-  dmr_index = 1,
+  dmr_index,
+  beta = NULL,
+  pheno = NULL,
+  genome = "hg19",
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
-  sorted_locs = NULL,
+  beta_locs = NULL,
+  sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
+  max_cpgs = 100,
+  plot_motif = TRUE,
+  motif_flank_size = 5,
   plot_title = TRUE,
-  .ret_details = FALSE
+  output_file = NULL,
+  width = 8,
+  height = 12
 )
 }
 \arguments{
-\item{dmrs}{GRanges object. Output from findDMRsFromSeeds containing DMR information.}
+\item{dmrs}{GRanges object. Output from findDMRsFromSeeds.}
 
-\item{dmr_index}{Integer. Which DMR to plot (default: 1).}
+\item{dmr_index}{Integer. Which DMR to plot.}
 
-\item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if sorted_locs is provided.}
+\item{beta}{BetaHandler object, character path to beta file, or beta values matrix.
+If a character path or matrix is provided, a BetaHandler will be created automatically.}
 
-\item{genome}{Character. Genome version: "hg19", "hg38", "mm10", or "mm39" (default: "hg19"). Ignored if sorted_locs is provided.}
+\item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
+\item{genome}{Character. Genome version (default: "hg19").}
 
-\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).}
+\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
 
-\item{min_extension_bp}{Integer. Minimum extension in base pairs for the plot region (default: 50).}
+\item{beta_locs}{Data frame. Genomic locations sorted by position (optional).}
 
-\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is logged instead (default: TRUE).}
+\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
-\item{.ret_details}{Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMRWithBeta (default: FALSE).}
+\item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).}
+
+\item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
+
+\item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
+
+\item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
+
+\item{motif_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
+
+\item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
+
+\item{output_file}{Character. If provided, saves the plot to the specified file path (PDF format).}
 }
 \value{
-A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
+A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),
+and sequence logo motif plot (if motif information is available and plot_motif is TRUE).
 }
 \description{
-Visualizes the structure of Differentially Methylated Regions (DMRs)
-identified by findDMRsFromSeeds, showing the underlying DMPs as stem plots connected
-by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
-The plot distinguishes between DMPs (differentially methylated positions), supporting
-CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
+Creates a detailed DMR plot with an integrated heatmap showing
+beta values across samples for seeds and surrounding CpGs. The plot consists of
+two panels: the top panel shows the DMR structure with seeds and extended CpGs,
+and the bottom panel displays a heatmap of beta values for all samples, if beta values are provided.
+Additionally, if motif information is available or can be extracted, a sequence logo
+plot is added showing the nucleotide composition and information content around CpG sites in the DMR.
 }
 \examples{
-# Load DMR results
-dmrs <- readRDS("dmrs.rds")
+# Using BetaHandler
+beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
+plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 
-# Plot first DMR with title
-plotDMR(dmrs, dmr_index = 1)
+# Using a file path (handler created automatically)
+plotDMR(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
 
-# Plot without title (title will be logged)
-plotDMR(dmrs, dmr_index = 1, plot_title = FALSE)
+# Using a beta matrix
+plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 
-# Plot with extended region
-plotDMR(dmrs, dmr_index = 1, extend_by_dmr_size_ratio = 0.5, min_extension_bp = 100)
+# With custom flank size for motif extraction
+plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_flank_size = 10)
+
+# Without motif plot
+plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
 
 }

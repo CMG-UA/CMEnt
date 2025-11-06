@@ -9,10 +9,10 @@
 #'     install.packages("optparse")
 #' }
 #' library(optparse)
-#' 
+#'
 #' args <- list(
 #'     beta = "path/to/beta_values.rds",
-#'     dmps_file = "path/to/dmps.tsv",
+#'     seeds_file = "path/to/dmps.tsv",
 #'     samplesheet = "path/to/samplesheet.csv",
 #'     sample_group_col = "Sample_Group",
 #'     casecontrol_col = "casecontrol",
@@ -22,7 +22,7 @@
 #'     njobs = 4,
 #'     verbose = 1
 #' )
-#' 
+#'
 #' findDMRsFromSeedsCLI(args)
 #'
 #' @export
@@ -43,7 +43,7 @@ findDMRsFromSeedsCLI <- function(args) {
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta = args$beta,
-        dmps = args$dmps_file,
+        seeds = args$seeds_file,
         sample_group_col = args$sample_group_col,
         casecontrol_col = args$casecontrol_col,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
@@ -52,8 +52,8 @@ findDMRsFromSeedsCLI <- function(args) {
         genome = args$genome,
         max_pval = args$max_pval,
         max_lookup_dist = args$max_lookup_dist,
-        min_dmps = args$min_dmps,
-        min_adj_dmps = args$min_adj_dmps,
+        min_seeds = args$min_seeds,
+        min_adj_seeds = args$min_adj_seeds,
         min_cpgs = args$min_cpgs,
         ignored_sample_groups = args$ignored_sample_groups,
         output_prefix = args$output_prefix,

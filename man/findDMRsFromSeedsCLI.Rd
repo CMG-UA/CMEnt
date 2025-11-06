@@ -23,7 +23,7 @@ library(optparse)
 
 args <- list(
     beta = "path/to/beta_values.rds",
-    dmps_file = "path/to/dmps.tsv",
+    seeds_file = "path/to/dmps.tsv",
     samplesheet = "path/to/samplesheet.csv",
     sample_group_col = "Sample_Group",
     casecontrol_col = "casecontrol",

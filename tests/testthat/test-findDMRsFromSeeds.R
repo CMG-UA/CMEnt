@@ -3,47 +3,47 @@ library(testthat)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
     # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
     dmrs <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500 # Small threshold allows in-memory loading
+        memory_threshold_mb = 500, # allows in-memory loading
+        verbose = 2
     )
 
     # Assertions
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_true(!is.null(dmrs))
+    expect_true(inherits(dmrs, "GRanges"))
+    expect_true(length(dmrs) > 0)
+    expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
-    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.verbose" = 2)
     options("DMRsegal.use_tabix_cache" = FALSE)
 
     dmrs <- findDMRsFromSeeds(
         beta = sorted_beta_file,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
@@ -52,16 +52,16 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
 
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
-    load(system.file("data/array_type.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
     genome <- "hg19"
 
 
@@ -87,10 +87,10 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
         beta = beta_handler,
-        dmps = sig_dmps,
+        seeds = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 10000,
         max_pval = 0.05,
@@ -101,26 +101,26 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 941)
-    expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_segal))))
+    expect_equal(length(dmrs_segal), 986)
+    expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria
-    expect_true(all(mcols(dmrs_segal)$dmps_num >= 2))
+    expect_true(all(mcols(dmrs_segal)$seeds_num >= 2))
     expect_true(all(mcols(dmrs_segal)$cpgs_num >= 3))
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
 
-    # Test with strict min_dmps
+    # Test with strict min_seeds
     dmrs_strict <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 5, # Stricter
+        min_seeds = 5, # Stricter
         min_cpgs = 3,
         max_lookup_dist = 1000,
         memory_threshold_mb = 500,
@@ -130,10 +130,10 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2, # More lenient
+        min_seeds = 2, # More lenient
         min_cpgs = 2, # More lenient
         max_lookup_dist = 2000, # Larger distance
         memory_threshold_mb = 500,
@@ -143,10 +143,10 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         max_pval = 0.01, # Stricter p-value
@@ -165,27 +165,27 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Strict parameters should have all DMRs meeting criteria
     if (length(dmrs_strict) > 0) {
-        expect_true(all(mcols(dmrs_strict)$dmps_num >= 5))
+        expect_true(all(mcols(dmrs_strict)$seeds_num >= 5))
     }
 
     if (length(dmrs_lenient) > 0) {
-        expect_true(all(mcols(dmrs_lenient)$dmps_num >= 1))
+        expect_true(all(mcols(dmrs_lenient)$seeds_num >= 1))
         expect_true(all(mcols(dmrs_lenient)$cpgs_num >= 2))
     }
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "median",
@@ -196,10 +196,10 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "mean",
@@ -218,17 +218,17 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
@@ -239,10 +239,10 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         min_cpg_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000,
@@ -262,24 +262,24 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 })
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
 
     # Test missing required parameters
     expect_error(
         findDMRsFromSeeds(
             beta = beta,
-            dmps = NULL, # Missing
+            seeds = NULL, # Missing
             pheno = pheno
         ),
-        "dmps"
+        "seeds"
     )
 
     expect_error(
         findDMRsFromSeeds(
             beta = beta,
-            dmps = dmps,
+            seeds = dmps,
             pheno = NULL # Missing
         ),
         "pheno"
@@ -292,7 +292,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             beta = beta,
-            dmps = dmps,
+            seeds = dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol"
@@ -301,18 +301,18 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         genome = "hg38",
         sample_group_col = "Sample_Group",
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
         memory_threshold_mb = 500
@@ -325,9 +325,9 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
     skip_if_not_installed("mockery")
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -337,10 +337,10 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_dmps = 1,
+        min_seeds = 1,
         min_cpgs = 2,
         max_lookup_dist = 1000,
         memory_threshold_mb = 0.1,
@@ -351,20 +351,20 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
-    load(system.file("data/beta.rda", package = "DMRsegal"))
-    load(system.file("data/dmps.rda", package = "DMRsegal"))
-    load(system.file("data/pheno.rda", package = "DMRsegal"))
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
 
     dmrs_not_annotated <- findDMRsFromSeeds(
         beta = beta,
-        dmps = dmps,
+        seeds = dmps,
         pheno = pheno,
-        min_dmps = 2,
+        min_seeds = 2,
         min_cpgs = 3,
         annotate_with_genes = FALSE,
         njobs = 1
@@ -372,7 +372,7 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
 
     expect_true(is.null(dmrs_not_annotated) || inherits(dmrs_not_annotated, "GRanges"))
     if (!is.null(dmrs_not_annotated) && length(dmrs_not_annotated) > 0) {
-        expect_true(all(c("cpgs_num", "dmps_num", "delta_beta") %in% names(mcols(dmrs_not_annotated))))
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_not_annotated))))
         expect_false("in_promoter_of" %in% names(mcols(dmrs_not_annotated)))
         expect_false("in_gene_body_of" %in% names(mcols(dmrs_not_annotated)))
     }

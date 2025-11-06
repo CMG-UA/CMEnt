@@ -4,7 +4,13 @@
 \alias{getDMRSequences}
 \title{Extract DNA Sequences for DMRs}
 \usage{
-getDMRSequences(dmrs, genome, use_online = FALSE, flank_size = 0)
+getDMRSequences(
+  dmrs,
+  genome,
+  use_online = FALSE,
+  uflank_size = 0,
+  dflank_size = 0
+)
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
@@ -15,8 +21,11 @@ getDMRSequences(dmrs, genome, use_online = FALSE, flank_size = 0)
 BSgenome packages. If FALSE (default), uses BSgenome packages with online
 fallback when packages are unavailable (default: FALSE)}
 
-\item{flank_size}{Integer. Number of base pairs to add as flanking regions
-on both sides of each DMR (default: 0)}
+\item{uflank_size}{Integer. Number of base pairs to add as flanking regions
+upstream of each DMR (default: 0)}
+
+\item{dflank_size}{Integer. Number of base pairs to add as flanking regions
+downstream of each DMR (default: 0)}
 }
 \value{
 A Character vector containing DNA sequences for each DMR
