@@ -75,8 +75,8 @@
 #' @examples
 #' # Load example data
 #' beta <- loadExampleInputData("beta")
-#' dmps<- loadExampleInputData("dmps")
-#' pheno<- loadExampleInputData("pheno")
+#' dmps <- loadExampleInputData("dmps")
+#' pheno <- loadExampleInputData("pheno")
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
@@ -669,7 +669,7 @@ findDMRsFromSeeds <- function(
     aggfun = c("median", "mean"),
     ignored_sample_groups = NULL,
     output_prefix = NULL,
-    njobs = getOption("DMRsegal.njobs", future::availableCores() - 1),
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
     memory_threshold_mb = 500,
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
@@ -1114,7 +1114,8 @@ findDMRsFromSeeds <- function(
                     mid_p = mid_p
                 )
                 stopifnot(nrow(corr_ret) == nrow(cseeds_beta) - 1)
-                if (verbose >= 3) {
+                if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+                    .log_info("Saving seed connectivity results to debug/seeds_connectivity_chr", chr, ".tsv", level = 3)
                     dir.create("debug", showWarnings = FALSE)
                     write.table(corr_ret,
                         file = paste0("debug/seeds_connectivity_chr", chr, ".tsv"),
@@ -1193,7 +1194,8 @@ findDMRsFromSeeds <- function(
             }
             return(NULL)
         }
-        if (verbose >= 2) {
+        if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+            .log_info("Saving initial DMRs from connected seeds to debug/01_dmrs_from_connected_seeds.tsv", level = 1)
             dir.create("debug", showWarnings = FALSE)
             write.table(dmrs,
                 file = file.path("debug", "01_dmrs_from_connected_seeds.tsv"),
@@ -1239,7 +1241,8 @@ findDMRsFromSeeds <- function(
         .log_success("Connectivity array built.", level = 2)
     }
     .log_info("Number of underlying connected CpGs found: ", sum(connectivity_array$connected), level = 1)
-    if (verbose > 1) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving connectivity array to debug/connectivity_array.rds", level = 1)
         dir.create("debug", showWarnings = FALSE)
         saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
     }
@@ -1441,7 +1444,8 @@ findDMRsFromSeeds <- function(
 
     .log_success("CpG content calculated.", level = 2)
     .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted seeds number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 2)
-    if (verbose >= 2) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving extended DMRs prior to filtering to debug/02_extended_dmrs_prior_filtering.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
             file = file.path("debug", "02_extended_dmrs_prior_filtering.tsv"),

@@ -1,7 +1,7 @@
 test_that("plotDMRsCircos creates a circos plot", {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
-    array_type<- loadExampleInputData("array_type")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -25,8 +25,8 @@ test_that("plotDMRsCircos creates a circos plot", {
 
 test_that("plotDMRsCircos works with interactions", {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
-    array_type<- loadExampleInputData("array_type")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -51,8 +51,8 @@ test_that("plotDMRsCircos works with interactions", {
 
 test_that("plotDMRsCircos handles BetaHandler input", {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
-    array_type<- loadExampleInputData("array_type")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -78,8 +78,8 @@ test_that("plotDMRsCircos handles BetaHandler input", {
 
 test_that("plotDMRsCircos handles data frame DMRs input", {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
-    array_type<- loadExampleInputData("array_type")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 
@@ -105,7 +105,7 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
 
 test_that("plotDMRsCircos validates inputs", {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
+    pheno <- loadExampleInputData("pheno")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 

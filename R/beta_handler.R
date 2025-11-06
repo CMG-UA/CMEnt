@@ -480,11 +480,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     }
                 }
                 if (is.null(beta_subset)) {
-                    dir.create("debug", showWarnings = FALSE)
-                    saveRDS(row_names, "debug/row_names.rds")
-                    saveRDS(private$.beta_row_names, "debug/beta_row_names.rds")
+                    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+                        .log_info("Saving row names to debug/row_names.rds and debug/beta_row_names.rds", level = 1)
+                        dir.create("debug", showWarnings = FALSE)
+                        saveRDS(row_names, "debug/row_names.rds")
+                        saveRDS(private$.beta_row_names, "debug/beta_row_names.rds")
+                    }
                     stop("No beta values found for the requested CpG sites in the tabix file")
-                }
+                }   
                 # Remove BED columns (chr, start, end, name, score, strand) to get only beta values
                 # Columns 1-6 are BED format, 7+ are beta values
                 beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]

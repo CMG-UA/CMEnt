@@ -31,8 +31,8 @@ comprehensive visualization with `plotDMR` and `plotDMRsCircos`.
 ```{r load}
 library(DMRsegal)
 beta <- loadExampleInputData("beta")
-pheno<- loadExampleInputData("pheno")
-array_type<- loadExampleInputData("array_type")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
 genome <- "hg19"
 
 beta_handler <- DMRsegal::getBetaHandler(beta = beta, array = array_type, genome = genome)

@@ -4,7 +4,7 @@
 \alias{loadExampleInputData}
 \title{Load DMRsegal Data Resources}
 \usage{
-loadExampleInputData(resource)
+loadExampleInputData(resource, use_experiment_hub = TRUE)
 }
 \arguments{
 \item{resource}{Character. Name of the resource to load. Available resources:
@@ -31,8 +31,9 @@ ExperimentHub. If that also fails, it provides instructions to generate the data
 The function follows this priority order:
 \enumerate{
 \item Check if the resource exists in the package namespace (lazy loaded)
-\item If not found and use_experiment_hub is TRUE, query ExperimentHub
-\item If both fail, provide instructions for generating the data
+\item If not found, try loading directly from the data file
+\item If use_experiment_hub is TRUE, query ExperimentHub
+\item If all fail, provide instructions for generating the data
 }
 
 Available resources correspond to .rda files in the data/ folder:

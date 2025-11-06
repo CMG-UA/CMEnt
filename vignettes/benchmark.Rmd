@@ -54,8 +54,8 @@ library(DMRsegal)
 try(devtools::load_all(), silent = TRUE)
 
 beta <- loadExampleInputData("beta")
-pheno<- loadExampleInputData("pheno")
-array_type<- loadExampleInputData("array_type")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
 genome <- "hg19"
 
 

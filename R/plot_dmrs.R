@@ -922,7 +922,8 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
-    if (verbose >= 3) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving DMR arcs data to debug/circos_arc_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(arc_data, file = "debug/circos_arc_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
@@ -936,7 +937,8 @@ plotDMRsCircos <- function(dmrs,
     reduced_pheno <- heatmap_data$reduced_pheno
     .log_success("Heatmap data prepared", level = 2)
     .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
-    if (verbose >= 3) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving heatmap data to debug/circos_heatmap_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(heatmap_df, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
@@ -947,16 +949,17 @@ plotDMRsCircos <- function(dmrs,
     )
 
     .log_success("DMR interactions data prepared", level = 2)
-    if (verbose >= 3) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving DMR interactions data to debug/circos_link_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
     circle_size <- grid::unit(1, "snpc")
     if (!is.null(output_file)) {
-        grDevices::cairo_pdf(output_file, width = 12, height = 8)
+        grDevices::cairo_pdf(output_file, width = 12, height = 8, fallback_resolution = 600)
     }
     if (.Device == "null device") {
-        grDevices::cairo_pdf(width = 12, height = 8)
+        grDevices::cairo_pdf(width = 12, height = 8, fallback_resolution = 600)
     }
     .log_step("Creating Circos plot...")
     graphics::plot.new()

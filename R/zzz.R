@@ -27,3 +27,4 @@ update_package_option("DMRsegal.jaspar_cache_dir", mode = "character", default =
 update_package_option("DMRsegal.jaspar_version", mode = "numeric", default = 2024)
 update_package_option("DMRsegal.jaspar_tax_group", mode = "character", default = "vertebrates")
 update_package_option("DMRsegal.jaspar_corr_threshold", mode = "numeric", default = 0.9)
+update_package_option("DMRsegal.make_debug_dir", mode = "logical", default = FALSE)

@@ -11,15 +11,15 @@ if (file.exists("data/beta.rda")) {
     dmrs <- readRDS("inst/extdata/example_output.rds")
 } else {
     beta <- loadExampleInputData("beta")
-    pheno<- loadExampleInputData("pheno")
-    array_type<- loadExampleInputData("array_type")
+    pheno <- loadExampleInputData("pheno")
+    array_type <- loadExampleInputData("array_type")
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
 }
 options("DMRsegal.verbose" = 3)
 
 if (length(dmrs) > 0) {
     dmrs_subset <- dmrs
-    
+
     plotDMRsCircos(
         dmrs = dmrs_subset,
         beta = beta,

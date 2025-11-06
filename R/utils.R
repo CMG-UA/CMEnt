@@ -2011,8 +2011,9 @@ convertToGRanges <- function(obj, genome) {
 #' The function follows this priority order:
 #' \enumerate{
 #'   \item Check if the resource exists in the package namespace (lazy loaded)
-#'   \item If not found and use_experiment_hub is TRUE, query ExperimentHub
-#'   \item If both fail, provide instructions for generating the data
+#'   \item If not found, try loading directly from the data file
+#'   \item If use_experiment_hub is TRUE, query ExperimentHub
+#'   \item If all fail, provide instructions for generating the data
 #' }
 #'
 #' Available resources correspond to .rda files in the data/ folder:
@@ -2031,7 +2032,7 @@ convertToGRanges <- function(obj, genome) {
 #' pheno <- loadExampleInputData("pheno")
 #'
 #' @export
-loadExampleInputData <- function(resource) {
+loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
     available_resources <- c("beta", "pheno", "dmps", "array_type")
     if (!resource %in% available_resources) {
         stop(
@@ -2039,49 +2040,85 @@ loadExampleInputData <- function(resource) {
             "Available resources: ", paste(available_resources, collapse = ", ")
         )
     }
-    # First, check if the resource exists in the package namespace (lazy loaded)
+    
+    # First, try using data() to load the resource
+    # This works even during covr::package_coverage()
+    verbose_setting <- getOption("DMRsegal.verbose", 1)
+    tryCatch({
+        # Suppress data() output
+        invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
+        if (exists(resource, inherits = FALSE)) {
+            if (verbose_setting >= 2) {
+                .log_info("Loaded ", resource, " using data()", level = 2)
+            }
+            return(get(resource, inherits = FALSE))
+        }
+    }, error = function(e) {
+        # Silently continue to next method
+    })
+    
+    # Second, check if the resource exists in the package namespace (lazy loaded)
     if (exists(resource, envir = asNamespace("DMRsegal"), inherits = FALSE)) {
-        .log_info("Loading ", resource, " from package namespace (lazy loaded)", level = 2)
+        if (verbose_setting >= 2) {
+            .log_info("Loading ", resource, " from package namespace (lazy loaded)", level = 2)
+        }
         return(get(resource, envir = asNamespace("DMRsegal"), inherits = FALSE))
     }
-    # If not in namespace, try to load from data file directly
+    
+    # Third, try to load from data file directly
     data_file <- paste0(resource, ".rda")
     data_path <- system.file("data", data_file, package = "DMRsegal", mustWork = FALSE)
     if (file.exists(data_path)) {
-        .log_info("Loading ", resource, " from package data file", level = 2)
+        if (verbose_setting >= 2) {
+            .log_info("Loading ", resource, " from package data file", level = 2)
+        }
         env <- new.env()
         load(data_path, envir = env)
-        return(get(resource, envir = env))
+        if (exists(resource, envir = env)) {
+            return(get(resource, envir = env))
+        }
     }
-    .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
-    if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
-        BiocManager::install("ExperimentHub")
-    } else {
-        tryCatch({
-            cache <- ExperimentHub::getExperimentHubOption("CACHE")
-            dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-            eh <- ExperimentHub::ExperimentHub()
-            # Query for DMRsegaldata resources
-            dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
-            # Find the specific resource
-            resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
-            if (length(resource_match) > 0) {
-                .log_success("Found resource in ExperimentHub", level = 2)
-                return(resource_match[[1]])
-            } else {
-                .log_warn("Resource '", resource, "' not found in ExperimentHub")
+    
+    # Fourth, try ExperimentHub if enabled
+    if (use_experiment_hub) {
+        if (verbose_setting >= 2) {
+            .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
+        }
+        
+        if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
+            if (verbose_setting >= 2) {
+                .log_warn("ExperimentHub package not available. Install with: BiocManager::install('ExperimentHub')")
             }
-        }, error = function(e) {
-            .log_warn("Failed to query ExperimentHub: ", e$message)
-        })
+        } else {
+            tryCatch({
+                cache <- ExperimentHub::getExperimentHubOption("CACHE")
+                dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+                eh <- ExperimentHub::ExperimentHub()
+                # Query for DMRsegaldata resources
+                dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
+                # Find the specific resource
+                resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
+                if (length(resource_match) > 0) {
+                    if (verbose_setting >= 2) {
+                        .log_success("Found resource in ExperimentHub", level = 2)
+                    }
+                    return(resource_match[[1]])
+                } else {
+                    if (verbose_setting >= 2) {
+                        .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                    }
+                }
+            }, error = function(e) {
+                if (verbose_setting >= 2) {
+                    .log_warn("Failed to query ExperimentHub: ", e$message)
+                }
+            })
+        }
     }
+    
     # If we get here, the resource was not found
-    .log_warn(
-        "Resource '", resource, "' not found.\n",
-        "To generate the data:\n",
-        "1. Install DMRsegaldata package (if available)\n",
-        "2. Run the make-data.R script: source(system.file('scripts/make-data.R', package='DMRsegaldata'))\n",
-        "3. Or download from the package repository"
+    stop(
+        "Resource '", resource, "' not found in package or ExperimentHub.\n",
+        "Available resources: ", paste(available_resources, collapse = ", ")
     )
-    return(NULL)
 }
