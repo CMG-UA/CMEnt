@@ -45,15 +45,14 @@ beta <- system.file("data/beta.rda", package = "DMRsegal")
 ### `seeds`
 **Type:** Character or data.frame  
 **Required:** Yes  
-**Description:** Differentially Methylated Positions (DMPs) to use as seeds for DMR detection. Can be:
+**Description:** CpG sites to use as seeds for DMR detection. Can be:
 
-- Path to a TSV file with DMP results
-- A data.frame with DMP information (compatible with `dmpFinder` output)
-- Must contain CpG identifiers and at minimum a p-value column
+- Path to a file with line separated CpG IDs
+- A data.frame with DMP information
 
 **Format requirements:**
-- Row names or first column should contain CpG IDs
-- Should include columns for statistical significance (e.g., p-values, adjusted p-values)
+- Row names or first column or the column given by `seeds_id_col` should contain CpG IDs
+- The CpG IDs must match those in the beta data, either as Illumina IDs or genomic coordinates (chr:start). The latter is required when using BED files for beta.
 
 **Example:**
 ```{r}
@@ -68,6 +67,7 @@ dmps <- loadExampleInputData("dmps")
 **Format requirements:**
 - Row names should match column names in beta data
 - Must contain sample group information column (specified by `sample_group_col`)
+- May contain case/control status column (specified by `casecontrol_col`)
 
 **Example:**
 ```{r}
@@ -79,7 +79,7 @@ pheno <- loadExampleInputData("pheno")
 ### `sample_group_col`
 **Type:** Character  
 **Default:** `"Sample_Group"`  
-**Description:** Column name in `pheno` that specifies sample groups (e.g., "case" vs "control", "treated" vs "untreated").
+**Description:** Column name in `pheno` that specifies sample groups (e.g., "case" vs "control", "treated" vs "untreated"). More than two groups are supported.
 
 **Example:**
 ```{r}
