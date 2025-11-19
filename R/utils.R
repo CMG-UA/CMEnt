@@ -1499,12 +1499,12 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
         if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_seed_ind) > max_sup_cpgs_per_dmr_side) {
             end_step <- ceiling((end_cpg_ind - end_seed_ind) / max_sup_cpgs_per_dmr_side)
         }
-        if (start_cpg_ind < start_seed_ind - 1) {
+        if (start_cpg_ind < start_seed_ind) {
             upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_seed_ind - 1, by = start_step)
         } else {
             upstream_sup_cpgs_inds <- c()
         }
-        if (end_seed_ind + 1 < end_cpg_ind) {
+        if (end_seed_ind < end_cpg_ind) {
             downstream_sup_cpgs_inds <- seq(end_seed_ind + 1, end_cpg_ind, by = end_step)
         } else {
             downstream_sup_cpgs_inds <- c()

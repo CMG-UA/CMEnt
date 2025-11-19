@@ -8,7 +8,7 @@ test_that("plotDMR creates a gtable object", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1))
+    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 9, output_file="Rplots.pdf"))
 
     expect_s3_class(p, "gtable")
     expect_true(inherits(p, "gTree"))
