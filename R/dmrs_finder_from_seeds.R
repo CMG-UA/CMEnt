@@ -1687,20 +1687,22 @@ findDMRsFromSeeds <- function(
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
         
-        cpg_lookup <- new.env(hash = TRUE, parent = emptyenv(), size = nrow(sorted_locs))
-        sorted_locs_names <- rownames(sorted_locs)
-        for (i in seq_along(sorted_locs_names)) {
-            cpg_lookup[[sorted_locs_names[i]]] <- i
-        }
+        all_dmr_cpgs <- unique(unlist(lapply(seq_len(nrow(dmrs_granges)), function(i) {
+            seq(dmrs_granges$start_cpg_ind[i], dmrs_granges$end_cpg_ind[i])
+        })))
+        all_dmr_cpg_names <- rownames(beta_locs)[all_dmr_cpgs]
+        all_dmr_cpg_abs <- match(all_dmr_cpg_names, rownames(sorted_locs))
         
-        dmrs_granges$start_cpg_ind_abs <- vapply(as.character(dmrs_granges$start_cpg), function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
-        dmrs_granges$end_cpg_ind_abs <- vapply(as.character(dmrs_granges$end_cpg), function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
+        cpg_rel_to_abs <- setNames(all_dmr_cpg_abs, as.character(all_dmr_cpgs))
         
-        all_seeds <- unlist(strsplit(as.character(dmrs_granges$seeds), ","), use.names = FALSE)
-        all_seeds_inds <- vapply(all_seeds, function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
-        seeds_lengths <- lengths(strsplit(as.character(dmrs_granges$seeds), ","))
+        dmrs_granges$start_cpg_ind_abs <- cpg_rel_to_abs[as.character(dmrs_granges$start_cpg_ind)]
+        dmrs_granges$end_cpg_ind_abs <- cpg_rel_to_abs[as.character(dmrs_granges$end_cpg_ind)]
+        
+        all_seeds_inds <- unlist(strsplit(as.character(dmrs_granges$seeds_inds), ","), use.names = FALSE)
+        all_seeds_abs <- cpg_rel_to_abs[all_seeds_inds]
+        seeds_lengths <- lengths(strsplit(as.character(dmrs_granges$seeds_inds), ","))
         seeds_groups <- rep(seq_along(seeds_lengths), seeds_lengths)
-        dmrs_granges$seeds_inds_abs <- vapply(split(all_seeds_inds, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
+        dmrs_granges$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
         
         .log_success("DMR CpG indices conversion completed.", level = 2)
     } else {
