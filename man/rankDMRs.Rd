@@ -35,18 +35,18 @@ rankDMRs(
 \value{
 GRanges object with DMRs ordered by p-value and an additional metadata column:
 \itemize{
-  \item accuracy: Cross-validated classification accuracy for the DMR
+\item accuracy: Cross-validated classification accuracy for the DMR
 }
 }
 \description{
 Ranks Differentially Methylated Regions (DMRs) based on their ability to
 discriminate between sample groups using cross-validated Support Vector Machine (SVM)
-classification. For each DMR, this function performs stratified k-fold cross-validation
+classification. For each DMR, this function performs stratified k-fold cross-prediction
 using an RBF kernel SVM to compute classification accuracy, which serves as a measure
 of the DMR's discriminative power.
 }
 \details{
-The function uses stratified k-fold cross-validation to ensure balanced representation
+The function uses stratified k-fold cross-prediction to ensure balanced representation
 of sample groups in each fold. The number of folds can be controlled using the
 option "DMRsegal.ranking_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 SVM is trained on the beta values of CpG sites within each DMR.

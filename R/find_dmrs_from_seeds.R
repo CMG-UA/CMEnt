@@ -20,7 +20,8 @@
 #'     genome = "hg19",
 #'     output_prefix = "my_analysis",
 #'     njobs = 4,
-#'     verbose = 1
+#'     verbose = 1,
+#'     group_concordance_strategy = "strict"
 #' )
 #'
 #' findDMRsFromSeedsCLI(args)
@@ -63,7 +64,8 @@ findDMRsFromSeedsCLI <- function(args) {
         pheno = pheno,
         bed_provided = args$bed_provided,
         bed_chrom_col = args$bed_chrom_col,
-        bed_start_col = args$bed_start_col
+        bed_start_col = args$bed_start_col,
+        group_concordance_strategy = args$group_concordance_strategy
     )
 
     .log_info(

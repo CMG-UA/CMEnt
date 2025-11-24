@@ -106,7 +106,9 @@
 
 .buildConnectivityArray <- function(
   beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000, aggfun = median, empirical_strategy = "auto",
+  chunk_size = 1000,
+  group_concordance_strategy = "strict",
+  aggfun = median, empirical_strategy = "auto",
   pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
@@ -165,6 +167,7 @@
                 max_pval = max_pval,
                 min_delta_beta = min_delta_beta,
                 sites_locs = beta_locs[split[1]:split[2], ],
+                group_concordance_strategy = group_concordance_strategy,
                 aggfun = aggfun,
                 pval_mode = pval_mode,
                 empirical_strategy = empirical_strategy,
@@ -175,13 +178,10 @@
                 # if we are at the end of a chromosome, add a final row of FALSE to indicate end-of-input
                 add <- data.frame(
                     connected = FALSE,
-                    pval = NA,
-                    reason = "end-of-input",
-                    first_failing_group = NA
+                    reason = "end-of-input"
                 )
-
-                if (min_delta_beta > 0 && !is.null(casecontrol)) {
-                    add["delta_beta"] <- NA
+                for (col in setdiff(names(x), names(add))) {
+                    add[[col]] <- NA
                 }
                 x <- rbind(x, add)
             }
@@ -365,50 +365,51 @@
 
 #' Vectorized connectivity testing for consecutive site pairs, given their beta values
 #'
-#' @param sites_beta Matrix where each row is a site's beta values across samples
-#' @param group_inds List of sample indices for each group
-#' @param max_pval Maximum p-value threshold
-#' @param casecontrol Optional case/control indicator vector
-#' @param min_delta_beta Minimum delta beta threshold
-#' @param max_lookup_dist Maximum distance between consecutive sites
-#' @param sites_locs Data frame with chr and start columns for each site
-#' @param aggfun Aggregation function for computing group means (default: mean)
-#' @param pval_mode Character. "parametric" (default) for t-based p-values, or "empirical" for permutation-based p-values.
-#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples
-#' @param ntries Integer. Number of tries when pval_mode = "empirical". Default is 500. If set to 0, uses 500 for Monte Carlo and min(2m!,500) for permutations, where m is the number of samples.
-#' @param mid_p Logical. Use mid-p adjustment for empirical p-values (reduces tie conservatism). Default is FALSE.
-#'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 #' @keywords internal
 #' @noRd
 .testConnectivityBatch <- function(sites_beta, group_inds, max_pval,
                                    casecontrol = NULL, min_delta_beta = 0,
-                                   max_lookup_dist = NULL, sites_locs = NULL, aggfun = mean,
+                                   max_lookup_dist = NULL, sites_locs = NULL,
+                                   group_concordance_strategy = "strict",
+                                   aggfun = mean,
                                    pval_mode = c("parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
                                    ntries = 0, mid_p = FALSE) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     n_sites <- nrow(sites_beta)
+    strict_mode <- identical(group_concordance_strategy, "strict")
     if (n_sites < 2) {
-        return(data.frame(
+        ret <- data.frame(
             connected = logical(0),
             pval = numeric(0),
             delta_beta = numeric(0),
-            reason = character(0),
-            first_failing_group = character(0)
-        ))
+            reason = character(0)
+        )
+        if (strict_mode) {
+            ret$first_failing_group <- character(0)
+        } else {
+            ret$failing_groups <- character(0)
+        }
+        return(ret)
     }
 
     n_pairs <- n_sites - 1
     n_groups <- length(group_inds)
-    max_pval_corrected <- max_pval / n_groups
+    if (strict_mode) {
+        # null hypothesis: all groups must be significant -> bonferroni correction
+        max_pval_corrected <- max_pval / n_groups
+    } else {
+        # null hypothesis: at least one group must be significant -> independent testing
+        max_pval_corrected <- max_pval
+    }
 
     # Initialize result vectors
     connected <- rep(TRUE, n_pairs)
     pvals <- rep(NA_real_, n_pairs)
     reasons <- rep("", n_pairs)
-    failing_groups <- rep(NA_character_, n_pairs)
+    failing_groups <- rep("", n_pairs)
 
     # Check distance condition if provided (vectorized)
     if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
@@ -416,10 +417,21 @@
         exceeded_dist <- dists > max_lookup_dist
         connected[exceeded_dist] <- FALSE
         reasons[exceeded_dist] <- "exceeded max distance"
+    } else {
+        exceeded_dist <- rep(FALSE, n_pairs)
     }
+    exdist_mask <- !exceeded_dist
 
+    if (!strict_mode && n_groups > 0) {
+        per_group_reasons <- matrix("", nrow = n_groups, ncol = n_pairs)
+        per_group_p <- matrix(NA_real_, nrow = n_groups, ncol = n_pairs)
+        rownames(per_group_reasons) <- names(group_inds)
+        rownames(per_group_p) <- names(group_inds)
+    }
+    g_index <- 0
     # Fully vectorized correlation testing for each group
     for (g in names(group_inds)) {
+        g_index <- g_index + 1
         idx <- group_inds[[g]]
         if (length(idx) < 3) next
 
@@ -428,8 +440,24 @@
         group_m <- log(group_beta / (1 - group_beta + 1e-6) + 1e-6) # M-values transformation
 
         # Extract consecutive pairs matrices
-        x_mat <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i
-        y_mat <- group_m[2:n_sites, , drop = FALSE] # Sites i+1
+        x_mat_full <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i
+        y_mat_full <- group_m[2:n_sites, , drop = FALSE] # Sites i+1
+
+        # Apply distance mask
+        x_mat <- x_mat_full[exdist_mask, , drop = FALSE]
+        y_mat <- y_mat_full[exdist_mask, , drop = FALSE]
+
+        sn_pairs <- nrow(x_mat)
+        if (sn_pairs == 0L) {
+            next
+        }
+        g_reasons <- rep("", sn_pairs)
+        g_mask <- rep(TRUE, sn_pairs)
+        if (strict_mode) {
+            g_mask <- connected[exdist_mask]
+        } else {
+            g_mask <- rep(TRUE, sn_pairs)
+        }
 
         # Compute means for each pair (vectorized)
         x_means <- rowMeans(x_mat, na.rm = TRUE)
@@ -453,38 +481,31 @@
         n_valid <- rowSums(valid_pairs)
         dfs <- n_valid - 2L
 
-        # Identify failures (vectorized logical operations)
-        na_r <- is.na(cors) & connected
-        connected[na_r] <- FALSE
-        reasons[na_r] <- "na r"
-        failing_groups[na_r] <- g
+        low_df <- (dfs < 1) & g_mask
+        g_reasons[low_df] <- ifelse(g_reasons[low_df] == "", "df<1", g_reasons[low_df])
+        g_mask[low_df] <- FALSE
 
-        low_df <- (dfs < 1) & connected
-        connected[low_df] <- FALSE
-        reasons[low_df] <- "df<1"
-        failing_groups[low_df] <- g
+        na_r <- is.na(cors) & g_mask
+        g_reasons[na_r] <- ifelse(g_reasons[na_r] == "", "na r", g_reasons[na_r])
+        g_mask[na_r] <- FALSE
 
-        ps <- rep(NA_real_, n_pairs)
+        ps <- rep(NA_real_, sn_pairs)
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
-
-
         if (pval_mode == "parametric") {
             tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
             # Compute t-statistics (vectorized)
-            na_tstat <- is.na(tstats) & connected
-            connected[na_tstat] <- FALSE
-            reasons[na_tstat] <- "na tstat"
-            failing_groups[na_tstat] <- g
-
-            ps[connected] <- -2 * expm1(pt(abs(tstats[connected]), df = dfs[connected], log.p = TRUE))
+            na_tstat <- is.na(tstats) & g_mask
+            g_reasons[na_tstat] <- "na tstat"
+            g_mask[na_tstat] <- FALSE
+            ps[g_mask] <- -2 * expm1(pt(abs(tstats[g_mask]), df = dfs[g_mask], log.p = TRUE))
         } else {
             # Empirical p-values via permutations of sample labels within group
             # Only compute for rows that are still connected and have finite cors
-            mask <- is.finite(cors) & connected
+            mask <- is.finite(cors) & g_mask
             if (any(mask)) {
                 set.seed(getOption("DMRsegal.random_seed", 42))
-                counts_ge <- integer(n_pairs)
-                counts_eq <- integer(n_pairs)
+                counts_ge <- integer(sn_pairs)
+                counts_eq <- integer(sn_pairs)
                 # Number of samples in this group
                 m <- ncol(y_mat)
                 # Empirical strategy: auto -> MonteCarlo when n_valid < 6  or permutations when n_valid >= 6
@@ -544,28 +565,52 @@
         }
 
 
-        na_p <- is.na(ps) & connected
-        connected[na_p] <- FALSE
-        reasons[na_p] <- "na pval"
-        failing_groups[na_p] <- g
+        na_p <- is.na(ps) & g_mask
+        g_reasons[na_p] <- "na pval"
+        g_mask[na_p] <- FALSE
 
-        # Update maximum p-values across groups (vectorized)
-        pvals <- pmax(pvals, ps, na.rm = TRUE)
-        pvals[is.na(ps)] <- NA_real_
 
         # Check p-value threshold (vectorized)
-        exceed_pval <- (pvals > max_pval_corrected) & connected
-        connected[exceed_pval] <- FALSE
-        reasons[exceed_pval] <- "pval>max_pval (corrected)"
-        failing_groups[exceed_pval] <- g
+        exceed_pval <- !is.na(ps) & (ps > max_pval_corrected) & g_mask
+        g_reasons[exceed_pval] <- "pval>max_pval (corrected)"
+        g_mask[exceed_pval] <- FALSE
+
+        # Update results back to main vectors
+        if (strict_mode) {
+            sconnected <- connected[exdist_mask]
+            broad_mask <- exdist_mask & connected
+            pvals[broad_mask] <- pmax(pvals[broad_mask], ps[sconnected])
+            reasons[broad_mask] <- g_reasons[sconnected]
+            failing_groups[broad_mask] <- ifelse(g_mask[sconnected], "", g)
+            connected[broad_mask] <- connected[broad_mask] & g_mask[sconnected]
+        } else {
+            per_group_p[g_index, exdist_mask] <- ps
+            per_group_reasons[g_index, exdist_mask] <- g_reasons
+        }
+    }
+    if (!strict_mode) {
+        not_failed <- per_group_reasons == ""
+        connected <- colSums(per_group_reasons == "") > 0
+        pvals[connected] <- as.vector(apply(
+            per_group_p[, connected, drop = FALSE], 2, function(v) max(v)
+        ))
+        reasons[!connected] <- apply(
+            per_group_reasons[, !connected, drop = FALSE], 2, function(v) paste(v, collapse = ";")
+        )
+        failing_groups[!connected] <- apply(
+            !not_failed[, !connected, drop = FALSE], 2, function(v) paste(names(group_inds)[v], collapse = ";")
+        )
     }
     ret <- data.frame(
         connected = connected,
         pval = pvals,
-        reason = reasons,
-        first_failing_group = failing_groups,
-        stringsAsFactors = FALSE
+        reason = reasons
     )
+    if (strict_mode) {
+        ret[, "first_failing_group"] <- failing_groups
+    } else {
+        ret[, "failing_groups"] <- failing_groups
+    }
     # Vectorized delta beta check if needed
     if (!is.null(casecontrol) && min_delta_beta > 0) {
         # Extract site2 beta values for all pairs
@@ -620,6 +665,7 @@
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
+#' @param group_concordance_strategy Character. "strict" (default) requires all groups to show significant correlation for connectivity; "relaxed" requires at least one group to show significant correlation.
 #' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
@@ -657,6 +703,7 @@ findDMRsFromSeeds <- function(
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = "hg19",
   max_pval = 0.05,
+  group_concordance_strategy = c("strict", "relaxed"),
   pval_mode = c("parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
@@ -868,6 +915,9 @@ findDMRsFromSeeds <- function(
     stopifnot(!is.null(expansion_step))
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
+    stopifnot(!is.null(group_concordance_strategy))
+
+    group_concordance_strategy <- strex::match_arg(group_concordance_strategy, ignore_case = TRUE)
 
     if (is.character(seeds) && length(seeds) == 1) {
         stopifnot(file.exists(seeds))
@@ -1065,118 +1115,137 @@ findDMRsFromSeeds <- function(
         storage.mode(seeds_beta) <- "double"
         seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
         seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
-        ret <- future.apply::future_mapply(
-            chromosomes,
-            seeds_list,
-            seeds_inds_list,
-            seeds_beta_list,
-            seeds_locs_list,
-            SIMPLIFY = FALSE,
-            future.seed = TRUE,
-            future.stdout = NA,
-            future.globals = c(
-                "group_inds",
-                "case_mask",
-                "max_lookup_dist",
-                "max_pval",
-                "aggfun",
-                "pval_mode",
-                "empirical_strategy",
-                "ntries",
-                "mid_p",
-                "min_seeds",
-                ".testConnectivityBatch",
-                ".log_step",
-                ".log_success",
-                ".log_info",
-                "p_con",
-                "verbose"
-            ),
-            FUN = function(chr, cseeds, cseeds_inds, cseeds_beta, cseeds_locs) {
-                op <- options(warn = 2)$warn
-                dmr_list <- vector("list", length = 128L)
-                dmr_n <- 0L
-                connection_corr_pval <- NA
-                dmr_seeds_inds <- integer(0)
-                .log_step("Testing Seed connectivity on chromosome ", chr, " ...", level = 3)
-                corr_ret <- .testConnectivityBatch(
-                    sites_beta = cseeds_beta,
-                    group_inds = group_inds,
-                    casecontrol = case_mask,
-                    max_lookup_dist = max_lookup_dist,
-                    sites_locs = cseeds_locs,
-                    max_pval = max_pval,
-                    aggfun = aggfun,
-                    pval_mode = pval_mode,
-                    empirical_strategy = empirical_strategy,
-                    ntries = ntries,
-                    mid_p = mid_p
+        FUN <- function(chr, cseeds, cseeds_inds, cseeds_beta, cseeds_locs) {
+            op <- options(warn = 2)$warn
+            dmr_list <- vector("list", length = 128L)
+            dmr_n <- 0L
+            connection_corr_pval <- NA
+            dmr_seeds_inds <- integer(0)
+            .log_step("Testing Seed connectivity on chromosome ", chr, " ...", level = 3)
+            corr_ret <- .testConnectivityBatch(
+                sites_beta = cseeds_beta,
+                group_inds = group_inds,
+                casecontrol = case_mask,
+                max_lookup_dist = max_lookup_dist,
+                sites_locs = cseeds_locs,
+                max_pval = max_pval,
+                aggfun = aggfun,
+                group_concordance_strategy = group_concordance_strategy,
+                pval_mode = pval_mode,
+                empirical_strategy = empirical_strategy,
+                ntries = ntries,
+                mid_p = mid_p
+            )
+            stopifnot(nrow(corr_ret) == nrow(cseeds_beta) - 1)
+            if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+                .log_info("Saving seed connectivity results to debug/seeds_connectivity_chr", chr, ".tsv", level = 3)
+                dir.create("debug", showWarnings = FALSE)
+                write.table(corr_ret,
+                    file = paste0("debug/seeds_connectivity_chr", chr, ".tsv"),
+                    sep = "\t",
+                    row.names = FALSE,
+                    col.names = TRUE,
+                    quote = FALSE
                 )
-                stopifnot(nrow(corr_ret) == nrow(cseeds_beta) - 1)
-                if (getOption("DMRsegal.make_debug_dir", FALSE)) {
-                    .log_info("Saving seed connectivity results to debug/seeds_connectivity_chr", chr, ".tsv", level = 3)
-                    dir.create("debug", showWarnings = FALSE)
-                    write.table(corr_ret,
-                        file = paste0("debug/seeds_connectivity_chr", chr, ".tsv"),
-                        sep = "\t",
-                        row.names = FALSE,
-                        col.names = TRUE,
-                        quote = FALSE
-                    )
-                }
-                .log_success("Seed connectivity tested.", level = 3)
-                breakpoints <- c(which(!corr_ret$connected), nrow(cseeds_beta))
-                start_seed_ind <- 1
-                for (bp_ind in seq_len(length(breakpoints))) {
-                    end_seed_ind <- breakpoints[bp_ind]
-                    if (end_seed_ind - start_seed_ind + 1 < min_seeds) {
-                        .log_info("Skipping DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - start_seed_ind + 1, " < ", min_seeds, ").", level = 4)
-                        start_seed_ind <- breakpoints[bp_ind] + 1
-                        next
-                    }
-                    .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ")", level = 3)
-                    dmr_seeds_inds <- seq.int(start_seed_ind, end_seed_ind)
-                    if (end_seed_ind == start_seed_ind) {
-                        connection_corr_pval <- NA
-                    } else {
-                        connection_corr_pval <- aggfun(corr_ret$pval[dmr_seeds_inds[-length(dmr_seeds_inds)]], na.rm = TRUE)
-                    }
-                    if (end_seed_ind < nrow(cseeds_beta)) {
-                        stop_reason <- corr_ret$reason[[end_seed_ind]]
-                    } else {
-                        stop_reason <- "end of chromosome"
-                    }
-                    new_dmr <- list(
-                        chr = chr,
-                        start_seed = cseeds[[start_seed_ind]],
-                        end_seed = cseeds[[end_seed_ind]],
-                        start_seed_pos = cseeds_locs[start_seed_ind, "start"],
-                        end_seed_pos = cseeds_locs[end_seed_ind, "start"],
-                        seeds_num = length(dmr_seeds_inds),
-                        connection_corr_pval = connection_corr_pval,
-                        stop_connection_reason = stop_reason,
-                        seeds_inds = paste(cseeds_inds[dmr_seeds_inds], collapse = ","),
-                        seeds = paste(cseeds[dmr_seeds_inds], collapse = ",")
-                    )
-                    dmr_n <- dmr_n + 1L
-                    if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
-                    dmr_list[[dmr_n]] <- new_dmr
-                    start_seed_ind <- breakpoints[bp_ind] + 1
-                    .log_success("DMR registered.",
-                        level = 3
-                    )
-                }
-                if (verbose > 0 && !is.null(p_con)) p_con()
-                dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
-                if (nrow(dmrs)) {
-                    rownames(dmrs) <- seq_len(nrow(dmrs))
-                    dmrs[, "chr"] <- chr
-                }
-                options(warn = op)
-                dmrs
             }
-        )
-
+            .log_success("Seed connectivity tested.", level = 3)
+            breakpoints <- c(which(!corr_ret$connected), nrow(cseeds_beta))
+            start_seed_ind <- 1
+            for (bp_ind in seq_len(length(breakpoints))) {
+                end_seed_ind <- breakpoints[bp_ind]
+                if (end_seed_ind - start_seed_ind + 1 < min_seeds) {
+                    .log_info("Skipping DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - start_seed_ind + 1, " < ", min_seeds, ").", level = 4)
+                    start_seed_ind <- breakpoints[bp_ind] + 1
+                    next
+                }
+                .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ")", level = 3)
+                dmr_seeds_inds <- seq.int(start_seed_ind, end_seed_ind)
+                if (end_seed_ind == start_seed_ind) {
+                    connection_corr_pval <- NA
+                } else {
+                    connection_corr_pval <- aggfun(corr_ret$pval[dmr_seeds_inds[-length(dmr_seeds_inds)]], na.rm = TRUE)
+                }
+                if (end_seed_ind < nrow(cseeds_beta)) {
+                    stop_reason <- corr_ret$reason[[end_seed_ind]]
+                } else {
+                    stop_reason <- "end of chromosome"
+                }
+                new_dmr <- list(
+                    chr = chr,
+                    start_seed = cseeds[[start_seed_ind]],
+                    end_seed = cseeds[[end_seed_ind]],
+                    start_seed_pos = cseeds_locs[start_seed_ind, "start"],
+                    end_seed_pos = cseeds_locs[end_seed_ind, "start"],
+                    seeds_num = length(dmr_seeds_inds),
+                    connection_corr_pval = connection_corr_pval,
+                    stop_connection_reason = stop_reason,
+                    seeds_inds = paste(cseeds_inds[dmr_seeds_inds], collapse = ","),
+                    seeds = paste(cseeds[dmr_seeds_inds], collapse = ",")
+                )
+                dmr_n <- dmr_n + 1L
+                if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
+                dmr_list[[dmr_n]] <- new_dmr
+                start_seed_ind <- breakpoints[bp_ind] + 1
+                .log_success("DMR registered.",
+                    level = 3
+                )
+            }
+            if (verbose > 0 && !is.null(p_con)) p_con()
+            dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
+            if (nrow(dmrs)) {
+                rownames(dmrs) <- seq_len(nrow(dmrs))
+                dmrs[, "chr"] <- chr
+            }
+            options(warn = op)
+            dmrs
+        }
+        if (njobs == 1) {
+            ret <- lapply(seq_along(chromosomes), function(i) {
+                chr <- chromosomes[i]
+                cseeds <- seeds_list[[i]]
+                cseeds_inds <- seeds_inds_list[[i]]
+                cseeds_beta <- seeds_beta_list[[i]]
+                cseeds_locs <- seeds_locs_list[[i]]
+                FUN(
+                    chr = chr,
+                    cseeds = cseeds,
+                    cseeds_inds = cseeds_inds,
+                    cseeds_beta = cseeds_beta,
+                    cseeds_locs = cseeds_locs
+                )
+            })
+        } else {
+            ret <- future.apply::future_mapply(
+                chromosomes,
+                seeds_list,
+                seeds_inds_list,
+                seeds_beta_list,
+                seeds_locs_list,
+                SIMPLIFY = FALSE,
+                future.seed = TRUE,
+                future.stdout = NA,
+                future.globals = c(
+                    "group_inds",
+                    "case_mask",
+                    "max_lookup_dist",
+                    "max_pval",
+                    "aggfun",
+                    "group_concordance_strategy",
+                    "pval_mode",
+                    "empirical_strategy",
+                    "ntries",
+                    "mid_p",
+                    "min_seeds",
+                    ".testConnectivityBatch",
+                    ".log_step",
+                    ".log_success",
+                    ".log_info",
+                    "p_con",
+                    "verbose"
+                ),
+                FUN = FUN
+            )
+        }
 
         if (inherits(ret[[1]], "try-error")) {
             stop(ret)
@@ -1230,6 +1299,7 @@ findDMRsFromSeeds <- function(
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
             min_delta_beta = min_cpg_delta_beta,
+            group_concordance_strategy = group_concordance_strategy,
             aggfun = aggfun,
             pval_mode = pval_mode,
             empirical_strategy = empirical_strategy,
@@ -1315,8 +1385,13 @@ findDMRsFromSeeds <- function(
         stop(ret)
     }
     .log_success("DMR expansion complete.", level = 1)
-    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[["upstream_cpg_expansion"]]))), collapse = "\n\t"), level = 2)
-    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(table(sapply(ret, function(x) x[["downstream_cpg_expansion"]]))), collapse = "\n\t"), level = 2)
+    upstream_cpg_expansion_table <- table(sapply(ret, function(x) x[["upstream_cpg_expansion"]]))
+    downstream_cpg_expansion_table <- table(sapply(ret, function(x) x[["downstream_cpg_expansion"]]))
+    # sort tables by names (expansion sizes)
+    upstream_cpg_expansion_table <- upstream_cpg_expansion_table[order(as.integer(names(upstream_cpg_expansion_table)))]
+    downstream_cpg_expansion_table <- downstream_cpg_expansion_table[order(as.integer(names(downstream_cpg_expansion_table)))]
+    .log_info("Table of upstream_cpg_expansion:\n\t", paste(capture.output(upstream_cpg_expansion_table), collapse = "\n\t"), level = 2)
+    .log_info("Table of downstream_cpg_expansion:\n\t", paste(capture.output(downstream_cpg_expansion_table), collapse = "\n\t"), level = 2)
 
     .log_step("Post-processing extended DMRs..", level = 2)
 
@@ -1483,12 +1558,11 @@ findDMRsFromSeeds <- function(
         return(NULL)
     }
 
-    .log_step("Adding DMR delta-beta information..", level = 2)
     all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(extended_dmrs)), function(i) {
         seq(extended_dmrs$start_cpg_ind[i], extended_dmrs$end_cpg_ind[i])
     })))
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
-
+    .log_step("Calculating per-CpG beta statistics..", level = 2)
     beta_stats <- .calculateBetaStats(
         beta_values = all_selected_cpgs_beta,
         beta_col_names = beta_col_names,
@@ -1496,11 +1570,13 @@ findDMRsFromSeeds <- function(
         casecontrol_col = casecontrol_col,
         aggfun = aggfun
     )
+    .log_success("Per-CpG beta statistics calculated.", level = 2)
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
     dmrs_with_beta_stats <- list()
     dmrs_seeds_inds <- strsplit(extended_dmrs$seeds_inds, ",")
+    .log_step("Adding DMR delta-beta information..", level = 2)
 
     for (dmr_ind in seq_len(nrow(extended_dmrs))) {
         dmr <- extended_dmrs[dmr_ind, ]

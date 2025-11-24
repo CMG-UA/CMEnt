@@ -31,7 +31,8 @@ args <- list(
     genome = "hg19",
     output_prefix = "my_analysis",
     njobs = 4,
-    verbose = 1
+    verbose = 1,
+    group_concordance_strategy = "strict"
 )
 
 findDMRsFromSeedsCLI(args)

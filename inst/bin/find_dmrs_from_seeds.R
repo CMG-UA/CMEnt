@@ -28,7 +28,8 @@ option_list <- list(
     make_option("--sample_group_case", default = NULL, help = "Case group names"),
     make_option("--bed_provided", default = FALSE, type = "logical", help = "Whether BED file is provided"),
     make_option("--bed_chrom_col", default = "#chrom", help = "Column in BED file for chromosome"),
-    make_option("--bed_start_col", default = "start", help = "Column in BED file for start position")
+    make_option("--bed_start_col", default = "start", help = "Column in BED file for start position"),
+    make_option("--group_concordance_strategy", default = "strict", help = "Strategy for testing connectivity between groups: 'strict' (all groups must pass) or 'relaxed' (at least one group must pass). Default is 'strict'")
 )
 parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)

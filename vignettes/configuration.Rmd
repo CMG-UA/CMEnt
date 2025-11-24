@@ -285,6 +285,27 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `group_concordance_strategy`
+**Type:** Character  
+**Options:** `"strict"`, `"relaxed"`  
+**Default:** `"strict"`  
+**Description:** Strategy for determining connectivity between CpG sites across sample groups:
+
+- `"strict"`: Requires all sample groups to show significant correlation for two sites to be considered connected. This is more conservative and ensures consistent methylation patterns across all groups.
+- `"relaxed"`: Requires at least one sample group to show significant correlation. This is more permissive and may identify DMRs that are specific to certain groups.
+
+**Recommendation:** Use `"strict"` (default) for most cases to ensure robust, reproducible DMRs. Use `"relaxed"` when you want to capture group-specific methylation patterns or when working with heterogeneous sample groups.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    group_concordance_strategy = "relaxed"
+)
+```
+
 ### `pval_mode`
 **Type:** Character  
 **Options:** `"parametric"`, `"empirical"`  

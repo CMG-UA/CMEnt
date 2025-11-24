@@ -8,7 +8,7 @@ computeDMRsInteraction(
   dmrs,
   genome = "hg19",
   array = "450K",
-  min_sim = 0.8,
+  min_sim = getOption("DMRsegal.min_motif_similarity", 0.8),
   beta_locs = NULL,
   flank_size = 5,
   find_components = TRUE,
@@ -52,7 +52,7 @@ Data frame of motif-based DMR interactions with columns:
 \description{
 Computes motif-based interactions between DMRs based on their
 motif similarity. Identifies pairs of DMRs with significant motif similarity
-and returns a data frame of interactions.
+and returns a data frame of interactions. Assigns directionality based on ranking, if available.
 }
 \examples{
 # Compute motif-based interactions for DMRs

@@ -13,6 +13,7 @@
   casecontrol = NULL,
   max_lookup_dist = 1000,
   chunk_size = 1000,
+  group_concordance_strategy = "strict",
   aggfun = median,
   empirical_strategy = "auto",
   pval_mode = "empirical",
@@ -33,6 +34,7 @@ findDMRsFromSeeds(
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = "hg19",
   max_pval = 0.05,
+  group_concordance_strategy = c("strict", "relaxed"),
   pval_mode = c("parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
@@ -48,6 +50,7 @@ findDMRsFromSeeds(
   memory_threshold_mb = 500,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
+  rank_dmrs = TRUE,
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
@@ -60,6 +63,8 @@ findDMRsFromSeeds(
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.}
+
+\item{group_concordance_strategy}{Character. "strict" (default) requires all groups to show significant correlation for connectivity; "relaxed" requires at least one group to show significant correlation.}
 
 \item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
 
@@ -106,6 +111,8 @@ findDMRsFromSeeds(
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
+
+\item{rank_dmrs}{Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.}
 
 \item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.}
 
@@ -178,6 +185,5 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno
 )
-
 
 }
