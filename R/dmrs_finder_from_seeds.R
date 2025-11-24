@@ -1574,41 +1574,71 @@ findDMRsFromSeeds <- function(
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
-    dmrs_with_beta_stats <- list()
     dmrs_seeds_inds <- strsplit(extended_dmrs$seeds_inds, ",")
     .log_step("Adding DMR delta-beta information..", level = 2)
 
-    for (dmr_ind in seq_len(nrow(extended_dmrs))) {
-        dmr <- extended_dmrs[dmr_ind, ]
-        dmr_seeds <- as.character(dmrs_seeds_inds[[dmr_ind]])
-        dmr$cases_beta <- aggfun(abs(beta_stats[dmr_seeds, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_seeds, "cases_beta"])))
-        dmr$controls_beta <- aggfun(abs(beta_stats[dmr_seeds, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_seeds, "controls_beta"])))
-        dmr$delta_beta <- dmr$cases_beta - dmr$controls_beta
-        dmr$cases_beta_sd <- aggfun(beta_stats[dmr_seeds, "cases_beta_sd"], na.rm = TRUE)
-        dmr$controls_beta_sd <- aggfun(beta_stats[dmr_seeds, "controls_beta_sd"], na.rm = TRUE)
-        dmr$cases_beta_min <- min(beta_stats[dmr_seeds, "cases_beta"], na.rm = TRUE)
-        dmr$cases_beta_max <- max(beta_stats[dmr_seeds, "cases_beta"], na.rm = TRUE)
-        dmr$controls_beta_min <- min(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
-        dmr$controls_beta_max <- max(beta_stats[dmr_seeds, "controls_beta"], na.rm = TRUE)
-        dmr_cpgs <- as.character(
-            c(
-                seq.int(dmr$start_cpg_ind, dmrs_seeds_inds[[dmr_ind]][1]),
-                seq.int(dmrs_seeds_inds[[dmr_ind]][length(dmrs_seeds_inds[[dmr_ind]])], dmr$end_cpg_ind)
-            )
-        )
-        dmr$cpgs_cases_beta <- aggfun(abs(beta_stats[dmr_cpgs, "cases_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "cases_beta"])))
-        dmr$cpgs_controls_beta <- aggfun(abs(beta_stats[dmr_cpgs, "controls_beta"])) * sign(sum(sign(beta_stats[dmr_cpgs, "controls_beta"])))
-        dmr$cpgs_delta_beta <- dmr$cpgs_cases_beta - dmr$cpgs_controls_beta
-        dmr$cpgs_cases_beta_sd <- aggfun(beta_stats[dmr_cpgs, "cases_beta_sd"], na.rm = TRUE)
-        dmr$cpgs_controls_beta_sd <- aggfun(beta_stats[dmr_cpgs, "controls_beta_sd"], na.rm = TRUE)
-        dmr$cpgs_cases_beta_min <- min(beta_stats[dmr_cpgs, "cases_beta"], na.rm = TRUE)
-        dmr$cpgs_cases_beta_max <- max(beta_stats[dmr_cpgs, "cases_beta"], na.rm = TRUE)
-        dmr$cpgs_controls_beta_min <- min(beta_stats[dmr_cpgs, "controls_beta"], na.rm = TRUE)
-        dmr$cpgs_controls_beta_max <- max(beta_stats[dmr_cpgs, "controls_beta"], na.rm = TRUE)
+    dmr_seeds_list <- lapply(dmrs_seeds_inds, as.character)
+    dmr_seeds_indices <- unlist(dmr_seeds_list, use.names = FALSE)
+    dmr_seeds_groups <- rep(seq_along(dmr_seeds_list), lengths(dmr_seeds_list))
+    
+    beta_stats_seeds <- beta_stats[dmr_seeds_indices, , drop = FALSE]
+    beta_stats_seeds$dmr_id <- dmr_seeds_groups
+    
+    seeds_agg <- data.table::as.data.table(beta_stats_seeds)[, .(
+        cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
+        controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
+        cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
+        controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
+        cases_beta_min = min(cases_beta, na.rm = TRUE),
+        cases_beta_max = max(cases_beta, na.rm = TRUE),
+        controls_beta_min = min(controls_beta, na.rm = TRUE),
+        controls_beta_max = max(controls_beta, na.rm = TRUE)
+    ), by = dmr_id]
+    
+    extended_dmrs$cases_beta <- seeds_agg$cases_beta
+    extended_dmrs$controls_beta <- seeds_agg$controls_beta
+    extended_dmrs$delta_beta <- extended_dmrs$cases_beta - extended_dmrs$controls_beta
+    extended_dmrs$cases_beta_sd <- seeds_agg$cases_beta_sd
+    extended_dmrs$controls_beta_sd <- seeds_agg$controls_beta_sd
+    extended_dmrs$cases_beta_min <- seeds_agg$cases_beta_min
+    extended_dmrs$cases_beta_max <- seeds_agg$cases_beta_max
+    extended_dmrs$controls_beta_min <- seeds_agg$controls_beta_min
+    extended_dmrs$controls_beta_max <- seeds_agg$controls_beta_max
 
-        dmrs_with_beta_stats[[dmr_ind]] <- dmr
-    }
-    dmrs <- do.call(rbind, dmrs_with_beta_stats)
+    dmr_cpgs_list <- lapply(seq_len(nrow(extended_dmrs)), function(i) {
+        as.character(c(
+            seq.int(extended_dmrs$start_cpg_ind[i], as.integer(dmrs_seeds_inds[[i]][1])),
+            seq.int(as.integer(dmrs_seeds_inds[[i]][length(dmrs_seeds_inds[[i]])]), extended_dmrs$end_cpg_ind[i])
+        ))
+    })
+    dmr_cpgs_indices <- unlist(dmr_cpgs_list, use.names = FALSE)
+    dmr_cpgs_groups <- rep(seq_along(dmr_cpgs_list), lengths(dmr_cpgs_list))
+    
+    beta_stats_cpgs <- beta_stats[dmr_cpgs_indices, , drop = FALSE]
+    beta_stats_cpgs$dmr_id <- dmr_cpgs_groups
+    
+    cpgs_agg <- data.table::as.data.table(beta_stats_cpgs)[, .(
+        cpgs_cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
+        cpgs_controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
+        cpgs_cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
+        cpgs_controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
+        cpgs_cases_beta_min = min(cases_beta, na.rm = TRUE),
+        cpgs_cases_beta_max = max(cases_beta, na.rm = TRUE),
+        cpgs_controls_beta_min = min(controls_beta, na.rm = TRUE),
+        cpgs_controls_beta_max = max(controls_beta, na.rm = TRUE)
+    ), by = dmr_id]
+    
+    extended_dmrs$cpgs_cases_beta <- cpgs_agg$cpgs_cases_beta
+    extended_dmrs$cpgs_controls_beta <- cpgs_agg$cpgs_controls_beta
+    extended_dmrs$cpgs_delta_beta <- extended_dmrs$cpgs_cases_beta - extended_dmrs$cpgs_controls_beta
+    extended_dmrs$cpgs_cases_beta_sd <- cpgs_agg$cpgs_cases_beta_sd
+    extended_dmrs$cpgs_controls_beta_sd <- cpgs_agg$cpgs_controls_beta_sd
+    extended_dmrs$cpgs_cases_beta_min <- cpgs_agg$cpgs_cases_beta_min
+    extended_dmrs$cpgs_cases_beta_max <- cpgs_agg$cpgs_cases_beta_max
+    extended_dmrs$cpgs_controls_beta_min <- cpgs_agg$cpgs_controls_beta_min
+    extended_dmrs$cpgs_controls_beta_max <- cpgs_agg$cpgs_controls_beta_max
+
+    dmrs <- extended_dmrs
     .log_success("DMR delta-beta information added.", level = 2)
     if (bed_provided) {
         dmrs$chr <- chr_levels[dmrs$chr]
@@ -1656,13 +1686,22 @@ findDMRsFromSeeds <- function(
     if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
-        dmrs_granges$start_cpg_ind_abs <- match(dmrs_granges$start_cpg, rownames(sorted_locs))
-        dmrs_granges$end_cpg_ind_abs <- match(dmrs_granges$end_cpg, rownames(sorted_locs))
-        dmrs_granges$seeds_inds_abs <- sapply(dmrs_granges$seeds, function(seed_ids) {
-            seed_list <- unlist(strsplit(seed_ids, ","))
-            seed_inds <- match(seed_list, rownames(sorted_locs))
-            paste(seed_inds, collapse = ",")
-        })
+        
+        cpg_lookup <- new.env(hash = TRUE, parent = emptyenv(), size = nrow(sorted_locs))
+        sorted_locs_names <- rownames(sorted_locs)
+        for (i in seq_along(sorted_locs_names)) {
+            cpg_lookup[[sorted_locs_names[i]]] <- i
+        }
+        
+        dmrs_granges$start_cpg_ind_abs <- vapply(as.character(dmrs_granges$start_cpg), function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
+        dmrs_granges$end_cpg_ind_abs <- vapply(as.character(dmrs_granges$end_cpg), function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
+        
+        all_seeds <- unlist(strsplit(as.character(dmrs_granges$seeds), ","), use.names = FALSE)
+        all_seeds_inds <- vapply(all_seeds, function(x) cpg_lookup[[x]], integer(1), USE.NAMES = FALSE)
+        seeds_lengths <- lengths(strsplit(as.character(dmrs_granges$seeds), ","))
+        seeds_groups <- rep(seq_along(seeds_lengths), seeds_lengths)
+        dmrs_granges$seeds_inds_abs <- vapply(split(all_seeds_inds, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
+        
         .log_success("DMR CpG indices conversion completed.", level = 2)
     } else {
         dmrs_granges$start_cpg_ind_abs <- dmrs_granges$start_cpg_ind
