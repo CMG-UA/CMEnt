@@ -1554,6 +1554,8 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #'   upstream of each DMR (default: 0)
 #' @param dflank_size Integer. Number of base pairs to add as flanking regions
 #'   downstream of each DMR (default: 0)
+#' @param batch_size Integer. For online API, number of regions to process per batch (default: 100)
+#' @param njobs Integer. For online API, number of cores for parallel processing (default: 1)
 #' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
@@ -1568,14 +1570,18 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' If the required BSgenome package is not installed and installation fails,
 #' the function will automatically fall back to querying sequences from the
 #' UCSC Genome Browser REST API. The online method processes sequences in
-#' batches to avoid overwhelming the API.
+#' batches with optional parallel processing for improved performance with large datasets.
+#'
+#' For large numbers of DMRs (>10k), consider using parallel processing by setting
+#' njobs > 1 when using the online API, or install the appropriate BSgenome package
+#' for much faster local sequence retrieval.
 #'
 #' @examples
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
-#' # Force use of online UCSC API
-#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
+#' # Force use of online UCSC API with parallel processing
+#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 #'
 #' # Calculate GC content
 #' gc_content <- sapply(sequences, function(s) {
@@ -1585,7 +1591,8 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0, 
+                           batch_size = 100, njobs = 1) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
@@ -1636,7 +1643,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         }
     } else {
         .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
-        sequences <- .getSequencesFromUCSC(dmrs, genome)
+        sequences <- .getSequencesFromUCSC(dmrs, genome, batch_size = batch_size, njobs = njobs)
     }
     sequences <- mapply(function(seq, na_start, na_end) {
         if (is.na(seq)) {
@@ -1656,55 +1663,107 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #'
 #' @description Internal helper function to retrieve DNA sequences from the
 #' UCSC Genome Browser REST API when BSgenome packages are not available.
+#' Uses parallel processing and batched requests for improved performance.
 #'
 #' @param dmrs GRanges object containing genomic coordinates
 #' @param genome Character. Genome version (e.g., "hg19", "mm39")
+#' @param batch_size Integer. Number of regions to process per batch (default: 100)
+#' @param njobs Integer. Number of cores for parallel processing (default: 1)
 #'
 #' @return Character vector of DNA sequences
 #'
 #' @keywords internal
 #' @noRd
-.getSequencesFromUCSC <- function(dmrs, genome) {
+.getSequencesFromUCSC <- function(dmrs, genome, batch_size = 100, njobs = 1) {
     base_url <- "https://api.genome.ucsc.edu/getData/sequence"
-
-    sequences <- character(length(dmrs))
-
-    for (i in seq_along(dmrs)) {
-        chr <- as.character(GenomeInfoDb::seqnames(dmrs[i]))
-        start <- GenomicRanges::start(dmrs[i])
-        end <- GenomicRanges::end(dmrs[i])
-
-        url <- sprintf(
-            "%s?genome=%s;chrom=%s;start=%d;end=%d",
-            base_url, genome, chr, start - 1, end
-        )
-
-        tryCatch(
-            {
-                response <- readLines(url, warn = FALSE)
-                json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
-
-                if (!is.null(json_data$dna)) {
-                    sequences[i] <- toupper(json_data$dna)
-                } else {
-                    warning("No sequence returned for region ", chr, ":", start, "-", end)
-                    sequences[i] <- NA_character_
+    n_dmrs <- length(dmrs)
+    
+    if (n_dmrs == 0) {
+        return(character(0))
+    }
+    
+    n_batches <- ceiling(n_dmrs / batch_size)
+    
+    if (n_dmrs > 100) {
+        .log_info(sprintf("Retrieving sequences for %d regions in %d batches using %d core(s)...", 
+                         n_dmrs, n_batches, njobs), level = 2)
+    }
+    
+    fetch_batch <- function(batch_idx) {
+        start_idx <- (batch_idx - 1) * batch_size + 1
+        end_idx <- min(batch_idx * batch_size, n_dmrs)
+        batch_dmrs <- dmrs[start_idx:end_idx]
+        batch_sequences <- character(length(batch_dmrs))
+        
+        for (j in seq_along(batch_dmrs)) {
+            chr <- as.character(GenomeInfoDb::seqnames(batch_dmrs[j]))
+            start <- GenomicRanges::start(batch_dmrs[j])
+            end <- GenomicRanges::end(batch_dmrs[j])
+            
+            url <- sprintf(
+                "%s?genome=%s;chrom=%s;start=%d;end=%d",
+                base_url, genome, chr, start - 1, end
+            )
+            
+            tryCatch(
+                {
+                    response <- readLines(url, warn = FALSE)
+                    json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
+                    
+                    if (!is.null(json_data$dna)) {
+                        batch_sequences[j] <- toupper(json_data$dna)
+                    } else {
+                        batch_sequences[j] <- NA_character_
+                    }
+                },
+                error = function(e) {
+                    batch_sequences[j] <- NA_character_
                 }
-            },
-            error = function(e) {
-                warning(
-                    "Failed to retrieve sequence for region ", chr, ":", start, "-", end,
-                    ": ", e$message
-                )
-                sequences[i] <- NA_character_
+            )
+            
+            if (j %% 10 == 0) {
+                Sys.sleep(0.05)
             }
-        )
-
-        if (i %% 10 == 0) {
-            Sys.sleep(0.1)
+        }
+        
+        batch_sequences
+    }
+    
+    if (njobs > 1 && n_batches > 1) {
+        if (!requireNamespace("parallel", quietly = TRUE)) {
+            warning("parallel package not available, using single core processing")
+            njobs <- 1
         }
     }
-
+    
+    if (njobs > 1 && n_batches > 1) {
+        cl <- parallel::makeCluster(min(njobs, n_batches))
+        on.exit(parallel::stopCluster(cl), add = TRUE)
+        
+        parallel::clusterExport(cl, c("base_url", "genome", "batch_size", "n_dmrs", "dmrs"), 
+                               envir = environment())
+        parallel::clusterEvalQ(cl, {
+            library(GenomicRanges)
+            library(GenomeInfoDb)
+            library(jsonlite)
+        })
+        
+        batch_results <- parallel::parLapply(cl, seq_len(n_batches), fetch_batch)
+        sequences <- unlist(batch_results)
+    } else {
+        sequences <- character(n_dmrs)
+        for (i in seq_len(n_batches)) {
+            batch_seqs <- fetch_batch(i)
+            start_idx <- (i - 1) * batch_size + 1
+            end_idx <- min(i * batch_size, n_dmrs)
+            sequences[start_idx:end_idx] <- batch_seqs
+            
+            if (n_dmrs > 100 && i %% 10 == 0) {
+                .log_info(sprintf("  Progress: %d/%d batches completed", i, n_batches), level = 2)
+            }
+        }
+    }
+    
     sequences
 }
 
