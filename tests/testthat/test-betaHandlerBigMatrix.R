@@ -113,7 +113,6 @@ test_that("getBeta big.matrix handles all rows", {
         beta = temp_file,
         array = "450K",
         genome = "hg19",
-        memory_threshold_mb = 0,
         memory_threshold_mb  = 0.1
     )
     
