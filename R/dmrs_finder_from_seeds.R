@@ -1499,7 +1499,7 @@ findDMRsFromSeeds <- function(
     .log_success("Overlapping extended DMRs merged: ", length(extended_dmrs_ranges), " final extended DMRs.", level = 1)
     .log_step("Stage 4: Annotating and filtering resulting DMRs..", level = 1)
 
-    .log_step("Finding GC content of DMRs..", level = 2)
+    .log_step("Retrieving DMRs sequences..", level = 2)
     # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
     extended_dmrs_ranges <- .extendGRangesWithFlanks(extended_dmrs_ranges, dflank_size = 1)$granges
     sequences <- getDMRSequences(extended_dmrs_ranges, genome)
@@ -1508,6 +1508,8 @@ findDMRsFromSeeds <- function(
             extended_dmrs_ranges, as.character(as.integer(factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = chr_levels)))
         )
     }
+    .log_success("DMR sequences retrieved.", level = 2)
+    .log_step("Calculating reference CpG content..", level = 2)
     extended_dmrs <- as.data.frame(extended_dmrs_ranges)
     extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
     colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
@@ -1686,29 +1688,23 @@ findDMRsFromSeeds <- function(
     if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
+        start_cpg_inds <- mcols(dmrs_granges)$start_cpg_ind
+        end_cpg_inds <- mcols(dmrs_granges)$end_cpg_ind
 
-        all_dmr_cpgs <- unique(unlist(lapply(seq_len(nrow(dmrs_granges)), function(i) {
-            seq(dmrs_granges$start_cpg_ind[i], dmrs_granges$end_cpg_ind[i])
-        })))
-        all_dmr_cpg_names <- rownames(beta_locs)[all_dmr_cpgs]
-        all_dmr_cpg_abs <- match(all_dmr_cpg_names, rownames(sorted_locs))
+        mcols(dmrs_granges)$start_cpg_ind_abs <- match(rownames(beta_locs)[start_cpg_inds], rownames(sorted_locs))
+        mcols(dmrs_granges)$end_cpg_ind_abs <- match(rownames(beta_locs)[end_cpg_inds], rownames(sorted_locs))
 
-        cpg_rel_to_abs <- setNames(all_dmr_cpg_abs, as.character(all_dmr_cpgs))
-
-        dmrs_granges$start_cpg_ind_abs <- cpg_rel_to_abs[as.character(dmrs_granges$start_cpg_ind)]
-        dmrs_granges$end_cpg_ind_abs <- cpg_rel_to_abs[as.character(dmrs_granges$end_cpg_ind)]
-
-        all_seeds_inds <- unlist(strsplit(as.character(dmrs_granges$seeds_inds), ","), use.names = FALSE)
-        all_seeds_abs <- cpg_rel_to_abs[all_seeds_inds]
-        seeds_lengths <- lengths(strsplit(as.character(dmrs_granges$seeds_inds), ","))
+        all_seeds_inds <- as.numeric(unlist(strsplit(as.character(mcols(dmrs_granges)$seeds_inds), ","), use.names = FALSE))
+        all_seeds_abs <-  match(rownames(beta_locs)[all_seeds_inds], rownames(sorted_locs))
+        seeds_lengths <- lengths(strsplit(as.character(mcols(dmrs_granges)$seeds_inds), ","))
         seeds_groups <- rep(seq_along(seeds_lengths), seeds_lengths)
-        dmrs_granges$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
+        mcols(dmrs_granges)$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
 
         .log_success("DMR CpG indices conversion completed.", level = 2)
     } else {
-        dmrs_granges$start_cpg_ind_abs <- dmrs_granges$start_cpg_ind
-        dmrs_granges$end_cpg_ind_abs <- dmrs_granges$end_cpg_ind
-        dmrs_granges$seeds_inds_abs <- dmrs_granges$seeds_inds
+        mcols(dmrs_granges)$start_cpg_ind_abs <- mcols(dmrs_granges)$start_cpg_ind
+        mcols(dmrs_granges)$end_cpg_ind_abs <- mcols(dmrs_granges)$end_cpg_ind
+        mcols(dmrs_granges)$seeds_inds_abs <- mcols(dmrs_granges)$seeds_inds
     }
     if (rank_dmrs) {
         .log_step("Ranking DMRs...", level = 1)

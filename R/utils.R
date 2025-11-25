@@ -20,7 +20,6 @@
 }
 
 
-
 .getBetaColNamesAndInds <- function(beta_file, beta_col_names = NULL, is_tabix = FALSE) {
     if (endsWith(beta_file, "gz")) {
         conn <- gzfile(beta_file, "r")
@@ -58,7 +57,6 @@
     )
     invisible(ret)
 }
-
 
 
 .subsetBetaFile <- function(beta_file,
@@ -103,7 +101,6 @@
     colnames(beta_sites) <- beta_col_names
     beta_sites
 }
-
 
 
 .readSamplesheet <- function(samplesheet_file,
@@ -401,7 +398,7 @@
 #' @return Character. Path to the RDS file containing the bigmemory::big.matrix descriptor. Loadable with bigmemory::attach.big.matrix(readRDS()).
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000){ # nolint
+genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000) { # nolint
     cache_dir <- .getBEDCacheDir(output_dir)
     options(bigmemory.allow.dimnames = TRUE)
     if (is.null(hash)) {
@@ -1591,8 +1588,8 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0, 
-                           batch_size = 100, njobs = 1) {
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
+                            batch_size = 100, njobs = 1) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
@@ -1613,8 +1610,8 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 
     if (!use_online && !is.null(pkg_name)) {
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            message("BSgenome package not available: ", pkg_name)
-            message("Attempting to install...")
+            .log_warn("BSgenome package not available: ", pkg_name)
+            .log_info("Attempting to install...")
             tryCatch(
                 {
                     if (!requireNamespace("BiocManager", quietly = TRUE)) {
@@ -1624,7 +1621,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
                     use_bsgenome <- TRUE
                 },
                 error = function(e) {
-                    message("Installation failed. Falling back to online UCSC API.")
+                    .log_warn("Installation failed. Falling back to online UCSC API.")
                 }
             )
         } else {
@@ -1633,6 +1630,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
     }
 
     if (use_bsgenome) {
+        .log_info("Querying sequences using BSgenome package...", level = 2)
         if (!isNamespaceLoaded(pkg_name)) {
             loadNamespace(pkg_name)
         }
@@ -1645,17 +1643,22 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
         sequences <- .getSequencesFromUCSC(dmrs, genome, batch_size = batch_size, njobs = njobs)
     }
-    sequences <- mapply(function(seq, na_start, na_end) {
-        if (is.na(seq)) {
-            return(NA_character_)
-        }
-        seq <- paste0(
-            paste(rep("N", na_start), collapse = ""),
-            seq,
-            paste(rep("N", na_end), collapse = "")
-        )
-        seq
-    }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
+    off_bound_mask <- add_na_to_the_start > 0 | add_na_to_the_end > 0
+    if (any(off_bound_mask)) {
+        .log_info("  Found ", sum(off_bound_mask), " regions with out-of-bound flanking extensions", level = 2)
+        .log_info("Adding 'N' padding for out-of-bound flanking regions...", level = 2)
+        sequences[off_bound_mask] <- mapply(function(seq, na_start, na_end) {
+            if (is.na(seq)) {
+                return(NA_character_)
+            }
+            seq <- paste0(
+                paste(rep("N", na_start), collapse = ""),
+                seq,
+                paste(rep("N", na_end), collapse = "")
+            )
+            seq
+        }, sequences[off_bound_mask], add_na_to_the_start[off_bound_mask], add_na_to_the_end[off_bound_mask], SIMPLIFY = TRUE)
+    }
     sequences
 }
 
@@ -1677,39 +1680,41 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 .getSequencesFromUCSC <- function(dmrs, genome, batch_size = 100, njobs = 1) {
     base_url <- "https://api.genome.ucsc.edu/getData/sequence"
     n_dmrs <- length(dmrs)
-    
+
     if (n_dmrs == 0) {
         return(character(0))
     }
-    
+
     n_batches <- ceiling(n_dmrs / batch_size)
-    
+
     if (n_dmrs > 100) {
-        .log_info(sprintf("Retrieving sequences for %d regions in %d batches using %d core(s)...", 
-                         n_dmrs, n_batches, njobs), level = 2)
+        .log_info(sprintf(
+            "Retrieving sequences for %d regions in %d batches using %d core(s)...",
+            n_dmrs, n_batches, njobs
+        ), level = 2)
     }
-    
+
     fetch_batch <- function(batch_idx) {
         start_idx <- (batch_idx - 1) * batch_size + 1
         end_idx <- min(batch_idx * batch_size, n_dmrs)
         batch_dmrs <- dmrs[start_idx:end_idx]
         batch_sequences <- character(length(batch_dmrs))
-        
+
         for (j in seq_along(batch_dmrs)) {
             chr <- as.character(GenomeInfoDb::seqnames(batch_dmrs[j]))
             start <- GenomicRanges::start(batch_dmrs[j])
             end <- GenomicRanges::end(batch_dmrs[j])
-            
+
             url <- sprintf(
                 "%s?genome=%s;chrom=%s;start=%d;end=%d",
                 base_url, genome, chr, start - 1, end
             )
-            
+
             tryCatch(
                 {
                     response <- readLines(url, warn = FALSE)
                     json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
-                    
+
                     if (!is.null(json_data$dna)) {
                         batch_sequences[j] <- toupper(json_data$dna)
                     } else {
@@ -1720,34 +1725,35 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
                     batch_sequences[j] <- NA_character_
                 }
             )
-            
+
             if (j %% 10 == 0) {
                 Sys.sleep(0.05)
             }
         }
-        
+
         batch_sequences
     }
-    
+
     if (njobs > 1 && n_batches > 1) {
         if (!requireNamespace("parallel", quietly = TRUE)) {
             warning("parallel package not available, using single core processing")
             njobs <- 1
         }
     }
-    
+
     if (njobs > 1 && n_batches > 1) {
         cl <- parallel::makeCluster(min(njobs, n_batches))
         on.exit(parallel::stopCluster(cl), add = TRUE)
-        
-        parallel::clusterExport(cl, c("base_url", "genome", "batch_size", "n_dmrs", "dmrs"), 
-                               envir = environment())
+
+        parallel::clusterExport(cl, c("base_url", "genome", "batch_size", "n_dmrs", "dmrs"),
+            envir = environment()
+        )
         parallel::clusterEvalQ(cl, {
             library(GenomicRanges)
             library(GenomeInfoDb)
             library(jsonlite)
         })
-        
+
         batch_results <- parallel::parLapply(cl, seq_len(n_batches), fetch_batch)
         sequences <- unlist(batch_results)
     } else {
@@ -1757,13 +1763,13 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
             start_idx <- (i - 1) * batch_size + 1
             end_idx <- min(i * batch_size, n_dmrs)
             sequences[start_idx:end_idx] <- batch_seqs
-            
+
             if (n_dmrs > 100 && i %% 10 == 0) {
                 .log_info(sprintf("  Progress: %d/%d batches completed", i, n_batches), level = 2)
             }
         }
     }
-    
+
     sequences
 }
 
@@ -2088,23 +2094,26 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
             "Available resources: ", paste(available_resources, collapse = ", ")
         )
     }
-    
+
     # First, try using data() to load the resource
     # This works even during covr::package_coverage()
     verbose_setting <- getOption("DMRsegal.verbose", 1)
-    tryCatch({
-        # Suppress data() output
-        invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
-        if (exists(resource, inherits = FALSE)) {
-            if (verbose_setting >= 2) {
-                .log_info("Loaded ", resource, " using data()", level = 2)
+    tryCatch(
+        {
+            # Suppress data() output
+            invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
+            if (exists(resource, inherits = FALSE)) {
+                if (verbose_setting >= 2) {
+                    .log_info("Loaded ", resource, " using data()", level = 2)
+                }
+                return(get(resource, inherits = FALSE))
             }
-            return(get(resource, inherits = FALSE))
+        },
+        error = function(e) {
+            # Silently continue to next method
         }
-    }, error = function(e) {
-        # Silently continue to next method
-    })
-    
+    )
+
     # Second, check if the resource exists in the package namespace (lazy loaded)
     if (exists(resource, envir = asNamespace("DMRsegal"), inherits = FALSE)) {
         if (verbose_setting >= 2) {
@@ -2112,7 +2121,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         }
         return(get(resource, envir = asNamespace("DMRsegal"), inherits = FALSE))
     }
-    
+
     # Third, try to load from data file directly
     data_file <- paste0(resource, ".rda")
     data_path <- system.file("data", data_file, package = "DMRsegal", mustWork = FALSE)
@@ -2126,44 +2135,47 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
             return(get(resource, envir = env))
         }
     }
-    
+
     # Fourth, try ExperimentHub if enabled
     if (use_experiment_hub) {
         if (verbose_setting >= 2) {
             .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
         }
-        
+
         if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
             if (verbose_setting >= 2) {
                 .log_warn("ExperimentHub package not available. Install with: BiocManager::install('ExperimentHub')")
             }
         } else {
-            tryCatch({
-                cache <- ExperimentHub::getExperimentHubOption("CACHE")
-                dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-                eh <- ExperimentHub::ExperimentHub()
-                # Query for DMRsegaldata resources
-                dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
-                # Find the specific resource
-                resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
-                if (length(resource_match) > 0) {
-                    if (verbose_setting >= 2) {
-                        .log_success("Found resource in ExperimentHub", level = 2)
+            tryCatch(
+                {
+                    cache <- ExperimentHub::getExperimentHubOption("CACHE")
+                    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+                    eh <- ExperimentHub::ExperimentHub()
+                    # Query for DMRsegaldata resources
+                    dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
+                    # Find the specific resource
+                    resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
+                    if (length(resource_match) > 0) {
+                        if (verbose_setting >= 2) {
+                            .log_success("Found resource in ExperimentHub", level = 2)
+                        }
+                        return(resource_match[[1]])
+                    } else {
+                        if (verbose_setting >= 2) {
+                            .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                        }
                     }
-                    return(resource_match[[1]])
-                } else {
+                },
+                error = function(e) {
                     if (verbose_setting >= 2) {
-                        .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                        .log_warn("Failed to query ExperimentHub: ", e$message)
                     }
                 }
-            }, error = function(e) {
-                if (verbose_setting >= 2) {
-                    .log_warn("Failed to query ExperimentHub: ", e$message)
-                }
-            })
+            )
         }
     }
-    
+
     # If we get here, the resource was not found
     stop(
         "Resource '", resource, "' not found in package or ExperimentHub.\n",
