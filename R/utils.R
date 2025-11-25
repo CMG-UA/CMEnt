@@ -1535,6 +1535,56 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
     }
 }
 
+.getBSGenomePackage <- function(genome){
+    if (genome == "hg19") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
+    } else if (genome == "hg38") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
+    } else if (genome == "mm10") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
+    } else if (genome == "mm39") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+    } else {
+        if (!requireNamespace("BSgenome", quietly = TRUE)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                install.packages("BiocManager")
+            }
+            BiocManager::install("BSgenome")
+        }
+        available_genomes <- BSgenome::available.genomes()
+        matched_genome <- grep(paste0("^BSgenome\\..*\\.UCSC\\.", genome, "$"), available_genomes, value = TRUE)
+        if (length(matched_genome) > 0) {
+            pkg_name <- matched_genome[1]
+        } else {
+            pkg_name <- NULL
+        }
+    }
+    if (is.null(pkg_name)) {
+        return(NULL)
+    }
+    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+            .log_warn("BSgenome package not available: ", pkg_name)
+            .log_info("Attempting to install...")
+            tryCatch(
+                {
+                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                        install.packages("BiocManager")
+                    }
+                    BiocManager::install(pkg_name, update = FALSE)
+                },
+                error = function(e) {
+                    .log_warn("Installation failed")
+                    pkg_name <<- NULL
+                }
+            )
+            
+        }
+    }
+    return(pkg_name)
+
+}
+
 #' Extract DNA Sequences for DMRs
 #'
 #' @description Retrieves the DNA sequences corresponding to genomic regions
@@ -1590,44 +1640,18 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' @export
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
                             batch_size = 100, njobs = 1) {
-    dmrs <- convertToGRanges(dmrs, genome)
-    if (genome == "hg19") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
-    } else if (genome == "hg38") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
-    } else if (genome == "mm10") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
-    } else if (genome == "mm39") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+
+    if (!use_online ) {
+        pkg_name <- .getBSGenomePackage(genome)
+        use_bsgenome <- !is.null(pkg_name)
     } else {
         pkg_name <- NULL
+        use_bsgenome <- FALSE
     }
     extended_ret <- .extendGRangesWithFlanks(dmrs, uflank_size, dflank_size)
     dmrs <- extended_ret$granges
     add_na_to_the_start <- extended_ret$start_off_limit
     add_na_to_the_end <- extended_ret$end_off_limit
-    use_bsgenome <- FALSE
-
-    if (!use_online && !is.null(pkg_name)) {
-        if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            .log_warn("BSgenome package not available: ", pkg_name)
-            .log_info("Attempting to install...")
-            tryCatch(
-                {
-                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                        install.packages("BiocManager")
-                    }
-                    BiocManager::install(pkg_name, update = FALSE)
-                    use_bsgenome <- TRUE
-                },
-                error = function(e) {
-                    .log_warn("Installation failed. Falling back to online UCSC API.")
-                }
-            )
-        } else {
-            use_bsgenome <- TRUE
-        }
-    }
 
     if (use_bsgenome) {
         .log_info("Querying sequences using BSgenome package...", level = 2)
@@ -1660,6 +1684,121 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         }, sequences[off_bound_mask], add_na_to_the_start[off_bound_mask], add_na_to_the_end[off_bound_mask], SIMPLIFY = TRUE)
     }
     sequences
+}
+
+
+#' @export
+getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
+    pkg_name <- .getBSGenomePackage(genome)
+    if (is.null(pkg_name)) {
+        sequences <- getDMRSequences(regions, genome, use_online = TRUE, njobs = njobs)
+        cpg_counts <- sapply(sequences, function(seq) {
+            if (is.na(seq)) {
+                return(NA_integer_)
+            }
+            stringr::str_count(seq, "CG")
+        })
+        return(unlist(cpg_counts))
+    }
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
+            path.expand("~"),
+            ".cache", "R", "DMRsegal", "annotations"
+        ))
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    cpg_positions_file <- file.path(cache_dir, paste0(
+        pkg_name, "_cpg_positions.rds"
+    ))
+    if (canonical_chr) {
+        cpg_positions_file <- file.path(cache_dir, paste0(
+            pkg_name, "_canonical_chr_cpg_positions.rds"
+        ))
+    }
+    if (file.exists(cpg_positions_file)) {
+        cpgs <- readRDS(cpg_positions_file)
+    } else {
+        .log_info("Missing CpG positions cache. Generating CpG positions from BSgenome package...", level = 2)
+        if (!isNamespaceLoaded(pkg_name)) {
+            loadNamespace(pkg_name)
+        }
+        seq_db <- getExportedValue(pkg_name, pkg_name)
+        chrs <- names(seq_db)
+        if (canonical_chr) {
+            chrs <- chrs[grepl("^chr[0-9XYM]+$", chrs)]
+        }
+        cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
+        names(cgs) <- chrs
+        suppressWarnings(
+            cpgs <- do.call(c, lapply(seq_along(chrs), function(x) GenomicRanges::GRanges(seqnames=chrs[x],
+                ranges=IRanges::IRanges(cgs[[x]], width = 2))))
+        )
+        cpgs <- data.table::as.data.table(as.data.frame(cpgs, stringsAsFactors = FALSE))[, 1:2]
+        colnames(cpgs) <- c("chr", "start")
+        cpgs[, "end"] <- cpgs[, "start"]
+        data.table::setkey(cpgs, chr, start, end)
+        saveRDS(cpgs, cpg_positions_file)
+    }
+    regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, 1:3]
+    regions <- data.table::as.data.table(regions)
+    colnames(regions) <- c("rchr", "rstart", "rend")
+    regions[, "id"] <- seq_len(nrow(regions))
+    data.table::setkey(regions, rchr, rstart, rend)
+    # if (non_overlapping_regions) {
+    #     regions <- as.data.frame(regions)
+    #     cpgs <- as.data.frame(cpgs)
+    #     cpg_ind <- 1
+    #     region_ind <- 1
+    #     cpg_counts <- integer(nrow(regions))
+    #     for (chr in unique(regions$rchr)) {
+    #         chr_regions_inds <- which(regions$rchr == chr)
+    #         chr_regions <- regions[chr_regions_inds, ]
+    #         chr_cpgs <- cpgs[cpgs$chr == chr, ]
+    #         chr_counts <- integer(length(chr_regions))
+    #         updated_regions_ind <- TRUE
+    #         while (cpg_ind <= nrow(chr_cpgs) && region_ind <= nrow(chr_regions)) {
+    #             print(paste0("chr: ", chr, " cpg_ind: ", cpg_ind, " region_ind: ", region_ind))
+    #             if (updated_regions_ind) {
+    #                 cregion <- chr_regions[region_ind, ]
+    #                 ccount <- 0
+    #                 # batched search for the next candidate cpg index (R does not handle first occurrence search efficiently)
+    #                 bcnt <- cpg_ind
+    #                 batch_size <- 1000
+    #                 found <- FALSE
+    #                 for (bcnt in seq(cpg_ind, nrow(chr_cpgs), by = batch_size)) {
+    #                     end_catch <- min(bcnt + batch_size - 1, nrow(chr_cpgs))
+    #                     cand_cpg_ind <- which(chr_cpgs[bcnt:end_catch, "start"] >= chr_regions[region_ind, "rstart"])
+    #                     if (length(cand_cpg_ind) > 0) {
+    #                         cpg_ind <- cand_cpg_ind[1] + bcnt - 1
+    #                         found <- TRUE
+    #                         break
+    #                     }
+    #                 }
+    #                 if (!found) break
+    #                 updated_regions_ind <- FALSE
+    #                 cpg_ind <- cand_cpg_ind[1] + cpg_ind - 1
+    #             }
+    #             if (cregion$rend >= chr_cpgs[cpg_ind, "start"]) {
+    #                 ccount <- ccount + 1
+    #                 cpg_ind <- cpg_ind + 1
+    #             } else {
+    #                 chr_counts[region_ind] <- ccount
+    #                 region_ind <- region_ind + 1
+    #                 updated_regions_ind <- TRUE
+    #             }
+    #         }
+    #         cpg_counts[chr_regions_inds] <- chr_counts
+    #     }
+    #     cpg_counts <- cpg_counts[order(regions$id)]
+    # } else {
+    cpg_counts <- data.table::foverlaps(regions,
+        cpgs,
+        by.x = c("rchr", "rstart", "rend"),
+        by.y = c("chr", "start", "end"),
+    )[, .N, by = id]
+    cpg_counts <- cpg_counts[order(cpg_counts$id), "N"]
+    return(unlist(cpg_counts))
+    # }
 }
 
 #' Query DNA Sequences from UCSC Genome Browser API

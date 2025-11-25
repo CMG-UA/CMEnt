@@ -634,17 +634,22 @@
 .calculateBetaStats <- function(beta_values, beta_col_names, pheno,
                                 casecontrol_col,
                                 aggfun) {
-    cases_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
-    controls_beta <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
-    case_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE], 1, sd, na.rm = TRUE)
-    control_sd <- apply(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE], 1, sd, na.rm = TRUE)
-    cases_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]))
-    controls_num <- rowSums(!is.na(beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]))
+    cases_all <- beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]
+    cases_beta <- apply(cases_all, 1, aggfun, na.rm = TRUE)
+    cases_sd <- apply(cases_all, 1, sd, na.rm = TRUE)
+    cases_num <- rowSums(!is.na(cases_all))
+    rm(cases_all)
+
+    controls_all <- beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]
+    controls_beta <- apply(controls_all, 1, aggfun, na.rm = TRUE)
+    controls_sd <- apply(controls_all, 1, sd, na.rm = TRUE)
+    controls_num <- rowSums(!is.na(controls_all))
+    rm(controls_all)
     list(
         cases_beta = cases_beta,
         controls_beta = controls_beta,
-        cases_beta_sd = case_sd,
-        controls_beta_sd = control_sd,
+        cases_beta_sd = cases_sd,
+        controls_beta_sd = controls_sd,
         cases_num = cases_num,
         controls_num = controls_num
     )
@@ -1384,7 +1389,6 @@ findDMRsFromSeeds <- function(
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
-    .log_success("DMR expansion complete.", level = 1)
     upstream_cpg_expansion_table <- table(sapply(ret, function(x) x[["upstream_cpg_expansion"]]))
     downstream_cpg_expansion_table <- table(sapply(ret, function(x) x[["downstream_cpg_expansion"]]))
     # sort tables by names (expansion sizes)
@@ -1431,6 +1435,20 @@ findDMRsFromSeeds <- function(
 
 
     .log_success("Post-processing complete.", level = 2)
+    .log_success("DMR expansion complete.", level = 1)
+    .log_info("Summary of extended DMRs:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 3)
+    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        .log_info("Saving extended DMRs prior to filtering to debug/03_extended_dmrs.tsv", level = 1)
+        dir.create("debug", showWarnings = FALSE)
+        write.table(extended_dmrs,
+            file = file.path("debug", "02_extended_dmrs.tsv"),
+            sep = "\t",
+            row.names = FALSE,
+            col.names = TRUE,
+            quote = FALSE
+        )
+    }
+    .log_step("Stage 3: Merging overlapping extended DMRs..", level = 1)
 
     if (bed_provided) {
         # Change seqnames from factor to character
@@ -1445,14 +1463,13 @@ findDMRsFromSeeds <- function(
         na.rm = TRUE
     )
 
-    .log_step("Stage 3: Merging overlapping extended DMRs..", level = 1)
-    extended_dmrs_ranges_reduced <- GenomicRanges::reduce(extended_dmrs_ranges, ignore.strand = TRUE)
-    hits <- GenomicRanges::findOverlaps(extended_dmrs_ranges_reduced, extended_dmrs_ranges, ignore.strand = TRUE)
+    merged_dmrs_ranges <- GenomicRanges::reduce(extended_dmrs_ranges, ignore.strand = TRUE)
+    hits <- GenomicRanges::findOverlaps(merged_dmrs_ranges, extended_dmrs_ranges, ignore.strand = TRUE)
     qh <- S4Vectors::queryHits(hits)
     sh <- S4Vectors::subjectHits(hits)
     orig_mcols <- as.data.frame(GenomicRanges::mcols(extended_dmrs_ranges))
     mcol_names <- colnames(orig_mcols)
-    agg_df <- data.frame(matrix(NA, nrow = length(extended_dmrs_ranges_reduced), ncol = length(mcol_names) + 1))
+    agg_df <- data.frame(matrix(NA, nrow = length(merged_dmrs_ranges), ncol = length(mcol_names) + 1))
     colnames(agg_df) <- c(mcol_names, "merged_dmrs_num")
     # ranges that do not need to be merged will have only one hit
     tqh <- table(qh)
@@ -1492,65 +1509,77 @@ findDMRsFromSeeds <- function(
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
     agg_df[, "sup_cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
-    agg_df[, "id"] <- paste0(seqnames(extended_dmrs_ranges_reduced), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
+    agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
 
-    GenomicRanges::mcols(extended_dmrs_ranges_reduced) <- agg_df
-    extended_dmrs_ranges <- extended_dmrs_ranges_reduced
-    .log_success("Overlapping extended DMRs merged: ", length(extended_dmrs_ranges), " final extended DMRs.", level = 1)
-    .log_step("Stage 4: Annotating and filtering resulting DMRs..", level = 1)
+    GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
+    .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 1)
+    .log_info("Summary of merged DMRs:\n\t", paste(capture.output(summary(filtered_dmrs)), collapse = "\n\t"), level = 3)
 
-    .log_step("Retrieving DMRs sequences..", level = 2)
-    # increase end by 1 to include last base in getDMRSequences, in case there is a C, belonging to a CpG, at the end
-    extended_dmrs_ranges <- .extendGRangesWithFlanks(extended_dmrs_ranges, dflank_size = 1)$granges
-    sequences <- getDMRSequences(extended_dmrs_ranges, genome)
-    if (bed_provided) {
-        extended_dmrs_ranges <- GenomeInfoDb::renameSeqlevels(
-            extended_dmrs_ranges, as.character(as.integer(factor(GenomeInfoDb::seqlevels(extended_dmrs_ranges), levels = chr_levels)))
-        )
-    }
-    .log_success("DMR sequences retrieved.", level = 2)
-    .log_step("Calculating reference CpG content..", level = 2)
-    extended_dmrs <- as.data.frame(extended_dmrs_ranges)
-    extended_dmrs$cpgs_num <- stringr::str_count(sequences, "(CG)|(GC)")
-    colnames(extended_dmrs)[colnames(extended_dmrs) == "seqnames"] <- "chr"
-
-    extended_dmrs[extended_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
-
-    extended_dmrs$seeds_num_adj <- ceiling(extended_dmrs[, "cpgs_num"] / extended_dmrs[, "sup_cpgs_num"] * extended_dmrs[, "seeds_num"])
-
-    .log_success("CpG content calculated.", level = 2)
-    .log_info("Summary of extended DMRs before filtering based on supporting CpGs and adjusted seeds number:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
-        .log_info("Saving extended DMRs prior to filtering to debug/02_extended_dmrs_prior_filtering.tsv", level = 1)
+        .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
-        write.table(extended_dmrs,
-            file = file.path("debug", "02_extended_dmrs_prior_filtering.tsv"),
+        write.table(filtered_dmrs,
+            file = file.path("debug", "03_merged_dmrs.tsv"),
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
             quote = FALSE
         )
     }
-    filtered_dmrs <- extended_dmrs[
-        extended_dmrs$seeds_num_adj >= min_adj_seeds &
-            extended_dmrs$sup_cpgs_num >= min_cpgs, ,
-        drop = FALSE
-    ]
-    .log_info(
-        "Keeping ",
-        nrow(filtered_dmrs),
-        " out of ",
-        nrow(extended_dmrs),
-        " with at least ",
-        min_adj_seeds,
-        " (adjusted) supporting seeds and ",
-        min_cpgs,
-        " supporting CpGs.",
-        level = 1
-    )
-    extended_dmrs <- filtered_dmrs
-    if (nrow(extended_dmrs) == 0) {
-        .log_warn("No DMRs passed the filtering based on min_cpgs and min_adj_seeds criteria.")
+
+    .log_step("Stage 4: Filtering and annotating resulting DMRs..", level = 1)
+
+    if (min_cpgs > 1 || min_seeds > 1) {
+        filtered_dmrs_ranges <- merged_dmrs_ranges[
+            GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
+                GenomicRanges::mcols(merged_dmrs_ranges)$sup_cpgs_num >= min_cpgs
+        ]
+        .log_info(
+            "Keeping ",
+            length(filtered_dmrs_ranges),
+            " out of ",
+            length(merged_dmrs_ranges),
+            " with at least ",
+            min_seeds,
+            " supporting seeds and ",
+            min_cpgs,
+            " supporting CpGs.",
+            level = 1
+        )
+    } else {
+        filtered_dmrs_ranges <- merged_dmrs_ranges
+    }
+    filtered_dmrs <- as.data.frame(filtered_dmrs_ranges)
+
+    .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
+    filtered_dmrs$cpgs_num <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
+    colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
+
+    filtered_dmrs[filtered_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
+
+    filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "sup_cpgs_num"] * filtered_dmrs[, "seeds_num"])
+
+    .log_success("CpG content calculated.", level = 2)
+
+    if (min_adj_seeds > min_seeds) {
+        adj_filtered_dmrs <- filtered_dmrs[
+            filtered_dmrs$seeds_num_adj >= min_adj_seeds, ,
+            drop = FALSE
+        ]
+        .log_info(
+            "Keeping ",
+            nrow(adj_filtered_dmrs),
+            " out of ",
+            nrow(filtered_dmrs),
+            " with at least ",
+            min_adj_seeds,
+            " (adjusted) supporting seeds.",
+            level = 1
+        )
+        filtered_dmrs <- adj_filtered_dmrs
+    }
+    if (nrow(filtered_dmrs) == 0) {
+        .log_warn("No DMRs passed the filtering step.")
         if (!is.null(output_prefix)) {
             for (f in c(".methylation.tsv.gz", ".tsv.gz")) {
                 gzfile <- gzfile(file.path(output_dir, paste0(output_prefix, f)), "w", compression = 2)
@@ -1560,8 +1589,10 @@ findDMRsFromSeeds <- function(
         return(NULL)
     }
 
-    all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(extended_dmrs)), function(i) {
-        seq(extended_dmrs$start_cpg_ind[i], extended_dmrs$end_cpg_ind[i])
+    annotated_dmrs <- filtered_dmrs
+
+    all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(annotated_dmrs)), function(i) {
+        seq(annotated_dmrs$start_cpg_ind[i], annotated_dmrs$end_cpg_ind[i])
     })))
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
     .log_step("Calculating per-CpG beta statistics..", level = 2)
@@ -1576,7 +1607,7 @@ findDMRsFromSeeds <- function(
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
-    dmrs_seeds_inds <- strsplit(extended_dmrs$seeds_inds, ",")
+    dmrs_seeds_inds <- strsplit(annotated_dmrs$seeds_inds, ",")
     .log_step("Adding DMR delta-beta information..", level = 2)
 
     dmr_seeds_list <- lapply(dmrs_seeds_inds, as.character)
@@ -1597,20 +1628,20 @@ findDMRsFromSeeds <- function(
         controls_beta_max = max(controls_beta, na.rm = TRUE)
     ), by = dmr_id]
 
-    extended_dmrs$cases_beta <- seeds_agg$cases_beta
-    extended_dmrs$controls_beta <- seeds_agg$controls_beta
-    extended_dmrs$delta_beta <- extended_dmrs$cases_beta - extended_dmrs$controls_beta
-    extended_dmrs$cases_beta_sd <- seeds_agg$cases_beta_sd
-    extended_dmrs$controls_beta_sd <- seeds_agg$controls_beta_sd
-    extended_dmrs$cases_beta_min <- seeds_agg$cases_beta_min
-    extended_dmrs$cases_beta_max <- seeds_agg$cases_beta_max
-    extended_dmrs$controls_beta_min <- seeds_agg$controls_beta_min
-    extended_dmrs$controls_beta_max <- seeds_agg$controls_beta_max
+    annotated_dmrs$cases_beta <- seeds_agg$cases_beta
+    annotated_dmrs$controls_beta <- seeds_agg$controls_beta
+    annotated_dmrs$delta_beta <- annotated_dmrs$cases_beta - annotated_dmrs$controls_beta
+    annotated_dmrs$cases_beta_sd <- seeds_agg$cases_beta_sd
+    annotated_dmrs$controls_beta_sd <- seeds_agg$controls_beta_sd
+    annotated_dmrs$cases_beta_min <- seeds_agg$cases_beta_min
+    annotated_dmrs$cases_beta_max <- seeds_agg$cases_beta_max
+    annotated_dmrs$controls_beta_min <- seeds_agg$controls_beta_min
+    annotated_dmrs$controls_beta_max <- seeds_agg$controls_beta_max
 
-    dmr_cpgs_list <- lapply(seq_len(nrow(extended_dmrs)), function(i) {
+    dmr_cpgs_list <- lapply(seq_len(nrow(annotated_dmrs)), function(i) {
         as.character(c(
-            seq.int(extended_dmrs$start_cpg_ind[i], as.integer(dmrs_seeds_inds[[i]][1])),
-            seq.int(as.integer(dmrs_seeds_inds[[i]][length(dmrs_seeds_inds[[i]])]), extended_dmrs$end_cpg_ind[i])
+            seq.int(annotated_dmrs$start_cpg_ind[i], as.integer(dmrs_seeds_inds[[i]][1])),
+            seq.int(as.integer(dmrs_seeds_inds[[i]][length(dmrs_seeds_inds[[i]])]), annotated_dmrs$end_cpg_ind[i])
         ))
     })
     dmr_cpgs_indices <- unlist(dmr_cpgs_list, use.names = FALSE)
@@ -1630,49 +1661,50 @@ findDMRsFromSeeds <- function(
         cpgs_controls_beta_max = max(controls_beta, na.rm = TRUE)
     ), by = dmr_id]
 
-    extended_dmrs$cpgs_cases_beta <- cpgs_agg$cpgs_cases_beta
-    extended_dmrs$cpgs_controls_beta <- cpgs_agg$cpgs_controls_beta
-    extended_dmrs$cpgs_delta_beta <- extended_dmrs$cpgs_cases_beta - extended_dmrs$cpgs_controls_beta
-    extended_dmrs$cpgs_cases_beta_sd <- cpgs_agg$cpgs_cases_beta_sd
-    extended_dmrs$cpgs_controls_beta_sd <- cpgs_agg$cpgs_controls_beta_sd
-    extended_dmrs$cpgs_cases_beta_min <- cpgs_agg$cpgs_cases_beta_min
-    extended_dmrs$cpgs_cases_beta_max <- cpgs_agg$cpgs_cases_beta_max
-    extended_dmrs$cpgs_controls_beta_min <- cpgs_agg$cpgs_controls_beta_min
-    extended_dmrs$cpgs_controls_beta_max <- cpgs_agg$cpgs_controls_beta_max
+    annotated_dmrs$cpgs_cases_beta <- cpgs_agg$cpgs_cases_beta
+    annotated_dmrs$cpgs_controls_beta <- cpgs_agg$cpgs_controls_beta
+    annotated_dmrs$cpgs_delta_beta <- annotated_dmrs$cpgs_cases_beta - annotated_dmrs$cpgs_controls_beta
+    annotated_dmrs$cpgs_cases_beta_sd <- cpgs_agg$cpgs_cases_beta_sd
+    annotated_dmrs$cpgs_controls_beta_sd <- cpgs_agg$cpgs_controls_beta_sd
+    annotated_dmrs$cpgs_cases_beta_min <- cpgs_agg$cpgs_cases_beta_min
+    annotated_dmrs$cpgs_cases_beta_max <- cpgs_agg$cpgs_cases_beta_max
+    annotated_dmrs$cpgs_controls_beta_min <- cpgs_agg$cpgs_controls_beta_min
+    annotated_dmrs$cpgs_controls_beta_max <- cpgs_agg$cpgs_controls_beta_max
 
-    dmrs <- extended_dmrs
     .log_success("DMR delta-beta information added.", level = 2)
+
+
     if (bed_provided) {
-        dmrs$chr <- chr_levels[dmrs$chr]
-        start_seeds <- as.integer(dmrs$start_seed)
-        end_seeds <- as.integer(dmrs$end_seed)
-        dmrs$start_seed <- paste0(chr_levels[beta_locs[start_seeds, "chr"]], ":", beta_locs[start_seeds, "start"])
-        dmrs$end_seed <- paste0(chr_levels[beta_locs[end_seeds, "chr"]], ":", beta_locs[end_seeds, "start"])
-        start_cpgs <- as.integer(dmrs$start_cpg)
-        end_cpgs <- as.integer(dmrs$end_cpg)
-        dmrs$start_cpg <- paste0(chr_levels[beta_locs[start_cpgs, "chr"]], ":", beta_locs[start_cpgs, "start"])
-        dmrs$end_cpg <- paste0(chr_levels[beta_locs[end_cpgs, "chr"]], ":", beta_locs[end_cpgs, "start"])
-        dmrs$tmp_id <- seq_len(nrow(dmrs))
-        dmrs$seeds_unlisted <- sapply(dmrs$seeds, function(seed_ids) {
+        annotated_dmrs$chr <- chr_levels[annotated_dmrs$chr]
+        start_seeds <- as.integer(annotated_dmrs$start_seed)
+        end_seeds <- as.integer(annotated_dmrs$end_seed)
+        annotated_dmrs$start_seed <- paste0(chr_levels[beta_locs[start_seeds, "chr"]], ":", beta_locs[start_seeds, "start"])
+        annotated_dmrs$end_seed <- paste0(chr_levels[beta_locs[end_seeds, "chr"]], ":", beta_locs[end_seeds, "start"])
+        start_cpgs <- as.integer(annotated_dmrs$start_cpg)
+        end_cpgs <- as.integer(annotated_dmrs$end_cpg)
+        annotated_dmrs$start_cpg <- paste0(chr_levels[beta_locs[start_cpgs, "chr"]], ":", beta_locs[start_cpgs, "start"])
+        annotated_dmrs$end_cpg <- paste0(chr_levels[beta_locs[end_cpgs, "chr"]], ":", beta_locs[end_cpgs, "start"])
+        annotated_dmrs$tmp_id <- seq_len(nrow(annotated_dmrs))
+        annotated_dmrs$seeds_unlisted <- sapply(annotated_dmrs$seeds, function(seed_ids) {
             as.integer(unlist(strsplit(seed_ids, ",")))
         })
         # explode on seeds column to annotate
-        seeds_exploded <- dmrs[, "tmp_id", drop = FALSE]
-        seeds_exploded <- seeds_exploded[rep(seq_len(nrow(seeds_exploded)), times = sapply(dmrs$seeds_unlisted, length)), , drop = FALSE]
-        seeds_exploded$seeds_unlisted <- as.integer(unlist(dmrs$seeds_unlisted))
+        seeds_exploded <- annotated_dmrs[, "tmp_id", drop = FALSE]
+        seeds_exploded <- seeds_exploded[rep(seq_len(nrow(seeds_exploded)), times = sapply(annotated_dmrs$seeds_unlisted, length)), , drop = FALSE]
+        seeds_exploded$seeds_unlisted <- as.integer(unlist(annotated_dmrs$seeds_unlisted))
         seeds_exploded$chr <- chr_levels[beta_locs[seeds_exploded$seeds_unlisted, "chr"]]
         seeds_exploded$pos <- beta_locs[seeds_exploded$seeds_unlisted, "start"]
         seeds_exploded$annotated_seed <- paste0(seeds_exploded$chr, ":", seeds_exploded$pos)
         seeds_annotated_list <- split(seeds_exploded$annotated_seed, seeds_exploded$tmp_id)
-        dmrs$seeds <- sapply(seeds_annotated_list, function(x) {
+        annotated_dmrs$seeds <- sapply(seeds_annotated_list, function(x) {
             paste(x, collapse = ",")
         })
-        dmrs$seeds_unlisted <- NULL
-        dmrs$tmp_id <- NULL
-        dmrs$id <- paste0(dmrs$chr, ":", beta_locs[start_cpgs, "start"], "-", beta_locs[end_cpgs, "start"])
+        annotated_dmrs$seeds_unlisted <- NULL
+        annotated_dmrs$tmp_id <- NULL
+        annotated_dmrs$id <- paste0(annotated_dmrs$chr, ":", beta_locs[start_cpgs, "start"], "-", beta_locs[end_cpgs, "start"])
     }
-    dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
-        dmrs,
+    annotated_dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
+        annotated_dmrs,
         keep.extra.columns = TRUE,
         seqnames.field = "chr",
         seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
@@ -1681,54 +1713,55 @@ findDMRsFromSeeds <- function(
 
     if (annotate_with_genes) {
         .log_step("Annotating DMRs with gene information...", level = 1)
-        dmrs_granges <- annotateDMRsWithGenes(dmrs_granges, genome = genome)
+        annotated_dmrs_granges <- annotateDMRsWithGenes(annotated_dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
 
     if (!bed_provided) {
         .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
         sorted_locs <- beta_handler$getGenomicLocs()
-        start_cpg_inds <- mcols(dmrs_granges)$start_cpg_ind
-        end_cpg_inds <- mcols(dmrs_granges)$end_cpg_ind
+        start_cpg_inds <- mcols(annotated_dmrs_granges)$start_cpg_ind
+        end_cpg_inds <- mcols(annotated_dmrs_granges)$end_cpg_ind
 
-        mcols(dmrs_granges)$start_cpg_ind_abs <- match(rownames(beta_locs)[start_cpg_inds], rownames(sorted_locs))
-        mcols(dmrs_granges)$end_cpg_ind_abs <- match(rownames(beta_locs)[end_cpg_inds], rownames(sorted_locs))
-
-        all_seeds_inds <- as.numeric(unlist(strsplit(as.character(mcols(dmrs_granges)$seeds_inds), ","), use.names = FALSE))
-        all_seeds_abs <-  match(rownames(beta_locs)[all_seeds_inds], rownames(sorted_locs))
-        seeds_lengths <- lengths(strsplit(as.character(mcols(dmrs_granges)$seeds_inds), ","))
+        mcols(annotated_dmrs_granges)$start_cpg_ind_abs <- match(rownames(beta_locs)[start_cpg_inds], rownames(sorted_locs))
+        mcols(annotated_dmrs_granges)$end_cpg_ind_abs <- match(rownames(beta_locs)[end_cpg_inds], rownames(sorted_locs))
+        all_seeds_inds <- as.numeric(unlist(strsplit(as.character(mcols(annotated_dmrs_granges)$seeds_inds), ","), use.names = FALSE))
+        all_seeds_abs <- match(rownames(beta_locs)[all_seeds_inds], rownames(sorted_locs))
+        seeds_lengths <- lengths(strsplit(as.character(mcols(annotated_dmrs_granges)$seeds_inds), ","))
         seeds_groups <- rep(seq_along(seeds_lengths), seeds_lengths)
-        mcols(dmrs_granges)$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
+        mcols(annotated_dmrs_granges)$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
 
         .log_success("DMR CpG indices conversion completed.", level = 2)
     } else {
-        mcols(dmrs_granges)$start_cpg_ind_abs <- mcols(dmrs_granges)$start_cpg_ind
-        mcols(dmrs_granges)$end_cpg_ind_abs <- mcols(dmrs_granges)$end_cpg_ind
-        mcols(dmrs_granges)$seeds_inds_abs <- mcols(dmrs_granges)$seeds_inds
+        mcols(annotated_dmrs_granges)$start_cpg_ind_abs <- mcols(annotated_dmrs_granges)$start_cpg_ind
+        mcols(annotated_dmrs_granges)$end_cpg_ind_abs <- mcols(annotated_dmrs_granges)$end_cpg_ind
+        mcols(annotated_dmrs_granges)$seeds_inds_abs <- mcols(annotated_dmrs_granges)$seeds_inds
     }
+    final_dmrs_granges <- annotated_dmrs_granges
     if (rank_dmrs) {
         .log_step("Ranking DMRs...", level = 1)
-        dmrs_granges <- rankDMRs(
-            dmrs_granges,
+        ranked_dmrs_granges <- rankDMRs(
+            final_dmrs_granges,
             beta = beta, pheno = pheno, genome = genome,
             array = array, sorted_locs = sorted_locs,
             sample_group_col = sample_group_col,
             casecontrol_col = casecontrol_col
         )
         .log_success("DMR ranking completed.", level = 1)
+        final_dmrs_granges <- ranked_dmrs_granges
     }
 
 
-    dmrs <- as.data.frame(dmrs_granges)
-    colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
-    .log_info("Final number of DMRs: ", nrow(dmrs), level = 1)
-    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
+    final_dmrs <- as.data.frame(final_dmrs_granges)
+    colnames(final_dmrs)[colnames(final_dmrs) == "seqnames"] <- "chr"
+    .log_info("Final number of DMRs: ", nrow(final_dmrs), level = 1)
+    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(final_dmrs)), collapse = "\n\t"), level = 3)
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
         gz <- gzfile(dmrs_file, "w")
         write.table(
-            dmrs,
+            final_dmrs,
             gz,
             sep = "\t",
             quote = FALSE,
@@ -1741,5 +1774,5 @@ findDMRsFromSeeds <- function(
     }
 
 
-    invisible(dmrs_granges)
+    invisible(final_dmrs_granges)
 }
