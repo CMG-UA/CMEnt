@@ -7,7 +7,7 @@ beta_handler <- getBetaHandler(
     beta = beta_matrix,
     array = "450K",
     genome = "hg19",
-    bigmatrix_threshold_mb = 0.001
+    memory_threshold_mb  = 0.001
 )
 
 row_names_to_test <- rownames(beta_matrix)[1:100]
@@ -28,7 +28,7 @@ beta_handler2 <- getBetaHandler(
     beta = beta_matrix,
     array = "450K",
     genome = "hg19",
-    bigmatrix_threshold_mb = 1000
+    memory_threshold_mb  = 1000
 )
 
 result2 <- beta_handler2$getBeta(row_names = row_names_to_test)

@@ -114,7 +114,7 @@ test_that("getBeta big.matrix handles all rows", {
         array = "450K",
         genome = "hg19",
         memory_threshold_mb = 0,
-        bigmatrix_threshold_mb = 0.1
+        memory_threshold_mb  = 0.1
     )
     
     result <- beta_handler$getBeta()
