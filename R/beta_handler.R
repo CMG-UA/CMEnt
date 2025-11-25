@@ -27,6 +27,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         sorted_locs = NULL,
         #' @field memory_threshold_mb Memory threshold in MB
         memory_threshold_mb = 500,
+        #' @field bigmatrix_threshold_mb Size threshold in MB for returning big.matrix from getBeta
+        bigmatrix_threshold_mb = 100,
         #' @field njobs Number of parallel jobs
         njobs = 1,
         #' @description Create a new BetaHandler object
@@ -36,6 +38,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param memory_threshold_mb Memory threshold in MB
+        #' @param bigmatrix_threshold_mb Size threshold in MB for returning big.matrix from getBeta
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
@@ -44,6 +47,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               beta_row_names_file = NULL,
                               sorted_locs = NULL,
                               memory_threshold_mb = 500,
+                              bigmatrix_threshold_mb = 100,
                               njobs = 1) {
             # Validate inputs
             if (is.null(beta)) {
@@ -78,6 +82,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$sorted_locs <- sorted_locs
             private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
             self$memory_threshold_mb <- memory_threshold_mb
+            self$bigmatrix_threshold_mb <- bigmatrix_threshold_mb
 
             # Initialize private fields
             private$.beta_col_names <- NULL
@@ -382,10 +387,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
         #' @param allow_missing Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)
-        #' @return Matrix of beta values
+        #' @return Matrix of beta values, or big.matrix if estimated size exceeds bigmatrix_threshold_mb
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
-            # Use in-memory beta data if available
+
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (!is.null(row_names)) {
@@ -417,7 +422,45 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         beta_subset <- private$.beta_file_in_memory[, col_names, drop = FALSE]
                     }
                 }
-            } else if (!is.null(private$.beta_file)) {
+                .log_success("Beta values subsetted: ", nrow(beta_subset),
+                    " CpGs x ", ncol(beta_subset), " samples",
+                    level = 3
+                )
+                return(beta_subset)
+            }
+
+            first_row <- if (!is.null(private$.beta_file)) {
+                data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
+            } else {
+                if (is.null(row_names)) {
+                    locs <- self$getBetaLocs()
+                } else {
+                    locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                }
+                region_first <- data.frame(
+                    chr = as.character(locs[1, "chr"]),
+                    start = as.integer(locs[1, "start"]),
+                    end = as.integer(locs[1, "end"])
+                )
+                bedr::tabix(region_first, private$.tabix_file,
+                    check.valid = FALSE,
+                    check.sort = FALSE, check.chr = FALSE, verbose = FALSE
+                )
+            }
+
+            n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
+            estimated_size_mb <- as.numeric(object.size(first_row)) * n_rows / (1024^2)
+
+            if (estimated_size_mb > self$bigmatrix_threshold_mb) {
+                .log_step("Estimated size (", round(estimated_size_mb, 1),
+                    " MB) exceeds threshold. Loading to big.matrix...",
+                    level = 3
+                )
+                chunk_size <- ceiling(self$bigmatrix_threshold_mb * 1024^2 / as.numeric(object.size(first_row)))
+                return(private$.loadToBigMatrix(row_names, col_names, allow_missing, chunk_size))
+            }
+
+            if (!is.null(private$.beta_file)) {
                 .log_step("Subsetting from beta file..", level = 3)
                 beta_subset <- .subsetBetaFile(
                     private$.beta_file,
@@ -425,20 +468,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     beta_row_names = private$.beta_row_names,
                     beta_col_names = private$.beta_col_names
                 )
-                if (!is.null(row_names)) {
-                    if (allow_missing) {
-                        if (nrow(beta_subset) == 0) {
-                            return(data.frame())
-                        }
-                    } else {
-                        row_names_found <- rownames(beta_subset)
-                        missing_rows <- setdiff(row_names, row_names_found)
-                        if (length(missing_rows) > 0) {
-                            stop(
-                                "Requested CpG sites not found in beta file: ",
-                                paste(missing_rows, collapse = ", ")
-                            )
-                        }
+                if (!is.null(row_names) && !allow_missing) {
+                    missing_rows <- setdiff(row_names, rownames(beta_subset))
+                    if (length(missing_rows) > 0) {
+                        stop(
+                            "Requested CpG sites not found in beta file: ",
+                            paste(missing_rows, collapse = ", ")
+                        )
                     }
                 }
                 if (!is.null(col_names)) {
@@ -451,49 +487,21 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else {
                     locs <- self$getBetaLocs()[row_names, , drop = FALSE]
                 }
-                regions <- locs[, c("chr", "start", "end")]
-                regions <- as.data.frame(regions)
-                regions[, "chr"] <- as.character(regions[, "chr"])
-                regions[, "start"] <- as.integer(regions[, "start"])
-                regions[, "end"] <- as.integer(regions[, "end"])
-                beta_subset <- bedr::tabix(
-                    regions,
-                    private$.tabix_file,
-                    check.valid = FALSE,
-                    check.sort = FALSE,
-                    check.chr = FALSE,
-                    verbose = FALSE
+                regions <- data.frame(
+                    chr = as.character(locs[, "chr"]),
+                    start = as.integer(locs[, "start"]),
+                    end = as.integer(locs[, "end"])
                 )
-                if (!is.null(row_names)) {
-                    if (allow_missing) {
-                        if (nrow(beta_subset) == 0) {
-                            return(data.frame())
-                        }
-                    } else {
-                        if (nrow(beta_subset) < length(row_names)) {
-                            stop(
-                                length(row_names) - nrow(beta_subset),
-                                " requested CpG sites were not found in beta tabix file."
-                            )
-                        }
-                    }
+                beta_subset <- bedr::tabix(regions, private$.tabix_file,
+                    check.valid = FALSE,
+                    check.sort = FALSE, check.chr = FALSE, verbose = FALSE
+                )
+                if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < length(row_names))) {
+                    stop("Requested CpG sites not found in beta tabix file")
                 }
-                if (is.null(beta_subset)) {
-                    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
-                        .log_info("Saving row names to debug/row_names.rds and debug/beta_row_names.rds", level = 1)
-                        dir.create("debug", showWarnings = FALSE)
-                        saveRDS(row_names, "debug/row_names.rds")
-                        saveRDS(private$.beta_row_names, "debug/beta_row_names.rds")
-                    }
-                    stop("No beta values found for the requested CpG sites in the tabix file")
-                }   
-                # Remove BED columns (chr, start, end, name, score, strand) to get only beta values
-                # Columns 1-6 are BED format, 7+ are beta values
-                beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]
+                beta_subset <- as.data.frame(sapply(beta_subset[, 7:ncol(beta_subset), drop = FALSE], as.numeric))
                 if (!is.null(col_names)) {
-                    beta_subset <- as.data.frame(sapply(beta_subset[, col_names, drop = FALSE], as.numeric))
-                } else {
-                    beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
+                    beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
             }
 
@@ -513,7 +521,87 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .beta_file = NULL,
         .tabix_file = NULL,
         .beta_file_in_memory = NULL,
-        .sorted_locs_is_bigmatrix = FALSE
+        .sorted_locs_is_bigmatrix = FALSE,
+        .loadToBigMatrix = function(row_names, col_names, allow_missing, chunk_size) {
+            if (!is.null(private$.beta_file)) {
+                if (is.null(private$.beta_row_names)) {
+                    private$.beta_row_names <- unlist(data.table::fread(
+                        private$.beta_file,
+                        select = 1, header = TRUE
+                    ))
+                }
+                ret <- .getBetaColNamesAndInds(private$.beta_file, private$.beta_col_names)
+                all_cols <- ret$beta_col_names
+                col_inds <- ret$beta_col_inds
+
+                if (!is.null(col_names)) {
+                    col_filter <- which(all_cols %in% col_names)
+                    col_inds <- col_inds[col_filter]
+                    all_cols <- all_cols[col_filter]
+                }
+
+                if (!is.null(row_names)) {
+                    if (allow_missing) row_names <- intersect(row_names, private$.beta_row_names)
+                    row_inds <- which(private$.beta_row_names %in% row_names)
+                    final_rows <- private$.beta_row_names[row_inds]
+                } else {
+                    row_inds <- seq_along(private$.beta_row_names)
+                    final_rows <- private$.beta_row_names
+                }
+
+                temp_file <- tempfile(fileext = ".bmat")
+                beta_big <- bigmemory::big.matrix(
+                    nrow = length(row_inds), ncol = length(col_inds), type = "double",
+                    backingfile = basename(temp_file), backingpath = dirname(temp_file),
+                    descriptorfile = paste0(basename(temp_file), ".desc")
+                )
+                chunks <- split(seq_along(row_inds), ceiling(seq_along(row_inds) / chunk_size))
+                for (chunk_idx in seq_along(chunks)) {
+                    chunk <- final_rows[chunks[[chunk_idx]]]
+                    chunk <- .subsetBetaFile(
+                        private$.beta_file,
+                        sites = chunk,
+                        beta_row_names = private$.beta_row_names,
+                        beta_col_names = private$.beta_col_names,
+                    )
+                    beta_big[chunks[[chunk_idx]], ] <- as.matrix(chunk[, col_inds, drop = FALSE])
+                }
+                rownames(beta_big) <- final_rows
+                colnames(beta_big) <- all_cols
+            } else {
+                if (is.null(row_names)) {
+                    locs <- self$getBetaLocs()
+                } else {
+                    locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                }
+
+                temp_file <- tempfile(fileext = ".bmat")
+                beta_big <- bigmemory::big.matrix(
+                    nrow = nrow(locs),
+                    ncol = if (is.null(col_names)) length(self$getBetaColNames()) else length(col_names),
+                    type = "double",
+                    backingfile = basename(temp_file), backingpath = dirname(temp_file),
+                    descriptorfile = paste0(basename(temp_file), ".desc")
+                )
+                chunks <- split(seq_len(nrow(locs)), ceiling(seq_len(nrow(locs)) / chunk_size))
+                for (i in seq_along(chunks)) {
+                    chunk <- locs[chunks[[i]], ]
+                    row_data <- bedr::tabix(chunk, private$.tabix_file,
+                        check.valid = FALSE,
+                        check.sort = FALSE, check.chr = FALSE, verbose = FALSE
+                    )
+                    if (!is.null(row_data) && nrow(row_data) > 0) {
+                        vals <- as.numeric(row_data[, 7:ncol(row_data)])
+                        if (!is.null(col_names)) vals <- vals[match(col_names, self$getBetaColNames())]
+                        beta_big[chunks[[i]], ] <- vals
+                    }
+                }
+                rownames(beta_big) <- rownames(locs)
+                colnames(beta_big) <- if (is.null(col_names)) self$getBetaColNames() else col_names
+            }
+            .log_success("Loaded to big.matrix: ", nrow(beta_big), " CpGs x ", ncol(beta_big), " samples", level = 3)
+            beta_big
+        }
     )
 )
 
@@ -529,6 +617,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param beta_row_names_file Path to row names file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.
 #' @param memory_threshold_mb Memory threshold in MB
+#' @param bigmatrix_threshold_mb Size threshold in MB for returning big.matrix from getBeta
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
 #'
@@ -553,6 +642,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
                            memory_threshold_mb = 500,
+                           bigmatrix_threshold_mb = 100,
                            njobs = 1) {
     if (inherits(beta, "BetaHandler")) {
         .log_warn("Provided beta is already a BetaHandler instance. Returning it directly.")
@@ -564,6 +654,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         genome = genome,
         beta_row_names_file = beta_row_names_file,
         memory_threshold_mb = memory_threshold_mb,
+        bigmatrix_threshold_mb = bigmatrix_threshold_mb,
         njobs = njobs,
         sorted_locs = sorted_locs
     ))
