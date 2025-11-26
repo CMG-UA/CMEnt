@@ -634,20 +634,33 @@
     ret
 }
 
-.calculateBetaStats <- function(beta_values, pheno,
-                                casecontrol_col,
-                                aggfun) {
-    cases_all <- beta_values[, pheno[, casecontrol_col] == 1, drop = FALSE]
-    cases_beta <- apply(cases_all, 1, aggfun, na.rm = TRUE)
-    cases_sd <- apply(cases_all, 1, sd, na.rm = TRUE)
-    cases_num <- rowSums(!is.na(cases_all))
-    rm(cases_all)
+.calculateBetaStats <- function(beta_values, pheno, casecontrol_col, aggfun) {
+    # logical masks
+    is_case <- pheno[[casecontrol_col]] == 1
+    is_ctrl <- !is_case
+    # Subset matrices
+    cases <- beta_values[, is_case, drop = FALSE]
+    ctrl  <- beta_values[, is_ctrl, drop = FALSE]
 
-    controls_all <- beta_values[, pheno[, casecontrol_col] == 0, drop = FALSE]
-    controls_beta <- apply(controls_all, 1, aggfun, na.rm = TRUE)
-    controls_sd <- apply(controls_all, 1, sd, na.rm = TRUE)
-    controls_num <- rowSums(!is.na(controls_all))
-    rm(controls_all)
+    # Aggregation
+    if (identical(aggfun, mean)) {
+        cases_beta   <- matrixStats::rowMeans2(cases, na.rm = TRUE)
+        controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        cases_beta   <- matrixStats::rowMedians(cases, na.rm = TRUE)
+        controls_beta <- matrixStats::rowMedians(ctrl, na.rm = TRUE)
+    } else {
+        cases_beta   <- apply(cases, 1, aggfun, na.rm = TRUE)
+        controls_beta <- apply(ctrl, 1, aggfun, na.rm = TRUE)
+    }
+
+    # Standard deviation
+    cases_sd   <- matrixStats::rowSds(cases, na.rm = TRUE)
+    controls_sd <- matrixStats::rowSds(ctrl, na.rm = TRUE)
+
+    # Counts
+    cases_num   <- matrixStats::rowCounts(!is.na(cases))
+    controls_num <- matrixStats::rowCounts(!is.na(ctrl))
     list(
         cases_beta = cases_beta,
         controls_beta = controls_beta,
@@ -658,28 +671,37 @@
     )
 }
 
+.already_logged_dir <- tempdir()
+.already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
 setupParallel <- function() {
     njobs <- getOption("DMRsegal.njobs")
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs
     }
-    old_globals_maxsize <- getOption("future.globals.maxSize", 0)
-    options(future.globals.maxSize = Inf)
-    withr::defer(options(future.globals.maxSize = old_globals_maxsize))
     if (njobs > 1) {
         if (future::availableCores("multicore") > 1L) {
-            .log_info("Using multicore parallelization with ", njobs, " workers", level = 1)
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
             future::plan(future::multicore, workers = njobs)
         } else {
-            .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multisession parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
             future::plan(future::multisession, workers = njobs)
         }
         withr::defer(future::plan(future::sequential))
     } else {
-        .log_info("Using sequential processing (njobs=1)", level = 1)
+        if (!file.exists(.already_logged_file)) {
+            .log_info("Using sequential processing (njobs=1)", level = 2)
+            writeLines("TRUE", con = .already_logged_file)
+        }
         future::plan(future::sequential)
     }
 }
+
 clearParallel <- function() {
     future::plan(future::sequential)
 }
@@ -749,7 +771,7 @@ findDMRsFromSeeds <- function(
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(4, future::availableCores() - 1)),
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   rank_dmrs = TRUE,
@@ -775,6 +797,8 @@ findDMRsFromSeeds <- function(
     }
     options(DMRsegal.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
+    options(future.globals.maxSize = Inf)
+
     # Set up future plan for parallel processing
 
     options("DMRsegal.njobs" = njobs)
@@ -1560,18 +1584,19 @@ findDMRsFromSeeds <- function(
         filtered_dmrs_ranges <- merged_dmrs_ranges
     }
     filtered_dmrs <- as.data.frame(filtered_dmrs_ranges)
-
-    .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
-    filtered_dmrs$cpgs_num <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
     colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
 
-    filtered_dmrs[filtered_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
 
-    filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "sup_cpgs_num"] * filtered_dmrs[, "seeds_num"])
-
-    .log_success("CpG content calculated.", level = 2)
 
     if (min_adj_seeds > min_seeds) {
+        .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
+        filtered_dmrs$cpgs_num <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
+
+        filtered_dmrs[filtered_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
+
+        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "sup_cpgs_num"] * filtered_dmrs[, "seeds_num"])
+
+        .log_success("CpG content calculated.", level = 2)
         adj_filtered_dmrs <- filtered_dmrs[
             filtered_dmrs$seeds_num_adj >= min_adj_seeds, ,
             drop = FALSE
@@ -1587,6 +1612,10 @@ findDMRsFromSeeds <- function(
             level = 1
         )
         filtered_dmrs <- adj_filtered_dmrs
+    } else 
+    {
+        .log_info("Skipping adjusted seeds number calculation as min_adj_seeds <= min_seeds.", level = 2)
+        filtered_dmrs$seeds_num_adj <- NA
     }
     if (nrow(filtered_dmrs) == 0) {
         .log_warn("No DMRs passed the filtering step.")
