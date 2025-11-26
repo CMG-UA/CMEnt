@@ -4,7 +4,7 @@ test_that("getBeta returns big.matrix when size exceeds threshold with file inpu
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    options("DMRsegal.subset_beta_as_bigmem_mb" = 1)
+    options("DMRsegal.subset_beta_as_bigmem_mb" = 0.1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
@@ -77,7 +77,7 @@ test_that("getBeta big.matrix with column subset", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    options("DMRsegal.subset_beta_as_bigmem_mb" = 1)
+    options("DMRsegal.subset_beta_as_bigmem_mb" = 0.1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
@@ -102,7 +102,7 @@ test_that("getBeta big.matrix handles all rows", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    options("DMRsegal.subset_beta_as_bigmem_mb" = 1)
+    options("DMRsegal.subset_beta_as_bigmem_mb" = 0.1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",

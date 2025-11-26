@@ -1615,6 +1615,7 @@ findDMRsFromSeeds <- function(
     } else 
     {
         .log_info("Skipping adjusted seeds number calculation as min_adj_seeds <= min_seeds.", level = 2)
+        filtered_dmrs$cpgs_num <- NA
         filtered_dmrs$seeds_num_adj <- NA
     }
     if (nrow(filtered_dmrs) == 0) {

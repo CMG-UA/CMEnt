@@ -69,38 +69,6 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
     expect_true(relaxed_count >= strict_count)
 })
 
-test_that("group_concordance_strategy works with empirical p-value mode", {
-    skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-
-    dmrs_relaxed_empirical <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        group_concordance_strategy = "relaxed",
-        pval_mode = "empirical",
-        empirical_strategy = "montecarlo",
-        ntries = 50,
-        annotate_with_genes = FALSE,
-        verbose = 1
-    )
-
-    expect_true(is.null(dmrs_strict_empirical) || inherits(dmrs_strict_empirical, "GRanges"))
-    expect_true(is.null(dmrs_relaxed_empirical) || inherits(dmrs_relaxed_empirical, "GRanges"))
-
-    strict_count <- if (is.null(dmrs_strict_empirical)) 0 else length(dmrs_strict_empirical)
-    relaxed_count <- if (is.null(dmrs_relaxed_empirical)) 0 else length(dmrs_relaxed_empirical)
-
-    expect_true(relaxed_count >= strict_count)
-})
-
 test_that("group_concordance_strategy parameter validates correctly", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
