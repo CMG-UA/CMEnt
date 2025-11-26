@@ -653,7 +653,7 @@ options("DMRsegal.beta_in_mem_threshold_mb" = 200)
 ### Option: `DMRsegal.subset_beta_as_bigmem_mb`
 **Type:** Integer  
 **Default:** `200`  
-**Description:** Maximum size (in Megabytes) of beta files to subset into memory during processing. If the beta file exceeds this size, it will be loaded into `bigmemory::big.matrix` structures.
+**Description:** Maximum size (in Megabytes) of beta files to subset into memory during processing. If the beta file exceeds this size, it will be loaded into `bigmemory::big.matrix` structures. By definitiion, this value should be less than `DMRsegal.beta_in_mem_threshold_mb` to activate the big memory subsetting.
 ```{r}
 options("DMRsegal.subset_beta_as_bigmem_mb" = 100)
 ```

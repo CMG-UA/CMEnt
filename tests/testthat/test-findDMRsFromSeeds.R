@@ -58,6 +58,38 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     }
 })
 
+test_that("findDMRsFromSeeds works with bigmem beta subset", {
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
+    beta_file <- tempfile(fileext = ".tsv")
+    withr::defer(unlink(beta_file))
+    write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
+    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    withr::defer(unlink(sorted_beta_file))
+    options("DMRsegal.verbose" = 2)
+    options("DMRsegal.use_tabix_cache" = FALSE)
+    options("DMRsegal.beta_in_mem_threshold_mb" = 1)
+    options("DMRsegal.subset_beta_as_bigmem_mb" = 0.1)
+
+    dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
+        beta = sorted_beta_file,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        njobs = 1
+    )
+
+    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
+    if (!is.null(dmrs) && length(dmrs) > 0) {
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+    }
+})
+
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
 

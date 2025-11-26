@@ -640,27 +640,38 @@
     is_ctrl <- !is_case
     # Subset matrices
     cases <- beta_values[, is_case, drop = FALSE]
-    ctrl  <- beta_values[, is_ctrl, drop = FALSE]
+    cases <- as.matrix(cases, ncol = ncol(cases))
 
     # Aggregation
     if (identical(aggfun, mean)) {
-        cases_beta   <- matrixStats::rowMeans2(cases, na.rm = TRUE)
-        controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
+        cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
     } else if (identical(aggfun, stats::median)) {
-        cases_beta   <- matrixStats::rowMedians(cases, na.rm = TRUE)
-        controls_beta <- matrixStats::rowMedians(ctrl, na.rm = TRUE)
+        cases_beta <- matrixStats::rowMedians(cases, na.rm = TRUE)
     } else {
-        cases_beta   <- apply(cases, 1, aggfun, na.rm = TRUE)
-        controls_beta <- apply(ctrl, 1, aggfun, na.rm = TRUE)
+        cases_beta <- apply(cases, 1, aggfun, na.rm = TRUE)
     }
+    rm(cases)
 
     # Standard deviation
-    cases_sd   <- matrixStats::rowSds(cases, na.rm = TRUE)
-    controls_sd <- matrixStats::rowSds(ctrl, na.rm = TRUE)
+    cases_sd <- matrixStats::rowSds(cases, na.rm = TRUE)
 
     # Counts
-    cases_num   <- matrixStats::rowCounts(!is.na(cases))
+    cases_num <- matrixStats::rowCounts(!is.na(cases))
+
+    ctrl <- beta_values[, is_ctrl, drop = FALSE]
+    ctrl <- as.matrix(ctrl, ncol = ncol(ctrl))
+    # Aggregation
+    if (identical(aggfun, mean)) {
+        controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        controls_beta <- matrixStats::rowMedians(ctrl, na.rm = TRUE)
+    } else {
+        controls_beta <- apply(ctrl, 1, aggfun, na.rm = TRUE)
+    }
+    controls_sd <- matrixStats::rowSds(ctrl, na.rm = TRUE)
     controls_num <- matrixStats::rowCounts(!is.na(ctrl))
+    rm(ctrl)
+
     list(
         cases_beta = cases_beta,
         controls_beta = controls_beta,
@@ -1175,8 +1186,9 @@ findDMRsFromSeeds <- function(
             seeds_beta_list <- lapply(seeds_locs_list, function(loc_df) {
                 bigmemory::sub.big.matrix(
                     seeds_beta,
-                    firstRow = min(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE), 
-                    lastRow = max(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE))
+                    firstRow = min(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE),
+                    lastRow = max(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE)
+                )
             })
         } else {
             if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
@@ -1647,8 +1659,7 @@ findDMRsFromSeeds <- function(
             level = 1
         )
         filtered_dmrs <- adj_filtered_dmrs
-    } else 
-    {
+    } else {
         .log_info("Skipping adjusted seeds number calculation as min_adj_seeds <= min_seeds.", level = 2)
         filtered_dmrs$cpgs_num_bg <- NA
         filtered_dmrs$seeds_num_adj <- NA
