@@ -491,7 +491,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < length(row_names))) {
                     stop("Requested CpG sites not found in beta tabix file")
                 }
-                beta_subset <- as.data.frame(sapply(beta_subset[, 7:ncol(beta_subset), drop = FALSE], as.numeric))
+                beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]
+                print(head(beta_subset))
+                print(dim(beta_subset))
+                print(class(beta_subset))
+                print(beta_subset[1, ])
+                beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }

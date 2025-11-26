@@ -104,12 +104,6 @@ if (length(dmrs) > 0) {
 }
 ```
 
-## Plot DMRs interactions circos plot
-```{r plot_circos}
-if (length(dmrs) > 1) {
-    DMRsegal::plotDMRsCircos(dmrs, beta_handler, pheno, sample_group_col = "group", max_dmrs_per_chr = 10, max_cpgs_per_dmr = 5, max_interactions = 30)
-}
-```
 ## Session Info
 ```{r session_info}
 sessionInfo()

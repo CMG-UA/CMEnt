@@ -1107,8 +1107,11 @@ findDMRsFromSeeds <- function(
             nrow(seeds_locs)
         )
     }
-    # Diagnostic: identify any rows with all NA betas (should not happen with synthetic test data)
-    all.na.rows <- apply(seeds_beta, 1, function(r) all(is.na(r)))
+    if (bigmemory::is.big.matrix(seeds_beta)) {
+        all.na.rows <- biganalytics::apply(seeds_beta, 1, function(r) all(is.na(r)))
+    } else {
+        all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
+    }
     if (any(all.na.rows)) {
         stop(
             "Beta extraction failure: the following Seed rows have all NA beta values: ",
@@ -1156,11 +1159,19 @@ findDMRsFromSeeds <- function(
         seeds_locs_list <- seeds_locs_list[as.character(chromosomes)]
         seeds_inds_list <- split(seeds_inds, seeds_locs[, "chr"])
         seeds_inds_list <- seeds_inds_list[as.character(chromosomes)]
-
-        if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
-        storage.mode(seeds_beta) <- "double"
-        seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
-        seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
+        if (bigmemory::is.big.matrix(seeds_beta)) {
+            seeds_beta_list <- lapply(seeds_locs_list, function(loc_df) {
+                bigmemory::sub.big.matrix(
+                    seeds_beta,
+                    firstRow = min(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE), 
+                    lastRow = max(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE))
+            })
+        } else {
+            if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
+            storage.mode(seeds_beta) <- "double"
+            seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
+            seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
+        }
         fun <- function(chr, cseeds, cseeds_inds, cseeds_beta, cseeds_locs) {
             op <- options(warn = 2)$warn
             dmr_list <- vector("list", length = 128L)
