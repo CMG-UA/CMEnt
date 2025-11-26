@@ -1113,13 +1113,13 @@ findDMRsFromSeeds <- function(
     .log_info("Checking for seeds with all NA beta values...", level = 3)
     if (bigmemory::is.big.matrix(seeds_beta)) {
         beta_chunk_size <- beta_handler$getBetaChunkSize()
+        all.na.rows <- rep(FALSE, nrow(seeds_beta))
         for (start_row in seq(1, nrow(seeds_beta), by = beta_chunk_size)) {
             end_row <- min(start_row + beta_chunk_size - 1, nrow(seeds_beta))
             chunk <- bigmemory::sub.big.matrix(seeds_beta, firstRow = start_row, lastRow = end_row)
             chunk <- as.matrix(chunk)
             na_rows_chunk <- matrixStats::rowAlls(is.na(as.matrix(chunk)))
             if (any(na_rows_chunk)) {
-                all.na.rows <- rep(FALSE, nrow(seeds_beta))
                 all.na.rows[start_row:end_row][na_rows_chunk] <- TRUE
                 break
             }
