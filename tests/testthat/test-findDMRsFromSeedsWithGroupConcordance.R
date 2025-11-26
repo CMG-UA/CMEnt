@@ -45,7 +45,7 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         group_concordance_strategy = "strict",
         pval_mode = "parametric",
         annotate_with_genes = FALSE,
-        verbose = 1
+        verbose = 2
     )
 
     dmrs_relaxed <- findDMRsFromSeeds(
@@ -60,7 +60,7 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         group_concordance_strategy = "relaxed",
         pval_mode = "parametric",
         annotate_with_genes = FALSE,
-        verbose = 1
+        verbose = 2
     )
 
     strict_count <- if (is.null(dmrs_strict)) 0 else length(dmrs_strict)

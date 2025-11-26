@@ -406,7 +406,7 @@ dmrs <- findDMRsFromSeeds(
 
 ### `njobs`
 **Type:** Integer  
-**Default:** `getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))`  
+**Default:** `getOption("DMRsegal.njobs", min(4, future::availableCores() - 1))`  
 **Description:** Number of parallel jobs to use for computation.
 
 **Recommendation:**
@@ -610,8 +610,8 @@ DMRsegal uses several global options that can be set using the `options()` funct
 
 ### Option: `DMRsegal.njobs`
 **Type:** Integer  
-**Default:** `min(8, future::availableCores() - 1)`  
-**Description:** Default number of parallel jobs.
+**Default:** `min(4, future::availableCores() - 1)`  
+**Description:** Number of parallel jobs (defaults to the minimum of 4 and one less than the number of available CPU cores).
 
 ```{r}
 options("DMRsegal.njobs" = 4)

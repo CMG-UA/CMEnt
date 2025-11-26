@@ -718,7 +718,7 @@ findDMRsFromSeeds <- function(
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  njobs = getOption("DMRsegal.njobs", min(4, future::availableCores() - 1)),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   rank_dmrs = TRUE,
