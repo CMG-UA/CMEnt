@@ -180,7 +180,7 @@ dmrs <- findDMRsFromSeeds(
 **Default:** `1`  
 **Description:** Minimum number of connected seeds required in a DMR.
 
-**Recommendation:** Increase this value (e.g., to 2 or 3) for higher-confidence DMRs.
+**Recommendation:** Increase this value (e.g., to 3 or 4) for higher-confidence DMRs.
 
 **Example:**
 ```{r}
@@ -194,8 +194,8 @@ dmrs <- findDMRsFromSeeds(
 
 ### `min_adj_seeds`
 **Type:** Integer  
-**Default:** `1`  
-**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data.
+**Default:** `2`  
+**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. Minimum 2. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data. Only used when min_seeds < min_adj_seeds.
 
 **Example:**
 ```{r}
@@ -210,7 +210,7 @@ dmrs <- findDMRsFromSeeds(
 ### `min_cpgs`
 **Type:** Integer  
 **Default:** `50`  
-**Description:** Minimum number of CpGs required in a DMR after region expansion.
+**Description:** Minimum number of CpGs required in a DMR after region expansion. Minimum 2.
 
 **Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep higher (50+) for WGBS data.
 

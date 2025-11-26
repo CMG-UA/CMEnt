@@ -5,9 +5,9 @@ library(DMRsegal)
 option_list <- list(
     make_option("--beta", help = "The beta file, with row names the CpGs. Can also be a tabix indexed file or a bed file with at least `bed_chrom_col` and `bed_start_col` columns set, followed by samples with methylation values."),
     make_option("--seeds_file", help = "The seeds tsv file, with row names the seeds."),
-    make_option("--min_seeds", default = 1, type = "integer", help = "The minimum supporting seeds per DMR, defaults to 1"),
-    make_option("--min_adj_seeds", default = 1, type = "integer", help = "The minimum supporting seeds per DMR, after adjusted by underlying CpG content, defaults to 1"),
-    make_option("--min_cpgs", default = 50, type = "integer", help = "The minimum number of the beta file rows (the listed CpGs) per DMR, defaults to 50"),
+    make_option("--min_seeds", default = 2, type = "integer", help = "The minimum supporting seeds per DMR, minimum 2, defaults to 2"),
+    make_option("--min_adj_seeds", default = 2, type = "integer", help = "The minimum supporting seeds per DMR, after adjusted by underlying CpG content, minimum 2,defaults to 2"),
+    make_option("--min_cpgs", default = 50, type = "integer", help = "The minimum number of the beta file rows (the listed CpGs) per DMR, minimum 2, defaults to 50"),
     make_option("--max_lookup_dist", default = 10000, type = "integer", help = "The maximum distance from one seed to another to consider belinging in the same DMR, defaults to 10000 (10kb)"),
     make_option("--min_cpg_delta_beta", default = 0, type = "double", help = "The minimum CpG delta beta during DMR expansion, to filter CpGs based on delta beta, optional."),
     make_option("--ignored_sample_groups", default = NULL, help = "The sample groups to ignore while considering connection and expansion, comma separated. Can also be 'case' or 'control'."),
