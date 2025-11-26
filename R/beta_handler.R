@@ -419,37 +419,37 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 )
                 return(beta_subset)
             }
-            if (check_mem){
-            first_row <- if (!is.null(private$.beta_file)) {
-                data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
-            } else {
-                if (is.null(row_names)) {
-                    locs <- self$getBetaLocs()
+            if (check_mem) {
+                first_row <- if (!is.null(private$.beta_file)) {
+                    data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
                 } else {
-                    locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                    if (is.null(row_names)) {
+                        locs <- self$getBetaLocs()
+                    } else {
+                        locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                    }
+                    region_first <- data.frame(
+                        chr = as.character(locs[1, "chr"]),
+                        start = as.integer(locs[1, "start"]),
+                        end = as.integer(locs[1, "end"])
+                    )
+                    bedr::tabix(region_first, private$.tabix_file,
+                        check.valid = FALSE,
+                        check.sort = FALSE, check.chr = FALSE, verbose = FALSE
+                    )
                 }
-                region_first <- data.frame(
-                    chr = as.character(locs[1, "chr"]),
-                    start = as.integer(locs[1, "start"]),
-                    end = as.integer(locs[1, "end"])
-                )
-                bedr::tabix(region_first, private$.tabix_file,
-                    check.valid = FALSE,
-                    check.sort = FALSE, check.chr = FALSE, verbose = FALSE
-                )
-            }
 
-            n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
-            estimated_size_mb <- as.numeric(object.size(first_row)) * n_rows / (1024^2)
-            mem_thres <- getOption("DMRsegal.subset_beta_as_bigmem_mb", 500)
-            if (estimated_size_mb > mem_thres) {
-                .log_info("Estimated size (", round(estimated_size_mb, 1),
-                    " MB) exceeds threshold. Loading to big.matrix...",
-                    level = 3
-                )
-                chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
-                return(private$.loadToBigMatrix(row_names, col_names, allow_missing, chunk_size))
-            }
+                n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
+                estimated_size_mb <- as.numeric(object.size(first_row)) * n_rows / (1024^2)
+                mem_thres <- getOption("DMRsegal.subset_beta_as_bigmem_mb", 500)
+                if (estimated_size_mb > mem_thres) {
+                    .log_info("Estimated size (", round(estimated_size_mb, 1),
+                        " MB) exceeds threshold. Loading to big.matrix...",
+                        level = 3
+                    )
+                    chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
+                    return(private$.loadToBigMatrix(row_names, col_names, allow_missing, chunk_size))
+                }
             }
 
             if (!is.null(private$.beta_file)) {
@@ -492,10 +492,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     stop("Requested CpG sites not found in beta tabix file")
                 }
                 beta_subset <- beta_subset[, 7:ncol(beta_subset), drop = FALSE]
-                print(head(beta_subset))
-                print(dim(beta_subset))
-                print(class(beta_subset))
-                print(beta_subset[1, ])
                 beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
@@ -534,9 +530,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 backingfile = basename(temp_file), backingpath = dirname(temp_file),
                 descriptorfile = paste0(basename(temp_file), ".desc")
             )
-            options(bigmemory.allow.dimnames=TRUE)
+            options(bigmemory.allow.dimnames = TRUE)
             if (!is.null(private$.beta_file)) {
-
                 chunks <- split(seq_along(row_names), ceiling(seq_along(row_names) / chunk_size))
                 for (chunk_idx in seq_along(chunks)) {
                     chunk_rows <- row_names[chunks[[chunk_idx]]]
