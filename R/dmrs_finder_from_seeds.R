@@ -104,7 +104,8 @@
 
 
 .buildConnectivityArray <- function(
-  beta_handler, group_inds, max_pval = 0.05, min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+  beta_handler, group_inds, max_pval = 0.05,
+  min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
   chunk_size = 1000,
   group_concordance_strategy = "strict",
   aggfun = median, empirical_strategy = "auto",
@@ -129,6 +130,8 @@
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits))
     }
+    gc()
+    setupParallel()
     ret <- future.apply::future_lapply(
         X = seq_len(nrow(splits)),
         future.seed = TRUE,
@@ -153,10 +156,10 @@
             split <- splits[split_ind, ]
             beta_locs <- beta_handler$getBetaLocs()
             if (!bigmemory::is.big.matrix(beta_locs)) {
-                chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]])
+                chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = T)
             } else {
                 chunk_beta <- beta_handler$getBeta(
-                    row_names = split[1]:split[2]
+                    row_names = split[1]:split[2], check_mem = T
                 )
             }
             x <- .testConnectivityBatch(
@@ -190,6 +193,7 @@
             x
         }
     )
+    clearParallel()
     do.call(rbind, ret)
 }
 
@@ -654,6 +658,33 @@
     )
 }
 
+setupParallel <- function() {
+    njobs <- getOption("DMRsegal.njobs")
+    if (njobs < 0) {
+        njobs <- future::availableCores() + njobs
+    }
+    old_globals_maxsize <- getOption("future.globals.maxSize", 0)
+    options(future.globals.maxSize = Inf)
+    withr::defer(options(future.globals.maxSize = old_globals_maxsize))
+    if (njobs > 1) {
+        if (future::availableCores("multicore") > 1L) {
+            .log_info("Using multicore parallelization with ", njobs, " workers", level = 1)
+            future::plan(future::multicore, workers = njobs)
+        } else {
+            .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
+            future::plan(future::multisession, workers = njobs)
+        }
+        withr::defer(future::plan(future::sequential))
+    } else {
+        .log_info("Using sequential processing (njobs=1)", level = 1)
+        future::plan(future::sequential)
+    }
+}
+clearParallel <- function() {
+    future::plan(future::sequential)
+}
+
+
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
 #'
 #' This function identifies DMRs from a given set of seeds and a beta value file.
@@ -745,36 +776,9 @@ findDMRsFromSeeds <- function(
     options(DMRsegal.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
     # Set up future plan for parallel processing
-    if (njobs < 0) {
-        njobs <- future::availableCores() + njobs
-    }
-    old_globals_maxsize <- getOption("future.globals.maxSize", 0)
-    if (njobs > 1) {
-        if (future::availableCores("multicore") > 1L) {
-            .log_info("Using multicore parallelization with ", njobs, " workers", level = 1)
-            future::plan(future::multicore, workers = njobs)
-        } else {
-            .log_info("Using multisession parallelization with ", njobs, " workers", level = 1)
-            future::plan(future::multisession, workers = njobs)
-        }
-        withr::defer(future::plan(future::sequential))
-        # if version of future.apply is less than 1.20.0-9003, set maxsize to Inf (due to a bug in that package)
-        if (utils::packageVersion("future.apply") < "1.20.0-9003") {
-            .log_info("Setting future.globals.maxSize to Inf due to future.apply version < 1.20.0-9003 (see https://github.com/futureverse/future.apply/issues/126)", level = 2)
-            options(future.globals.maxSize = Inf)
-            withr::defer(options(future.globals.maxSize = old_globals_maxsize))
-        } else {
-            mem_thres <- getOption("DMRsegal.beta_in_mem_threshold_mb", 500)
-            globals_maxsize <- max(max(mem_thres * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
-            .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
-            options(future.globals.maxSize = globals_maxsize)
-        }
-    } else {
-        .log_info("Using sequential processing (njobs=1)", level = 1)
-        future::plan(future::sequential)
-        options(future.globals.maxSize = Inf)
-    }
-    withr::defer(options(future.globals.maxSize = old_globals_maxsize))
+
+    options("DMRsegal.njobs" = njobs)
+
 
     if (is.null(seeds) || is.null(pheno)) {
         stop("seeds and pheno parameters are required")
@@ -1049,7 +1053,7 @@ findDMRsFromSeeds <- function(
 
     .log_step("Subsetting beta matrix for seeds...", level = 2)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
-    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names)
+    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names, check_mem = TRUE)
     if (!is.null(output_prefix)) {
         seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
     }
@@ -1223,6 +1227,7 @@ findDMRsFromSeeds <- function(
                 )
             })
         } else {
+            setupParallel()
             ret <- future.apply::future_mapply(
                 chromosomes,
                 seeds_list,
@@ -1253,6 +1258,7 @@ findDMRsFromSeeds <- function(
                 ),
                 FUN = fun
             )
+            clearParallel()
         }
 
         if (inherits(ret[[1]], "try-error")) {
@@ -1353,7 +1359,7 @@ findDMRsFromSeeds <- function(
             chr_locs <- beta_locs[chr_mask, , drop = FALSE]
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
-
+        setupParallel()
         chr_ret <- future.apply::future_apply(
             X = chr_dmrs,
             MARGIN = 1,
@@ -1386,6 +1392,7 @@ findDMRsFromSeeds <- function(
                 "p_ext"
             )
         )
+        clearParallel()
         .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
     }
@@ -1775,6 +1782,6 @@ findDMRsFromSeeds <- function(
         .log_success("DMRs saved.", level = 2)
     }
 
-
+    gc()
     invisible(final_dmrs_granges)
 }
