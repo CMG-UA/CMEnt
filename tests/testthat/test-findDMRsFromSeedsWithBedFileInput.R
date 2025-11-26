@@ -65,7 +65,6 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -123,7 +122,6 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -175,7 +173,6 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -274,7 +271,6 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -328,7 +324,6 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 

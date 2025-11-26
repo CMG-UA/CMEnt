@@ -38,7 +38,6 @@ test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE,
         verbose = 0
     )

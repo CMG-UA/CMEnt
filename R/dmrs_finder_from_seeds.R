@@ -38,7 +38,6 @@
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.
-#' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
@@ -682,7 +681,6 @@
 #' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
-#' @param memory_threshold_mb Numeric. Memory threshold in MB for loading beta files. Default is 500.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
 #' @param rank_dmrs Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.
@@ -721,7 +719,6 @@ findDMRsFromSeeds <- function(
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  memory_threshold_mb = 500,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   rank_dmrs = TRUE,
@@ -767,7 +764,8 @@ findDMRsFromSeeds <- function(
             options(future.globals.maxSize = Inf)
             withr::defer(options(future.globals.maxSize = old_globals_maxsize))
         } else {
-            globals_maxsize <- max(max(memory_threshold_mb * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
+            mem_thres <- getOption("DMRsegal.beta_in_mem_threshold_mb", 500)
+            globals_maxsize <- max(max(mem_thres * 10 * 1024^2, old_globals_maxsize, na.rm = TRUE), 1024^2 * 500) # at least 500 MB
             .log_info("Setting future.globals.maxSize to ", globals_maxsize / 1024^2, " MB", level = 2)
             options(future.globals.maxSize = globals_maxsize)
         }
@@ -900,7 +898,6 @@ findDMRsFromSeeds <- function(
             beta = beta,
             beta_row_names_file = beta_row_names_file,
             njobs = njobs,
-            memory_threshold_mb = memory_threshold_mb,
             sorted_locs = beta_locs,
             array = array,
             genome = genome

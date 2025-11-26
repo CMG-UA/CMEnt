@@ -31,7 +31,7 @@ This vignette provides a comprehensive guide to the configuration available in D
 **Required:** Yes  
 **Description:** Input methylation data. Can be:
 
-- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `memory_threshold_mb` or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
+- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("DMRsegal.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
 - A beta matrix with CpG IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
@@ -424,22 +424,6 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `memory_threshold_mb`
-**Type:** Integer  
-**Default:** `500`  
-**Unit:** Megabytes  
-**Description:** Memory threshold for loading beta files. Files smaller than this will be loaded into memory.
-
-**Example:**
-```{r}
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno,
-    memory_threshold_mb = 1000
-)
-```
-
 ### `verbose`
 **Type:** Integer  
 **Range:** 0 to 5  
@@ -616,13 +600,15 @@ dmrs <- findDMRsFromSeeds(
 ### `.load_debug`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Enable debug mode for loading beta files. For internal development use only.
+**Description:** Enable debug mode for loading intermediate files, through short-circuiting. For internal development use only.
 
 # Global Package Options
 
 DMRsegal uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
 
-## Option: `DMRsegal.njobs`
+## Parallelism
+
+### Option: `DMRsegal.njobs`
 **Type:** Integer  
 **Default:** `min(8, future::availableCores() - 1)`  
 **Description:** Default number of parallel jobs.
@@ -631,7 +617,9 @@ DMRsegal uses several global options that can be set using the `options()` funct
 options("DMRsegal.njobs" = 4)
 ```
 
-## Option: `DMRsegal.verbose`
+## Verbosity
+
+### Option: `DMRsegal.verbose`
 **Type:** Integer  
 **Default:** `1`  
 **Description:** Default verbosity level.
@@ -640,106 +628,9 @@ options("DMRsegal.njobs" = 4)
 options("DMRsegal.verbose" = 2)
 ```
 
-## Option: `DMRsegal.use_bed_cache`
-**Type:** Logical  
-**Default:** `FALSE`  
-**Description:** Enable caching of BED file conversions.
+## Reproducibility
 
-```{r}
-options("DMRsegal.use_bed_cache" = TRUE)
-```
-
-## Option: `DMRsegal.bed_cache_dir`
-**Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/bed_cache`  
-**Description:** Directory for BED file cache.
-
-```{r}
-options("DMRsegal.bed_cache_dir" = "/path/to/cache")
-```
-
-## Option: `DMRsegal.use_tabix_cache`
-**Type:** Logical  
-**Default:** `FALSE`  
-**Description:** Enable caching of tabix-indexed files.
-
-```{r}
-options("DMRsegal.use_tabix_cache" = TRUE)
-```
-
-## Option: `DMRsegal.tabix_cache_dir`
-**Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
-**Description:** Directory for tabix file cache.
-
-```{r}
-options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
-```
-
-## Option: `DMRsegal.use_annotation_cache`
-**Type:** Logical  
-**Default:** `TRUE`  
-**Description:** Enable caching of gene annotations.
-
-```{r}
-options("DMRsegal.use_annotation_cache" = TRUE)
-```
-
-## Option: `DMRsegal.annotation_cache_dir`
-**Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/annotation_cache`  
-**Description:** Directory for annotation cache.
-
-```{r}
-options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
-```
-
-## Option: `DMRsegal.jaspar_cache_dir`
-**Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/jaspar_cache`  
-**Description:** Directory for JASPAR motif database cache.
-
-```{r}
-options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
-```
-
-## Option: `DMRsegal.jaspar_version`
-**Type:** Integer  
-**Default:** `2024`  
-**Description:** JASPAR database version to use for motif analysis.
-
-```{r}
-options("DMRsegal.jaspar_version" = 2024)
-```
-
-## Option: `DMRsegal.jaspar_tax_group`
-**Type:** Character  
-**Default:** `"vertebrates"`  
-**Description:** Taxonomic group for JASPAR motif filtering.
-
-```{r}
-options("DMRsegal.jaspar_tax_group" = "vertebrates")
-```
-
-## Option: `DMRsegal.jaspar_corr_threshold`
-**Type:** Numeric  
-**Default:** `0.9`  
-**Description:** Correlation threshold for JASPAR motif similarity.
-
-```{r}
-options("DMRsegal.jaspar_corr_threshold" = 0.85)
-```
-
-## Option: `DMRsegal.make_debug_dir`
-**Type:** Logical  
-**Default:** `FALSE`  
-**Description:** Create debug directory for troubleshooting.
-
-```{r}
-options("DMRsegal.make_debug_dir" = TRUE)
-```
-
-## Option: `DMRsegal.random_seed`
+### Option: `DMRsegal.random_seed`
 **Type:** Integer  
 **Default:** `42`  
 **Description:** Random seed for reproducibility.
@@ -748,22 +639,146 @@ options("DMRsegal.make_debug_dir" = TRUE)
 options("DMRsegal.random_seed" = 123)
 ```
 
-## Option: `DMRsegal.ranking_nfold`
+
+## Memory Management
+
+### Option: `DMRsegal.beta_in_mem_threshold_mb`
+**Type:** Integer  
+**Default:** `500`  
+**Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
+```{r}
+options("DMRsegal.beta_in_mem_threshold_mb" = 200)
+```
+
+### Option: `DMRsegal.subset_beta_as_bigmem_mb`
+**Type:** Integer  
+**Default:** `200`  
+**Description:** Maximum size (in Megabytes) of beta files to subset into memory during processing. If the beta file exceeds this size, it will be loaded into `bigmemory::big.matrix` structures.
+```{r}
+options("DMRsegal.subset_beta_as_bigmem_mb" = 100)
+```
+
+## Caching
+
+### Option: `DMRsegal.use_bed_cache`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Enable caching of BED file conversions. Useful for repeated analyses (e.g., with different parameters) of large datasets.
+
+```{r}
+options("DMRsegal.use_bed_cache" = TRUE)
+```
+
+### Option: `DMRsegal.bed_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/bed_cache`  
+**Description:** Directory for BED file cache.
+
+```{r}
+options("DMRsegal.bed_cache_dir" = "/path/to/cache")
+```
+
+### Option: `DMRsegal.use_tabix_cache`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Enable caching of tabix-indexed files. Useful for repeated analyses (e.g., with different parameters) of large datasets.
+
+```{r}
+options("DMRsegal.use_tabix_cache" = TRUE)
+```
+
+### Option: `DMRsegal.tabix_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
+**Description:** Directory for tabix file cache.
+
+```{r}
+options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
+```
+
+### Option: `DMRsegal.use_annotation_cache`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** Enable caching of gene annotations.
+
+```{r}
+options("DMRsegal.use_annotation_cache" = TRUE)
+```
+
+### Option: `DMRsegal.annotation_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/annotation_cache`  
+**Description:** Directory for annotation cache.
+
+```{r}
+options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
+```
+
+### Option: `DMRsegal.jaspar_cache_dir`
+**Type:** Character  
+**Default:** `~/.cache/R/DMRsegal/jaspar_cache`  
+**Description:** Directory for JASPAR motif database cache.
+
+```{r}
+options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
+```
+
+## Motif Analysis
+
+### Option: `DMRsegal.jaspar_version`
+**Type:** Integer  
+**Default:** `2024`  
+**Description:** JASPAR database version to use for motif analysis.
+
+```{r}
+options("DMRsegal.jaspar_version" = 2024)
+```
+
+### Option: `DMRsegal.jaspar_tax_group`
+**Type:** Character  
+**Default:** `"vertebrates"`  
+**Description:** Taxonomic group for JASPAR motif filtering.
+
+```{r}
+options("DMRsegal.min_motif_similarity" = 0.75)
+```
+
+### Option: `DMRsegal.min_motif_similarity`
+**Type:** Numeric  
+**Default:** `0.8`  
+**Description:** Minimum motif similarity threshold for DMR interaction analysis.
+
+```{r}
+options("DMRsegal.jaspar_tax_group" = "vertebrates")
+```
+
+### Option: `DMRsegal.jaspar_corr_threshold`
+**Type:** Numeric  
+**Default:** `0.9`  
+**Description:** Correlation threshold for JASPAR motif similarity.
+
+```{r}
+options("DMRsegal.jaspar_corr_threshold" = 0.85)
+```
+
+### Option: `DMRsegal.make_debug_dir`
+**Type:** Logical  
+**Default:** `FALSE`  
+**Description:** Create debug directory for troubleshooting.
+
+```{r}
+options("DMRsegal.make_debug_dir" = TRUE)
+```
+
+## DMR Ranking
+
+### Option: `DMRsegal.ranking_nfold`
 **Type:** Integer  
 **Default:** `5`  
 **Description:** Number of folds for cross-validation when ranking DMRs.
 
 ```{r}
 options("DMRsegal.ranking_nfold" = 3)
-```
-
-## Option: `DMRsegal.min_motif_similarity`
-**Type:** Numeric  
-**Default:** `0.8`  
-**Description:** Minimum motif similarity threshold for DMR interaction analysis.
-
-```{r}
-options("DMRsegal.min_motif_similarity" = 0.75)
 ```
 
 # Configuration Examples
@@ -830,7 +845,6 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
-    memory_threshold_mb = 500,
     expansion_step = 1000,
     njobs = 4
 )
@@ -879,7 +893,7 @@ dmrs <- findDMRsFromSeeds(
 
 **Solution:**
 - Decrease `njobs`
-- Decrease `memory_threshold_mb` to enable disk-based processing
+- Decrease `getOption("DMRsegal.beta_in_mem_threshold_mb")` (default 500) to enable disk-based processing
 - Use tabix-indexed files for very large datasets
 - Enable caching options
 

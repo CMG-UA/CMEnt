@@ -18,7 +18,6 @@ test_that("findDMRsFromSeeds works with relaxed group concordance strategy", {
         max_lookup_dist = 1000,
         group_concordance_strategy = "relaxed",
         pval_mode = "parametric",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE,
         verbose = 2
     )
@@ -45,7 +44,6 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         max_lookup_dist = 1000,
         group_concordance_strategy = "strict",
         pval_mode = "parametric",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE,
         verbose = 1
     )
@@ -61,7 +59,6 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         max_lookup_dist = 1000,
         group_concordance_strategy = "relaxed",
         pval_mode = "parametric",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE,
         verbose = 1
     )
@@ -91,7 +88,6 @@ test_that("group_concordance_strategy works with empirical p-value mode", {
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE,
         verbose = 1
     )
@@ -117,8 +113,7 @@ test_that("group_concordance_strategy parameter validates correctly", {
             seeds = dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
-            group_concordance_strategy = "invalid",
-            memory_threshold_mb = 500
+            group_concordance_strategy = "invalid"
         ),
         "should be one of"
     )

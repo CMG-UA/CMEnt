@@ -18,7 +18,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "parametric",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -35,7 +34,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -52,7 +50,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -69,7 +66,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "permutations",
         ntries = 100,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -108,7 +104,6 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
     options("DMRsegal.random_seed" = 42)
@@ -124,7 +119,6 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
     # Run with different seed
@@ -141,7 +135,6 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -174,7 +167,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 0,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -190,7 +182,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 50,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -206,7 +197,6 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 200,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 

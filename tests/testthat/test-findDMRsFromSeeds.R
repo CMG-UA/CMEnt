@@ -6,7 +6,8 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
-    # Run findDMRsFromSeeds with memory_threshold_mb=500 (small file loaded in memory)
+    # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
+    setOption("DMRsegal.beta_in_mem_threshold_mb", 500)
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
@@ -16,7 +17,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500, # allows in-memory loading
         verbose = 2
     )
 
@@ -38,6 +38,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     withr::defer(unlink(sorted_beta_file))
     options("DMRsegal.verbose" = 2)
     options("DMRsegal.use_tabix_cache" = FALSE)
+    setOption("DMRsegal.beta_in_mem_threshold_mb", 1)
 
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
@@ -48,8 +49,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        njobs = 1,
-        memory_threshold_mb = 0.01
+        njobs = 1
     )
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
@@ -98,8 +98,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         max_lookup_dist = 10000,
         max_pval = 0.05,
         pval_mode = "parametric",
-        njobs = 1,
-        memory_threshold_mb = 500
+        njobs = 1
     )
 
     # Assertions
@@ -127,7 +126,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_seeds = 5, # Stricter
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -141,7 +139,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_seeds = 2, # More lenient
         min_cpgs = 2, # More lenient
         max_lookup_dist = 2000, # Larger distance
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -156,7 +153,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         max_pval = 0.01, # Stricter p-value
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -196,7 +192,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "median",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -211,7 +206,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         aggfun = "mean",
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -241,7 +235,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -256,7 +249,6 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_cpgs = 3,
         min_cpg_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
         annotate_with_genes = FALSE
     )
 
@@ -328,8 +320,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         sample_group_col = "Sample_Group",
         min_seeds = 2,
         min_cpgs = 3,
-        max_lookup_dist = 1000,
-        memory_threshold_mb = 500
+        max_lookup_dist = 1000
     )
 
     # Assertions
@@ -349,6 +340,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
     options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.verbose" = 2)
+    setOption("DMRsegal.beta_in_mem_threshold_mb", 0.1)
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
@@ -358,7 +350,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         min_seeds = 1,
         min_cpgs = 2,
         max_lookup_dist = 1000,
-        memory_threshold_mb = 0.1,
         annotate_with_genes = FALSE
     )
 

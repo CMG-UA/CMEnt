@@ -4,14 +4,12 @@ test_that("getBeta returns big.matrix when size exceeds threshold with file inpu
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
         genome = "hg19",
-        memory_threshold_mb = 0.1,
     )
-    
     row_names_subset <- rownames(beta)[1:100]
     result <- beta_handler$getBeta(row_names = row_names_subset)
     
@@ -28,12 +26,11 @@ test_that("getBeta returns regular matrix when size below threshold", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 100)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
-        genome = "hg19",
-        memory_threshold_mb = 100,
+        genome = "hg19"
     )
     
     row_names_subset <- rownames(beta)[1:100]
@@ -52,22 +49,20 @@ test_that("getBeta big.matrix has correct values", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
-        genome = "hg19",
-        memory_threshold_mb = 0.1,
+        genome = "hg19"
     )
     
     row_names_subset <- rownames(beta)[1:10]
     result_big <- beta_handler$getBeta(row_names = row_names_subset)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 100)
     beta_handler_normal <- getBetaHandler(
         beta = temp_file,
         array = "450K",
-        genome = "hg19",
-        memory_threshold_mb = 0.1
+        genome = "hg19"
     )
     result_normal <- beta_handler_normal$getBeta(row_names = row_names_subset)
     
@@ -82,12 +77,11 @@ test_that("getBeta big.matrix with column subset", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
-        genome = "hg19",
-        memory_threshold_mb = 0.1
+        genome = "hg19"
     )
     
     row_names_subset <- rownames(beta)[1:50]
@@ -108,12 +102,11 @@ test_that("getBeta big.matrix handles all rows", {
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
     write.table(beta_df, temp_file, sep = "\t", row.names = FALSE, quote = FALSE)
-    
+    setOption("DMRsegal.subset_beta_as_bigmem_mb", 1)
     beta_handler <- getBetaHandler(
         beta = temp_file,
         array = "450K",
-        genome = "hg19",
-        memory_threshold_mb  = 0.1
+        genome = "hg19"
     )
     
     result <- beta_handler$getBeta()

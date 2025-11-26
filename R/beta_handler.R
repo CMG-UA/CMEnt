@@ -25,8 +25,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         beta_row_names_file = NULL,
         #' @field sorted_locs Sorted genomic locations
         sorted_locs = NULL,
-        #' @field memory_threshold_mb Memory threshold in MB
-        memory_threshold_mb = 500,
         #' @field njobs Number of parallel jobs
         njobs = 1,
         #' @description Create a new BetaHandler object
@@ -35,7 +33,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.
         #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
-        #' @param memory_threshold_mb Memory threshold in MB
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
@@ -43,7 +40,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               genome = "hg19",
                               beta_row_names_file = NULL,
                               sorted_locs = NULL,
-                              memory_threshold_mb = 500,
                               njobs = 1) {
             # Validate inputs
             if (is.null(beta)) {
@@ -77,7 +73,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             self$sorted_locs <- sorted_locs
             private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
-            self$memory_threshold_mb <- memory_threshold_mb
 
             # Initialize private fields
             private$.beta_col_names <- NULL
@@ -116,7 +111,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 # Check file size
                 file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
-                if (file_size_mb < self$memory_threshold_mb) {
+                mem_thres <- getOption("DMRsegal.beta_in_mem_threshold_mb", 500)
+                if (file_size_mb < mem_thres) {
                     .log_step(
                         "Beta file is small (", round(file_size_mb, 1),
                         " MB). Loading into memory for faster access..."
@@ -382,10 +378,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
         #' @param allow_missing Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)
-        #' @return Matrix of beta values, or big.matrix if estimated size exceeds memory_threshold_mb
-        getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
+        #' @param check_mem Logical. If TRUE, checks memory usage and may return a big.matrix if size exceeds threshold (default: TRUE)
+        #' @return Matrix of beta values, or big.matrix if estimated size exceeds mem_thres
+        getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, check_mem = FALSE) {
             self$validate()
-
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (!is.null(row_names)) {
@@ -423,7 +419,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 )
                 return(beta_subset)
             }
-
+            if (check_mem){
             first_row <- if (!is.null(private$.beta_file)) {
                 data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
             } else {
@@ -445,14 +441,15 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
             n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
             estimated_size_mb <- as.numeric(object.size(first_row)) * n_rows / (1024^2)
-
-            if (estimated_size_mb > self$memory_threshold_mb) {
-                .log_step("Estimated size (", round(estimated_size_mb, 1),
+            mem_thres <- getOption("DMRsegal.subset_beta_as_bigmem_mb", 500)
+            if (estimated_size_mb > mem_thres) {
+                .log_info("Estimated size (", round(estimated_size_mb, 1),
                     " MB) exceeds threshold. Loading to big.matrix...",
                     level = 3
                 )
-                chunk_size <- max(2, ceiling(self$memory_threshold_mb * 1024^2 / as.numeric(object.size(first_row))))
+                chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
                 return(private$.loadToBigMatrix(row_names, col_names, allow_missing, chunk_size))
+            }
             }
 
             if (!is.null(private$.beta_file)) {
@@ -595,7 +592,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. **Ignored** if sorted_locs have been provided.
 #' @param beta_row_names_file Path to row names file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.
-#' @param memory_threshold_mb Memory threshold in MB
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
 #'
@@ -619,7 +615,6 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
-                           memory_threshold_mb = 500,
                            njobs = 1) {
     if (inherits(beta, "BetaHandler")) {
         .log_warn("Provided beta is already a BetaHandler instance. Returning it directly.")
@@ -630,7 +625,6 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         array = array,
         genome = genome,
         beta_row_names_file = beta_row_names_file,
-        memory_threshold_mb = memory_threshold_mb,
         njobs = njobs,
         sorted_locs = sorted_locs
     ))
