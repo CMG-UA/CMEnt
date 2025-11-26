@@ -10,7 +10,6 @@ getBetaHandler(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   beta_row_names_file = NULL,
   sorted_locs = NULL,
-  memory_threshold_mb = 500,
   njobs = 1
 )
 }
@@ -24,8 +23,6 @@ getBetaHandler(
 \item{beta_row_names_file}{Path to row names file}
 
 \item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.}
-
-\item{memory_threshold_mb}{Memory threshold in MB}
 
 \item{njobs}{Number of parallel jobs}
 }

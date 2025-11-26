@@ -21,8 +21,6 @@ with support for in-memory loading, tabix indexing, and various file formats.
 
 \item{\code{sorted_locs}}{Sorted genomic locations}
 
-\item{\code{memory_threshold_mb}}{Memory threshold in MB}
-
 \item{\code{njobs}}{Number of parallel jobs}
 }
 \if{html}{\out{</div>}}
@@ -53,7 +51,6 @@ Create a new BetaHandler object
   genome = "hg19",
   beta_row_names_file = NULL,
   sorted_locs = NULL,
-  memory_threshold_mb = 500,
   njobs = 1
 )}\if{html}{\out{</div>}}
 }
@@ -70,8 +67,6 @@ Create a new BetaHandler object
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 
 \item{\code{sorted_locs}}{Sorted genomic locations data frame. If NULL, will be retrieved automatically}
-
-\item{\code{memory_threshold_mb}}{Memory threshold in MB}
 
 \item{\code{njobs}}{Number of parallel jobs}
 }
@@ -165,7 +160,12 @@ Data frame of genomic locations
 \subsection{Method \code{getBeta()}}{
 Extract beta values for specific CpG sites and samples
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(row_names = NULL, col_names = NULL, allow_missing = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(
+  row_names = NULL,
+  col_names = NULL,
+  allow_missing = FALSE,
+  check_mem = FALSE
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -176,11 +176,13 @@ Extract beta values for specific CpG sites and samples
 \item{\code{col_names}}{Character vector of sample IDs to extract (default: NULL for all)}
 
 \item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
+
+\item{\code{check_mem}}{Logical. If TRUE, checks memory usage and may return a big.matrix if size exceeds threshold (default: TRUE)}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-Matrix of beta values
+Matrix of beta values, or big.matrix if estimated size exceeds mem_thres
 }
 }
 \if{html}{\out{<hr>}}

@@ -47,7 +47,6 @@ findDMRsFromSeeds(
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  memory_threshold_mb = 500,
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   rank_dmrs = TRUE,
@@ -102,11 +101,9 @@ findDMRsFromSeeds(
 
 \item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
 
-\item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
+\item{ignored_sample_groups}{Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.}
 
 \item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
-
-\item{memory_threshold_mb}{Numeric. Memory threshold in MB for loading beta files. Default is 500.}
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
