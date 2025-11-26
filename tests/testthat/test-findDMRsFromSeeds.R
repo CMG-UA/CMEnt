@@ -7,7 +7,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
-    setOption("DMRsegal.beta_in_mem_threshold_mb", 500)
+    options("DMRsegal.beta_in_mem_threshold_mb" = 500)
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
@@ -38,7 +38,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     withr::defer(unlink(sorted_beta_file))
     options("DMRsegal.verbose" = 2)
     options("DMRsegal.use_tabix_cache" = FALSE)
-    setOption("DMRsegal.beta_in_mem_threshold_mb", 1)
+    options("DMRsegal.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
@@ -340,7 +340,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
     options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.verbose" = 2)
-    setOption("DMRsegal.beta_in_mem_threshold_mb", 0.1)
+    options("DMRsegal.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
