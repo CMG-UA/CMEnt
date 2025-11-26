@@ -30,9 +30,9 @@
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
-#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Default is 1.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
+#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
@@ -727,9 +727,9 @@ clearParallel <- function() {
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
-#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Default is 1.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
+#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
@@ -765,8 +765,8 @@ findDMRsFromSeeds <- function(
   ntries = 200L,
   mid_p = FALSE,
   max_lookup_dist = 10000,
-  min_seeds = 1,
-  min_adj_seeds = 1,
+  min_seeds = 2,
+  min_adj_seeds = 2,
   min_cpgs = 50,
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
@@ -941,7 +941,17 @@ findDMRsFromSeeds <- function(
     }
     stopifnot(!is.null(max_pval))
     stopifnot(!is.null(min_seeds))
+    if (min_seeds < 2) {
+        stop("min_seeds must be at least 2, to define a DMR")
+    }
     stopifnot(!is.null(min_cpgs))
+    if (min_cpgs < 2) {
+        stop("min_cpgs must be at least 2, to define a DMR")
+    }
+    stopifnot(!is.null(min_adj_seeds))
+    if (min_adj_seeds < 2) {
+        stop("min_adj_seeds must be at least 2, to define a DMR")
+    }
     stopifnot(!is.null(expansion_step))
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
@@ -1542,7 +1552,7 @@ findDMRsFromSeeds <- function(
         agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
-    agg_df[, "sup_cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
+    agg_df[, "cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
     agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
@@ -1566,7 +1576,7 @@ findDMRsFromSeeds <- function(
     if (min_cpgs > 1 || min_seeds > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
             GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
-                GenomicRanges::mcols(merged_dmrs_ranges)$sup_cpgs_num >= min_cpgs
+                GenomicRanges::mcols(merged_dmrs_ranges)$cpgs_num >= min_cpgs
         ]
         .log_info(
             "Keeping ",
@@ -1587,14 +1597,14 @@ findDMRsFromSeeds <- function(
     colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
 
 
-
+    filtered_dmrs$cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
     if (min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
-        filtered_dmrs$cpgs_num <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
+        filtered_dmrs$cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
 
         filtered_dmrs[filtered_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
 
-        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "sup_cpgs_num"] * filtered_dmrs[, "seeds_num"])
+        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
 
         .log_success("CpG content calculated.", level = 2)
         adj_filtered_dmrs <- filtered_dmrs[
@@ -1615,7 +1625,7 @@ findDMRsFromSeeds <- function(
     } else 
     {
         .log_info("Skipping adjusted seeds number calculation as min_adj_seeds <= min_seeds.", level = 2)
-        filtered_dmrs$cpgs_num <- NA
+        filtered_dmrs$cpgs_num_bg <- NA
         filtered_dmrs$seeds_num_adj <- NA
     }
     if (nrow(filtered_dmrs) == 0) {

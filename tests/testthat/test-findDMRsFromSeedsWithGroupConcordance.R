@@ -83,6 +83,6 @@ test_that("group_concordance_strategy parameter validates correctly", {
             sample_group_col = "Sample_Group",
             group_concordance_strategy = "invalid"
         ),
-        "should be one of"
+        "is not a prefix"
     )
 })

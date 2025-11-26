@@ -40,8 +40,8 @@ findDMRsFromSeeds(
   ntries = 200L,
   mid_p = FALSE,
   max_lookup_dist = 10000,
-  min_seeds = 1,
-  min_adj_seeds = 1,
+  min_seeds = 2,
+  min_adj_seeds = 2,
   min_cpgs = 50,
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
@@ -95,11 +95,11 @@ findDMRsFromSeeds(
 
 \item{genome}{Character. Genome version. Default is "hg19".}
 
-\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Default is 1.}
+\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.}
 
-\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.}
+\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.}
 
-\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.}
 
 \item{ignored_sample_groups}{Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.}
 

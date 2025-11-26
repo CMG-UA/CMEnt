@@ -350,13 +350,12 @@ if (getRversion() >= "2.15.1") {
 
     # Create title if not provided
     title <- sprintf(
-        "DMR #%d: %s:%s-%s\n%d seeds, %d Sequence CpGs (\u0394\u03b2=%.3f)",
+        "DMR #%d: %s:%s-%s\n%d seeds (\u0394\u03b2=%.3f)",
         dmr_index,
         chr,
         format(dmr_start, big.mark = ",", scientific = FALSE),
         format(dmr_end, big.mark = ",", scientific = FALSE),
         dmr_data$seeds_num,
-        dmr_data$cpgs_num,
         dmr_data$delta_beta
     )
 

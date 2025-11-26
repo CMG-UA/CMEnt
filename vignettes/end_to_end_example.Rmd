@@ -78,7 +78,7 @@ dmrs <- DMRsegal::findDMRsFromSeeds(
     array = array_type,
     genome = genome,
     min_seeds = 2,
-    min_adj_seeds = 1,
+    min_adj_seeds = 2,
     min_cpgs = 3,
     max_lookup_dist = 10000,
     max_pval = 0.05,

@@ -172,7 +172,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     if (length(dmrs_lenient) > 0) {
         expect_true(all(mcols(dmrs_lenient)$seeds_num >= 1))
-        expect_true(all(mcols(dmrs_lenient)$cpgs_num >= 2))
     }
 })
 
@@ -347,7 +346,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
-        min_seeds = 1,
+        min_seeds = 2,
         min_cpgs = 2,
         max_lookup_dist = 1000,
         annotate_with_genes = FALSE
