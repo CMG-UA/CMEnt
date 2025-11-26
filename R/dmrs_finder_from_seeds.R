@@ -34,7 +34,7 @@
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
-#' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
+#' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is 1.
@@ -630,16 +630,16 @@
     ret
 }
 
-.calculateBetaStats <- function(beta_values, beta_col_names, pheno,
+.calculateBetaStats <- function(beta_values, pheno,
                                 casecontrol_col,
                                 aggfun) {
-    cases_all <- beta_values[, pheno[beta_col_names, casecontrol_col] == 1, drop = FALSE]
+    cases_all <- beta_values[, pheno[, casecontrol_col] == 1, drop = FALSE]
     cases_beta <- apply(cases_all, 1, aggfun, na.rm = TRUE)
     cases_sd <- apply(cases_all, 1, sd, na.rm = TRUE)
     cases_num <- rowSums(!is.na(cases_all))
     rm(cases_all)
 
-    controls_all <- beta_values[, pheno[beta_col_names, casecontrol_col] == 0, drop = FALSE]
+    controls_all <- beta_values[, pheno[, casecontrol_col] == 0, drop = FALSE]
     controls_beta <- apply(controls_all, 1, aggfun, na.rm = TRUE)
     controls_sd <- apply(controls_all, 1, sd, na.rm = TRUE)
     controls_num <- rowSums(!is.na(controls_all))
@@ -678,7 +678,7 @@
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
-#' @param ignored_sample_groups Character vector. Sample groups to ignore, separated by commas. Default is NULL.
+#' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
@@ -964,6 +964,12 @@ findDMRsFromSeeds <- function(
 
 
     samples_selection_mask <- !(pheno[, sample_group_col] %in% ignored_sample_groups)
+    if ("case" %in% ignored_sample_groups) {
+        samples_selection_mask <- samples_selection_mask & (pheno[, casecontrol_col] != 1)
+    }
+    if ("control" %in% ignored_sample_groups) {
+        samples_selection_mask <- samples_selection_mask & (pheno[, casecontrol_col] != 0)
+    }
     beta_col_names <- beta_col_names[samples_selection_mask]
     pheno <- pheno[beta_col_names, ]
     .log_info("Samples to process: ", length(beta_col_names), level = 1)
@@ -1591,11 +1597,10 @@ findDMRsFromSeeds <- function(
     all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(annotated_dmrs)), function(i) {
         seq(annotated_dmrs$start_cpg_ind[i], annotated_dmrs$end_cpg_ind[i])
     })))
-    all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
+    all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs)
     .log_step("Calculating per-CpG beta statistics..", level = 2)
     beta_stats <- .calculateBetaStats(
         beta_values = all_selected_cpgs_beta,
-        beta_col_names = beta_col_names,
         pheno = pheno,
         casecontrol_col = casecontrol_col,
         aggfun = aggfun

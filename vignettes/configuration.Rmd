@@ -110,7 +110,7 @@ dmrs <- findDMRsFromSeeds(
 ### `ignored_sample_groups`
 **Type:** Character vector  
 **Default:** `NULL`  
-**Description:** Sample groups to exclude from the analysis.
+**Description:** Sample groups to exclude while considering connection and expansion. Can also be "case" or "control".
 
 **Example:**
 ```{r}

@@ -107,7 +107,7 @@ if (!file.exists(DMRsegal_file)) {
         max_lookup_dist = 10000,
         max_pval = 0.05,
         pval_mode = "parametric",
-        njobs = 1
+        group_concordance_strategy = "flexible"
     ))
     saveRDS(dmrs_segal, DMRsegal_file)
     rm(beta_handler)
@@ -161,7 +161,7 @@ if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     # bumphunter uses the same mset and design matrix as other methods
     # Run bumphunter with the same design matrix
-    doParallel::registerDoParallel(cores = 4)
+    doParallel::registerDoParallel(cores = 8)
 
     bumphunter_results <- bumphunter(
         beta_mat,
@@ -169,7 +169,7 @@ if (!file.exists(bumphunter_file)) {
         pos = locs$pos,
         design = design,
         pickCutoff = TRUE,
-        B = 100, # Number of permutations
+        B = 200, # Number of permutations
         type = "Beta"
     )
     dmrs_bumphunter <- makeGRangesFromDataFrame(bumphunter_results$table)
