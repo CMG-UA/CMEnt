@@ -635,14 +635,10 @@
 }
 
 .calculateBetaStats <- function(beta_values, pheno, casecontrol_col, aggfun) {
-    # logical masks
     is_case <- pheno[[casecontrol_col]] == 1
-    is_ctrl <- !is_case
-    # Subset matrices
     cases <- beta_values[, is_case, drop = FALSE]
     cases <- as.matrix(cases, ncol = ncol(cases))
 
-    # Aggregation
     if (identical(aggfun, mean)) {
         cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
     } else if (identical(aggfun, stats::median)) {
@@ -650,17 +646,13 @@
     } else {
         cases_beta <- apply(cases, 1, aggfun, na.rm = TRUE)
     }
+    cases_sd <- matrixStats::rowSds(cases, na.rm = TRUE)
+    cases_num <- matrixStats::rowCounts(!is.na(cases))
     rm(cases)
 
-    # Standard deviation
-    cases_sd <- matrixStats::rowSds(cases, na.rm = TRUE)
-
-    # Counts
-    cases_num <- matrixStats::rowCounts(!is.na(cases))
-
+    is_ctrl <- !is_case
     ctrl <- beta_values[, is_ctrl, drop = FALSE]
     ctrl <- as.matrix(ctrl, ncol = ncol(ctrl))
-    # Aggregation
     if (identical(aggfun, mean)) {
         controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
     } else if (identical(aggfun, stats::median)) {
