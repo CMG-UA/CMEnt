@@ -27,6 +27,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         sorted_locs = NULL,
         #' @field njobs Number of parallel jobs
         njobs = 1,
+        #' @field beta_chunk_size Chunk size for subsetting beta values
+        beta_chunk_size = NULL,
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix
         #' @param array Array platform type. Ignored if sorted_locs, or a tabix file have been provided.
@@ -373,7 +375,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
             private$.beta_locs
         },
-
+        getBetaChunkSize = function() {
+            self$load()
+            self$beta_chunk_size
+        },
         #' @description Extract beta values for specific CpG sites and samples
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
@@ -420,9 +425,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(beta_subset)
             }
             if (check_mem) {
-                first_row <- if (!is.null(private$.beta_file)) {
+                if (!is.null(private$.beta_file)) {
+                first_row <- 
                     data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
-                } else {
+                } 
+                else {
+                    
                     if (is.null(row_names)) {
                         locs <- self$getBetaLocs()
                     } else {
@@ -433,22 +441,26 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         start = as.integer(locs[1, "start"]),
                         end = as.integer(locs[1, "end"])
                     )
-                    bedr::tabix(region_first, private$.tabix_file,
+                    first_row <- bedr::tabix(region_first, private$.tabix_file,
                         check.valid = FALSE,
                         check.sort = FALSE, check.chr = FALSE, verbose = FALSE
                     )
+                    first_row <- first_row[1, 7:ncol(first_row), drop = FALSE]
+                    first_row <- as.numeric(unname(first_row))
                 }
-
                 n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
-                estimated_size_mb <- as.numeric(object.size(first_row)) * n_rows / (1024^2)
+                first_row_size_mb <- as.numeric(object.size(first_row)) / (1024^2)
+                estimated_size_mb <- first_row_size_mb * n_rows
                 mem_thres <- getOption("DMRsegal.subset_beta_as_bigmem_mb", 500)
                 if (estimated_size_mb > mem_thres) {
-                    .log_info("Estimated size (", round(estimated_size_mb, 1),
+                    .log_step("Estimated size (", round(estimated_size_mb, 1),
                         " MB) exceeds threshold. Loading to big.matrix...",
                         level = 3
                     )
-                    chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
-                    return(private$.loadToBigMatrix(row_names, col_names, allow_missing, chunk_size))
+                    self$beta_chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
+                    ret <- private$.loadToBigMatrix(row_names, col_names, allow_missing, self$beta_chunk_size)
+                    .log_success("Loaded to big.matrix: ", nrow(ret), " CpGs x ", ncol(ret), " samples", level = 3)
+                    return(ret)
                 }
             }
 
@@ -575,7 +587,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             rownames(beta_big) <- row_names
             colnames(beta_big) <- col_names
-            .log_success("Loaded to big.matrix: ", nrow(beta_big), " CpGs x ", ncol(beta_big), " samples", level = 3)
             beta_big
         }
     )

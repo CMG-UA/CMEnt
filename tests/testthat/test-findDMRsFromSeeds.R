@@ -36,7 +36,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
-    options("DMRsegal.verbose" = 2)
+    options("DMRsegal.verbose" = 3)
     options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.beta_in_mem_threshold_mb" = 1)
 

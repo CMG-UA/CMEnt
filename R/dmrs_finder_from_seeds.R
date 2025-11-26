@@ -1107,8 +1107,20 @@ findDMRsFromSeeds <- function(
             nrow(seeds_locs)
         )
     }
+    .log_info("Checking for seeds with all NA beta values...", level = 3)
     if (bigmemory::is.big.matrix(seeds_beta)) {
-        all.na.rows <- biganalytics::apply(seeds_beta, 1, function(r) all(is.na(r)))
+        beta_chunk_size <- beta_handler$getBetaChunkSize()
+        for (start_row in seq(1, nrow(seeds_beta), by = beta_chunk_size)) {
+            end_row <- min(start_row + beta_chunk_size - 1, nrow(seeds_beta))
+            chunk <- bigmemory::sub.big.matrix(seeds_beta, firstRow = start_row, lastRow = end_row)
+            chunk <- as.matrix(chunk)
+            na_rows_chunk <- matrixStats::rowAlls(is.na(as.matrix(chunk)))
+            if (any(na_rows_chunk)) {
+                all.na.rows <- rep(FALSE, nrow(seeds_beta))
+                all.na.rows[start_row:end_row][na_rows_chunk] <- TRUE
+                break
+            }
+        }
     } else {
         all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
     }
@@ -1568,12 +1580,14 @@ findDMRsFromSeeds <- function(
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 1)
-    .log_info("Summary of merged DMRs:\n\t", paste(capture.output(summary(filtered_dmrs)), collapse = "\n\t"), level = 3)
+    merged_dmrs <- as.data.frame(merged_dmrs_ranges)
+    colnames(merged_dmrs)[colnames(merged_dmrs) == "seqnames"] <- "chr"
+    .log_info("Summary of merged DMRs:\n\t", paste(capture.output(summary(merged_dmrs)), collapse = "\n\t"), level = 3)
 
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
         .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
-        write.table(filtered_dmrs,
+        write.table(merged_dmrs,
             file = file.path("debug", "03_merged_dmrs.tsv"),
             sep = "\t",
             row.names = FALSE,
