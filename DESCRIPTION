@@ -60,7 +60,6 @@ Imports:
     minfi,
     bedr,
     bigmemory,
-    biganalytics,
     AnnotationDbi,
     GenomicFeatures,
     GenomeInfoDb,
