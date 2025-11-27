@@ -128,7 +128,7 @@
     }
     verbose <- getOption("DMRsegal.verbose", 1)
     if (verbose > 0) {
-        p_ext <- progressr::progressor(steps = nrow(splits))
+        p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
     gc()
     setupParallel()
@@ -1326,9 +1326,8 @@ findDMRsFromSeeds <- function(
             stop(ret)
         }
         dmrs <- as.data.frame(do.call(rbind, ret))
-        .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 1)
         if (nrow(dmrs) == 0) {
-            .log_warn("No DMRs remain after filtering based on connected Seed number.")
+            .log_warn("No DMRs remain after filtering based on min_seeds.")
             if (!is.null(output_prefix)) {
                 for (f in c(".methylation.tsv.gz", ".tsv.gz")) {
                     gzfile <- gzfile(paste0(output_prefix, f), "w", compression = 2)
@@ -1358,7 +1357,7 @@ findDMRsFromSeeds <- function(
     }
 
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
-    .log_info("Summary:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 2)
+    .log_info("Summary of connected seeds DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 3)
     .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)

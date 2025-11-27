@@ -95,6 +95,7 @@ DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds") # nolint
 if (!file.exists(DMRsegal_file)) {
     # Write DMPs to temp file
     options("DMRsegal.verbose" = 1)
+    options("DMRsegal.njobs" = 8)
     progressr::handlers("cli")
     dmrs_segal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
         beta = beta_handler,
@@ -104,7 +105,7 @@ if (!file.exists(DMRsegal_file)) {
         casecontrol_col = "casecontrol",
         min_seeds = 2,
         min_cpgs = 3,
-        max_lookup_dist = 10000,
+        max_lookup_dist = 1000,
         max_pval = 0.05,
         pval_mode = "parametric",
         group_concordance_strategy = "relaxed"
@@ -162,6 +163,8 @@ if (!file.exists(bumphunter_file)) {
     # bumphunter uses the same mset and design matrix as other methods
     # Run bumphunter with the same design matrix
     doParallel::registerDoParallel(cores = 8)
+    design <- model.matrix(~Sample_Group, data = pheno)
+    colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
     bumphunter_results <- bumphunter(
         beta_mat,
