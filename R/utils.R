@@ -2193,7 +2193,9 @@ convertToGRanges <- function(obj, genome) {
 
 .already_logged_dir <- tempdir()
 .already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
-setupParallel <- function() {
+#' @keywords internal
+#' @noRd
+.setupParallel <- function() {
     njobs <- getOption("DMRsegal.njobs")
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs
@@ -2222,7 +2224,9 @@ setupParallel <- function() {
     }
 }
 
-finalizeParallel() <- function() {
+#' @keywords internal
+#' @noRd
+.finalizeParallel() <- function() {
     future::plan(future::sequential)
 }
 

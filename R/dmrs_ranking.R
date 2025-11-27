@@ -86,13 +86,13 @@ rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_
         casecontrol_col <- "__CASE_CONTROL__"
         pheno[, casecontrol_col] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
-    setupParallel()
+    .setupParallel()
     p_con <- NULL
     if (verbose > 0) {
         # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
 
         if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-            p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting seeds to form DMRs..")
+            p_con <- progressr::progressor(steps = length(dmrs), message = "Connecting seeds to form DMRs..")
         }
     }
     accuracies <- future.apply::future_sapply(
@@ -109,7 +109,7 @@ rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_
         SIMPLIFY=TRUE,
         future.stdout = NA,
     )
-    finalizeParallel()
+    .finalizeParallel()
     mcols(dmrs)$accuracy <- accuracies
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$accuracy, ties.method = "first")))
     return(dmrs[order(mcols(dmrs)$rank)])

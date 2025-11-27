@@ -130,7 +130,7 @@
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
     gc()
-    setupParallel()
+    .setupParallel()
     ret <- future.apply::future_lapply(
         X = seq_len(nrow(splits)),
         future.seed = TRUE,
@@ -192,7 +192,7 @@
             x
         }
     )
-    finalizeParallel()
+    .finalizeParallel()
     do.call(rbind, ret)
 }
 
@@ -1251,7 +1251,7 @@ findDMRsFromSeeds <- function(
                 )
             })
         } else {
-            setupParallel()
+            .setupParallel()
             ret <- future.apply::future_mapply(
                 chromosomes,
                 seeds_list,
@@ -1282,7 +1282,7 @@ findDMRsFromSeeds <- function(
                 ),
                 FUN = fun
             )
-            finalizeParallel()
+            .finalizeParallel()
         }
 
         if (inherits(ret[[1]], "try-error")) {
@@ -1382,7 +1382,7 @@ findDMRsFromSeeds <- function(
             chr_locs <- beta_locs[chr_mask, , drop = FALSE]
         }
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
-        setupParallel()
+        .setupParallel()
         chr_ret <- future.apply::future_apply(
             X = chr_dmrs,
             MARGIN = 1,
@@ -1415,7 +1415,7 @@ findDMRsFromSeeds <- function(
                 "p_ext"
             )
         )
-        finalizeParallel()
+        .finalizeParallel()
         .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
     }
