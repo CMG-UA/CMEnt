@@ -78,6 +78,7 @@
 rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_locs = NULL,
                      sample_group_col = "Sample_Group",
                      casecontrol_col = NULL) {
+    verbose <- getOption("DMRsegal.verbose", 1)
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     supporting_sites <- getSupportingSites(dmrs, use_absolute_indices = FALSE, separate_by_section = FALSE)
@@ -85,12 +86,30 @@ rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_
         casecontrol_col <- "__CASE_CONTROL__"
         pheno[, casecontrol_col] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
-    accuracies <- sapply(seq_along(dmrs), function(i) {
-        site_indices <- supporting_sites[[i]]
-        beta_mat <- beta_handler$getBeta(row_names = site_indices)
-        cv_results <- .performCrossPrediction(beta_mat, pheno[, casecontrol_col])
-        cv_results
-    })
+    setupParallel()
+    p_con <- NULL
+    if (verbose > 0) {
+        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
+
+        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
+            p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting seeds to form DMRs..")
+        }
+    }
+    accuracies <- future.apply::future_sapply(
+        X = seq_along(dmrs),
+        FUN = function(i) {
+            site_indices <- supporting_sites[[i]]
+            beta_mat <- beta_handler$getBeta(row_names = site_indices)
+            cv_results <- .performCrossPrediction(beta_mat, pheno[, casecontrol_col])
+            if (verbose > 0 && !is.null(p_con)) p_con()
+            cv_results
+        },
+        future.seed = TRUE,
+        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "casecontrol_col"),
+        SIMPLIFY=TRUE,
+        future.stdout = NA,
+    )
+    finalizeParallel()
     mcols(dmrs)$accuracy <- accuracies
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$accuracy, ties.method = "first")))
     return(dmrs[order(mcols(dmrs)$rank)])

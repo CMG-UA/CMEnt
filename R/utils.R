@@ -1282,7 +1282,7 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' methylation array platform and genome version. Performs liftOver if necessary.
 #' The function caches the results.
 #'
-#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome or when locations_file is provided
+#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.
 #' @param genome Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
@@ -1305,7 +1305,7 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #'
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
         try(locs <- bigmemory::attach.big.matrix(locs), silent = TRUE)
@@ -1320,6 +1320,11 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
     }
     array <- strex::match_arg(array, ignore_case = TRUE)
     genome <- strex::match_arg(genome, ignore_case = TRUE)
+    array_based <- is.null(array) || tolower(array) == "null"
+    
+    if (array_based) {
+        stop("Provided array is NULL but locations file was not provided.")
+    }
     array <- tolower(array)
     genome <- tolower(genome)
     cache_file <- file.path(cache_dir, paste0(
@@ -1340,8 +1345,13 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
             pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
         } else if (array == "27k") {
             pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
+        } else {
+            stop("Incorrect array and genome combination was provided. For hg19 and hg38, ('450K','EPIC','EPICv2','27K') arrays are supported.") 
         }
     } else if (genome %in% c("mm10", "mm39")) {
+        if (array != "Mouse") {
+            stop("Incorrect array and genome combination was provided. For mm10 and mm39 only 'Mouse' array is supported.")
+        }
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             if (!requireNamespace("devtools", quietly = TRUE)) {
@@ -2180,6 +2190,42 @@ convertToGRanges <- function(obj, genome) {
     }
     obj
 }
+
+.already_logged_dir <- tempdir()
+.already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
+setupParallel <- function() {
+    njobs <- getOption("DMRsegal.njobs")
+    if (njobs < 0) {
+        njobs <- future::availableCores() + njobs
+    }
+    if (njobs > 1) {
+        if (future::availableCores("multicore") > 1L) {
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
+            future::plan(future::multicore, workers = njobs)
+        } else {
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multisession parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
+            future::plan(future::multisession, workers = njobs)
+        }
+        withr::defer(future::plan(future::sequential))
+    } else {
+        if (!file.exists(.already_logged_file)) {
+            .log_info("Using sequential processing (njobs=1)", level = 2)
+            writeLines("TRUE", con = .already_logged_file)
+        }
+        future::plan(future::sequential)
+    }
+}
+
+finalizeParallel() <- function() {
+    future::plan(future::sequential)
+}
+
 
 #' Load DMRsegal Data Resources
 #'

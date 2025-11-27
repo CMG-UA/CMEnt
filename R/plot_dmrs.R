@@ -636,7 +636,7 @@ plotDMRs <- function(dmrs,
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
 #' @param genome Character. Genome version (default: "hg19").
-#' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
+#' @param array Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).

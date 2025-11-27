@@ -105,6 +105,29 @@ comparePWMToJaspar <- function(pwm_queries) {
 }
 
 
+getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
+        path.expand("~"),
+        ".cache", "R", "DMRsegal", "annotations"
+    ))
+    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array,"_", flank_size, ".rds"))
+    if (!file.exists(cache_file)) {
+        .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
+        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        sorted_locs <- convertToGRanges(sorted_locs, genome)
+        cpg_seqs <- getDMRSequences(sorted_locs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
+        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
+        bg_frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
+        bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
+        saveRDS(bg_pwm, cache_file)
+    } else {
+        bg_pwm <- readRDS(cache_file)
+    }
+
+
+}
+
+
 #' Extract DMR Motif Frequencies
 #'
 #' @description Extracts motif frequencies around CpG sites within DMRs.
@@ -113,7 +136,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 #' the DMR metadata.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and CpG indices
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
-#' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based. (default: "450K")
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
@@ -146,6 +169,10 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)
         use_abs <- TRUE
     }
+    array_based <- is.null(array) || tolower(array) == "null"
+    if (array_based) {
+        bg_pwm <- getBackgroundArrayMotif(genome, array, flank_size = flank_size)
+    }
 
     sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
     dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE, use_absolute_indices = use_abs)
@@ -163,6 +190,9 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
+        if (array_based) {
+            frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))
+        }
         mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
         mcols(dmrs)$consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
@@ -194,8 +224,8 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
 #' and returns a data frame of interactions. Assigns directionality based on ranking, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
-#' @param array Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")
-#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
+#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)

@@ -31,7 +31,7 @@
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
@@ -104,12 +104,11 @@
 
 
 .buildConnectivityArray <- function(
-  beta_handler, group_inds, max_pval = 0.05,
-  min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000,
-  group_concordance_strategy = "strict",
-  aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+    beta_handler, group_inds, max_pval = 0.05,
+    min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+    chunk_size = 1000, group_concordance_strategy = "strict",
+    aggfun = median, empirical_strategy = "auto",
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -193,7 +192,7 @@
             x
         }
     )
-    clearParallel()
+    finalizeParallel()
     do.call(rbind, ret)
 }
 
@@ -674,42 +673,6 @@
     )
 }
 
-.already_logged_dir <- tempdir()
-.already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
-setupParallel <- function() {
-    njobs <- getOption("DMRsegal.njobs")
-    if (njobs < 0) {
-        njobs <- future::availableCores() + njobs
-    }
-    if (njobs > 1) {
-        if (future::availableCores("multicore") > 1L) {
-            if (!file.exists(.already_logged_file)) {
-                .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
-                writeLines("TRUE", con = .already_logged_file)
-            }
-            future::plan(future::multicore, workers = njobs)
-        } else {
-            if (!file.exists(.already_logged_file)) {
-                .log_info("Using multisession parallelization with ", njobs, " workers", level = 2)
-                writeLines("TRUE", con = .already_logged_file)
-            }
-            future::plan(future::multisession, workers = njobs)
-        }
-        withr::defer(future::plan(future::sequential))
-    } else {
-        if (!file.exists(.already_logged_file)) {
-            .log_info("Using sequential processing (njobs=1)", level = 2)
-            writeLines("TRUE", con = .already_logged_file)
-        }
-        future::plan(future::sequential)
-    }
-}
-
-clearParallel <- function() {
-    future::plan(future::sequential)
-}
-
-
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
 #'
 #' This function identifies DMRs from a given set of seeds and a beta value file.
@@ -731,7 +694,7 @@ clearParallel <- function() {
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
@@ -759,7 +722,7 @@ findDMRsFromSeeds <- function(
   casecontrol_col = NULL,
   min_cpg_delta_beta = 0,
   expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  array = c("450K", "27K", "EPIC", "EPICv2", 'NULL'),
   genome = "hg19",
   max_pval = 0.05,
   group_concordance_strategy = c("strict", "relaxed"),
@@ -1319,7 +1282,7 @@ findDMRsFromSeeds <- function(
                 ),
                 FUN = fun
             )
-            clearParallel()
+            finalizeParallel()
         }
 
         if (inherits(ret[[1]], "try-error")) {
@@ -1452,7 +1415,7 @@ findDMRsFromSeeds <- function(
                 "p_ext"
             )
         )
-        clearParallel()
+        finalizeParallel()
         .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
     }
@@ -1626,7 +1589,8 @@ findDMRsFromSeeds <- function(
 
 
     filtered_dmrs$cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
-    if (min_adj_seeds > min_seeds) {
+    array_based <- is.null(array) || tolower(array) == "null"
+    if (array_based && min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
         filtered_dmrs$cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
 

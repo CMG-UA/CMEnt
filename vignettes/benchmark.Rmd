@@ -164,12 +164,11 @@ if (!file.exists(bumphunter_file)) {
     # Run bumphunter with the same design matrix
     doParallel::registerDoParallel(cores = 8)
     design <- model.matrix(~Sample_Group, data = pheno)
-    colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
     bumphunter_results <- bumphunter(
         beta_mat,
         chr = locs$chr,
-        pos = locs$pos,
+        pos = locs$start,
         design = design,
         pickCutoff = TRUE,
         B = 200, # Number of permutations

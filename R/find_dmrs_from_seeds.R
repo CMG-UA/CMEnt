@@ -29,18 +29,11 @@
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
     options("DMRsegal.verbose" = args$verbose)
-
-    if (!is.null(args$beta) && !is.null(args$tabix)) {
-        stop("Either beta or tabix must be provided, not both.")
-    }
-    if (is.null(args$beta) && is.null(args$tabix)) {
-        stop("Either beta or tabix must be provided.")
-    }
     pheno <- .processSamplesheet(args)$samplesheet
-    .log_info(
-        "Head of parsed phenotype:\n\t",
-        paste(capture.output(print(head(pheno))), collapse = "\n\t")
-    )
+    array <- args$array
+    if (tolower(array) == 'null') {
+        array <- NULL
+    }
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
         beta = args$beta,
@@ -49,7 +42,7 @@ findDMRsFromSeedsCLI <- function(args) {
         casecontrol_col = args$casecontrol_col,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
         expansion_step = args$expansion_step,
-        array = args$array,
+        array = array,
         genome = args$genome,
         max_pval = args$max_pval,
         max_lookup_dist = args$max_lookup_dist,
