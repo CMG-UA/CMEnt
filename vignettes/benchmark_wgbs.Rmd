@@ -58,16 +58,6 @@ if (!requireNamespace("MethylSeqData", quietly = TRUE)) {
 library(MethylSeqData)
 brain <- RizzardiHickeyBrain()
 brain
-simulate_bs <- function(n = 6, delta = 0.2) {
-  # minimal example using bsseq infrastructure
-  bs <- makeExampleBSseqData(n = n)
-  # inject DMR
-  dmr_region <- GRanges("chr1", IRanges(1e6, 1e6 + 1000))
-  idx <- queryHits(findOverlaps(rowRanges(bs), dmr_region))
-  meth <- getMeth(bs)
-  meth[idx, 4:6] <- pmin(meth[idx, 4:6] + delta, 1)
-  list(bs = bs, truth = dmr_region)
-}
 ```
 
 ## Finding Differentially Methylated Positions (DMPs)

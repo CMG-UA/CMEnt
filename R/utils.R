@@ -1170,6 +1170,19 @@ sortBetaFileByCoordinates <- function(beta_file,
     return(output_file)
 }
 
+.remove_confounder_effect <- function(signal, covariate_matrix) {
+    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) return(signal)
+    xtx <- crossprod(covariate_matrix)
+    xtx_inv <- tryCatch(solve(xtx), error = function(e) NULL)
+    if (is.null(xtx_inv)) {
+        return(signal)
+    }
+    pseudo_solution <- xtx_inv %*% t(covariate_matrix)
+    effect <- t(pseudo_solution %*% t(signal))
+    signal - effect %*% t(covariate_matrix)
+}
+
+
 #' Remap DMRs Between Different Methylation Arrays
 #'
 #' @description Remaps Differentially Methylated Regions (DMRs) identified on one

@@ -31,6 +31,10 @@ findDMRsFromSeedsCLI <- function(args) {
     options("DMRsegal.verbose" = args$verbose)
     pheno <- .processSamplesheet(args)$samplesheet
     array <- args$array
+    covariates <- args$covariates
+    if (!is.null(covariates)) {
+        covariates <- strsplit(covariates, ",")[[1]]
+    }
     if (tolower(array) == 'null') {
         array <- NULL
     }
@@ -40,6 +44,7 @@ findDMRsFromSeedsCLI <- function(args) {
         seeds = args$seeds_file,
         sample_group_col = args$sample_group_col,
         casecontrol_col = args$casecontrol_col,
+        covariates = covariates,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
         expansion_step = args$expansion_step,
         array = array,

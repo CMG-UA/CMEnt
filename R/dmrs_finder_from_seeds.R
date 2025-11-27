@@ -21,6 +21,7 @@
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is 1.
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
+#' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
@@ -104,8 +105,8 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, group_inds, max_pval = 0.05,
-    min_delta_beta = 0, casecontrol = NULL, max_lookup_dist = 1000,
+    beta_handler, pheno, group_inds, max_pval = 0.05,
+    min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
     chunk_size = 1000, group_concordance_strategy = "strict",
     aggfun = median, empirical_strategy = "auto",
     pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
@@ -138,7 +139,8 @@
         future.globals = c(
             "beta_handler",
             "group_inds",
-            "casecontrol",
+            "pheno",
+            "covariates",
             "max_pval",
             "min_delta_beta",
             "aggfun",
@@ -164,7 +166,8 @@
             x <- .testConnectivityBatch(
                 sites_beta = chunk_beta,
                 group_inds = group_inds,
-                casecontrol = casecontrol,
+                pheno = pheno,
+                covariates = covariates,
                 max_pval = max_pval,
                 min_delta_beta = min_delta_beta,
                 sites_locs = beta_locs[split[1]:split[2], ],
@@ -370,8 +373,9 @@
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 #' @keywords internal
 #' @noRd
-.testConnectivityBatch <- function(sites_beta, group_inds, max_pval,
-                                   casecontrol = NULL, min_delta_beta = 0,
+.testConnectivityBatch <- function(sites_beta, group_inds, pheno,
+                                   max_pval, covariates = NULL,
+                                   min_delta_beta = 0,
                                    max_lookup_dist = NULL, sites_locs = NULL,
                                    group_concordance_strategy = "strict",
                                    aggfun = mean,
@@ -440,6 +444,17 @@
         # Get data for this group - subset columns
         group_beta <- sites_beta[, idx, drop = FALSE]
         group_m <- log(group_beta / (1 - group_beta + 1e-6) + 1e-6) # M-values transformation
+
+        if (!is.null(covariates) && length(covariates) > 0L && !is.null(pheno)) {
+            if (!all(covariates %in% colnames(pheno))) {
+                stop("Not all covariates are present in pheno.")
+            }
+            Xc <- as.data.frame(pheno[idx, covariates, drop = FALSE])
+            Xc <- data.frame(`(Intercept)` = 1, Xc, check.names = FALSE)
+            Xc <- as.matrix(Xc)
+            storage.mode(Xc) <- "double"
+            group_m <- .remove_confounder_effect(group_m, Xc)
+        }
 
         # Extract consecutive pairs matrices
         x_mat_full <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i
@@ -614,13 +629,13 @@
         ret[, "failing_groups"] <- failing_groups
     }
     # Vectorized delta beta check if needed
-    if (!is.null(casecontrol) && min_delta_beta > 0) {
+    if (min_delta_beta > 0) {
         # Extract site2 beta values for all pairs
         site2_beta_mat <- sites_beta[2:n_sites, , drop = FALSE]
 
         # Vectorized mean computation across case/control
-        case_betas <- apply(site2_beta_mat[, casecontrol == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
-        control_betas <- apply(site2_beta_mat[, casecontrol == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        case_betas <- apply(site2_beta_mat[, pheno[,"__casecontrol__"] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        control_betas <- apply(site2_beta_mat[, pheno[,"__casecontrol__"] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         delta_betas <- case_betas - control_betas
 
         # Check threshold (vectorized)
@@ -633,8 +648,8 @@
     ret
 }
 
-.calculateBetaStats <- function(beta_values, pheno, casecontrol_col, aggfun) {
-    is_case <- pheno[[casecontrol_col]] == 1
+.calculateBetaStats <- function(beta_values, pheno, aggfun) {
+    is_case <- pheno[,"__casecontrol__"] == 1
     cases <- beta_values[, is_case, drop = FALSE]
     cases <- as.matrix(cases, ncol = ncol(cases))
 
@@ -683,6 +698,7 @@
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
 #' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
+#' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.
 #' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
@@ -714,15 +730,16 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-  beta = NULL,
-  seeds = NULL,
-  pheno = NULL,
+  beta,
+  seeds,
+  pheno,
   seeds_id_col = NULL,
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
+  covariates = NULL,
   min_cpg_delta_beta = 0,
   expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2", 'NULL'),
+  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = "hg19",
   max_pval = 0.05,
   group_concordance_strategy = c("strict", "relaxed"),
@@ -769,10 +786,6 @@ findDMRsFromSeeds <- function(
 
     options("DMRsegal.njobs" = njobs)
 
-
-    if (is.null(seeds) || is.null(pheno)) {
-        stop("seeds and pheno parameters are required")
-    }
 
     .log_step("Preparing inputs...")
     .log_step("Reading Seed tsv..", level = 2)
@@ -930,8 +943,9 @@ findDMRsFromSeeds <- function(
     }
     stopifnot(sample_group_col %in% colnames(pheno))
     if (is.null(casecontrol_col)) {
-        casecontrol_col <- "_CASECONTROL_INFERRED_"
-        pheno[, casecontrol_col] <- ifelse(pheno[, sample_group_col] == levels(as.factor(pheno[, sample_group_col]))[1], 0, 1)
+        pheno[, "__casecontrol__"] <- ifelse(pheno[, sample_group_col] == levels(as.factor(pheno[, sample_group_col]))[1], 0, 1)
+    } else {
+        pheno[, "__casecontrol__"] <- pheno[, casecontrol_col]
     }
     if (is.null(ignored_sample_groups)) {
         ignored_sample_groups <- c()
@@ -969,10 +983,10 @@ findDMRsFromSeeds <- function(
 
     samples_selection_mask <- !(pheno[, sample_group_col] %in% ignored_sample_groups)
     if ("case" %in% ignored_sample_groups) {
-        samples_selection_mask <- samples_selection_mask & (pheno[, casecontrol_col] != 1)
+        samples_selection_mask <- samples_selection_mask & (pheno[, "__casecontrol__"] != 1)
     }
     if ("control" %in% ignored_sample_groups) {
-        samples_selection_mask <- samples_selection_mask & (pheno[, casecontrol_col] != 0)
+        samples_selection_mask <- samples_selection_mask & (pheno[, "__casecontrol__"] != 0)
     }
     beta_col_names <- beta_col_names[samples_selection_mask]
     pheno <- pheno[beta_col_names, ]
@@ -981,7 +995,6 @@ findDMRsFromSeeds <- function(
     pheno <- pheno[beta_col_names, ]
     sample_groups <- factor(pheno[beta_col_names, sample_group_col])
     group_inds <- split(seq_along(sample_groups), sample_groups)
-    case_mask <- pheno[beta_col_names, casecontrol_col] == 1
 
     .log_step("Reordering seeds by genomic location...", level = 2)
 
@@ -1161,7 +1174,7 @@ findDMRsFromSeeds <- function(
             corr_ret <- .testConnectivityBatch(
                 sites_beta = cseeds_beta,
                 group_inds = group_inds,
-                casecontrol = case_mask,
+                pheno = pheno,
                 max_lookup_dist = max_lookup_dist,
                 sites_locs = cseeds_locs,
                 max_pval = max_pval,
@@ -1332,7 +1345,8 @@ findDMRsFromSeeds <- function(
         connectivity_array <- .buildConnectivityArray(
             beta_handler = beta_handler,
             group_inds = group_inds,
-            casecontrol = case_mask,
+            pheno = pheno,
+            covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
             min_delta_beta = min_cpg_delta_beta,
@@ -1640,7 +1654,6 @@ findDMRsFromSeeds <- function(
     beta_stats <- .calculateBetaStats(
         beta_values = all_selected_cpgs_beta,
         pheno = pheno,
-        casecontrol_col = casecontrol_col,
         aggfun = aggfun
     )
     .log_success("Per-CpG beta statistics calculated.", level = 2)
@@ -1782,10 +1795,13 @@ findDMRsFromSeeds <- function(
         .log_step("Ranking DMRs...", level = 1)
         ranked_dmrs_granges <- rankDMRs(
             final_dmrs_granges,
-            beta = beta, pheno = pheno, genome = genome,
-            array = array, sorted_locs = sorted_locs,
+            beta = beta, 
+            pheno = pheno, 
+            genome = genome,
+            array = array, 
+            sorted_locs = sorted_locs,
             sample_group_col = sample_group_col,
-            casecontrol_col = casecontrol_col
+            covariates = covariates
         )
         .log_success("DMR ranking completed.", level = 1)
         final_dmrs_granges <- ranked_dmrs_granges

@@ -41,7 +41,6 @@
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
 #' @param sample_group_col Character. Column name in pheno containing sample group information. Default is "Sample_Group"
-#' @param casecontrol_col Character. Column name in pheno for case/control status. If NULL, the first level of sample_group_col is assumed to be control. Default is NULL
 #'
 #' @return GRanges object with DMRs ordered by p-value and an additional metadata column:
 #' \itemize{
@@ -75,16 +74,17 @@
 #' )
 #'
 #' @export
-rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_locs = NULL,
-                     sample_group_col = "Sample_Group",
-                     casecontrol_col = NULL) {
+rankDMRs <- function(
+    dmrs, beta, pheno, covariates = NULL, 
+    genome = "hg19", array = "450K", sorted_locs = NULL,
+    sample_group_col = "Sample_Group"
+    ) {
     verbose <- getOption("DMRsegal.verbose", 1)
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     supporting_sites <- getSupportingSites(dmrs, use_absolute_indices = FALSE, separate_by_section = FALSE)
-    if (is.null(casecontrol_col)) {
-        casecontrol_col <- "__CASE_CONTROL__"
-        pheno[, casecontrol_col] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
+    if (! "__casecontrol__" %in% colnames(pheno)) { 
+        pheno[, "__casecontrol__"] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
     .setupParallel()
     p_con <- NULL
@@ -95,19 +95,29 @@ rankDMRs <- function(dmrs, beta, pheno, genome = "hg19", array = "450K", sorted_
             p_con <- progressr::progressor(steps = length(dmrs), message = "Connecting seeds to form DMRs..")
         }
     }
+    design <- NULL
+    if (!is.null(covariates)) {
+        design <- as.data.frame(pheno[, covariates, drop = FALSE])
+        design <- data.frame(`(Intercept)` = 1, design, check.names = FALSE)
+        design <- as.matrix(design)
+        storage.mode(design) <- "double"
+    }
     accuracies <- future.apply::future_sapply(
         X = seq_along(dmrs),
         FUN = function(i) {
             site_indices <- supporting_sites[[i]]
             beta_mat <- beta_handler$getBeta(row_names = site_indices)
-            cv_results <- .performCrossPrediction(beta_mat, pheno[, casecontrol_col])
+            if (!is.null(covariates)) {
+                beta_mat <- .remove_confounder_effect(beta_mat, design)
+            }
+            cv_results <- .performCrossPrediction(beta_mat, pheno[, "__casecontrol__"])
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         },
         future.seed = TRUE,
-        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "casecontrol_col"),
+        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "casecontrol_col", "covariates", "design"),
         SIMPLIFY=TRUE,
-        future.stdout = NA,
+        future.stdout = NA
     )
     .finalizeParallel()
     mcols(dmrs)$accuracy <- accuracies
