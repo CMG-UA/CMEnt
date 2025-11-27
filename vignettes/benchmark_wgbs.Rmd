@@ -22,8 +22,8 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette demonstrates how DMRsegal compares to other popular DMR detection methods, 
-specifically **DMRcate** and **bumphunter**. DMRsegal uses a seed-guided assembly approach 
+This vignette demonstrates how DMRsegal compares to other popular DMR detection methods for WGBS, 
+specifically **dmrseq** and **DSS**. DMRsegal uses a seed-guided assembly approach 
 starting from differentially methylated positions (seeds), expanding regions based on 
 correlation and statistical significance. We compare the methods in terms of:
 
@@ -40,30 +40,34 @@ First, we'll set up the necessary directories and load required libraries:
 ```{r load_libraries}
 library(progressr)
 try(progressr::handlers(global = TRUE), silent = TRUE)
-benchmark_output_dir <- "benchmark_data"
+benchmark_output_dir <- "benchmark_data_wgbs"
 dir.create(benchmark_output_dir, showWarnings = FALSE)
 ```
 
 ## Loading and Preparing Data
 
-We'll use an example methylation dataset with 10 cases and 10 normals:
+We'll create a synthetic WGBS dataset for benchmarking purposes:
 
 ```{r load_data}
-library(minfi)
-library(DMRsegal)
-try(devtools::load_all(), silent = TRUE)
-
-beta <- loadExampleInputData("beta")
-pheno <- loadExampleInputData("pheno")
-array_type <- loadExampleInputData("array_type")
-genome <- "hg19"
-
-
-beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
-beta_mat <- as.matrix(beta_handler$getBeta())
-locs <- beta_handler$getBetaLocs()
-mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
-pheno$casecontrol <- pheno$Sample_Group == "cancer"
+if (!requireNamespace("MethylSeqData", quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+    }
+    BiocManager::install("MethylSeqData", update = FALSE, ask = FALSE)
+}
+library(MethylSeqData)
+brain <- RizzardiHickeyBrain()
+brain
+simulate_bs <- function(n = 6, delta = 0.2) {
+  # minimal example using bsseq infrastructure
+  bs <- makeExampleBSseqData(n = n)
+  # inject DMR
+  dmr_region <- GRanges("chr1", IRanges(1e6, 1e6 + 1000))
+  idx <- queryHits(findOverlaps(rowRanges(bs), dmr_region))
+  meth <- getMeth(bs)
+  meth[idx, 4:6] <- pmin(meth[idx, 4:6] + delta, 1)
+  list(bs = bs, truth = dmr_region)
+}
 ```
 
 ## Finding Differentially Methylated Positions (DMPs)
