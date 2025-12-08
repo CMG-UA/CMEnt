@@ -99,6 +99,12 @@ rankDMRs <- function(
     if (!is.null(covariates)) {
         design <- as.data.frame(pheno[, covariates, drop = FALSE])
         design <- data.frame(`(Intercept)` = 1, design, check.names = FALSE)
+        # convert any string columns to factors
+        for (col in colnames(design)) {
+            if (is.character(design[[col]])) {
+                design[[col]] <- as.numeric(as.factor(design[[col]]))
+            }
+        }
         design <- as.matrix(design)
         storage.mode(design) <- "double"
     }

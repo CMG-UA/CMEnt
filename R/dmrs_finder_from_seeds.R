@@ -131,36 +131,14 @@
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
     gc()
-    .setupParallel()
-    ret <- future.apply::future_lapply(
-        X = seq_len(nrow(splits)),
-        future.seed = TRUE,
-        future.stdout = NA,
-        future.globals = c(
-            "beta_handler",
-            "group_inds",
-            "pheno",
-            "covariates",
-            "max_pval",
-            "min_delta_beta",
-            "aggfun",
-            "pval_mode",
-            "empirical_strategy",
-            "ntries",
-            "mid_p",
-            "splits",
-            "chr_ends",
-            "verbose",
-            "p_ext"
-        ),
-        FUN = function(split_ind) {
+    fun <- function(split_ind) {
             split <- splits[split_ind, ]
             beta_locs <- beta_handler$getBetaLocs()
             if (!bigmemory::is.big.matrix(beta_locs)) {
                 chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = T)
             } else {
                 chunk_beta <- beta_handler$getBeta(
-                    row_names = split[1]:split[2], check_mem = T
+                    row_names = split[1]:split[2], check_mem = TRUE
                 )
             }
             x <- .testConnectivityBatch(
@@ -194,8 +172,38 @@
             }
             x
         }
-    )
-    .finalizeParallel()
+    if (njobs == 1) {
+        ret <- lapply(
+            X = seq_len(nrow(splits)),
+            FUN = fun
+        )
+    } else {
+        .setupParallel()
+        ret <- future.apply::future_lapply(
+            X = seq_len(nrow(splits)),
+            future.seed = TRUE,
+            future.stdout = NA,
+            future.globals = c(
+                "beta_handler",
+                "group_inds",
+                "pheno",
+                "covariates",
+                "max_pval",
+                "min_delta_beta",
+                "aggfun",
+                "pval_mode",
+                "empirical_strategy",
+                "ntries",
+                "mid_p",
+                "splits",
+                "chr_ends",
+                "verbose",
+                "p_ext"
+            ),
+            FUN = fun
+        )
+        .finalizeParallel()
+    }
     do.call(rbind, ret)
 }
 
@@ -449,11 +457,17 @@
             if (!all(covariates %in% colnames(pheno))) {
                 stop("Not all covariates are present in pheno.")
             }
-            Xc <- as.data.frame(pheno[idx, covariates, drop = FALSE])
-            Xc <- data.frame(`(Intercept)` = 1, Xc, check.names = FALSE)
-            Xc <- as.matrix(Xc)
-            storage.mode(Xc) <- "double"
-            group_m <- .remove_confounder_effect(group_m, Xc)
+            xc <- as.data.frame(pheno[idx, covariates, drop = FALSE])
+            xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
+            # convert any string columns to factors
+            for (col in colnames(xc)) {
+                if (is.character(xc[[col]])) {
+                    xc[[col]] <- as.numeric(as.factor(xc[[col]]))
+                }
+            }
+            xc <- as.matrix(xc)
+            storage.mode(xc) <- "double"
+            group_m <- .remove_confounder_effect(group_m, xc)
         }
 
         # Extract consecutive pairs matrices
@@ -585,28 +599,30 @@
         na_p <- is.na(ps) & g_mask
         g_reasons[na_p] <- "na pval"
         g_mask[na_p] <- FALSE
-        # comb-p autocorrelation adjustment method:
-        # ------
-        # Convert p to z scores
-        z <- qnorm(pmax(ps[!is.na(ps)], 1e-300) / 2, lower.tail = FALSE)
+        if (sum(g_mask) > 1) {
+            .log_info("Applying comb-p autocorrelation adjustment...", level = 3)
+            # ------
+            # Convert p to z scores
+            z <- stats::qnorm(pmax(ps[g_mask], 1e-300) / 2, lower.tail = FALSE)
 
-        # Estimate spatial autocorrelation of z values
-        zf <- z[is.finite(z)]
-        ac <- acf(zf, lag.max = 1, plot = FALSE)$acf[2]
-        rho <- max(0, min(ac, 0.99))  # constrain
-        w <- sqrt(1 - rho)            # effective weight
-
-        # Apply weighted z to downscale autocorrelation-inflated signals
-        z_weighted <- z * w
-
-        # Convert back to p values
-        ps[!is.na(ps)] <- 2 * pnorm(abs(z_weighted), lower.tail = FALSE)
-        # ------
-
-        # Pairwise multiple testing correction (BH) within group
-        ps[!is.na(ps)] <- p.adjust(ps[!is.na(ps)], method = "BH")
-
-        exceed_pval <- !is.na(ps) & (ps > max_pval_corrected) & g_mask
+            # Estimate spatial autocorrelation of z values
+            zf <- z[is.finite(z)]
+            if (length(zf) > 1) {
+                ac <- stats::acf(zf, lag.max = 1, plot = FALSE)$acf[2]
+                .log_info(paste0("Estimated autocorrelation (lag 1): ", round(ac, 4)), level = 3)
+                rho <- max(0, min(ac, 0.99))  # constrain
+                w <- sqrt(1 - rho)            # effective weight
+                # Apply weighted z to downscale autocorrelation-inflated signals
+                z_weighted <- z * w
+                # Convert back to p values
+                ps[g_mask] <- 2 * stats::pnorm(abs(z_weighted), lower.tail = FALSE)
+            }
+            # ------
+            # Pairwise multiple testing correction (BH) within group
+            .log_info("Applying BH correction within group...", level = 3)
+            ps[!g_mask] <- stats::p.adjust(ps[!g_mask], method = "BH")
+        }
+        exceed_pval <- g_mask & (ps > max_pval_corrected)
         g_reasons[exceed_pval] <- "pval>max_pval (corrected)"
         g_mask[exceed_pval] <- FALSE
 
@@ -788,7 +804,7 @@ findDMRsFromSeeds <- function(
   bed_chrom_col = "chrom",
   bed_start_col = "start",
   chr_levels = NULL,
-  verbose = NULL,
+  verbose = getOption("DMRsegal.verbose", 1),
   .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
@@ -800,9 +816,6 @@ findDMRsFromSeeds <- function(
         code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
         wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
         withr::defer(wait())
-    }
-    if (is.null(verbose)) {
-        verbose <- getOption("DMRsegal.verbose", 1)
     }
     options(DMRsegal.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
@@ -932,6 +945,9 @@ findDMRsFromSeeds <- function(
                     stop("No valid seeds found after converting IDs to bed indices.")
                 }
             }
+        }
+        if (!is.null(array)) {
+            array <- strex::match_arg(array, ignore_case = TRUE)
         }
         beta_handler <- getBetaHandler(
             beta = beta,

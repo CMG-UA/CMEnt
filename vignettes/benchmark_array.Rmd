@@ -163,17 +163,26 @@ if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     # bumphunter uses the same mset and design matrix as other methods
     # Run bumphunter with the same design matrix
-    doParallel::registerDoParallel(cores = 8)
+    doParallel::registerDoParallel(cores = 4)
     design <- model.matrix(~Sample_Group, data = pheno)
-
-    bumphunter_results <- bumphunter(
-        beta_mat,
-        chr = locs$chr,
-        pos = locs$start,
+    dmrs_cutoff <- 0.2
+    while (dmrs_cnt > 30000) {
+        dmrs <- bumphunter(beta_mat,
+            design = design,
+            cutoff = dmrs_cutoff,
+            B = 0,
+            type = "Beta",
+            coef = 1
+        )
+        dmrs_cnt <- nrow(dmrs$table)
+        dmrs_cutoff <- dmrs_cutoff * 1.3
+    }
+    bumphunter_results <- bumphunter(beta_mat,
         design = design,
-        pickCutoff = TRUE,
-        B = 200, # Number of permutations
-        type = "Beta"
+        cutoff = dmrs_cutoff / 1.3,
+        B = 1000,
+        type = "Beta",
+        coef = 1
     )
     dmrs_bumphunter <- makeGRangesFromDataFrame(bumphunter_results$table)
     saveRDS(dmrs_bumphunter, bumphunter_file)

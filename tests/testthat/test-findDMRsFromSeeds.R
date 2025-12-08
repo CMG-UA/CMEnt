@@ -94,7 +94,8 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
-
+    options(error = traceback)
+    options(warn = 2)
     options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
@@ -105,7 +106,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         covariates = c("Age", "Gender"),
         min_seeds = 2,
         min_cpgs = 3,
-        max_lookup_dist = 1000
+        max_lookup_dist = 1000,
     )
 })
 
