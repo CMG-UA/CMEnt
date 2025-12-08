@@ -585,9 +585,27 @@
         na_p <- is.na(ps) & g_mask
         g_reasons[na_p] <- "na pval"
         g_mask[na_p] <- FALSE
+        # comb-p autocorrelation adjustment method:
+        # ------
+        # Convert p to z scores
+        z <- qnorm(pmax(ps[!is.na(ps)], 1e-300) / 2, lower.tail = FALSE)
 
+        # Estimate spatial autocorrelation of z values
+        zf <- z[is.finite(z)]
+        ac <- acf(zf, lag.max = 1, plot = FALSE)$acf[2]
+        rho <- max(0, min(ac, 0.99))  # constrain
+        w <- sqrt(1 - rho)            # effective weight
 
-        # Check p-value threshold (vectorized)
+        # Apply weighted z to downscale autocorrelation-inflated signals
+        z_weighted <- z * w
+
+        # Convert back to p values
+        ps[!is.na(ps)] <- 2 * pnorm(abs(z_weighted), lower.tail = FALSE)
+        # ------
+
+        # Pairwise multiple testing correction (BH) within group
+        ps[!is.na(ps)] <- p.adjust(ps[!is.na(ps)], method = "BH")
+
         exceed_pval <- !is.na(ps) & (ps > max_pval_corrected) & g_mask
         g_reasons[exceed_pval] <- "pval>max_pval (corrected)"
         g_mask[exceed_pval] <- FALSE
@@ -644,6 +662,14 @@
         reasons[low_delta] <- "delta_beta<min_delta_beta"
         ret[["delta_beta"]] <- delta_betas
     }
+    ret$connected <- connected
+    ret$reason <- reasons
+    if (strict_mode) {
+        ret$first_failing_group <- failing_groups
+    } else {
+        ret$failing_groups <- failing_groups
+    }
+
 
     ret
 }
@@ -833,6 +859,12 @@ findDMRsFromSeeds <- function(
             "' does not reside in the seeds file columns: ",
             paste(colnames(seeds_tsv), collapse = ",")
         )
+    }
+    if (!is.null(covariates)) {
+        missing_covars <- covariates[!covariates %in% colnames(pheno)]
+        if (length(missing_covars) > 0) {
+            stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
+        }
     }
     if (is.null(chr_levels)) {
         chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]

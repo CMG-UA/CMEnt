@@ -103,6 +103,7 @@ if (!file.exists(DMRsegal_file)) {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
+        covariates = c("Age", "Gender"),
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,

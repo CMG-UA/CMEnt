@@ -2239,7 +2239,7 @@ convertToGRanges <- function(obj, genome) {
 
 #' @keywords internal
 #' @noRd
-.finalizeParallel() <- function() {
+.finalizeParallel <- function() {
     future::plan(future::sequential)
 }
 

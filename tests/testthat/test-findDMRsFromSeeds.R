@@ -90,6 +90,25 @@ test_that("findDMRsFromSeeds works with bigmem beta subset", {
     }
 })
 
+test_that("findDMRsFromSeeds work with covariates adjustment", {
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
+
+    options("DMRsegal.verbose" = 2)
+    dmrs <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        covariates = c("Age", "Gender"),
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000
+    )
+})
+
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
 
