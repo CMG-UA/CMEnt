@@ -1336,8 +1336,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     if (!array_based) {
         stop("Provided array is NULL but locations file was not provided.")
     }
-    array <- tolower(array)
     array <- strex::match_arg(array, ignore_case = TRUE)
+    array <- tolower(array)
     genome <- tolower(genome)
     cache_file <- file.path(cache_dir, paste0(
         array, "_", genome,
