@@ -879,6 +879,10 @@ findDMRsFromSeeds <- function(
             stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
         }
     }
+    array_based <- !is.null(array)
+    if (array_based) {
+        array <- strex::match_arg(array, ignore_case = TRUE)
+    }
     if (is.null(chr_levels)) {
         chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
     }
@@ -945,9 +949,6 @@ findDMRsFromSeeds <- function(
                     stop("No valid seeds found after converting IDs to bed indices.")
                 }
             }
-        }
-        if (!is.null(array)) {
-            array <- strex::match_arg(array, ignore_case = TRUE)
         }
         beta_handler <- getBetaHandler(
             beta = beta,
@@ -1651,7 +1652,7 @@ findDMRsFromSeeds <- function(
 
 
     filtered_dmrs$cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
-    array_based <- is.null(array) || tolower(array) == "null"
+    array_based <- !is.null(array)
     if (array_based && min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
         filtered_dmrs$cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)

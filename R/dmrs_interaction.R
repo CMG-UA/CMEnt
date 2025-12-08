@@ -169,7 +169,7 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)
         use_abs <- TRUE
     }
-    array_based <- is.null(array) || tolower(array) == "null"
+    array_based <- !is.null(array)
     if (array_based) {
         bg_pwm <- getBackgroundArrayMotif(genome, array, flank_size = flank_size)
     }
