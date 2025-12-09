@@ -122,7 +122,6 @@ rankDMRs <- function(
         },
         future.seed = TRUE,
         future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "casecontrol_col", "covariates", "design"),
-        SIMPLIFY=TRUE,
         future.stdout = NA
     )
     .finalizeParallel()
