@@ -189,7 +189,7 @@ cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
 ```{r}
 combp_file <- file.path(benchmark_output_dir, "dmrs.combp.rds")
 
-run_combp <- function(dmps_gr, output_dir, seed = 1000, dist = 1000) {
+run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
         warning("bedtools not found in PATH. comb-p requires bedtools to be installed.")
         warning("Install with: conda install -yc bioconda bedtools")
@@ -219,7 +219,7 @@ run_combp <- function(dmps_gr, output_dir, seed = 1000, dist = 1000) {
     output_prefix <- file.path(output_dir, "combp_output")
 
     cmd <- sprintf(
-        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.05 --region-filter-n 2 %s",
+        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.01 --region-filter-n 3 %s",
         seed, dist, output_prefix, bed_file
     )
 
@@ -236,6 +236,8 @@ run_combp <- function(dmps_gr, output_dir, seed = 1000, dist = 1000) {
             if (file.exists(regions_file)) {
                 regions <- fread(cmd = sprintf("zcat %s", regions_file))
                 colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
+
+                regions <- regions[regions$z_sidak_p < 0.05 & regions$n_probes >= 3, ]
 
                 dmrs_combp <- makeGRangesFromDataFrame(regions,
                     seqnames.field = "chr",
@@ -289,10 +291,15 @@ run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 pheno = pheno$Sample_Group,
                 arraytype = array_type,
                 method = "ProbeLasso",
-                minDmrSize = 3,
+                minProbes = 3,
+                adjPvalDmr = 0.05,
+                adjPvalProbe = 0.1,
+                meanLassoRadius = 500,
+                minDmrSep = 500,
+                minDmrSize = 50,
                 PDFplot = FALSE,
                 Rplot = FALSE,
-                resultsDir = "/tmp/champ_probeLasso",
+                resultsDir = "/tmp/champ_probeLasso"
             )$ProbeLassoDMR
 
             return(makeGRangesFromDataFrame(result, keep.extra.columns = TRUE))
