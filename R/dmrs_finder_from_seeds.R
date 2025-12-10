@@ -434,10 +434,11 @@
     } else {
         exceeded_dist <- rep(FALSE, n_pairs)
     }
-    exdist_mask <- !exceeded_dist
+    nexdist_mask <- !exceeded_dist
 
     if (!strict_mode && n_groups > 0) {
         per_group_reasons <- matrix("", nrow = n_groups, ncol = n_pairs)
+        per_group_reasons[, exceeded_dist] <- "exceeded max distance"
         per_group_p <- matrix(NA_real_, nrow = n_groups, ncol = n_pairs)
         rownames(per_group_reasons) <- names(group_inds)
         rownames(per_group_p) <- names(group_inds)
@@ -475,8 +476,8 @@
         y_mat_full <- group_m[2:n_sites, , drop = FALSE] # Sites i+1
 
         # Apply distance mask
-        x_mat <- x_mat_full[exdist_mask, , drop = FALSE]
-        y_mat <- y_mat_full[exdist_mask, , drop = FALSE]
+        x_mat <- x_mat_full[nexdist_mask, , drop = FALSE]
+        y_mat <- y_mat_full[nexdist_mask, , drop = FALSE]
 
         sn_pairs <- nrow(x_mat)
         if (sn_pairs == 0L) {
@@ -485,7 +486,7 @@
         g_reasons <- rep("", sn_pairs)
         g_mask <- rep(TRUE, sn_pairs)
         if (strict_mode) {
-            g_mask <- connected[exdist_mask]
+            g_mask <- connected[nexdist_mask]
         } else {
             g_mask <- rep(TRUE, sn_pairs)
         }
@@ -628,15 +629,15 @@
 
         # Update results back to main vectors
         if (strict_mode) {
-            sconnected <- connected[exdist_mask]
-            broad_mask <- exdist_mask & connected
+            sconnected <- connected[nexdist_mask]
+            broad_mask <- nexdist_mask & connected
             pvals[broad_mask] <- pmax(pvals[broad_mask], ps[sconnected])
             reasons[broad_mask] <- g_reasons[sconnected]
             failing_groups[broad_mask] <- ifelse(g_mask[sconnected], "", g)
             connected[broad_mask] <- connected[broad_mask] & g_mask[sconnected]
         } else {
-            per_group_p[g_index, exdist_mask] <- ps
-            per_group_reasons[g_index, exdist_mask] <- g_reasons
+            per_group_p[g_index, nexdist_mask] <- ps
+            per_group_reasons[g_index, nexdist_mask] <- g_reasons
         }
     }
     if (!strict_mode) {

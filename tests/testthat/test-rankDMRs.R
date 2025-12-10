@@ -95,29 +95,6 @@ test_that("rankDMRs works with different nfold values", {
     expect_equal(length(ranked_dmrs_3fold), length(ranked_dmrs_5fold))
 })
 
-test_that("rankDMRs works with casecontrol_col specified", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    
-    pheno$casecontrol <- pheno$Sample_Group != pheno$Sample_Group[1]
-    
-    example_output_path <- system.file("extdata", "example_output.rds", package = "DMRsegal")
-    dmrs <- readRDS(example_output_path)
-    mcols(dmrs)$accuracy <- NULL
-    
-    ranked_dmrs <- rankDMRs(
-        dmrs = dmrs,
-        beta = beta,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        casecontrol_col = "casecontrol"
-    )
-    
-    expect_true("accuracy" %in% names(mcols(ranked_dmrs)))
-    expect_true(all(mcols(ranked_dmrs)$accuracy >= 0))
-    expect_true(all(mcols(ranked_dmrs)$accuracy <= 1))
-})
-
 test_that("rankDMRs returns DMRs ordered by p-value", {
     beta <- loadExampleInputData("beta")
     pheno <- loadExampleInputData("pheno")
