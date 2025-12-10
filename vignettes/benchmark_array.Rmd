@@ -358,7 +358,7 @@ if (!file.exists(bumphunter_file)) {
     doParallel::registerDoParallel(cores = 4)
     design <- model.matrix(~Sample_Group, data = pheno)
 
-    dmrs_cutoff <- 0.2
+    dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
     while (dmrs_cnt > 30000) {
         dmrs <- bumphunter(beta_mat,
@@ -366,24 +366,33 @@ if (!file.exists(bumphunter_file)) {
             cutoff = dmrs_cutoff,
             chr = as.character(locs$chr),
             pos = locs$start,
+            maxGap = 500,
+            nullMethod = "bootstrap",
             B = 0,
             type = "Beta",
             coef = 2
         )
         dmrs_cnt <- nrow(dmrs$table)
-        dmrs_cutoff <- dmrs_cutoff * 1.3
+        dmrs_cutoff <- dmrs_cutoff * 1.2
     }
+    
+    final_cutoff <- dmrs_cutoff / 1.2
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
         chr = as.character(locs$chr),
         pos = locs$start,
-        cutoff = dmrs_cutoff / 1.3,
+        cutoff = final_cutoff,
+        maxGap = 500,
+        nullMethod = "bootstrap",
         B = 100,
         type = "Beta",
         coef = 2
     )
 
-    dmrs_bumphunter <- makeGRangesFromDataFrame(bumphunter_results$table,
+    dmr_table <- bumphunter_results$table
+    dmr_table <- dmr_table[dmr_table$L >= 3, ]
+    
+    dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
         start.field = "start",
         end.field = "end",
