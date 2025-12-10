@@ -637,31 +637,6 @@ p4 <- ggplot(iou_df, aes(x = Method2, y = Method1, fill = IoU)) +
 print(p4)
 ```
 
-
-## Venn Diagram of DMR Overlaps
-```{r venn_diagram, fig.width=8, fig.height=8}
-library(VennDiagram)
-venn_list <- lapply(names(methods_list), function(method) {
-    gr <- methods_list[[method]]
-    if (length(gr) > 0) {
-        as.character(names(gr))
-    } else {
-        character(0)
-    }
-})
-names(venn_list) <- names(methods_list)
-venn.plot <- venn.diagram(
-    x = venn_list,
-    filename = NULL,
-    fill = RColorBrewer::brewer.pal(n = length(venn_list), name = "Set3"),
-    alpha = 0.5,
-    cex = 1.5,
-    cat.cex = 1.5,
-    main = NULL
-)
-grid.newpage()
-grid.draw(venn.plot)
-```
 ## Performance Summary
 
 ```{r summary_table}
