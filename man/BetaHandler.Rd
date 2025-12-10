@@ -22,6 +22,8 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \item{\code{sorted_locs}}{Sorted genomic locations}
 
 \item{\code{njobs}}{Number of parallel jobs}
+
+\item{\code{beta_chunk_size}}{Chunk size for subsetting beta values}
 }
 \if{html}{\out{</div>}}
 }
@@ -35,6 +37,7 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \item \href{#method-BetaHandler-getBetaColNames}{\code{BetaHandler$getBetaColNames()}}
 \item \href{#method-BetaHandler-validate}{\code{BetaHandler$validate()}}
 \item \href{#method-BetaHandler-getBetaLocs}{\code{BetaHandler$getBetaLocs()}}
+\item \href{#method-BetaHandler-getBetaChunkSize}{\code{BetaHandler$getBetaChunkSize()}}
 \item \href{#method-BetaHandler-getBeta}{\code{BetaHandler$getBeta()}}
 \item \href{#method-BetaHandler-clone}{\code{BetaHandler$clone()}}
 }
@@ -153,6 +156,15 @@ Get genomic locations for beta values
 \subsection{Returns}{
 Data frame of genomic locations
 }
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-getBetaChunkSize"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-getBetaChunkSize}{}}}
+\subsection{Method \code{getBetaChunkSize()}}{
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBetaChunkSize()}\if{html}{\out{</div>}}
+}
+
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaHandler-getBeta"></a>}}

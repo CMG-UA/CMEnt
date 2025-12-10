@@ -7,10 +7,11 @@
 \usage{
 .buildConnectivityArray(
   beta_handler,
+  pheno,
   group_inds,
   max_pval = 0.05,
   min_delta_beta = 0,
-  casecontrol = NULL,
+  covariates = NULL,
   max_lookup_dist = 1000,
   chunk_size = 1000,
   group_concordance_strategy = "strict",
@@ -23,15 +24,16 @@
 )
 
 findDMRsFromSeeds(
-  beta = NULL,
-  seeds = NULL,
-  pheno = NULL,
+  beta,
+  seeds,
+  pheno,
   seeds_id_col = NULL,
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
+  covariates = NULL,
   min_cpg_delta_beta = 0,
   expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = "hg19",
   max_pval = 0.05,
   group_concordance_strategy = c("strict", "relaxed"),
@@ -54,12 +56,16 @@ findDMRsFromSeeds(
   bed_chrom_col = "chrom",
   bed_start_col = "start",
   chr_levels = NULL,
-  verbose = NULL,
+  verbose = getOption("DMRsegal.verbose", 1),
   .load_debug = FALSE
 )
 }
 \arguments{
+\item{pheno}{Data frame. Phenotype data.}
+
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
+
+\item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.}
 
@@ -79,8 +85,6 @@ findDMRsFromSeeds(
 
 \item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.}
 
-\item{pheno}{Data frame. Phenotype data.}
-
 \item{seeds_id_col}{Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.}
 
 \item{sample_group_col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
@@ -97,7 +101,7 @@ findDMRsFromSeeds(
 
 \item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.}
 
-\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Minimum is 2. Default is 2.}
+\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.}
 
 \item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.}
 

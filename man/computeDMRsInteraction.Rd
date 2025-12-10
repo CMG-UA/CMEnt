@@ -22,9 +22,9 @@ computeDMRsInteraction(
 
 \item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg19")}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
 
-\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
+\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

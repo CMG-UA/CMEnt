@@ -8,11 +8,11 @@ rankDMRs(
   dmrs,
   beta,
   pheno,
+  covariates = NULL,
   genome = "hg19",
   array = "450K",
   sorted_locs = NULL,
-  sample_group_col = "Sample_Group",
-  casecontrol_col = NULL
+  sample_group_col = "Sample_Group"
 )
 }
 \arguments{
@@ -29,8 +29,6 @@ rankDMRs(
 \item{sorted_locs}{Data frame. Optional pre-computed sorted genomic locations. Default is NULL}
 
 \item{sample_group_col}{Character. Column name in pheno containing sample group information. Default is "Sample_Group"}
-
-\item{casecontrol_col}{Character. Column name in pheno for case/control status. If NULL, the first level of sample_group_col is assumed to be control. Default is NULL}
 }
 \value{
 GRanges object with DMRs ordered by p-value and an additional metadata column:

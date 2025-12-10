@@ -5,13 +5,13 @@
 \title{Get Sorted Array Locations}
 \usage{
 getSortedGenomicLocs(
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
   genome = c("hg19", "hg38", "mm10", "mm39"),
   locations_file = NULL
 )
 }
 \arguments{
-\item{array}{Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome or when locations_file is provided}
+\item{array}{Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.}
 
 \item{genome}{Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided}
 

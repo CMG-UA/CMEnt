@@ -36,7 +36,7 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{genome}{Character. Genome version (default: "hg19").}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
+\item{array}{Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional).}
 
