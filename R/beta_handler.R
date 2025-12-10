@@ -628,7 +628,6 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            njobs = 1) {
     if (inherits(beta, "BetaHandler")) {
-        .log_warn("Provided beta is already a BetaHandler instance. Returning it directly.")
         return(invisible(beta))
     }
     invisible(BetaHandler$new(
