@@ -637,57 +637,6 @@ p4 <- ggplot(iou_df, aes(x = Method2, y = Method1, fill = IoU)) +
 print(p4)
 ```
 
-## Performance Summary
-
-```{r summary_table}
-summary_df <- results_comparison %>%
-    left_join(specific_summary, by = "Method") %>%
-    select(
-        Method, Number_of_DMRs, Mean_DMR_Width, Median_DMR_Width,
-        Total_Coverage_bp, Specific_DMRs, Percentage_Specific
-    )
-
-knitr::kable(summary_df,
-    digits = 2,
-    caption = "Comprehensive Performance Summary"
-)
-```
-
-## Key Findings
-
-```{r findings, echo=FALSE, results='asis'}
-if (nrow(results_comparison) > 0) {
-    max_dmrs <- results_comparison[which.max(results_comparison$Number_of_DMRs), ]
-    min_dmrs <- results_comparison[which.min(results_comparison$Number_of_DMRs), ]
-
-    cat(sprintf(
-        "- **%s** detected the most DMRs (%d regions)\n",
-        max_dmrs$Method, max_dmrs$Number_of_DMRs
-    ))
-    cat(sprintf(
-        "- **%s** was most selective (%d regions)\n",
-        min_dmrs$Method, min_dmrs$Number_of_DMRs
-    ))
-
-    if (length(consensus_3plus) > 0) {
-        cat(sprintf(
-            "- **%d DMRs** were detected by 3 or more methods (high confidence)\n",
-            length(consensus_3plus)
-        ))
-    }
-
-    segal_idx <- which(results_comparison$Method == "DMRsegal")
-    if (length(segal_idx) > 0) {
-        segal_specific_pct <- specific_summary$Percentage_Specific[
-            specific_summary$Method == "DMRsegal"
-        ]
-        cat(sprintf(
-            "- **DMRsegal** found %.1f%% method-specific DMRs\n",
-            segal_specific_pct
-        ))
-    }
-}
-```
 
 
 ## Session Info
