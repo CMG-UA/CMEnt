@@ -637,80 +637,31 @@ p4 <- ggplot(iou_df, aes(x = Method2, y = Method1, fill = IoU)) +
 print(p4)
 ```
 
-## Consensus DMRs
 
-Let's identify consensus regions detected by multiple methods:
-
-```{r consensus}
-find_consensus <- function(methods_list, min_methods = 2) {
-    all_dmrs <- do.call(c, unname(methods_list))
-    all_dmrs <- GenomicRanges::reduce(all_dmrs)
-
-    consensus_counts <- vapply(seq_along(all_dmrs), function(i) {
-        region <- all_dmrs[i]
-        sum(sapply(methods_list, function(method_dmrs) {
-            length(subsetByOverlaps(region, method_dmrs)) > 0
-        }))
-    }, integer(1))
-
-    consensus_dmrs <- all_dmrs[consensus_counts >= min_methods]
-    mcols(consensus_dmrs)$n_methods <- consensus_counts[consensus_counts >= min_methods]
-
-    return(consensus_dmrs)
-}
-
-if (length(methods_list) > 1) {
-    consensus_2plus <- find_consensus(methods_list, min_methods = 2)
-    consensus_3plus <- find_consensus(methods_list, min_methods = 3)
-
-    cat(sprintf("\nConsensus DMRs (detected by 2+ methods): %d\n", length(consensus_2plus)))
-    cat(sprintf("Consensus DMRs (detected by 3+ methods): %d\n", length(consensus_3plus)))
-
-    if (length(consensus_3plus) > 0) {
-        consensus_table <- table(mcols(consensus_3plus)$n_methods)
-        cat("\nDistribution of consensus DMRs by number of methods:\n")
-        print(consensus_table)
+## Venn Diagram of DMR Overlaps
+```{r venn_diagram, fig.width=8, fig.height=8}
+library(VennDiagram)
+venn_list <- lapply(names(methods_list), function(method) {
+    gr <- methods_list[[method]]
+    if (length(gr) > 0) {
+        as.character(names(gr))
+    } else {
+        character(0)
     }
-}
-```
-
-## Method-Specific DMRs
-
-```{r specific_dmrs}
-find_specific_dmrs <- function(target_method, methods_list) {
-    target_dmrs <- methods_list[[target_method]]
-    if (length(target_dmrs) == 0) {
-        return(GRanges())
-    }
-
-    other_methods <- methods_list[names(methods_list) != target_method]
-    all_others <- do.call(c, unname(other_methods))
-
-    if (length(all_others) == 0) {
-        return(target_dmrs)
-    }
-
-    specific <- target_dmrs[countOverlaps(target_dmrs, all_others) == 0]
-    return(specific)
-}
-
-specific_dmrs_list <- lapply(names(methods_list), function(method) {
-    specific <- find_specific_dmrs(method, methods_list)
-    data.frame(
-        Method = method,
-        Total_DMRs = length(methods_list[[method]]),
-        Specific_DMRs = length(specific),
-        Percentage_Specific = ifelse(length(methods_list[[method]]) > 0,
-            (length(specific) / length(methods_list[[method]])) * 100,
-            0
-        )
-    )
 })
-
-specific_summary <- do.call(rbind, specific_dmrs_list)
-knitr::kable(specific_summary, digits = 2, caption = "Method-Specific DMRs (not overlapping with any other method)")
+names(venn_list) <- names(methods_list)
+venn.plot <- venn.diagram(
+    x = venn_list,
+    filename = NULL,
+    fill = RColorBrewer::brewer.pal(n = length(venn_list), name = "Set3"),
+    alpha = 0.5,
+    cex = 1.5,
+    cat.cex = 1.5,
+    main = NULL
+)
+grid.newpage()
+grid.draw(venn.plot)
 ```
-
 ## Performance Summary
 
 ```{r summary_table}

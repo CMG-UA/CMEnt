@@ -105,11 +105,11 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, pheno, group_inds, max_pval = 0.05,
-    min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, group_concordance_strategy = "strict",
-    aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+  beta_handler, pheno, group_inds, max_pval = 0.05,
+  min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
+  chunk_size = 1000, group_concordance_strategy = "strict",
+  aggfun = median, empirical_strategy = "auto",
+  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -132,46 +132,46 @@
     }
     gc()
     fun <- function(split_ind) {
-            split <- splits[split_ind, ]
-            beta_locs <- beta_handler$getBetaLocs()
-            if (!bigmemory::is.big.matrix(beta_locs)) {
-                chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = T)
-            } else {
-                chunk_beta <- beta_handler$getBeta(
-                    row_names = split[1]:split[2], check_mem = TRUE
-                )
-            }
-            x <- .testConnectivityBatch(
-                sites_beta = chunk_beta,
-                group_inds = group_inds,
-                pheno = pheno,
-                covariates = covariates,
-                max_pval = max_pval,
-                min_delta_beta = min_delta_beta,
-                sites_locs = beta_locs[split[1]:split[2], ],
-                group_concordance_strategy = group_concordance_strategy,
-                aggfun = aggfun,
-                pval_mode = pval_mode,
-                empirical_strategy = empirical_strategy,
-                ntries = ntries,
-                mid_p = mid_p
+        split <- splits[split_ind, ]
+        beta_locs <- beta_handler$getBetaLocs()
+        if (!bigmemory::is.big.matrix(beta_locs)) {
+            chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = T)
+        } else {
+            chunk_beta <- beta_handler$getBeta(
+                row_names = split[1]:split[2], check_mem = TRUE
             )
-            if (split[2] %in% chr_ends) {
-                # if we are at the end of a chromosome, add a final row of FALSE to indicate end-of-input
-                add <- data.frame(
-                    connected = FALSE,
-                    reason = "end-of-input"
-                )
-                for (col in setdiff(names(x), names(add))) {
-                    add[[col]] <- NA
-                }
-                x <- rbind(x, add)
-            }
-            if (verbose > 0) {
-                p_ext()
-            }
-            x
         }
+        x <- .testConnectivityBatch(
+            sites_beta = chunk_beta,
+            group_inds = group_inds,
+            pheno = pheno,
+            covariates = covariates,
+            max_pval = max_pval,
+            min_delta_beta = min_delta_beta,
+            sites_locs = beta_locs[split[1]:split[2], ],
+            group_concordance_strategy = group_concordance_strategy,
+            aggfun = aggfun,
+            pval_mode = pval_mode,
+            empirical_strategy = empirical_strategy,
+            ntries = ntries,
+            mid_p = mid_p
+        )
+        if (split[2] %in% chr_ends) {
+            # if we are at the end of a chromosome, add a final row of FALSE to indicate end-of-input
+            add <- data.frame(
+                connected = FALSE,
+                reason = "end-of-input"
+            )
+            for (col in setdiff(names(x), names(add))) {
+                add[[col]] <- NA
+            }
+            x <- rbind(x, add)
+        }
+        if (verbose > 0) {
+            p_ext()
+        }
+        x
+    }
     if (njobs == 1) {
         ret <- lapply(
             X = seq_len(nrow(splits)),
@@ -611,8 +611,8 @@
             if (length(zf) > 1) {
                 ac <- stats::acf(zf, lag.max = 1, plot = FALSE)$acf[2]
                 .log_info(paste0("Estimated autocorrelation (lag 1): ", round(ac, 4)), level = 3)
-                rho <- max(0, min(ac, 0.99))  # constrain
-                w <- sqrt(1 - rho)            # effective weight
+                rho <- max(0, min(ac, 0.99)) # constrain
+                w <- sqrt(1 - rho) # effective weight
                 # Apply weighted z to downscale autocorrelation-inflated signals
                 z_weighted <- z * w
                 # Convert back to p values
@@ -669,8 +669,8 @@
         site2_beta_mat <- sites_beta[2:n_sites, , drop = FALSE]
 
         # Vectorized mean computation across case/control
-        case_betas <- apply(site2_beta_mat[, pheno[,"__casecontrol__"] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
-        control_betas <- apply(site2_beta_mat[, pheno[,"__casecontrol__"] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        case_betas <- apply(site2_beta_mat[, pheno[, "__casecontrol__"] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        control_betas <- apply(site2_beta_mat[, pheno[, "__casecontrol__"] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         delta_betas <- case_betas - control_betas
 
         # Check threshold (vectorized)
@@ -692,7 +692,7 @@
 }
 
 .calculateBetaStats <- function(beta_values, pheno, aggfun) {
-    is_case <- pheno[,"__casecontrol__"] == 1
+    is_case <- pheno[, "__casecontrol__"] == 1
     cases <- beta_values[, is_case, drop = FALSE]
     cases <- as.matrix(cases, ncol = ncol(cases))
 
@@ -1845,10 +1845,10 @@ findDMRsFromSeeds <- function(
         .log_step("Ranking DMRs...", level = 1)
         ranked_dmrs_granges <- rankDMRs(
             final_dmrs_granges,
-            beta = beta, 
-            pheno = pheno, 
+            beta = beta,
+            pheno = pheno,
             genome = genome,
-            array = array, 
+            array = array,
             sorted_locs = sorted_locs,
             sample_group_col = sample_group_col,
             covariates = covariates
