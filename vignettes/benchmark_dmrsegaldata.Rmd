@@ -37,8 +37,9 @@ We evaluate these methods on:
 
 - Number and size distribution of DMRs
 - Overlap and concordance between methods
-- Computational performance
 - Biological relevance of detected regions
+
+The dataset used is DMRsegaldata, which contains methylation profiles for 5 cancer vs 5 normal samples.
 
 ## Setup and Dependencies
 
@@ -52,7 +53,7 @@ library(GenomicRanges)
 library(progressr)
 
 progressr::handlers("cli")
-benchmark_output_dir <- "benchmark_data"
+benchmark_output_dir <- "benchmark_dmrsegaldata"
 dir.create(benchmark_output_dir, showWarnings = FALSE, recursive = TRUE)
 ```
 
@@ -360,40 +361,21 @@ if (!file.exists(bumphunter_file)) {
     doParallel::registerDoParallel(cores = 4)
     design <- model.matrix(~Sample_Group, data = pheno)
 
-    dmrs_cutoff <- 0.1
-    dmrs_cnt <- Inf
-    while (dmrs_cnt > 30000) {
-        dmrs <- bumphunter(beta_mat,
-            design = design,
-            cutoff = dmrs_cutoff,
-            chr = as.character(locs$chr),
-            pos = locs$start,
-            maxGap = 500,
-            nullMethod = "bootstrap",
-            B = 0,
-            type = "Beta",
-            coef = 2
-        )
-        dmrs_cnt <- nrow(dmrs$table)
-        dmrs_cutoff <- dmrs_cutoff * 1.2
-    }
-    
-    final_cutoff <- dmrs_cutoff / 1.2
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
         chr = as.character(locs$chr),
         pos = locs$start,
-        cutoff = final_cutoff,
+        cutoff = 0.05,
         maxGap = 500,
         nullMethod = "bootstrap",
-        B = 100,
+        B = 250,
         type = "Beta",
         coef = 2
     )
 
     dmr_table <- bumphunter_results$table
-    dmr_table <- dmr_table[dmr_table$L >= 3, ]
-    
+    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$fwer < 0.05, ]
+
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
         start.field = "start",
@@ -952,11 +934,11 @@ specificity_df <- do.call(rbind, lapply(names(methods_list), function(method) {
 knitr::kable(specificity_df, caption = "Method-Specific vs Shared DMRs")
 
 specificity_plot_data <- specificity_df %>%
-    dplyr::select(Method, Pct_Specific, Pct_Shared_3plus) %>%
+    dplyr::select(Method, Pct_Specific, Pct_Shared_2plus) %>%
     tidyr::pivot_longer(cols = -Method, names_to = "Type", values_to = "Percentage")
 
 specificity_plot_data$Type <- ifelse(specificity_plot_data$Type == "Pct_Specific",
-    "Method-Specific", "Shared (3+ methods)"
+    "Method-Specific", "Shared (2+ methods)"
 )
 
 ggplot(specificity_plot_data, aes(x = Method, y = Percentage, fill = Type)) +
