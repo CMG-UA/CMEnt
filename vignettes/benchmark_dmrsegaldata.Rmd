@@ -360,21 +360,40 @@ if (!file.exists(bumphunter_file)) {
 
     doParallel::registerDoParallel(cores = 4)
     design <- model.matrix(~Sample_Group, data = pheno)
-
+    max_gap <- 1000
+    dmrs_cutoff <- 0.1
+    dmrs_cnt <- Inf
+    while (dmrs_cnt > 12000) {
+        dmrs <- bumphunter(beta_mat,
+            design = design,
+            cutoff = dmrs_cutoff,
+            chr = as.character(locs$chr),
+            pos = locs$start,
+            maxGap = max_gap,
+            nullMethod = "bootstrap",
+            B = 0,
+            type = "Beta",
+            coef = 2
+        )
+        dmrs_cnt <- nrow(dmrs$table)
+        dmrs_cutoff <- dmrs_cutoff * 1.2
+    }
+    final_cutoff <- dmrs_cutoff / 1.2
+    cat(sprintf("Bumphunter: Cutoff set to %.4f\n", final_cutoff, dmrs_cnt))
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
         chr = as.character(locs$chr),
         pos = locs$start,
-        cutoff = 0.05,
-        maxGap = 500,
+        cutoff = final_cutoff,
+        maxGap = max_gap,
         nullMethod = "bootstrap",
-        B = 250,
+        B = 500,
         type = "Beta",
         coef = 2
     )
 
     dmr_table <- bumphunter_results$table
-    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$fwer < 0.05, ]
+    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$fwer <= 0.05, ]
 
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
