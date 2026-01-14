@@ -15,7 +15,7 @@
 #' significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
 #'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file, or a BSseq object. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix. If a BSseq object is provided, genomic locations and methylation values will be extracted using bsseq methods.
 #' @param seeds Character. Path to the seeds TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is 1.
@@ -105,11 +105,11 @@
 
 
 .buildConnectivityArray <- function(
-  beta_handler, pheno, group_inds, max_pval = 0.05,
-  min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
-  chunk_size = 1000, group_concordance_strategy = "strict",
-  aggfun = median, empirical_strategy = "auto",
-  pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+    beta_handler, pheno, group_inds, max_pval = 0.05,
+    min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
+    chunk_size = 1000, group_concordance_strategy = "strict",
+    aggfun = median, empirical_strategy = "auto",
+    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -773,40 +773,40 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-  beta,
-  seeds,
-  pheno,
-  seeds_id_col = NULL,
-  sample_group_col = "Sample_Group",
-  casecontrol_col = NULL,
-  covariates = NULL,
-  min_cpg_delta_beta = 0,
-  expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-  genome = "hg19",
-  max_pval = 0.05,
-  group_concordance_strategy = c("strict", "relaxed"),
-  pval_mode = c("parametric", "empirical"),
-  empirical_strategy = c("auto", "montecarlo", "permutations"),
-  ntries = 200L,
-  mid_p = FALSE,
-  max_lookup_dist = 10000,
-  min_seeds = 2,
-  min_adj_seeds = 2,
-  min_cpgs = 50,
-  aggfun = c("median", "mean"),
-  ignored_sample_groups = NULL,
-  output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  beta_row_names_file = NULL,
-  annotate_with_genes = TRUE,
-  rank_dmrs = TRUE,
-  bed_provided = FALSE,
-  bed_chrom_col = "chrom",
-  bed_start_col = "start",
-  chr_levels = NULL,
-  verbose = getOption("DMRsegal.verbose", 1),
-  .load_debug = FALSE
+    beta,
+    seeds,
+    pheno,
+    seeds_id_col = NULL,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = NULL,
+    covariates = NULL,
+    min_cpg_delta_beta = 0,
+    expansion_step = 500,
+    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+    genome = "hg19",
+    max_pval = 0.05,
+    group_concordance_strategy = c("strict", "relaxed"),
+    pval_mode = c("parametric", "empirical"),
+    empirical_strategy = c("auto", "montecarlo", "permutations"),
+    ntries = 200L,
+    mid_p = FALSE,
+    max_lookup_dist = 10000,
+    min_seeds = 2,
+    min_adj_seeds = 2,
+    min_cpgs = 50,
+    aggfun = c("median", "mean"),
+    ignored_sample_groups = NULL,
+    output_prefix = NULL,
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    beta_row_names_file = NULL,
+    annotate_with_genes = TRUE,
+    rank_dmrs = TRUE,
+    bed_provided = FALSE,
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    chr_levels = NULL,
+    verbose = getOption("DMRsegal.verbose", 1),
+    .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)

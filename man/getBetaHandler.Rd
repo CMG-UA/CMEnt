@@ -14,15 +14,15 @@ getBetaHandler(
 )
 }
 \arguments{
-\item{beta}{Path to beta values file, or a tabix, or a beta matrix}
+\item{beta}{Path to beta values file, or a tabix, or a beta matrix, or a BSseq object}
 
-\item{array}{Array platform type, \strong{ignored} if sorted_locs have been provided}
+\item{array}{Array platform type, \strong{ignored} if sorted_locs or a BSseq object have been provided}
 
-\item{genome}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs have been provided.}
+\item{genome}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs or a BSseq object have been provided.}
 
 \item{beta_row_names_file}{Path to row names file}
 
-\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.}
+\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.}
 
 \item{njobs}{Number of parallel jobs}
 }
@@ -31,7 +31,7 @@ A new BetaHandler object
 }
 \description{
 Create a new BetaHandler object that manages methylation beta values
-from various input formats (files, matrices, tabix) with memory-efficient access patterns.
+from various input formats (files, matrices, tabix, BSseq objects) with memory-efficient access patterns.
 }
 \examples{
 beta_matrix <- beta <- loadExampleInputData("beta")

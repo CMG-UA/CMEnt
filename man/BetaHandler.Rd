@@ -5,13 +5,13 @@
 \title{Beta Handler Class}
 \description{
 An R6 class to handle methylation beta value files efficiently,
-with support for in-memory loading, tabix indexing, and various file formats.
+with support for in-memory loading, tabix indexing, BSseq objects, and various file formats.
 }
 \keyword{internal}
 \section{Public fields}{
 \if{html}{\out{<div class="r6-fields">}}
 \describe{
-\item{\code{beta}}{Path to beta values file, or a tabix file, or in-memory beta matrix}
+\item{\code{beta}}{Path to beta values file, or a tabix file, or in-memory beta matrix, or BSseq object}
 
 \item{\code{genome}}{Reference genome}
 
@@ -61,11 +61,11 @@ Create a new BetaHandler object
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix}
+\item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix, or a BSseq object}
 
-\item{\code{array}}{Array platform type. Ignored if sorted_locs, or a tabix file have been provided.}
+\item{\code{array}}{Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
-\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.}
+\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 

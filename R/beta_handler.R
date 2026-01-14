@@ -4,18 +4,25 @@ is_file <- function(file_path) {
 file_is_tabix <- function(file_path) {
     endsWith(file_path, ".gz") && file.exists(paste0(file_path, ".tbi"))
 }
+is_bsseq <- function(obj) {
+    inherits(obj, "BSseq")
+}
 
 #' Beta Handler Class
 #'
 #' @description An R6 class to handle methylation beta value files efficiently,
-#' with support for in-memory loading, tabix indexing, and various file formats.
+#' with support for in-memory loading, tabix indexing, BSseq objects, and various file formats.
 #'
 #'
 #' @importFrom R6 R6Class
+#' @importFrom GenomicRanges granges
+#' @importFrom GenomeInfoDb seqnames
+#' @importFrom IRanges start end
+#' @importFrom bsseq getMeth sampleNames
 #' @keywords internal
 BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
-        #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix
+        #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix, or BSseq object
         beta = NULL,
         #' @field genome Reference genome
         genome = "hg19",
@@ -30,9 +37,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @field beta_chunk_size Chunk size for subsetting beta values
         beta_chunk_size = NULL,
         #' @description Create a new BetaHandler object
-        #' @param beta Path to beta values file, or a tabix, or a beta matrix
-        #' @param array Array platform type. Ignored if sorted_locs, or a tabix file have been provided.
-        #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.
+        #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
+        #' @param array Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
+        #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
         #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
         #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
         #' @param njobs Number of parallel jobs
@@ -50,7 +57,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-            if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta))) {
+            if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta)) && !is_bsseq(beta)) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
                 self$array <- array
                 self$genome <- genome
@@ -72,6 +79,19 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 sorted_locs <- bigmemory::attach(readRDS(genomicLocsFromTabixToDescriptor(
                     input_tabix = beta
                 )))
+            } else if (is_bsseq(beta)) {
+                .log_info("Extracting genomic locations from BSseq object...", level = 2)
+                gr <- granges(beta)
+                sorted_locs <- data.frame(
+                    chr = as.character(seqnames(gr)),
+                    start = start(gr),
+                    end = end(gr)
+                )
+                if (!is.null(names(gr)) && length(names(gr)) > 0) {
+                    rownames(sorted_locs) <- names(gr)
+                } else {
+                    rownames(sorted_locs) <- paste0(sorted_locs$chr, ":", sorted_locs$start)
+                }
             }
             self$sorted_locs <- sorted_locs
             private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
@@ -94,6 +114,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(invisible(self))
             }
             if (!is.character(self$beta) && length(self$beta) > 0) {
+                if (is_bsseq(self$beta)) {
+                    .log_step("Processing BSseq object...", level = 1)
+                    private$.bsseq_object <- self$beta
+                    self$beta <- NULL
+                    private$.loaded <- TRUE
+                    return(invisible(self))
+                }
                 private$.beta_file_in_memory <- self$beta
                 self$beta <- NULL
                 private$.loaded <- TRUE
@@ -216,7 +243,15 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 ))
             } else {
                 .log_step("Reading row names from input...", level = 2)
-                if (!is.null(private$.beta_file_in_memory)) {
+                if (!is.null(private$.bsseq_object)) {
+                    .log_info("Reading from BSseq object...", level = 3)
+                    gr <- granges(private$.bsseq_object)
+                    if (!is.null(names(gr)) && length(names(gr)) > 0) {
+                        private$.beta_row_names <- names(gr)
+                    } else {
+                        private$.beta_row_names <- paste0(seqnames(gr), ":", start(gr))
+                    }
+                } else if (!is.null(private$.beta_file_in_memory)) {
                     .log_info("Reading from beta matrix...", level = 3)
                     private$.beta_row_names <- rownames(private$.beta_file_in_memory)
                 } else if (!is.null(private$.beta_file)) {
@@ -266,7 +301,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(private$.beta_col_names)
             }
 
-            if (!is.null(private$.beta_file_in_memory)) {
+            if (!is.null(private$.bsseq_object)) {
+                private$.beta_col_names <- sampleNames(private$.bsseq_object)
+            } else if (!is.null(private$.beta_file_in_memory)) {
                 private$.beta_col_names <- colnames(private$.beta_file_in_memory)
             } else {
                 if (!is.null(private$.beta_file)) {
@@ -375,6 +412,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
             private$.beta_locs
         },
+        #' @description Get the chunk size used for beta subsetting
+        #' @return Integer chunk size
         getBetaChunkSize = function() {
             self$load()
             self$beta_chunk_size
@@ -387,6 +426,41 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @return Matrix of beta values, or big.matrix if estimated size exceeds mem_thres
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, check_mem = FALSE) {
             self$validate()
+            if (!is.null(private$.bsseq_object)) {
+                .log_step("Extracting beta values from BSseq object..", level = 3)
+                beta_mat <- getMeth(private$.bsseq_object, type = "raw")
+                all_row_names <- self$getBetaRowNames()
+                rownames(beta_mat) <- all_row_names
+                if (!is.null(row_names)) {
+                    if (allow_missing) {
+                        row_names <- intersect(row_names, all_row_names)
+                    } else {
+                        missing_rows <- setdiff(row_names, all_row_names)
+                        if (length(missing_rows) > 0) {
+                            stop(
+                                "Requested CpG sites not found in BSseq object: ",
+                                paste(missing_rows, collapse = ", ")
+                            )
+                        }
+                    }
+                    if (is.null(col_names)) {
+                        beta_subset <- beta_mat[row_names, , drop = FALSE]
+                    } else {
+                        beta_subset <- beta_mat[row_names, col_names, drop = FALSE]
+                    }
+                } else {
+                    if (is.null(col_names)) {
+                        beta_subset <- beta_mat
+                    } else {
+                        beta_subset <- beta_mat[, col_names, drop = FALSE]
+                    }
+                }
+                .log_success("Beta values extracted: ", nrow(beta_subset),
+                    " CpGs x ", ncol(beta_subset), " samples",
+                    level = 3
+                )
+                return(beta_subset)
+            }
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (!is.null(row_names)) {
@@ -426,11 +500,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (check_mem) {
                 if (!is.null(private$.beta_file)) {
-                first_row <- 
-                    data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
-                } 
-                else {
-                    
+                    first_row <- data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
+                } else {
                     if (is.null(row_names)) {
                         locs <- self$getBetaLocs()
                     } else {
@@ -526,6 +597,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .beta_file = NULL,
         .tabix_file = NULL,
         .beta_file_in_memory = NULL,
+        .bsseq_object = NULL,
         .sorted_locs_is_bigmatrix = FALSE,
         .loadToBigMatrix = function(row_names = NULL, col_names = NULL, allow_missing, chunk_size) {
             beta_row_names <- self$getBetaRowNames()
@@ -596,13 +668,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #'
 #' @name getBetaHandler
 #' @description Create a new BetaHandler object that manages methylation beta values
-#' from various input formats (files, matrices, tabix) with memory-efficient access patterns.
+#' from various input formats (files, matrices, tabix, BSseq objects) with memory-efficient access patterns.
 #'
-#' @param beta Path to beta values file, or a tabix, or a beta matrix
-#' @param array Array platform type, **ignored** if sorted_locs have been provided
-#' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. **Ignored** if sorted_locs have been provided.
+#' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
+#' @param array Array platform type, **ignored** if sorted_locs or a BSseq object have been provided
+#' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. **Ignored** if sorted_locs or a BSseq object have been provided.
 #' @param beta_row_names_file Path to row names file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information.
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.
 #' @param njobs Number of parallel jobs
 #' @return A new BetaHandler object
 #'
