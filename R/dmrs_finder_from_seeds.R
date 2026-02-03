@@ -601,23 +601,6 @@
         g_reasons[na_p] <- "na pval"
         g_mask[na_p] <- FALSE
         if (sum(g_mask) > 1) {
-            .log_info("Applying comb-p autocorrelation adjustment...", level = 3)
-            # ------
-            # Convert p to z scores
-            z <- stats::qnorm(pmax(ps[g_mask], 1e-300) / 2, lower.tail = FALSE)
-
-            # Estimate spatial autocorrelation of z values
-            zf <- z[is.finite(z)]
-            if (length(zf) > 1) {
-                ac <- stats::acf(zf, lag.max = 1, plot = FALSE)$acf[2]
-                .log_info(paste0("Estimated autocorrelation (lag 1): ", round(ac, 4)), level = 3)
-                rho <- max(0, min(ac, 0.99)) # constrain
-                w <- sqrt(1 - rho) # effective weight
-                # Apply weighted z to downscale autocorrelation-inflated signals
-                z_weighted <- z * w
-                # Convert back to p values
-                ps[g_mask] <- 2 * stats::pnorm(abs(z_weighted), lower.tail = FALSE)
-            }
             # ------
             # Pairwise multiple testing correction (BH) within group
             .log_info("Applying BH correction within group...", level = 3)
