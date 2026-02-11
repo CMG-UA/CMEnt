@@ -137,7 +137,7 @@
         split <- splits[split_ind, ]
         beta_locs <- beta_handler$getBetaLocs()
         if (!bigmemory::is.big.matrix(beta_locs)) {
-            chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = T)
+            chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = TRUE)
         } else {
             chunk_beta <- beta_handler$getBeta(
                 row_names = split[1]:split[2], check_mem = TRUE
@@ -416,11 +416,12 @@
     if (strict_mode) {
         # null hypothesis: all groups must be significant -> bonferroni correction
         max_pval_corrected <- max_pval / n_groups
+        .log_info("Using max p-value of ", max_pval_corrected, "(group multi-testing corrected) for connectivity testing.", level = 4)
     } else {
         # null hypothesis: at least one group must be significant -> independent testing
         max_pval_corrected <- max_pval
+        .log_info("Using max p-value of ", max_pval_corrected, " for connectivity testing.", level = 4)
     }
-
     # Initialize result vectors
     connected <- rep(TRUE, n_pairs)
     pvals <- rep(NA_real_, n_pairs)
@@ -437,7 +438,7 @@
         exceeded_dist <- rep(FALSE, n_pairs)
     }
     nexdist_mask <- !exceeded_dist
-
+    .log_info(sum(exceeded_dist), " out of ", n_pairs, " site pairs exceeded the maximum lookup distance and will be marked as not connected.", level = 4)
     if (!strict_mode && n_groups > 0) {
         per_group_reasons <- matrix("", nrow = n_groups, ncol = n_pairs)
         per_group_reasons[, exceeded_dist] <- "exceeded max distance"
@@ -448,6 +449,7 @@
     g_index <- 0
     # Fully vectorized correlation testing for each group
     for (g in names(group_inds)) {
+        .log_step("Processing group '", g, "' (", g_index, "/", n_groups, ") for chunk connectivity testing...", level = 4)
         g_index <- g_index + 1
         idx <- group_inds[[g]]
         if (length(idx) < 3) next
@@ -602,14 +604,8 @@
         na_p <- is.na(ps) & g_mask
         g_reasons[na_p] <- "na pval"
         g_mask[na_p] <- FALSE
-        if (sum(g_mask) > 1) {
-            # ------
-            # Pairwise multiple testing correction (BH) within group
-            .log_info("Applying BH correction within group...", level = 3)
-            ps[!g_mask] <- stats::p.adjust(ps[!g_mask], method = "BH")
-        }
         exceed_pval <- g_mask & (ps > max_pval_corrected)
-        g_reasons[exceed_pval] <- "pval>max_pval (corrected)"
+        g_reasons[exceed_pval] <- "pval>max_pval"
         g_mask[exceed_pval] <- FALSE
 
         # Update results back to main vectors
@@ -624,6 +620,7 @@
             per_group_p[g_index, nexdist_mask] <- ps
             per_group_reasons[g_index, nexdist_mask] <- g_reasons
         }
+        .log_success("Finished processing chunk for group '", g, "'.", level = 4)
     }
     if (!strict_mode) {
         not_failed <- per_group_reasons == ""
