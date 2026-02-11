@@ -258,7 +258,7 @@ if (!file.exists(dmrsegal_file)) {
         on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
     }
 
-    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.verbose" = 4)
     options("DMRsegal.njobs" = 4)
 
     t_handler_start <- Sys.time()
