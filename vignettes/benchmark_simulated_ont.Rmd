@@ -259,7 +259,7 @@ if (!file.exists(dmrsegal_file)) {
     }
 
     options("DMRsegal.verbose" = 4)
-    options("DMRsegal.njobs" = 4)
+    options("DMRsegal.njobs" = 8)
 
     t_handler_start <- Sys.time()
 
@@ -290,7 +290,7 @@ if (!file.exists(dmrsegal_file)) {
                     max_lookup_dist = 1000,
                     max_pval = 0.05,
                     pval_mode = "parametric",
-                    chunk_size = 10e6, # Override default chunk size for large BSseq matrices.
+                    chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
                     group_concordance_strategy = "relaxed",
                     annotate_with_genes = FALSE,
                     rank_dmrs = TRUE
@@ -334,7 +334,7 @@ cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
 ```{r}
 dmrcate_file <- file.path(benchmark_output_dir, "dmrs.DMRcate.rds")
 
-run_dmrcate_bsseq <- function(bs_obj, design, genome = "hg19") {
+run_dmrcate_bsseq <- function(bs_obj, design, genome = "hg38") {
     if (!requireNamespace("DMRcate", quietly = TRUE)) {
         warning("DMRcate not installed; returning empty set.")
         return(GRanges())
@@ -374,7 +374,7 @@ run_dmrcate_bsseq <- function(bs_obj, design, genome = "hg19") {
 }
 
 if (!file.exists(dmrcate_file)) {
-    dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg19")
+    dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg38")
     saveRDS(dmrs_dmrcate, dmrcate_file)
 } else {
     dmrs_dmrcate <- readRDS(dmrcate_file)
