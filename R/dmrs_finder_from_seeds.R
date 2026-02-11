@@ -126,6 +126,8 @@
             splits <- rbind(splits, c(chunk_start, chunk_end))
         }
     }
+    .log_info("Finished splitting beta locations into chromosome-aware chunks for connectivity computation.", level = 3)
+
     verbose <- getOption("DMRsegal.verbose", 1)
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
@@ -824,7 +826,7 @@ findDMRsFromSeeds <- function(
             row.names = NULL
         )))
     } else if (is.data.frame(seeds)) {
-        seeds_tsv <- seeds
+        seeds_tsv <- as.data.frame(seeds)
     } else {
         stop("seeds must be either a file path or a data frame")
     }
@@ -1234,7 +1236,7 @@ findDMRsFromSeeds <- function(
             .log_success("Seed connectivity tested.", level = 3)
             breakpoints <- c(which(!corr_ret$connected), nrow(cseeds_beta))
             start_seed_ind <- 1
-            for (bp_ind in seq_len(length(breakpoints))) {
+            for (bp_ind in seq_along(breakpoints)) {
                 end_seed_ind <- breakpoints[bp_ind]
                 if (end_seed_ind - start_seed_ind + 1 < min_seeds) {
                     .log_info("Skipping DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - start_seed_ind + 1, " < ", min_seeds, ").", level = 4)
