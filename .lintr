@@ -6,7 +6,7 @@ linters: linters_with_defaults(object_name_linter(styles = c("snake_case", "came
                            semicolon_linter(allow_compound = FALSE, allow_trailing = FALSE),
                            spaces_left_parentheses_linter(),
                            infix_spaces_linter(),
-                           no_tab_linter(),
+                           whitespace_linter(),
                            trailing_whitespace_linter(),
-                           single_quotes_linter(),
+                           quotes_linter(),
                            brace_linter())

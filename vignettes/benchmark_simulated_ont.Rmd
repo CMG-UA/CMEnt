@@ -1,0 +1,630 @@
+---
+title: "DMRsegal vs DMRcate on Simulated ONT BSseq Data"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output:
+    BiocStyle::html_document:
+        code_folding: hide
+vignette: >
+  %\VignetteIndexEntry{DMRsegal vs DMRcate on Simulated ONT BSseq Data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    results = "asis",
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 12,
+    fig.height = 8,
+    dpi = 300
+)
+```
+
+## Introduction
+
+This vignette benchmarks DMR detection on simulated ONT-style methylation data with known ground truth.
+
+Methods:
+
+- **DMRsegal** (seed-guided, correlation-based DMR assembly)
+- **DMRcate** (smoothing-based DMR detection)
+- **dmrseq** (BSseq-native region-level inference; optional comparator)
+
+Data:
+
+- BSseq object: `data/sim_bs.rds`
+- Ground-truth DMRs: `data/sim_dmrs.tsv`
+
+Primary goal:
+
+- assess DMRsegal performance against ground truth
+- compare with DMRcate using the same dataset
+
+## Setup and Dependencies
+
+```{r}
+devtools::load_all()
+
+library(bsseq)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(GenomicRanges)
+library(progressr)
+library(SummarizedExperiment)
+library(S4Vectors)
+library(limma)
+
+progressr::handlers("cli")
+benchmark_output_dir <- "benchmark_simulated_ont"
+dir.create(benchmark_output_dir, showWarnings = FALSE, recursive = TRUE)
+```
+
+### Install External Dependencies
+
+```{r, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+
+if (!requireNamespace("DMRcate", quietly = TRUE)) {
+    BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("dmrseq", quietly = TRUE)) {
+    BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
+}
+```
+
+## Load Simulated Data and Ground Truth
+
+```{r}
+resolve_input_path <- function(path_in_repo) {
+    candidates <- c(
+        path_in_repo,
+        file.path("..", path_in_repo)
+    )
+    hit <- candidates[file.exists(candidates)][1]
+    if (is.na(hit)) {
+        return(path_in_repo)
+    }
+    hit
+}
+
+sim_bs_path <- resolve_input_path("data/sim_bs.rds")
+sim_truth_path <- resolve_input_path("data/sim_dmrs.tsv")
+
+if (!file.exists(sim_bs_path)) {
+    stop("Missing BSseq input file: ", sim_bs_path)
+}
+if (!file.exists(sim_truth_path)) {
+    stop("Missing ground-truth DMR file: ", sim_truth_path)
+}
+
+sim_bs <- readRDS(sim_bs_path)
+stopifnot(inherits(sim_bs, "BSseq"))
+
+truth_df <- data.table::fread(sim_truth_path)
+truth_dmrs <- makeGRangesFromDataFrame(
+    truth_df,
+    seqnames.field = "seqnames",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+)
+
+cat(sprintf("Loaded BSseq with %d CpGs and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
+cat(sprintf("Loaded %d ground-truth DMRs\n", length(truth_dmrs)))
+```
+
+## Build Phenotype Table from Sample Names
+
+```{r}
+sample_ids <- colnames(sim_bs)
+sample_group <- ifelse(grepl("^Condition1", sample_ids), "Condition1", "Condition2")
+
+pheno <- data.frame(
+    Sample_ID = sample_ids,
+    Sample_Group = sample_group,
+    casecontrol = sample_group == "Condition2",
+    stringsAsFactors = FALSE
+)
+rownames(pheno) <- pheno$Sample_ID
+
+colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+
+table(pheno$Sample_Group)
+```
+
+## Extract Methylation Matrix and Generate Seeds
+
+```{r}
+gr <- granges(sim_bs)
+locs <- data.frame(
+    chr = as.character(seqnames(gr)),
+    start = start(gr),
+    end = end(gr),
+    stringsAsFactors = FALSE
+)
+cpg_ids <- paste0(locs$chr, ":", locs$start)
+rownames(locs) <- cpg_ids
+
+beta_mat <- bsseq::getMeth(sim_bs, type = "raw")
+rownames(beta_mat) <- cpg_ids
+colnames(beta_mat) <- sample_ids
+
+mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
+
+design <- model.matrix(~Sample_Group, data = pheno)
+colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
+
+fit <- limma::eBayes(limma::lmFit(mvalues, design))
+pval_vec <- fit$p.value[, 2]
+qval_vec <- p.adjust(pval_vec, method = "BH")
+
+case_idx <- which(pheno$casecontrol)
+ctrl_idx <- which(!pheno$casecontrol)
+delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
+    rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
+
+sig_idx <- which(qval_vec < 0.05)
+if (length(sig_idx) < 10) {
+    sig_idx <- order(pval_vec)[seq_len(min(50000, length(pval_vec)))]
+    cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
+}
+
+sig_seeds <- data.frame(
+    cpg_id = cpg_ids[sig_idx],
+    pval = pval_vec[sig_idx],
+    qval = qval_vec[sig_idx],
+    delta_beta = delta_beta[sig_idx],
+    stringsAsFactors = FALSE
+)
+
+cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
+```
+
+## Method 1: DMRsegal
+
+```{r}
+dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
+
+if (!file.exists(dmrsegal_file)) {
+    options("DMRsegal.verbose" = 1)
+    options("DMRsegal.njobs" = 4)
+
+    beta_handler <- DMRsegal::getBetaHandler(
+        beta = beta_mat,
+        sorted_locs = locs
+    )
+
+    dmrs_segal <- progressr::with_progress(
+        DMRsegal::findDMRsFromSeeds(
+            beta = beta_handler,
+            seeds = sig_seeds,
+            pheno = pheno,
+            seeds_id_col = "cpg_id",
+            sample_group_col = "Sample_Group",
+            casecontrol_col = "casecontrol",
+            min_seeds = 2,
+            min_adj_seeds = 2,
+            min_cpgs = 3,
+            max_lookup_dist = 1000,
+            max_pval = 0.05,
+            pval_mode = "parametric",
+            group_concordance_strategy = "relaxed",
+            annotate_with_genes = FALSE,
+            rank_dmrs = TRUE,
+            njobs = 4
+        )
+    )
+    saveRDS(dmrs_segal, dmrsegal_file)
+} else {
+    dmrs_segal <- readRDS(dmrsegal_file)
+}
+
+cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
+```
+
+## Method 2: DMRcate
+
+```{r}
+dmrcate_file <- file.path(benchmark_output_dir, "dmrs.DMRcate.rds")
+
+run_dmrcate_bsseq <- function(bs_obj, design, genome = "hg19") {
+    if (!requireNamespace("DMRcate", quietly = TRUE)) {
+        warning("DMRcate not installed; returning empty set.")
+        return(GRanges())
+    }
+
+    methdesign <- design[rep(seq_len(nrow(design)), each = 2), , drop = FALSE]
+
+    for (fdr_cutoff in c(0.05, 0.1, 0.2)) {
+        attempt <- tryCatch(
+            {
+                ann <- DMRcate::sequencing.annotate(
+                    obj = bs_obj,
+                    methdesign = methdesign,
+                    coef = 2,
+                    fdr = fdr_cutoff
+                )
+                dmrcate_res <- DMRcate::dmrcate(
+                    ann,
+                    lambda = 1000,
+                    C = 2,
+                    min.cpgs = 3
+                )
+                DMRcate::extractRanges(dmrcate_res, genome = genome)
+            },
+            error = function(e) {
+                message(sprintf("DMRcate attempt failed (fdr=%.2f): %s", fdr_cutoff, e$message))
+                NULL
+            }
+        )
+
+        if (!is.null(attempt) && length(attempt) > 0) {
+            return(attempt)
+        }
+    }
+
+    GRanges()
+}
+
+if (!file.exists(dmrcate_file)) {
+    dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg19")
+    saveRDS(dmrs_dmrcate, dmrcate_file)
+} else {
+    dmrs_dmrcate <- readRDS(dmrcate_file)
+}
+
+cat(sprintf("DMRcate: Found %d DMRs\n", length(dmrs_dmrcate)))
+```
+
+## Method 3: dmrseq (Optional)
+
+```{r}
+dmrseq_file <- file.path(benchmark_output_dir, "dmrs.dmrseq.rds")
+
+run_dmrseq_bsseq <- function(bs_obj) {
+    if (!requireNamespace("dmrseq", quietly = TRUE)) {
+        warning("dmrseq not installed; returning empty set.")
+        return(GRanges())
+    }
+
+    if (!"Sample_Group" %in% colnames(as.data.frame(colData(bs_obj)))) {
+        warning("Sample_Group not present in BSseq colData; returning empty set.")
+        return(GRanges())
+    }
+
+    out <- tryCatch(
+        {
+            fit <- dmrseq::dmrseq(
+                bs = bs_obj,
+                testCovariate = "Sample_Group",
+                cutoff = 0.1,
+                minNumRegion = 3,
+                maxPerms = 10,
+                verbose = FALSE
+            )
+            fit
+        },
+        error = function(e) {
+            message(sprintf("dmrseq failed: %s", e$message))
+            GRanges()
+        }
+    )
+    out
+}
+
+if (!file.exists(dmrseq_file)) {
+    dmrs_dmrseq <- run_dmrseq_bsseq(sim_bs)
+    saveRDS(dmrs_dmrseq, dmrseq_file)
+} else {
+    dmrs_dmrseq <- readRDS(dmrseq_file)
+}
+
+cat(sprintf("dmrseq: Found %d DMRs\n", length(dmrs_dmrseq)))
+```
+
+## Comparative Analysis
+
+```{r}
+methods_list <- list(
+    DMRsegal = dmrs_segal,
+    DMRcate = dmrs_dmrcate
+)
+if (exists("dmrs_dmrseq")) {
+    methods_list$dmrseq <- dmrs_dmrseq
+}
+
+get_dmr_stats <- function(dmrs, method) {
+    if (length(dmrs) == 0) {
+        return(data.frame(
+            Method = method,
+            Number_of_DMRs = 0,
+            Mean_DMR_Width = NA,
+            Median_DMR_Width = NA,
+            Total_Coverage_bp = 0,
+            Min_Width = NA,
+            Max_Width = NA
+        ))
+    }
+
+    data.frame(
+        Method = method,
+        Number_of_DMRs = length(dmrs),
+        Mean_DMR_Width = mean(width(dmrs)),
+        Median_DMR_Width = median(width(dmrs)),
+        Total_Coverage_bp = sum(width(dmrs)),
+        Min_Width = min(width(dmrs)),
+        Max_Width = max(width(dmrs))
+    )
+}
+
+comparison_stats <- do.call(rbind, lapply(names(methods_list), function(m) {
+    get_dmr_stats(methods_list[[m]], m)
+}))
+
+truth_stats <- get_dmr_stats(truth_dmrs, "Ground Truth")
+comparison_stats <- rbind(comparison_stats, truth_stats)
+
+knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
+```
+
+## Ground-Truth Evaluation
+
+```{r}
+evaluate_against_truth <- function(pred, truth) {
+    if (length(pred) == 0) {
+        return(data.frame(
+            TP_regions = 0,
+            FP_regions = 0,
+            FN_regions = length(truth),
+            Precision_regions = 0,
+            Recall_regions = 0,
+            F1_regions = 0,
+            Predicted_bp = 0,
+            Truth_bp = sum(width(reduce(truth))),
+            Intersect_bp = 0,
+            Precision_bp = 0,
+            Recall_bp = 0,
+            F1_bp = 0,
+            IoU_bp = 0
+        ))
+    }
+
+    tp <- sum(overlapsAny(pred, truth))
+    fp <- length(pred) - tp
+    fn <- sum(!overlapsAny(truth, pred))
+
+    precision <- ifelse(tp + fp == 0, 0, tp / (tp + fp))
+    recall <- ifelse(tp + fn == 0, 0, tp / (tp + fn))
+    f1 <- ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
+
+    pred_red <- reduce(pred)
+    truth_red <- reduce(truth)
+    inter <- GenomicRanges::intersect(pred_red, truth_red)
+
+    pred_bp <- sum(width(pred_red))
+    truth_bp <- sum(width(truth_red))
+    inter_bp <- ifelse(length(inter) == 0, 0, sum(width(inter)))
+    union_bp <- pred_bp + truth_bp - inter_bp
+
+    precision_bp <- ifelse(pred_bp == 0, 0, inter_bp / pred_bp)
+    recall_bp <- ifelse(truth_bp == 0, 0, inter_bp / truth_bp)
+    f1_bp <- ifelse(precision_bp + recall_bp == 0, 0, 2 * precision_bp * recall_bp / (precision_bp + recall_bp))
+    iou_bp <- ifelse(union_bp == 0, 0, inter_bp / union_bp)
+
+    data.frame(
+        TP_regions = tp,
+        FP_regions = fp,
+        FN_regions = fn,
+        Precision_regions = precision,
+        Recall_regions = recall,
+        F1_regions = f1,
+        Predicted_bp = pred_bp,
+        Truth_bp = truth_bp,
+        Intersect_bp = inter_bp,
+        Precision_bp = precision_bp,
+        Recall_bp = recall_bp,
+        F1_bp = f1_bp,
+        IoU_bp = iou_bp
+    )
+}
+
+truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
+    out <- evaluate_against_truth(methods_list[[method]], truth_dmrs)
+    out$Method <- method
+    out
+}))
+
+truth_eval <- truth_eval %>%
+    dplyr::select(
+        Method,
+        TP_regions, FP_regions, FN_regions,
+        Precision_regions, Recall_regions, F1_regions,
+        Precision_bp, Recall_bp, F1_bp, IoU_bp
+    )
+
+knitr::kable(truth_eval, digits = 4, caption = "Performance Against Ground Truth")
+```
+
+### Overlap Matrices (Methods + Truth)
+
+```{r}
+all_sets <- c(methods_list, list(`Ground Truth` = truth_dmrs))
+
+calculate_overlap <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(list(count = 0, percentage = 0))
+    }
+    overlap_count <- sum(overlapsAny(gr1, gr2))
+    pct <- overlap_count / length(gr1) * 100
+    list(count = overlap_count, percentage = pct)
+}
+
+overlap_count_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+overlap_pct_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+rownames(overlap_count_mat) <- colnames(overlap_count_mat) <- names(all_sets)
+rownames(overlap_pct_mat) <- colnames(overlap_pct_mat) <- names(all_sets)
+
+for (i in seq_along(all_sets)) {
+    for (j in seq_along(all_sets)) {
+        if (i == j) {
+            overlap_count_mat[i, j] <- length(all_sets[[i]])
+            overlap_pct_mat[i, j] <- 100
+        } else {
+            ov <- calculate_overlap(all_sets[[i]], all_sets[[j]])
+            overlap_count_mat[i, j] <- ov$count
+            overlap_pct_mat[i, j] <- ov$percentage
+        }
+    }
+}
+
+knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (rows overlap columns)")
+knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (rows overlap columns)")
+```
+
+## Visualizations
+
+### Ground-Truth Metrics
+
+```{r, fig.width=10, fig.height=5}
+plot_df <- truth_eval %>%
+    dplyr::select(Method, F1_regions, F1_bp, IoU_bp) %>%
+    tidyr::pivot_longer(
+        cols = c(F1_regions, F1_bp, IoU_bp),
+        names_to = "Metric",
+        values_to = "Value"
+    )
+
+plot_df$Metric <- factor(
+    plot_df$Metric,
+    levels = c("F1_regions", "F1_bp", "IoU_bp"),
+    labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
+)
+
+ggplot(plot_df, aes(x = Method, y = Value, fill = Method)) +
+    geom_col() +
+    facet_wrap(~Metric, nrow = 1) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    ylim(0, 1) +
+    labs(
+        title = "Method Performance vs Ground Truth",
+        x = "",
+        y = "Score"
+    )
+```
+
+### Width Distributions
+
+```{r, fig.width=10, fig.height=6}
+width_data <- do.call(rbind, lapply(names(all_sets), function(method) {
+    x <- all_sets[[method]]
+    if (length(x) == 0) {
+        return(NULL)
+    }
+    data.frame(Method = method, Width = width(x))
+}))
+
+ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
+    geom_violin(alpha = 0.7) +
+    geom_boxplot(width = 0.2, alpha = 0.5, outlier.size = 0.5) +
+    scale_y_log10(labels = scales::comma) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    labs(
+        title = "DMR Width Distributions",
+        x = "",
+        y = "Width (bp, log scale)"
+    )
+```
+
+## DMRsegal Ranking Quality vs Ground Truth
+
+```{r}
+if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
+    dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$rank, decreasing = FALSE)]
+
+    n_bins <- min(10, max(2, floor(length(dmrs_segal_ranked) / 5)))
+    bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)
+
+    ranking_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
+        s <- (i - 1) * bin_size + 1
+        e <- min(i * bin_size, length(dmrs_segal_ranked))
+        bin_dmrs <- dmrs_segal_ranked[s:e]
+
+        tp_bin <- sum(overlapsAny(bin_dmrs, truth_dmrs))
+        data.frame(
+            Rank_Bin = i,
+            DMRs_in_Bin = length(bin_dmrs),
+            TP_in_Bin = tp_bin,
+            Pct_Overlapping_Truth = 100 * tp_bin / max(1, length(bin_dmrs))
+        )
+    }))
+
+    knitr::kable(ranking_quality, digits = 2, caption = "DMRsegal rank bins vs ground truth overlap")
+
+    ggplot(ranking_quality, aes(x = Rank_Bin, y = Pct_Overlapping_Truth)) +
+        geom_col(fill = "steelblue") +
+        geom_line(group = 1, color = "firebrick", linewidth = 1) +
+        geom_point(color = "firebrick", size = 2) +
+        theme_minimal() +
+        scale_x_continuous(breaks = ranking_quality$Rank_Bin) +
+        labs(
+            title = "DMRsegal Rank Quality",
+            subtitle = "Higher-ranked bins should show stronger truth overlap",
+            x = "Rank Bin (1 = best ranks)",
+            y = "% DMRs overlapping truth"
+        )
+}
+```
+
+## Summary
+
+```{r}
+cat("\n## Key Findings\n\n")
+
+if (nrow(truth_eval) > 0) {
+    best_f1 <- truth_eval[which.max(truth_eval$F1_regions), ]
+    best_iou <- truth_eval[which.max(truth_eval$IoU_bp), ]
+
+    cat(sprintf(
+        "- Best region-level F1: **%s** (%.3f)\n",
+        best_f1$Method, best_f1$F1_regions
+    ))
+    cat(sprintf(
+        "- Best base-pair IoU: **%s** (%.3f)\n",
+        best_iou$Method, best_iou$IoU_bp
+    ))
+
+    if ("DMRsegal" %in% truth_eval$Method) {
+        seg <- truth_eval[truth_eval$Method == "DMRsegal", ]
+        cat(sprintf(
+            "- **DMRsegal** region metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f\n",
+            seg$Precision_regions, seg$Recall_regions, seg$F1_regions
+        ))
+        cat(sprintf(
+            "- **DMRsegal** base-pair metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f, IoU = %.3f\n",
+            seg$Precision_bp, seg$Recall_bp, seg$F1_bp, seg$IoU_bp
+        ))
+    }
+}
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

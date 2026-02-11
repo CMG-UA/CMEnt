@@ -358,12 +358,28 @@ if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     library(doParallel)
 
-    doParallel::registerDoParallel(cores = 4)
+    # Safer defaults for local/WSL rendering; override via options().
+    bh_cores <- as.integer(getOption("DMRsegal.bumphunter_cores", 1L))
+    bh_B <- as.integer(getOption("DMRsegal.bumphunter_B", 100L))
+    bh_max_dmrs <- as.integer(getOption("DMRsegal.bumphunter_max_dmrs_for_cutoff", 12000L))
+    bh_cores <- ifelse(is.na(bh_cores) || bh_cores < 1L, 1L, bh_cores)
+    bh_B <- ifelse(is.na(bh_B) || bh_B < 0L, 100L, bh_B)
+    bh_max_dmrs <- ifelse(is.na(bh_max_dmrs) || bh_max_dmrs < 1L, 12000L, bh_max_dmrs)
+
+    doParallel::registerDoParallel(cores = bh_cores)
+    on.exit({
+        try(doParallel::stopImplicitCluster(), silent = TRUE)
+        gc()
+    }, add = TRUE)
+
     design <- model.matrix(~Sample_Group, data = pheno)
     max_gap <- 1000
     dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
-    while (dmrs_cnt > 12000) {
+    iter <- 0L
+    max_iter <- 10L
+    while (dmrs_cnt > bh_max_dmrs && iter < max_iter) {
+        iter <- iter + 1L
         dmrs <- bumphunter(beta_mat,
             design = design,
             cutoff = dmrs_cutoff,
@@ -377,9 +393,14 @@ if (!file.exists(bumphunter_file)) {
         )
         dmrs_cnt <- nrow(dmrs$table)
         dmrs_cutoff <- dmrs_cutoff * 1.2
+        rm(dmrs)
+        gc()
     }
     final_cutoff <- dmrs_cutoff / 1.2
-    cat(sprintf("Bumphunter: Cutoff set to %.4f\n", final_cutoff, dmrs_cnt))
+    cat(sprintf(
+        "Bumphunter: cutoff=%.4f, candidate_bumps=%d, cores=%d, B=%d\n",
+        final_cutoff, dmrs_cnt, bh_cores, bh_B
+    ))
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
         chr = as.character(locs$chr),
@@ -387,7 +408,7 @@ if (!file.exists(bumphunter_file)) {
         cutoff = final_cutoff,
         maxGap = max_gap,
         nullMethod = "bootstrap",
-        B = 500,
+        B = bh_B,
         type = "Beta",
         coef = 2
     )
