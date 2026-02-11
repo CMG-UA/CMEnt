@@ -424,6 +424,21 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `chunk_size`
+**Type:** Integer
+**Default:** `getOption("DMRsegal.chunk_size", 1000)`
+**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    chunk_size = 10000
+)
+```
+
 ### `verbose`
 **Type:** Integer  
 **Range:** 0 to 5  
@@ -646,6 +661,7 @@ options("DMRsegal.random_seed" = 123)
 **Type:** Integer  
 **Default:** `500`  
 **Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
+
 ```{r}
 options("DMRsegal.beta_in_mem_threshold_mb" = 200)
 ```
@@ -654,8 +670,18 @@ options("DMRsegal.beta_in_mem_threshold_mb" = 200)
 **Type:** Integer  
 **Default:** `200`  
 **Description:** Maximum size (in Megabytes) of beta files to subset into memory during processing. If the beta file exceeds this size, it will be loaded into `bigmemory::big.matrix` structures. By definitiion, this value should be less than `DMRsegal.beta_in_mem_threshold_mb` to activate the big memory subsetting.
+
 ```{r}
 options("DMRsegal.subset_beta_as_bigmem_mb" = 100)
+```
+
+### Option: `DMRsegal.chunk_size`
+**Type:** Integer  
+**Default:** `1000`  
+**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
+
+```{r}
+options("DMRsegal.chunk_size" = 10000)
 ```
 
 ## Caching
@@ -916,6 +942,7 @@ dmrs <- findDMRsFromSeeds(
 ## Issue: Slow Performance
 
 **Solution:**
+- Increase `chunk_size` for larger processing chunks. Setting this to a larger value (e.g., 10e6) can reduce overhead and speed up processing, especially for genome-wide datasets.
 - Increase `njobs` for parallel processing
 - Increase `expansion_step`
 - Use `pval_mode = "parametric"` instead of `"empirical"`

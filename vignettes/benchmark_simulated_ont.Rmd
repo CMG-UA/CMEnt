@@ -143,87 +143,186 @@ table(pheno$Sample_Group)
 ## Extract Methylation Matrix and Generate Seeds
 
 ```{r}
-gr <- granges(sim_bs)
-locs <- data.frame(
-    chr = as.character(seqnames(gr)),
-    start = start(gr),
-    end = end(gr),
-    stringsAsFactors = FALSE
-)
-cpg_ids <- paste0(locs$chr, ":", locs$start)
-rownames(locs) <- cpg_ids
 
-beta_mat <- bsseq::getMeth(sim_bs, type = "raw")
-rownames(beta_mat) <- cpg_ids
-colnames(beta_mat) <- sample_ids
+seeds.tsv <- file.path(benchmark_output_dir, "seeds.tsv")
+if (!file.exists(seeds.tsv)) {
+    gr <- granges(sim_bs)
+    locs <- data.frame(
+        chr = as.character(seqnames(gr)),
+        start = start(gr),
+        end = end(gr),
+        stringsAsFactors = FALSE
+    )
+    cpg_ids <- paste0(locs$chr, ":", locs$start)
+    rownames(locs) <- cpg_ids
 
-mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
+    beta_mat <- bsseq::getMeth(sim_bs, type = "raw")
+    rownames(beta_mat) <- cpg_ids
+    colnames(beta_mat) <- sample_ids
 
-design <- model.matrix(~Sample_Group, data = pheno)
-colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
+    mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
 
-fit <- limma::eBayes(limma::lmFit(mvalues, design))
-pval_vec <- fit$p.value[, 2]
-qval_vec <- p.adjust(pval_vec, method = "BH")
+    design <- model.matrix(~Sample_Group, data = pheno)
+    colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 
-case_idx <- which(pheno$casecontrol)
-ctrl_idx <- which(!pheno$casecontrol)
-delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
-    rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
+    fit <- limma::eBayes(limma::lmFit(mvalues, design))
+    pval_vec <- fit$p.value[, 2]
+    qval_vec <- p.adjust(pval_vec, method = "BH")
 
-sig_idx <- which(qval_vec < 0.05)
-if (length(sig_idx) < 10) {
-    sig_idx <- order(pval_vec)[seq_len(min(50000, length(pval_vec)))]
-    cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
+    case_idx <- which(pheno$casecontrol)
+    ctrl_idx <- which(!pheno$casecontrol)
+    delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
+        rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
+
+    sig_idx <- which(qval_vec < 0.05)
+    if (length(sig_idx) < 10) {
+        sig_idx <- order(pval_vec)[seq_len(min(50000, length(pval_vec)))]
+        cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
+    }
+
+    seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
+    seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
+    live_log("Top seed chromosomes:")
+    print(utils::head(seed_chr_tbl, 10))
+
+    sig_seeds <- data.frame(
+        cpg_id = cpg_ids[sig_idx],
+        pval = pval_vec[sig_idx],
+        qval = qval_vec[sig_idx],
+        delta_beta = delta_beta[sig_idx],
+        stringsAsFactors = FALSE
+    )
+
+    seed_locs <- locs[sig_seeds$cpg_id, , drop = FALSE]
+    seed_locs <- seed_locs[order(seed_locs$chr, seed_locs$start), , drop = FALSE]
+    seed_dist <- unlist(lapply(split(seed_locs$start, seed_locs$chr), function(x) {
+        if (length(x) < 2) return(numeric(0))
+        diff(x)
+    }))
+    if (length(seed_dist) > 0) {
+        live_log("Seed distance quantiles (bp):")
+        print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
+    }
+
+    write.table(sig_seeds, seeds.tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+} else {
+    sig_seeds <- data.table::fread(seeds.tsv)
+    rownames(sig_seeds) <- sig_seeds$cpg_id
 }
-
-sig_seeds <- data.frame(
-    cpg_id = cpg_ids[sig_idx],
-    pval = pval_vec[sig_idx],
-    qval = qval_vec[sig_idx],
-    delta_beta = delta_beta[sig_idx],
-    stringsAsFactors = FALSE
-)
-
 cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
 ```
 
 ## Method 1: DMRsegal
 
-```{r}
+```{r, message=TRUE, warning=TRUE}
 dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
 
+live_log <- function(fmt, ...) {
+    if (!is.character(fmt) || length(fmt) != 1) {
+        msg <- paste(capture.output(print(fmt)), collapse = "\n")
+    } else {
+        msg <- sprintf(fmt, ...)
+    }
+    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    line <- sprintf("[%s] %s", stamp, msg)
+    cat(line, "\n", file = stderr())
+}
+
+
 if (!file.exists(dmrsegal_file)) {
-    options("DMRsegal.verbose" = 1)
+    # Runtime diagnostics for large BSseq-derived matrices.
+    live_log("DMRsegal diagnostics")
+    live_log("CpGs in beta matrix: %s", format(nrow(sim_bs), big.mark = ","))
+    live_log("Samples in beta matrix: %d", ncol(sim_bs))
+    live_log("Seed CpGs: %s", format(nrow(sig_seeds), big.mark = ","))
+
+
+    # Optional debugging knob to speed up test runs while profiling logs.
+    # Example: options(DMRsegal.debug_max_seeds = 100000L)
+    debug_max_seeds <- getOption("DMRsegal.debug_max_seeds", NA_integer_)
+    if (!is.na(debug_max_seeds) && is.numeric(debug_max_seeds) && nrow(sig_seeds) > debug_max_seeds) {
+        live_log("Applying debug seed cap: %s -> %s seeds",
+            format(nrow(sig_seeds), big.mark = ","),
+            format(as.integer(debug_max_seeds), big.mark = ",")
+        )
+        sig_seeds <- sig_seeds[order(sig_seeds$pval), , drop = FALSE]
+        sig_seeds <- sig_seeds[seq_len(as.integer(debug_max_seeds)), , drop = FALSE]
+    }
+
+    # Optional hard timeout to avoid hanging on very large runs.
+    # Example: options(DMRsegal.max_runtime_minutes = 30)
+    max_runtime_minutes <- getOption("DMRsegal.max_runtime_minutes", NA_real_)
+    if (!is.na(max_runtime_minutes) && is.numeric(max_runtime_minutes) && max_runtime_minutes > 0) {
+        live_log("Applying runtime guard: %.1f minutes", max_runtime_minutes)
+        setTimeLimit(elapsed = as.numeric(max_runtime_minutes) * 60, transient = TRUE)
+        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
+    }
+
+    options("DMRsegal.verbose" = 3)
     options("DMRsegal.njobs" = 4)
 
+    t_handler_start <- Sys.time()
+
     beta_handler <- DMRsegal::getBetaHandler(
-        beta = beta_mat,
-        sorted_locs = locs
+        beta = sim_bs
+    )
+    t_handler_end <- Sys.time()
+    live_log(
+        "BetaHandler setup elapsed: %.1f sec",
+        as.numeric(difftime(t_handler_end, t_handler_start, units = "secs"))
     )
 
-    dmrs_segal <- progressr::with_progress(
-        DMRsegal::findDMRsFromSeeds(
-            beta = beta_handler,
-            seeds = sig_seeds,
-            pheno = pheno,
-            seeds_id_col = "cpg_id",
-            sample_group_col = "Sample_Group",
-            casecontrol_col = "casecontrol",
-            min_seeds = 2,
-            min_adj_seeds = 2,
-            min_cpgs = 3,
-            max_lookup_dist = 1000,
-            max_pval = 0.05,
-            pval_mode = "parametric",
-            group_concordance_strategy = "relaxed",
-            annotate_with_genes = FALSE,
-            rank_dmrs = TRUE,
-            njobs = 4
-        )
+    t_dmrs_start <- Sys.time()
+
+    dmrs_segal <- tryCatch(
+        {
+            progressr::with_progress(
+                DMRsegal::findDMRsFromSeeds(
+                    beta = beta_handler,
+                    seeds = sig_seeds,
+                    pheno = pheno,
+                    seeds_id_col = "cpg_id",
+                    sample_group_col = "Sample_Group",
+                    casecontrol_col = "casecontrol",
+                    min_seeds = 2,
+                    min_adj_seeds = 2,
+                    min_cpgs = 3,
+                    max_lookup_dist = 1000,
+                    max_pval = 0.05,
+                    pval_mode = "parametric",
+                    chunk_size = 10e6, # Override default chunk size for large BSseq matrices.
+                    group_concordance_strategy = "relaxed",
+                    annotate_with_genes = FALSE,
+                    rank_dmrs = TRUE
+                )
+            )
+        },
+        error = function(e) {
+            if (grepl("time limit|reached elapsed time limit", e$message, ignore.case = TRUE)) {
+                stop(
+                    sprintf(
+                        paste0(
+                            "DMRsegal timed out after %.1f minutes. ",
+                            "Increase options(DMRsegal.max_runtime_minutes = ...), ",
+                            "reduce options(DMRsegal.debug_max_seeds = ...), ",
+                            "or inspect seed diagnostics in this chunk."
+                        ),
+                        as.numeric(max_runtime_minutes)
+                    ),
+                    call. = FALSE
+                )
+            }
+            stop(e)
+        }
+    )
+    t_dmrs_end <- Sys.time()
+    live_log(
+        "findDMRsFromSeeds elapsed: %.1f sec",
+        as.numeric(difftime(t_dmrs_end, t_dmrs_start, units = "secs"))
     )
     saveRDS(dmrs_segal, dmrsegal_file)
 } else {
+    live_log("Using cached DMRsegal output: %s", dmrsegal_file)
     dmrs_segal <- readRDS(dmrsegal_file)
 }
 

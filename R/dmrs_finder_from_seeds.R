@@ -107,7 +107,7 @@
 .buildConnectivityArray <- function(
     beta_handler, pheno, group_inds, max_pval = 0.05,
     min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
-    chunk_size = 1000, group_concordance_strategy = "strict",
+    chunk_size = getOption("DMRsegal.chunk_size", 1000), group_concordance_strategy = "strict",
     aggfun = median, empirical_strategy = "auto",
     pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
@@ -751,7 +751,7 @@
 #' @param chr_levels Character vector. Custom chromosome levels to use. Default is NULL.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
-
+#' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".
 #'
 #' @return Data frame of identified DMRs.
 #' @export
@@ -781,6 +781,7 @@ findDMRsFromSeeds <- function(
     ignored_sample_groups = NULL,
     output_prefix = NULL,
     njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    chunk_size = getOption("DMRsegal.chunk_size", 10000),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
     rank_dmrs = TRUE,
@@ -813,7 +814,7 @@ findDMRsFromSeeds <- function(
     .log_step("Preparing inputs...")
     .log_step("Reading Seed tsv..", level = 2)
     if (is.character(seeds) && length(seeds) == 1) {
-        seeds_tsv <- try(read.table(
+        seeds_tsv <- try(as.data.frame(read.table(
             seeds,
             header = TRUE,
             sep = "\t",
@@ -821,7 +822,7 @@ findDMRsFromSeeds <- function(
             quote = "",
             comment.char = "",
             row.names = NULL
-        ))
+        )))
     } else if (is.data.frame(seeds)) {
         seeds_tsv <- seeds
     } else {
@@ -1387,6 +1388,7 @@ findDMRsFromSeeds <- function(
             aggfun = aggfun,
             pval_mode = pval_mode,
             empirical_strategy = empirical_strategy,
+            chunk_size = chunk_size,
             ntries = ntries,
             mid_p = mid_p,
             njobs = njobs

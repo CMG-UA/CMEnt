@@ -116,7 +116,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.character(self$beta) && length(self$beta) > 0) {
                 if (is_bsseq(self$beta)) {
                     .log_step("Processing BSseq object...", level = 1)
-                    private$.bsseq_object <- self$beta
+                    private$.bsseq_object <- sort(self$beta)
                     self$beta <- NULL
                     private$.loaded <- TRUE
                     return(invisible(self))
@@ -347,9 +347,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
             self$load()
 
-            # Skip validation if no genomic locations available yet
-            # (will be validated when actually used)
-            if (is.null(self$sorted_locs)) {
+            # Skip validation if no genomic locations available yet, or if using BSseq object (which is already sorted during loading)
+            if (is.null(self$sorted_locs) || !is.null(private$.bsseq_object)) {
                 private$.validated <- TRUE
                 return(invisible(self))
             }
@@ -698,7 +697,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
-                           njobs = 1) {
+                           njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
     }

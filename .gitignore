@@ -41,4 +41,4 @@ Rd2.tex
 *.bak
 *_cache/
 data/sim_bs.rds
-
+*.log
