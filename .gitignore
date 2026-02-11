@@ -39,3 +39,6 @@ Rd2.tex
 
 .github/copilot-instructions.md
 *.bak
+*_cache/
+data/sim_bs.rds
+
