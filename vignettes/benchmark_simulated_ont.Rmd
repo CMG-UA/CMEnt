@@ -143,7 +143,8 @@ table(pheno$Sample_Group)
 ## Extract Methylation Matrix and Generate Seeds
 
 ```{r}
-
+design <- model.matrix(~Sample_Group, data = pheno)
+colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 seeds.tsv <- file.path(benchmark_output_dir, "seeds.tsv")
 if (!file.exists(seeds.tsv)) {
     gr <- granges(sim_bs)
@@ -162,8 +163,7 @@ if (!file.exists(seeds.tsv)) {
 
     mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
 
-    design <- model.matrix(~Sample_Group, data = pheno)
-    colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
+
 
     fit <- limma::eBayes(limma::lmFit(mvalues, design))
     pval_vec <- fit$p.value[, 2]
