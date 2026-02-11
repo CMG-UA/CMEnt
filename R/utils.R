@@ -311,6 +311,12 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
+    # Suppress output from parallel workers
+    if (!is.null(getOption("future.fork.enable")) && getOption("future.fork.enable", TRUE)) {
+        if (exists(".Random.seed", envir = .GlobalEnv) && !identical(Sys.getpid(), getOption("future.main.pid", Sys.getpid()))) {
+            return(invisible())
+        }
+    }
     msg <- paste0(..., collapse = "")
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$info, "blue"), sep = "")
     message(paste(lead, msg))
