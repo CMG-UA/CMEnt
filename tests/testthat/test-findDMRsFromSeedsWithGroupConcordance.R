@@ -2,7 +2,7 @@
 library(testthat)
 library(DMRsegal)
 
-test_that("findDMRsFromSeeds works with weak group concordance strategy", {
+test_that("findDMRsFromSeeds works with weak entanglement", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
@@ -28,7 +28,7 @@ test_that("findDMRsFromSeeds works with weak group concordance strategy", {
     }
 })
 
-test_that("weak strategy produces more or equal DMRs than strong strategy", {
+test_that("weak entanglement produces more or equal DMRs than strong entanglement", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")

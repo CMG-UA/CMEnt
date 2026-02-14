@@ -168,7 +168,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
 
-    # Test with strong min_seeds
+    # Test with strict min_seeds
     dmrs_strict <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
