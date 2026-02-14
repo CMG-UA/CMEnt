@@ -292,7 +292,7 @@ if (!file.exists(dmrsegal_file)) {
                     max_pval = 0.05,
                     pval_mode = "parametric",
                     chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
-                    group_concordance_strategy = "relaxed",
+                    entanglement = "weak",
                     annotate_with_genes = FALSE,
                     rank_dmrs = TRUE
                 )

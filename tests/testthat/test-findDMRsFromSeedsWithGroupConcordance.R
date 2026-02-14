@@ -1,8 +1,8 @@
-# Test suite for group_concordance_strategy parameter
+# Test suite for entanglement parameter
 library(testthat)
 library(DMRsegal)
 
-test_that("findDMRsFromSeeds works with relaxed group concordance strategy", {
+test_that("findDMRsFromSeeds works with weak group concordance strategy", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
@@ -16,7 +16,7 @@ test_that("findDMRsFromSeeds works with relaxed group concordance strategy", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        group_concordance_strategy = "relaxed",
+        entanglement = "weak",
         pval_mode = "parametric",
         annotate_with_genes = FALSE,
         verbose = 2
@@ -28,7 +28,7 @@ test_that("findDMRsFromSeeds works with relaxed group concordance strategy", {
     }
 })
 
-test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
+test_that("weak strategy produces more or equal DMRs than strong strategy", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
@@ -42,7 +42,7 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        group_concordance_strategy = "strict",
+        entanglement = "strong",
         pval_mode = "parametric",
         annotate_with_genes = FALSE,
         verbose = 2
@@ -57,7 +57,7 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        group_concordance_strategy = "relaxed",
+        entanglement = "weak",
         pval_mode = "parametric",
         annotate_with_genes = FALSE,
         verbose = 2
@@ -69,7 +69,7 @@ test_that("relaxed strategy produces more or equal DMRs than strict strategy", {
     expect_true(relaxed_count >= strict_count)
 })
 
-test_that("group_concordance_strategy parameter validates correctly", {
+test_that("entanglement parameter validates correctly", {
     beta <- loadExampleInputData("beta")
     dmps <- loadExampleInputData("dmps")
     pheno <- loadExampleInputData("pheno")
@@ -81,7 +81,7 @@ test_that("group_concordance_strategy parameter validates correctly", {
             seeds = dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
-            group_concordance_strategy = "invalid"
+            entanglement = "invalid"
         ),
         "is not a prefix"
     )

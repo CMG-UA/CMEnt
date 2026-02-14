@@ -32,7 +32,7 @@ args <- list(
     output_prefix = "my_analysis",
     njobs = 4,
     verbose = 1,
-    group_concordance_strategy = "strict"
+    entanglement = "strong"
 )
 
 findDMRsFromSeedsCLI(args)

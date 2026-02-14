@@ -14,7 +14,7 @@
   covariates = NULL,
   max_lookup_dist = 1000,
   chunk_size = 1000,
-  group_concordance_strategy = "strict",
+  entanglement = "strong",
   aggfun = median,
   empirical_strategy = "auto",
   pval_mode = "empirical",
@@ -36,7 +36,7 @@ findDMRsFromSeeds(
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = "hg19",
   max_pval = 0.05,
-  group_concordance_strategy = c("strict", "relaxed"),
+  entanglement = c("strong", "weak"),
   pval_mode = c("parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
@@ -69,7 +69,7 @@ findDMRsFromSeeds(
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.}
 
-\item{group_concordance_strategy}{Character. "strict" (default) requires all groups to show significant correlation for connectivity; "relaxed" requires at least one group to show significant correlation.}
+\item{entanglement}{Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.}
 
 \item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
 

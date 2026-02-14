@@ -107,7 +107,7 @@
 .buildConnectivityArray <- function(
     beta_handler, pheno, group_inds, max_pval = 0.05,
     min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000), group_concordance_strategy = "strict",
+    chunk_size = getOption("DMRsegal.chunk_size", 1000), entanglement = "strong",
     aggfun = median, empirical_strategy = "auto",
     pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
@@ -151,7 +151,7 @@
             max_pval = max_pval,
             min_delta_beta = min_delta_beta,
             sites_locs = beta_locs[split[1]:split[2], ],
-            group_concordance_strategy = group_concordance_strategy,
+            entanglement = entanglement,
             aggfun = aggfun,
             pval_mode = pval_mode,
             empirical_strategy = empirical_strategy,
@@ -387,7 +387,7 @@
                                    max_pval, covariates = NULL,
                                    min_delta_beta = 0,
                                    max_lookup_dist = NULL, sites_locs = NULL,
-                                   group_concordance_strategy = "strict",
+                                   entanglement = "strong",
                                    aggfun = mean,
                                    pval_mode = c("parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
@@ -395,7 +395,7 @@
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     n_sites <- nrow(sites_beta)
-    strict_mode <- identical(group_concordance_strategy, "strict")
+    strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
         ret <- data.frame(
             connected = logical(0),
@@ -729,7 +729,7 @@
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
-#' @param group_concordance_strategy Character. "strict" (default) requires all groups to show significant correlation for connectivity; "relaxed" requires at least one group to show significant correlation.
+#' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
 #' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
@@ -767,7 +767,7 @@ findDMRsFromSeeds <- function(
     array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
     genome = "hg19",
     max_pval = 0.05,
-    group_concordance_strategy = c("strict", "relaxed"),
+    entanglement = c("strong", "weak"),
     pval_mode = c("parametric", "empirical"),
     empirical_strategy = c("auto", "montecarlo", "permutations"),
     ntries = 200L,
@@ -967,9 +967,9 @@ findDMRsFromSeeds <- function(
     stopifnot(!is.null(expansion_step))
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
-    stopifnot(!is.null(group_concordance_strategy))
+    stopifnot(!is.null(entanglement))
 
-    group_concordance_strategy <- strex::match_arg(group_concordance_strategy, ignore_case = TRUE)
+    entanglement <- strex::match_arg(entanglement, ignore_case = TRUE)
 
     if (is.character(seeds) && length(seeds) == 1) {
         stopifnot(file.exists(seeds))
@@ -1212,7 +1212,7 @@ findDMRsFromSeeds <- function(
                 sites_locs = cseeds_locs,
                 max_pval = max_pval,
                 aggfun = aggfun,
-                group_concordance_strategy = group_concordance_strategy,
+                entanglement = entanglement,
                 pval_mode = pval_mode,
                 empirical_strategy = empirical_strategy,
                 ntries = ntries,
@@ -1313,7 +1313,7 @@ findDMRsFromSeeds <- function(
                     "max_lookup_dist",
                     "max_pval",
                     "aggfun",
-                    "group_concordance_strategy",
+                    "entanglement",
                     "pval_mode",
                     "empirical_strategy",
                     "ntries",
@@ -1383,7 +1383,7 @@ findDMRsFromSeeds <- function(
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
             min_delta_beta = min_cpg_delta_beta,
-            group_concordance_strategy = group_concordance_strategy,
+            entanglement = entanglement,
             aggfun = aggfun,
             pval_mode = pval_mode,
             empirical_strategy = empirical_strategy,
