@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal vs DMRcate on Simulated ONT BSseq Data"
+title: "DMRsegal vs DMRcate vs dmrseq on Simulated ONT BSseq Data"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output:
     BiocStyle::html_document:
         code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal vs DMRcate on Simulated ONT BSseq Data}
+  %\VignetteIndexEntry{DMRsegal vs DMRcate vs dmrseq on Simulated ONT BSseq Data}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -41,7 +41,7 @@ Data:
 Primary goal:
 
 - assess DMRsegal performance against ground truth
-- compare with DMRcate using the same dataset
+- compare with DMRcate and dmrseq using the same dataset
 
 ## Setup and Dependencies
 
@@ -60,8 +60,8 @@ library(S4Vectors)
 library(limma)
 
 progressr::handlers("cli")
-benchmark_output_dir <- "benchmark_simulated_ont"
-dir.create(benchmark_output_dir, showWarnings = FALSE, recursive = TRUE)
+output_dir <- "simulated_ont"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 ```
 
 ### Install External Dependencies
@@ -136,6 +136,7 @@ pheno <- data.frame(
 rownames(pheno) <- pheno$Sample_ID
 
 colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+sim_bs  <- sort(sim_bs)
 
 table(pheno$Sample_Group)
 ```
@@ -145,7 +146,7 @@ table(pheno$Sample_Group)
 ```{r}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
-seeds.tsv <- file.path(benchmark_output_dir, "seeds.tsv")
+seeds.tsv <- file.path(output_dir, "seeds.tsv")
 if (!file.exists(seeds.tsv)) {
     gr <- granges(sim_bs)
     locs <- data.frame(
@@ -180,11 +181,6 @@ if (!file.exists(seeds.tsv)) {
         cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
     }
 
-    seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
-    seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
-    live_log("Top seed chromosomes:")
-    print(utils::head(seed_chr_tbl, 10))
-
     sig_seeds <- data.frame(
         cpg_id = cpg_ids[sig_idx],
         pval = pval_vec[sig_idx],
@@ -192,6 +188,11 @@ if (!file.exists(seeds.tsv)) {
         delta_beta = delta_beta[sig_idx],
         stringsAsFactors = FALSE
     )
+
+    seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
+    seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
+    live_log("Top seed chromosomes:")
+    print(utils::head(seed_chr_tbl, 10))
 
     seed_locs <- locs[sig_seeds$cpg_id, , drop = FALSE]
     seed_locs <- seed_locs[order(seed_locs$chr, seed_locs$start), , drop = FALSE]
@@ -215,7 +216,7 @@ cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
 ## Method 1: DMRsegal
 
 ```{r, message=TRUE, warning=TRUE}
-dmrsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
+dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
 live_log <- function(fmt, ...) {
     if (!is.character(fmt) || length(fmt) != 1) {
@@ -332,45 +333,136 @@ cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
 ## Method 2: DMRcate
 
 ```{r}
-dmrcate_file <- file.path(benchmark_output_dir, "dmrs.DMRcate.rds")
+dmrcate_file <- file.path(output_dir, "dmrs.DMRcate.rds")
 
-run_dmrcate_bsseq <- function(bs_obj, design, genome = "hg38") {
+run_dmrcate_bsseq <- function(
+    bs_obj,
+    design,
+    genome = "hg38",
+    max_cpgs_per_chunk = 500000L,
+    chunk_overlap_cpgs = 2000L
+) {
     if (!requireNamespace("DMRcate", quietly = TRUE)) {
         warning("DMRcate not installed; returning empty set.")
-        return(GRanges())
+        return(GenomicRanges::GRanges())
+    }
+    dmrcate_design <- design
+    colnames(dmrcate_design) <- gsub("Sample_Group", "", colnames(dmrcate_design))
+    colnames(dmrcate_design)[1] <- "Intercept"
+    dmrcate_design <- edgeR::modelMatrixMeth(dmrcate_design)
+    all_gr <- bsseq::granges(bs_obj)
+    all_seqnames <- as.character(GenomicRanges::seqnames(all_gr))
+    all_pos <- GenomicRanges::start(all_gr)
+    rm(all_gr)
+    gc(verbose = FALSE)
+
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GRanges())
     }
 
-    methdesign <- design[rep(seq_len(nrow(design)), each = 2), , drop = FALSE]
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
 
-    for (fdr_cutoff in c(0.05, 0.1, 0.2)) {
-        attempt <- tryCatch(
-            {
-                ann <- DMRcate::sequencing.annotate(
-                    obj = bs_obj,
-                    methdesign = methdesign,
-                    coef = 2,
-                    fdr = fdr_cutoff
-                )
-                dmrcate_res <- DMRcate::dmrcate(
-                    ann,
-                    lambda = 1000,
-                    C = 2,
-                    min.cpgs = 3
-                )
-                DMRcate::extractRanges(dmrcate_res, genome = genome)
-            },
-            error = function(e) {
-                message(sprintf("DMRcate attempt failed (fdr=%.2f): %s", fdr_cutoff, e$message))
-                NULL
-            }
-        )
+    for (chr_name in chr_vec) {
+        live_log("DMRcate: processing %s", chr_name)
 
-        if (!is.null(attempt) && length(attempt) > 0) {
-            return(attempt)
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) == 0) {
+            next
         }
+
+        n_chr <- length(chr_idx)
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_cpgs_per_chunk))
+        chr_chunk_dmrs <- vector("list", length(chunk_starts))
+
+        for (chunk_i in seq_along(chunk_starts)) {
+            core_from <- chunk_starts[chunk_i]
+            core_to <- min(core_from + as.integer(max_cpgs_per_chunk) - 1L, n_chr)
+
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_cpgs))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_cpgs))
+
+            idx_ext <- chr_idx[ext_from:ext_to]
+            core_start_pos <- all_pos[chr_idx[core_from]]
+            core_end_pos <- all_pos[chr_idx[core_to]]
+
+            live_log(
+                "DMRcate: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)",
+                chr_name,
+                chunk_i,
+                length(chunk_starts),
+                format(core_to - core_from + 1L, big.mark = ","),
+                format(length(idx_ext), big.mark = ",")
+            )
+
+            chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+            chunk_out <- tryCatch(
+                {
+                    ann <- DMRcate::sequencing.annotate(
+                        obj = chunk_bs,
+                        all.cov = TRUE,
+                        methdesign = dmrcate_design,
+                        coef = "Condition2_vs_Condition1",
+                        fdr = 0.05
+                    )
+                    dmrcate_res <- DMRcate::dmrcate(
+                        ann,
+                        lambda = 1000,
+                        C = 2,
+                        min.cpgs = 3
+                    )
+                    ranges_out <- DMRcate::extractRanges(dmrcate_res, genome = genome)
+                    rm(ann, dmrcate_res)
+                    gc(verbose = FALSE)
+
+                    if (length(ranges_out) > 0) {
+                        mids <- floor((GenomicRanges::start(ranges_out) + GenomicRanges::end(ranges_out)) / 2)
+                        keep <- mids >= core_start_pos & mids <= core_end_pos
+                        ranges_out <- ranges_out[keep]
+                    }
+
+                    ranges_out
+                },
+                error = function(e) {
+                    message(sprintf(
+                        "DMRcate chunk failed (%s chunk %d/%d, fdr=0.05): %s",
+                        chr_name,
+                        chunk_i,
+                        length(chunk_starts),
+                        e$message
+                    ))
+                    NULL
+                }
+            )
+
+            chr_chunk_dmrs[[chunk_i]] <- chunk_out
+            rm(chunk_bs, chunk_out)
+            gc(verbose = FALSE)
+        }
+
+        chr_chunk_dmrs <- Filter(function(x) !is.null(x) && length(x) > 0, chr_chunk_dmrs)
+        if (length(chr_chunk_dmrs) == 0) {
+            dmrs_by_chr[[chr_name]] <- NULL
+        } else {
+            dmrs_by_chr[[chr_name]] <- GenomicRanges::sort(do.call(c, chr_chunk_dmrs))
+        }
+
+        rm(chr_chunk_dmrs)
+        gc(verbose = FALSE)
     }
 
-    GRanges()
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GRanges())
+    }
+
+    out <- do.call(c, unname(dmrs_by_chr))
+    out <- GenomicRanges::sort(out)
+    out
 }
 
 if (!file.exists(dmrcate_file)) {
@@ -383,39 +475,152 @@ if (!file.exists(dmrcate_file)) {
 cat(sprintf("DMRcate: Found %d DMRs\n", length(dmrs_dmrcate)))
 ```
 
-## Method 3: dmrseq (Optional)
+## Method 3: dmrseq
 
 ```{r}
-dmrseq_file <- file.path(benchmark_output_dir, "dmrs.dmrseq.rds")
+dmrseq_file <- file.path(output_dir, "dmrs.dmrseq.rds")
 
-run_dmrseq_bsseq <- function(bs_obj) {
+run_dmrseq_bsseq <- function(
+    bs_obj,
+    max_cpgs_per_chunk = 500000L,
+    chunk_overlap_cpgs = 2000L,
+    max_perms = 5L
+) {
     if (!requireNamespace("dmrseq", quietly = TRUE)) {
         warning("dmrseq not installed; returning empty set.")
-        return(GRanges())
+        return(GenomicRanges::GRanges())
     }
 
     if (!"Sample_Group" %in% colnames(as.data.frame(colData(bs_obj)))) {
         warning("Sample_Group not present in BSseq colData; returning empty set.")
-        return(GRanges())
+        return(GenomicRanges::GRanges())
     }
 
-    out <- tryCatch(
-        {
-            fit <- dmrseq::dmrseq(
-                bs = bs_obj,
-                testCovariate = "Sample_Group",
-                cutoff = 0.1,
-                minNumRegion = 3,
-                maxPerms = 10,
-                verbose = FALSE
-            )
-            fit
-        },
-        error = function(e) {
-            message(sprintf("dmrseq failed: %s", e$message))
-            GRanges()
+    all_gr <- bsseq::granges(bs_obj)
+    all_seqnames <- as.character(GenomicRanges::seqnames(all_gr))
+    all_pos <- GenomicRanges::start(all_gr)
+    rm(all_gr)
+    gc(verbose = FALSE)
+
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
+
+    for (chr_name in chr_vec) {
+        live_log("dmrseq: processing %s", chr_name)
+
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) == 0) {
+            next
         }
-    )
+
+        n_chr <- length(chr_idx)
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_cpgs_per_chunk))
+        chr_chunk_dmrs <- vector("list", length(chunk_starts))
+
+        for (chunk_i in seq_along(chunk_starts)) {
+            core_from <- chunk_starts[chunk_i]
+            core_to <- min(core_from + as.integer(max_cpgs_per_chunk) - 1L, n_chr)
+
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_cpgs))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_cpgs))
+
+            idx_ext <- chr_idx[ext_from:ext_to]
+            core_start_pos <- all_pos[chr_idx[core_from]]
+            core_end_pos <- all_pos[chr_idx[core_to]]
+
+            live_log(
+                "dmrseq: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)",
+                chr_name,
+                chunk_i,
+                length(chunk_starts),
+                format(core_to - core_from + 1L, big.mark = ","),
+                format(length(idx_ext), big.mark = ",")
+            )
+
+            chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+            chunk_out <- tryCatch(
+                {
+                    bp_param <- if (requireNamespace("BiocParallel", quietly = TRUE)) {
+                        BiocParallel::SerialParam(progressbar = FALSE)
+                    } else {
+                        NULL
+                    }
+
+                    if (is.null(bp_param)) {
+                        fit <- dmrseq::dmrseq(
+                            bs = chunk_bs,
+                            testCovariate = "Sample_Group",
+                            cutoff = 0.1,
+                            minNumRegion = 3,
+                            maxPerms = as.integer(max_perms),
+                            verbose = FALSE
+                        )
+                    } else {
+                        fit <- dmrseq::dmrseq(
+                            bs = chunk_bs,
+                            testCovariate = "Sample_Group",
+                            cutoff = 0.1,
+                            minNumRegion = 3,
+                            maxPerms = as.integer(max_perms),
+                            BPPARAM = bp_param,
+                            verbose = FALSE
+                        )
+                    }
+                    fit <- fit[mcols(fit)$qval < 0.05]
+
+                    if (length(fit) > 0) {
+                        mids <- floor((GenomicRanges::start(fit) + GenomicRanges::end(fit)) / 2)
+                        keep <- mids >= core_start_pos & mids <= core_end_pos
+                        fit <- fit[keep]
+                    }
+
+                    rm(bp_param)
+                    gc(verbose = FALSE)
+                    fit
+                },
+                error = function(e) {
+                    message(sprintf(
+                        "dmrseq chunk failed (%s chunk %d/%d): %s",
+                        chr_name,
+                        chunk_i,
+                        length(chunk_starts),
+                        e$message
+                    ))
+                    NULL
+                }
+            )
+
+            chr_chunk_dmrs[[chunk_i]] <- chunk_out
+            rm(chunk_bs, chunk_out)
+            gc(verbose = FALSE)
+        }
+
+        chr_chunk_dmrs <- Filter(function(x) !is.null(x) && length(x) > 0, chr_chunk_dmrs)
+        if (length(chr_chunk_dmrs) == 0) {
+            dmrs_by_chr[[chr_name]] <- NULL
+        } else {
+            dmrs_by_chr[[chr_name]] <- GenomicRanges::sort(do.call(c, chr_chunk_dmrs))
+        }
+
+        rm(chr_chunk_dmrs)
+        gc(verbose = FALSE)
+    }
+
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GRanges())
+    }
+
+    out <- do.call(c, unname(dmrs_by_chr))
+    out <- GenomicRanges::sort(out)
     out
 }
 
@@ -434,11 +639,9 @@ cat(sprintf("dmrseq: Found %d DMRs\n", length(dmrs_dmrseq)))
 ```{r}
 methods_list <- list(
     DMRsegal = dmrs_segal,
-    DMRcate = dmrs_dmrcate
+    DMRcate = dmrs_dmrcate,
+    dmrseq = dmrs_dmrseq
 )
-if (exists("dmrs_dmrseq")) {
-    methods_list$dmrseq <- dmrs_dmrseq
-}
 
 get_dmr_stats <- function(dmrs, method) {
     if (length(dmrs) == 0) {

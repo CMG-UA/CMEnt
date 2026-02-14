@@ -17,8 +17,8 @@
 .Renviron
 
 # data folders ----
-benchmark_dmrsegaldata
-benchmark_dmrcatedata
+dmrsegaldata
+dmrcatedata
 
 debug
 

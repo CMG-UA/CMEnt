@@ -53,8 +53,8 @@ library(GenomicRanges)
 library(progressr)
 
 progressr::handlers("cli")
-benchmark_output_dir <- "benchmark_dmrsegaldata"
-dir.create(benchmark_output_dir, showWarnings = FALSE, recursive = TRUE)
+output_dir <- "dmrsegaldata"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 ```
 
 ### Install External Dependencies
@@ -161,7 +161,7 @@ names(dmps_gr) <- rownames(dmps)
 ## Method 1: DMRsegal
 
 ```{r}
-DMRsegal_file <- file.path(benchmark_output_dir, "dmrs.DMRsegal.rds")
+DMRsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 if (!file.exists(DMRsegal_file)) {
     options("DMRsegal.verbose" = 1)
     options("DMRsegal.njobs" = 8)
@@ -193,7 +193,7 @@ cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
 ## Method 2: comb-p
 
 ```{r}
-combp_file <- file.path(benchmark_output_dir, "dmrs.combp.rds")
+combp_file <- file.path(output_dir, "dmrs.combp.rds")
 
 run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
@@ -265,7 +265,7 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
 }
 
 if (!file.exists(combp_file)) {
-    dmrs_combp <- run_combp(dmps_gr, benchmark_output_dir)
+    dmrs_combp <- run_combp(dmps_gr, output_dir)
     saveRDS(dmrs_combp, combp_file)
 } else {
     dmrs_combp <- readRDS(combp_file)
@@ -276,7 +276,7 @@ cat(sprintf("comb-p: Found %d DMRs\n", length(dmrs_combp)))
 
 ## Method 3: probeLasso
 ```{r}
-probeLasso_file <- file.path(benchmark_output_dir, "dmrs.probeLasso.rds")
+probeLasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
 
 run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
@@ -327,7 +327,7 @@ cat(sprintf("probeLasso: Found %d DMRs\n", length(dmrs_probeLasso)))
 ## Method 4: DMRcate
 
 ```{r}
-dmrcate_file <- file.path(benchmark_output_dir, "dmrs.dmrcate.rds")
+dmrcate_file <- file.path(output_dir, "dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
 
@@ -353,7 +353,7 @@ cat(sprintf("DMRcate: Found %d DMRs\n", length(dmrs_dmrcate)))
 ## Method 5: Bumphunter
 
 ```{r}
-bumphunter_file <- file.path(benchmark_output_dir, "dmrs.bumphunter.rds")
+bumphunter_file <- file.path(output_dir, "dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     library(doParallel)
