@@ -975,6 +975,14 @@ plotDMR <- function(dmrs,
         }
     }
 
+    if (length(grobs) > 1) {
+        max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
+        grobs <- lapply(grobs, function(g) {
+            g$widths <- max_width
+            g
+        })
+    }
+
     if (length(grobs) == 3) {
         combined <- gridExtra::arrangeGrob(
             grobs = grobs,
@@ -988,9 +996,7 @@ plotDMR <- function(dmrs,
             heights = c(1, 0.6)
         )
     } else {
-        max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
         combined <- do.call(gridExtra::gtable_rbind, grobs)
-        combined$widths <- max_width
     }
     grid::grid.draw(combined)
     if (!is.null(output_file)) {

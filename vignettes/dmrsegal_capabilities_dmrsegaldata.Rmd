@@ -22,6 +22,24 @@ knitr::opts_chunk$set(
 )
 ```
 
+```{r html_styles, echo=FALSE, results='asis'}
+cat("
+<style>
+.circos-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid #d9d9d9;
+  padding: 8px;
+  background: #ffffff;
+}
+.circos-scroll img {
+  max-width: none !important;
+}
+</style>
+")
+```
+
 ## Goal
 
 This notebook showcases the main DMRsegal capabilities on the `dmrsegaldata` benchmark dataset while reusing the precomputed benchmark DMR results.
@@ -65,10 +83,10 @@ cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 
 ## DMR Summary and Ranking
 
-```{r}
+```{r dmr_summary_and_ranking}
 stopifnot(length(dmrs) > 0)
 
-if (!"rank" %in% colnames(mcols(dmrs)) || !"accuracy" %in% colnames(mcols(dmrs))) {
+if (!all(c("rank", "accuracy", "cv_accuracy") %in% colnames(mcols(dmrs)))) {
     options(DMRsegal.ranking_nfold = 3)
     dmrs <- rankDMRs(
         dmrs = dmrs,
@@ -89,17 +107,18 @@ summary_tbl <- data.frame(
     cpgs_num = mcols(dmrs)$cpgs_num,
     delta_beta = round(mcols(dmrs)$delta_beta, 4),
     accuracy = round(mcols(dmrs)$accuracy, 4),
+    cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
     rank = mcols(dmrs)$rank
 )
 summary_tbl <- summary_tbl[order(summary_tbl$rank), ]
-knitr::kable(head(summary_tbl, 20), caption = "Top ranked DMRs from benchmark results")
+knitr::kable(head(summary_tbl, 5), caption = "Top 5 ranked DMRs (margin-sensitive accuracy + raw CV accuracy)")
 ```
 
 ## Motif Discovery
 
 ```{r motif_discovery}
 motif_dmrs <- extractDMRMotifs(
-    dmrs = seq_regions,
+    dmrs = dmrs,
     genome = genome,
     array = array_type,
     flank_size = 5
@@ -130,10 +149,10 @@ component_tbl <- interaction_results$components
 cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
 cat(sprintf("Components found: %d\n", nrow(component_tbl)))
 
-if (nrow(interaction_tbl) > 0) {
+if (nrow(interaction_tbl) > 5) {
     knitr::kable(
         head(interaction_tbl[order(-interaction_tbl$sim), ], 20),
-        caption = "Top motif-similarity DMR interactions"
+        caption = "Top 5 motif-similarity DMR interactions"
     )
 }
 
@@ -143,7 +162,7 @@ if (nrow(component_tbl) > 0) {
         dplyr::select(component_id, size, consensus_seq, indices) |>
         dplyr::arrange(dplyr::desc(size))
     if (nrow(components_tbl) > 0) {
-        knitr::kable(head(components_tbl, 20), caption = "Motif interaction components")
+        knitr::kable(head(components_tbl, 5), caption = "Motif interaction components")
     }
 }
 ```
@@ -154,7 +173,7 @@ if (nrow(component_tbl) > 0) {
 
 ```{r single_dmr_plot, fig.height=12}
 plotDMR(
-    dmrs = seq_regions,
+    dmrs = dmrs,
     dmr_index = 1,
     beta = beta_handler,
     pheno = pheno,
@@ -167,7 +186,11 @@ plotDMR(
 
 ### Summary Circos Plot
 
-```{r circos_plot, fig.height=20, fig.width=20}
+```{r circos_plot_scroll_open, echo=FALSE, results='asis'}
+cat('<div class=\"circos-scroll\">')
+```
+
+```{r circos_plot, fig.height=24, fig.width=28, out.width='2800px', fig.retina=1}
 circos_dmrs <- motif_dmrs
 if ("rank" %in% colnames(mcols(circos_dmrs))) {
     # Keep circos interaction components undirected/connected for robust link plotting.
@@ -198,6 +221,10 @@ tryCatch(
         NULL
     }
 )
+```
+
+```{r circos_plot_scroll_close, echo=FALSE, results='asis'}
+cat('</div>')
 ```
 
 ## Session Info

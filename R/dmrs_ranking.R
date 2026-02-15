@@ -2,7 +2,8 @@
 #' @noRd
 .performCrossPrediction <- function(beta_mat, groups, nfold = getOption("DMRsegal.ranking_nfold", 5)) {
     set.seed(getOption("DMRsegal.random_seed", 42))
-    group_folds <- split(sample(seq_len(ncol(beta_mat))), as.factor(groups))
+    groups <- as.factor(groups)
+    group_folds <- split(seq_len(ncol(beta_mat)), groups)
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
             gsize <- length(group_folds[[g]])
@@ -13,17 +14,53 @@
             ))
         }
     }
-    folds <- unlist(lapply(group_folds, function(x) sample(rep(1:nfold, length.out = length(x)))))
+    folds <- integer(ncol(beta_mat))
+    for (g in names(group_folds)) {
+        idx <- group_folds[[g]]
+        folds[idx] <- sample(rep(seq_len(nfold), length.out = length(idx)))
+    }
     predictions <- vector("character", ncol(beta_mat))
+    decision_values <- rep(NA_real_, ncol(beta_mat))
     for (fold in 1:nfold) {
         train_indices <- which(folds != fold)
         test_indices <- which(folds == fold)
-        model <- e1071::svm(t(beta_mat[, train_indices]), as.factor(groups[train_indices]), kernel = "radial")
-        predictions[test_indices] <- predict(model, t(beta_mat[, test_indices]))
+        train_groups <- as.factor(groups[train_indices])
+        model <- e1071::svm(
+            t(beta_mat[, train_indices]),
+            train_groups,
+            kernel = "radial",
+            scale = TRUE
+        )
+        fold_pred <- predict(model, t(beta_mat[, test_indices]), decision.values = TRUE)
+        fold_pred_chr <- as.character(fold_pred)
+        predictions[test_indices] <- fold_pred_chr
+
+        fold_decision <- as.numeric(attr(fold_pred, "decision.values"))
+        if (length(fold_decision) != length(test_indices)) {
+            fold_decision <- rep(NA_real_, length(test_indices))
+        } else {
+            train_levels <- levels(train_groups)
+            pred_from_sign <- ifelse(fold_decision >= 0, train_levels[1], train_levels[2])
+            if (mean(pred_from_sign == fold_pred_chr, na.rm = TRUE) < 0.5) {
+                fold_decision <- -fold_decision
+            }
+        }
+        decision_values[test_indices] <- fold_decision
     }
-    confusion_matrix <- table(Predicted = predictions, Actual = groups)
-    accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
-    return(accuracy)
+    confusion_matrix <- table(Predicted = predictions, Actual = as.character(groups))
+    cv_accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+
+    # Margin-sensitive score (in (0, 1]) based on logistic loss of SVM decision values.
+    # This breaks ties among perfect-accuracy DMRs by rewarding larger separating margins.
+    y <- ifelse(as.character(groups) == levels(groups)[1], 1, -1)
+    finite_mask <- is.finite(decision_values)
+    if (!any(finite_mask)) {
+        margin_score <- cv_accuracy
+    } else {
+        logistic_loss <- log1p(exp(-y[finite_mask] * decision_values[finite_mask]))
+        margin_score <- exp(-mean(logistic_loss))
+    }
+    c(accuracy = margin_score, cv_accuracy = cv_accuracy)
 }
 
 #' Rank DMRs Based on Classification Accuracy
@@ -31,8 +68,8 @@
 #' @description Ranks Differentially Methylated Regions (DMRs) based on their ability to
 #' discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 #' classification. For each DMR, this function performs stratified k-fold cross-prediction
-#' using an RBF kernel SVM to compute classification accuracy, which serves as a measure
-#' of the DMR's discriminative power.
+#' using an RBF kernel SVM and computes a margin-sensitive classification score based on
+#' decision values, which serves as a measure of the DMR's discriminative power.
 #'
 #' @param dmrs Data frame or GRanges object containing DMR coordinates and metadata
 #' @param beta Character. Path to beta value file, tabix file, beta matrix, BetaHandler object, or bed file
@@ -44,7 +81,8 @@
 #'
 #' @return GRanges object with DMRs ordered by p-value and an additional metadata column:
 #' \itemize{
-#'   \item accuracy: Cross-validated classification accuracy for the DMR
+#'   \item accuracy: Margin-sensitive cross-validated classification score for the DMR
+#'   \item cv_accuracy: Raw cross-validated classification accuracy for the DMR
 #' }
 #'
 #' @details
@@ -53,9 +91,10 @@
 #' option "DMRsegal.ranking_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 #' SVM is trained on the beta values of CpG sites within each DMR.
 #'
-#' Classification accuracy represents how well the methylation pattern of a DMR can
-#' distinguish between sample groups. Higher accuracy values indicate stronger
-#' discriminative power and potentially more biologically relevant regions.
+#' The `accuracy` score combines classification correctness and margin confidence,
+#' making it more sensitive than plain cross-validated accuracy when many DMRs
+#' classify perfectly. The `cv_accuracy` column stores the raw cross-validated
+#' accuracy for reference.
 #'
 #' @examples
 #' # Load example data
@@ -108,7 +147,7 @@ rankDMRs <- function(
         design <- as.matrix(design)
         storage.mode(design) <- "double"
     }
-    accuracies <- future.apply::future_sapply(
+    cv_metrics <- future.apply::future_sapply(
         X = seq_along(dmrs),
         FUN = function(i) {
             site_indices <- supporting_sites[[i]]
@@ -121,11 +160,12 @@ rankDMRs <- function(
             cv_results
         },
         future.seed = TRUE,
-        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "casecontrol_col", "covariates", "design"),
+        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "covariates", "design"),
         future.stdout = NA
     )
     .finalizeParallel()
-    mcols(dmrs)$accuracy <- accuracies
+    mcols(dmrs)$accuracy <- as.numeric(cv_metrics["accuracy", ])
+    mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$accuracy, ties.method = "first")))
     return(dmrs[order(mcols(dmrs)$rank)])
 }
