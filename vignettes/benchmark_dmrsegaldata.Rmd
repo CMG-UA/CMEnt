@@ -303,9 +303,30 @@ run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 PDFplot = FALSE,
                 Rplot = FALSE,
                 resultsDir = "/tmp/champ_probeLasso"
-            )$ProbeLassoDMR
+            )
 
-            return(makeGRangesFromDataFrame(result, keep.extra.columns = TRUE))
+            pl_dmr <- result$ProbeLassoDMR
+            if (is.null(pl_dmr) || nrow(pl_dmr) == 0) {
+                return(GRanges())
+            }
+
+            # ChAMP output column names can differ by version.
+            if (!"seqnames" %in% names(pl_dmr) && "dmrChrom" %in% names(pl_dmr)) {
+                pl_dmr$seqnames <- pl_dmr$dmrChrom
+            }
+            if (!"start" %in% names(pl_dmr) && "dmrStart" %in% names(pl_dmr)) {
+                pl_dmr$start <- pl_dmr$dmrStart
+            }
+            if (!"end" %in% names(pl_dmr) && "dmrEnd" %in% names(pl_dmr)) {
+                pl_dmr$end <- pl_dmr$dmrEnd
+            }
+
+            return(makeGRangesFromDataFrame(pl_dmr,
+                seqnames.field = "seqnames",
+                start.field = "start",
+                end.field = "end",
+                keep.extra.columns = TRUE
+            ))
         },
         error = function(e) {
             warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
@@ -319,6 +340,14 @@ if (!file.exists(probeLasso_file)) {
     saveRDS(dmrs_probeLasso, probeLasso_file)
 } else {
     dmrs_probeLasso <- readRDS(probeLasso_file)
+    # Recompute stale cached empties produced when probeLasso dependencies were unavailable.
+    if (length(dmrs_probeLasso) == 0 &&
+        isTRUE(getOption("DMRsegal.probeLasso_rerun_if_empty", TRUE)) &&
+        requireNamespace("ChAMP", quietly = TRUE)) {
+        cat("probeLasso: cached result is empty, recomputing...\n")
+        dmrs_probeLasso <- run_probeLasso_champ(beta_mat, pheno, array_type = "450K")
+        saveRDS(dmrs_probeLasso, probeLasso_file)
+    }
 }
 
 cat(sprintf("probeLasso: Found %d DMRs\n", length(dmrs_probeLasso)))
@@ -361,10 +390,14 @@ if (!file.exists(bumphunter_file)) {
     # Safer defaults for local/WSL rendering; override via options().
     bh_cores <- as.integer(getOption("DMRsegal.bumphunter_cores", 1L))
     bh_B <- as.integer(getOption("DMRsegal.bumphunter_B", 100L))
-    bh_max_dmrs <- as.integer(getOption("DMRsegal.bumphunter_max_dmrs_for_cutoff", 12000L))
+    bh_max_dmrs <- as.integer(getOption("DMRsegal.bumphunter_max_dmrs_for_cutoff", 1000000L))
+    bh_max_gap <- as.integer(getOption("DMRsegal.bumphunter_maxGap", 2000L))
+    bh_min_l <- as.integer(getOption("DMRsegal.bumphunter_min_cpgs", 2L))
     bh_cores <- ifelse(is.na(bh_cores) || bh_cores < 1L, 1L, bh_cores)
     bh_B <- ifelse(is.na(bh_B) || bh_B < 0L, 100L, bh_B)
-    bh_max_dmrs <- ifelse(is.na(bh_max_dmrs) || bh_max_dmrs < 1L, 12000L, bh_max_dmrs)
+    bh_max_dmrs <- ifelse(is.na(bh_max_dmrs) || bh_max_dmrs < 1L, 1000000L, bh_max_dmrs)
+    bh_max_gap <- ifelse(is.na(bh_max_gap) || bh_max_gap < 1L, 2000L, bh_max_gap)
+    bh_min_l <- ifelse(is.na(bh_min_l) || bh_min_l < 1L, 2L, bh_min_l)
 
     doParallel::registerDoParallel(cores = bh_cores)
     on.exit({
@@ -373,7 +406,7 @@ if (!file.exists(bumphunter_file)) {
     }, add = TRUE)
 
     design <- model.matrix(~Sample_Group, data = pheno)
-    max_gap <- 1000
+    max_gap <- bh_max_gap
     dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
     iter <- 0L
@@ -398,8 +431,8 @@ if (!file.exists(bumphunter_file)) {
     }
     final_cutoff <- dmrs_cutoff / 1.2
     cat(sprintf(
-        "Bumphunter: cutoff=%.4f, candidate_bumps=%d, cores=%d, B=%d\n",
-        final_cutoff, dmrs_cnt, bh_cores, bh_B
+        "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
+        final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_B
     ))
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
@@ -415,7 +448,7 @@ if (!file.exists(bumphunter_file)) {
 
     dmr_table <- bumphunter_results$table
     dmr_table$p.adj <- p.adjust(dmr_table$p.value, method = "BH")
-    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$p.adj <= 0.05, ]
+    dmr_table <- dmr_table[dmr_table$L >= bh_min_l & dmr_table$p.adj <= 0.05, ]
 
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
