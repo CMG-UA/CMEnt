@@ -585,6 +585,12 @@ plotDMRs <- function(dmrs,
                      ncol = 1,
                      ...) {
     showtext::showtext_auto()
+    if (!is.null(array)) {
+        if (length(array) > 1) {
+            array <- array[[1]]
+        }
+        array <- strex::match_arg(array, ignore_case = TRUE)
+    }
     if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
@@ -612,6 +618,8 @@ plotDMRs <- function(dmrs,
             dmr_index = i,
             beta = beta,
             pheno = pheno,
+            genome = genome,
+            array = array,
             beta_locs = beta_locs,
             sample_group_col = sample_group_col,
             ...
@@ -687,6 +695,12 @@ plotDMR <- function(dmrs,
                     height = 12) {
 
     dmrs <- convertToGRanges(dmrs, genome)
+    if (!is.null(array)) {
+        if (length(array) > 1) {
+            array <- array[[1]]
+        }
+        array <- strex::match_arg(array, ignore_case = TRUE)
+    }
 
     showtext::showtext_auto(enable = TRUE)
     showtext::showtext_opts(dpi = 300)
@@ -982,62 +996,86 @@ plotDMRsCircos <- function(dmrs,
 
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
-        col_fun <- circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
-        heatmap_height <- 0.3
-        circlize::circos.genomicHeatmap(
-            bed = heatmap_df,
-            col = col_fun,
-            border = "white",
-            side = "outside",
-            border_lwd = 0.2,
-            line_lwd = 0.2,
-            heatmap_height = heatmap_height,
-        )
-
-        suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index() - 1, panel.fun = function(x, y) {
-            if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
-                groups <- reduced_pheno[[sample_group_col]]
-                unique_groups <- unique(groups)
-
-                group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
-                names(group_colors) <- unique_groups
-                csum <- 0
-                for (i in seq_along(unique_groups)) {
-                    group <- unique_groups[i]
-                    group_size <- sum(groups == group)
-                    circlize::circos.rect(
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
-                        csum,
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
-                        csum + group_size,
-                        col = group_colors[group],
-                        border = NA
-                    )
-                    circlize::circos.text(
-                        circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
-                        csum + group_size / 2,
-                        group,
-                        cex = 0.5,
-                        facing = "clockwise"
-                    )
-                    csum <- csum + group_size
-                }
+        heatmap_numeric <- as.matrix(heatmap_df[, -(1:3), drop = FALSE])
+        storage.mode(heatmap_numeric) <- "numeric"
+        valid_vals <- as.numeric(heatmap_numeric)
+        valid_vals <- valid_vals[is.finite(valid_vals)]
+        if (length(valid_vals) == 0) {
+            .log_warn("Heatmap beta values are all missing/non-finite. Skipping heatmap track.")
+        } else {
+            q <- stats::quantile(valid_vals, probs = c(0.05, 0.5, 0.95), na.rm = TRUE, names = FALSE, type = 8)
+            if (length(unique(q)) < 3) {
+                q <- c(min(valid_vals), mean(range(valid_vals)), max(valid_vals))
             }
-        }, bg.border = NA))
+            if (length(unique(q)) < 3) {
+                q <- c(q[1] - 1e-6, q[2], q[3] + 1e-6)
+            }
+            col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7", "#d7191c"))
+            heatmap_height <- 0.3
+            heatmap_df_plot <- data.frame(
+                heatmap_df[, 1:3, drop = FALSE],
+                heatmap_numeric,
+                check.names = FALSE,
+                stringsAsFactors = FALSE
+            )
+            circlize::circos.genomicHeatmap(
+                bed = heatmap_df_plot,
+                col = col_fun,
+                border = NA,
+                side = "outside",
+                border_lwd = 0,
+                line_lwd = 0,
+                heatmap_height = heatmap_height,
+            )
+        }
+
+        if (length(valid_vals) > 0) {
+            suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index() - 1, panel.fun = function(x, y) {
+                if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
+                    groups <- reduced_pheno[[sample_group_col]]
+                    unique_groups <- unique(groups)
+
+                    group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
+                    names(group_colors) <- unique_groups
+                    csum <- 0
+                    for (i in seq_along(unique_groups)) {
+                        group <- unique_groups[i]
+                        group_size <- sum(groups == group)
+                        circlize::circos.rect(
+                            circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
+                            csum,
+                            circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
+                            csum + group_size,
+                            col = group_colors[group],
+                            border = NA
+                        )
+                        circlize::circos.text(
+                            circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
+                            csum + group_size / 2,
+                            group,
+                            cex = 0.5,
+                            facing = "clockwise"
+                        )
+                        csum <- csum + group_size
+                    }
+                }
+            }, bg.border = NA))
 
 
-        # Make legend for heatmap
-        heatmap_legend <- ComplexHeatmap::Legend(
-            title = "Samples \u03b2-values",
-            at = c(0, 0.5, 1),
-            col_fun = col_fun,
-            title_position = "topcenter",
-            legend_height = grid::unit(4, "cm"),
-            labels_gp = grid::gpar(fontsize = 8),
-            title_gp = grid::gpar(fontsize = 10, fontface = "bold")
-        )
-        legends <- c(legends, list(heatmap_legend))
-        .log_success("Heatmap track added", level = 2)
+            # Make legend for heatmap
+            legend_at <- signif(q, 2)
+            heatmap_legend <- ComplexHeatmap::Legend(
+                title = "Samples \u03b2-values",
+                at = legend_at,
+                col_fun = col_fun,
+                title_position = "topcenter",
+                legend_height = grid::unit(4, "cm"),
+                labels_gp = grid::gpar(fontsize = 8),
+                title_gp = grid::gpar(fontsize = 10, fontface = "bold")
+            )
+            legends <- c(legends, list(heatmap_legend))
+            .log_success("Heatmap track added", level = 2)
+        }
     }
 
     if (!is.null(cytoband)) {
@@ -1369,6 +1407,9 @@ plotDMRsCircos <- function(dmrs,
 
 
     shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]
+    shown_locs$chr <- as.character(shown_locs$chr)
+    shown_locs$start <- as.numeric(shown_locs$start)
+    shown_locs$end <- as.numeric(shown_locs$end)
     beta_data <- beta_handler$getBeta(
         row_names = dmrs_cpgs_inds,
         col_names = rownames(pheno)
@@ -1399,7 +1440,15 @@ plotDMRsCircos <- function(dmrs,
     } else {
         reduced_pheno <- pheno
     }
-    list(heatmap_df = cbind(shown_locs, beta_data), reduced_pheno = reduced_pheno)
+    beta_data <- as.matrix(beta_data)
+    storage.mode(beta_data) <- "numeric"
+    heatmap_df <- data.frame(
+        shown_locs,
+        beta_data,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+    )
+    list(heatmap_df = heatmap_df, reduced_pheno = reduced_pheno)
 }
 
 

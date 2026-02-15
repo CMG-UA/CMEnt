@@ -4,22 +4,43 @@
     r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
     r
 }
-.motifCorr <- function(pwmSubjectMatrixList, pwmQuery) {
-    sapply(pwmSubjectMatrixList, function(pwmSubject) {
-        pwm1 <- pwmSubject@profileMatrix
-        pwm2 <- pwmQuery
-        widthMin <- min(ncol(pwm1), ncol(pwm2))
-        ans <- c()
-        for (i in 1:(1 + ncol(pwm1) - widthMin)) {
-            for (j in 1:(1 + ncol(pwm2) - widthMin)) {
-                pwm1Temp <- pwm1[, i:(i + widthMin - 1)]
-                pwm2Temp <- pwm2[, j:(j + widthMin - 1)]
-                ansTemp <- .PWMPearson(pwm1Temp, pwm2Temp)
-                ans <- c(ans, ansTemp)
+.maxPWMCorr <- function(pwm1, pwm2) {
+    widthMin <- min(ncol(pwm1), ncol(pwm2))
+    n1 <- ncol(pwm1) - widthMin + 1L
+    n2 <- ncol(pwm2) - widthMin + 1L
+    pwm1_center <- pwm1 - 0.25
+    pwm2_center <- pwm2 - 0.25
+    pwm1_center_sq <- pwm1_center^2
+    pwm2_center_sq <- pwm2_center^2
+    best <- -Inf
+    for (i in seq_len(n1)) {
+        i_idx <- i:(i + widthMin - 1L)
+        pwm1Temp <- pwm1_center[, i_idx, drop = FALSE]
+        pwm1TempNorm <- colSums(pwm1_center_sq[, i_idx, drop = FALSE])
+        for (j in seq_len(n2)) {
+            j_idx <- j:(j + widthMin - 1L)
+            pwm2Temp <- pwm2_center[, j_idx, drop = FALSE]
+            top <- colSums(pwm1Temp * pwm2Temp)
+            bottom <- sqrt(pwm1TempNorm * colSums(pwm2_center_sq[, j_idx, drop = FALSE]))
+            curr <- mean(top / (bottom + 1e-10))
+            if (curr > best) {
+                best <- curr
+                if (best >= 0.999999) {
+                    return(best)
+                }
             }
         }
-        ans <- max(ans)
-        ans
+    }
+    best
+}
+
+.motifCorr <- function(pwmSubjectMatrixList, pwmQuery, pwmQueryRevcomp = NULL) {
+    sapply(pwmSubjectMatrixList, function(pwmSubject) {
+        best <- .maxPWMCorr(pwmSubject, pwmQuery)
+        if (!is.null(pwmQueryRevcomp)) {
+            best <- max(best, .maxPWMCorr(pwmSubject, pwmQueryRevcomp))
+        }
+        best
     })
 }
 
@@ -54,15 +75,22 @@ comparePWMToJaspar <- function(pwm_queries) {
         saveRDS(vertebrate_pwms, pwms_file)
         jaspar_pwms <- vertebrate_pwms
     }
-    similarities <- sapply(pwm_queries, function(query) .motifCorr(jaspar_pwms, query))
+    jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
     revcomp_queries <- lapply(pwm_queries, function(pwm) {
-        pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(nrow(pwm)))]
+        pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(ncol(pwm))), drop = FALSE]
         rownames(pwm_revcomp) <- rownames(pwm)
         pwm_revcomp
     })
-    revcomp_similarities <- sapply(revcomp_queries, function(query) .motifCorr(jaspar_pwms, query))
+    n_subject <- length(jaspar_pwm_mats)
+    similarities <- vapply(pwm_queries, function(query) {
+        .motifCorr(jaspar_pwm_mats, query)
+    }, numeric(n_subject))
+    revcomp_similarities <- vapply(revcomp_queries, function(query) {
+        .motifCorr(jaspar_pwm_mats, query)
+    }, numeric(n_subject))
     similarities <- pmax(similarities, revcomp_similarities)
+    jaspar_names <- vapply(jaspar_pwms, function(x) x@name, character(1))
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
     if (length(found) == 0) {
@@ -72,7 +100,7 @@ comparePWMToJaspar <- function(pwm_queries) {
         similar_motifs <- data.frame(
             query_index = found[, 2],
             jaspar_id = names(jaspar_pwms)[found[, 1]],
-            jaspar_name = sapply(found[, 1], function(x) jaspar_pwms[[x]]@name),
+            jaspar_name = jaspar_names[found[, 1]],
             correlation = similarities[found]
         )
         # group by query_index and return comma-separated jaspar_ids and correlations
@@ -110,6 +138,7 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
         path.expand("~"),
         ".cache", "R", "DMRsegal", "annotations"
     ))
+    dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
     cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array,"_", flank_size, ".rds"))
     if (!file.exists(cache_file)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
@@ -119,7 +148,12 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
         bg_frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
-        saveRDS(bg_pwm, cache_file)
+        tryCatch(
+            saveRDS(bg_pwm, cache_file),
+            error = function(e) {
+                .log_info("Could not cache background motif PWM: ", e$message, level = 3)
+            }
+        )
     } else {
         bg_pwm <- readRDS(cache_file)
     }
@@ -304,23 +338,21 @@ computeDMRsInteraction <- function(
             components = components_df
         ))
     }
+    has_rank <- inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))
     if (any(mask)) {
-        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
+        if (has_rank) {
+            rowcol_df <- which(mask, arr.ind = TRUE)
             ranks <- mcols(dmrs)$rank
-            for (i in seq_len(nrow(mask))) {
-                for (j in seq_len(ncol(mask))) {
-                    if (mask[i, j] && ranks[i] < ranks[j]) {
-                        mask[j, i] <- FALSE
-                    }
-                }
-            }
+            keep <- ranks[rowcol_df[, 1]] <= ranks[rowcol_df[, 2]]
+            rowcol_df <- rowcol_df[keep, , drop = FALSE]
+            oriented_mask <- matrix(FALSE, nrow = nrow(mask), ncol = ncol(mask))
+            oriented_mask[rowcol_df] <- TRUE
+            mask <- oriented_mask
         } else {
             # remove lower triangle to avoid duplicate interactions
             mask[lower.tri(mask)] <- FALSE
+            rowcol_df <- which(mask, arr.ind = TRUE)
         }
-
-        rowcol_df <- which(mask, arr.ind = TRUE)
-
         start_dmrs <- dmrs[rowcol_df[, 1], ]
         end_dmrs <- dmrs[rowcol_df[, 2], ]
         interactions_df <- data.frame(
@@ -337,7 +369,7 @@ computeDMRsInteraction <- function(
     }
 
     if (find_components) {
-        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
+        if (has_rank) {
             g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "directed")
         } else {
             g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "upper")
@@ -379,9 +411,14 @@ computeDMRsInteraction <- function(
         }
     }
     if (find_components && nrow(interactions_df) > 0) {
-        interactions_df$component_id <- sapply(interactions_df$index1, function(x) {
-            components_df[which(sapply(components_df$indices, function(idxs) x %in% idxs))[[1]], "component_id"]
-        })
+        component_membership <- rep(NA_integer_, length(dmrs))
+        if (nrow(components_df) > 0) {
+            keep_component_ids <- components_df$component_id
+            member_ids <- components$membership
+            keep_member_mask <- member_ids %in% keep_component_ids
+            component_membership[keep_member_mask] <- member_ids[keep_member_mask]
+        }
+        interactions_df$component_id <- component_membership[interactions_df$index1]
     }
     list(
         interactions = interactions_df,
