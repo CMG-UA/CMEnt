@@ -414,7 +414,8 @@ if (!file.exists(bumphunter_file)) {
     )
 
     dmr_table <- bumphunter_results$table
-    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$fwer <= 0.05, ]
+    dmr_table$p.adj <- p.adjust(dmr_table$p.value, method = "BH")
+    dmr_table <- dmr_table[dmr_table$L >= 3 & dmr_table$p.adj <= 0.05, ]
 
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
