@@ -1,0 +1,262 @@
+---
+title: "DMRsegal Capabilities Notebook on dmrsegaldata (Benchmark Results)"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+vignette: >
+  %\VignetteIndexEntry{DMRsegal Capabilities Notebook on dmrsegaldata (Benchmark Results)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 12,
+    fig.height = 8,
+    dpi = 300
+)
+```
+
+## Goal
+
+This notebook showcases the main DMRsegal capabilities on the `dmrsegaldata` benchmark dataset while reusing the precomputed benchmark DMR results.
+
+## Setup
+
+```{r setup}
+if (requireNamespace("devtools", quietly = TRUE)) {
+    devtools::load_all(quiet = TRUE)
+}
+
+library(DMRsegal)
+library(GenomicRanges)
+library(dplyr)
+library(ggplot2)
+
+output_dir <- "dmrsegaldata"
+if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+}
+
+genome <- "hg19"
+```
+
+## Load Example Inputs and Benchmark DMRs
+
+```{r load_inputs_and_dmrs}
+beta <- loadExampleInputData("beta")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
+dmps <- loadExampleInputData("dmps")
+
+beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
+
+benchmark_dmrs_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
+stopifnot(file.exists(benchmark_dmrs_file))
+dmrs <- readRDS(benchmark_dmrs_file)
+
+cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
+```
+
+## DMR Summary and Ranking
+
+```{r dmr_summary_and_ranking}
+stopifnot(length(dmrs) > 0)
+
+if (!"rank" %in% colnames(mcols(dmrs)) || !"accuracy" %in% colnames(mcols(dmrs))) {
+    options(DMRsegal.ranking_nfold = 3)
+    dmrs <- rankDMRs(
+        dmrs = dmrs,
+        beta = beta_handler,
+        pheno = pheno,
+        genome = genome,
+        array = array_type,
+        sample_group_col = "Sample_Group"
+    )
+}
+
+summary_tbl <- data.frame(
+    chr = as.character(seqnames(dmrs)),
+    start = start(dmrs),
+    end = end(dmrs),
+    width = width(dmrs),
+    seeds_num = mcols(dmrs)$seeds_num,
+    cpgs_num = mcols(dmrs)$cpgs_num,
+    delta_beta = round(mcols(dmrs)$delta_beta, 4),
+    accuracy = round(mcols(dmrs)$accuracy, 4),
+    rank = mcols(dmrs)$rank
+)
+summary_tbl <- summary_tbl[order(summary_tbl$rank), ]
+knitr::kable(head(summary_tbl, 20), caption = "Top ranked DMRs from benchmark results")
+```
+
+## Gene Annotation
+
+```{r gene_annotation}
+if (!all(c("in_promoter_of", "in_gene_body_of") %in% colnames(mcols(dmrs)))) {
+    dmrs <- annotateDMRsWithGenes(dmrs, genome = genome)
+}
+
+annotation_tbl <- data.frame(
+    chr = as.character(seqnames(dmrs)),
+    start = start(dmrs),
+    end = end(dmrs),
+    in_promoter_of = mcols(dmrs)$in_promoter_of,
+    in_gene_body_of = mcols(dmrs)$in_gene_body_of,
+    rank = mcols(dmrs)$rank
+)
+annotation_tbl <- annotation_tbl[order(annotation_tbl$rank), ]
+knitr::kable(head(annotation_tbl, 10), caption = "Gene-level annotation for top DMRs")
+```
+
+## Sequence Extraction
+
+```{r sequence_extraction}
+seq_regions <- dmrs
+cat(sprintf(
+    "Using all identified DMRs: %d regions across %d chromosomes.\n",
+    length(seq_regions),
+    length(unique(as.character(seqnames(seq_regions))))
+))
+knitr::kable(
+    as.data.frame(table(as.character(seqnames(seq_regions)))),
+    col.names = c("chromosome", "n_dmrs"),
+    caption = "Chromosome distribution of selected DMRs"
+)
+
+dmr_sequences <- getDMRSequences(seq_regions, genome = genome)
+
+gc_content <- vapply(dmr_sequences, function(s) {
+    if (is.na(s) || nchar(s) == 0) {
+        return(NA_real_)
+    }
+    chars <- strsplit(toupper(s), split = "")[[1]]
+    mean(chars %in% c("G", "C"))
+}, numeric(1))
+
+sequence_tbl <- data.frame(
+    dmr_index = seq_along(seq_regions),
+    chr = as.character(seqnames(seq_regions)),
+    start = start(seq_regions),
+    end = end(seq_regions),
+    width = width(seq_regions),
+    gc_content = round(gc_content, 4)
+)
+knitr::kable(head(sequence_tbl, 20), caption = "Extracted DMR sequences and GC content")
+```
+
+## Motif Discovery
+
+```{r motif_discovery}
+motif_dmrs <- extractDMRMotifs(
+    dmrs = seq_regions,
+    genome = genome,
+    array = array_type,
+    flank_size = 5
+)
+
+n_motif_consensus <- sum(!is.na(mcols(motif_dmrs)$consensus_seq))
+n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(motif_dmrs)$consensus_seq)))
+cat(sprintf("Motifs extracted for %d/%d DMRs.\n", n_motif_consensus, length(motif_dmrs)))
+cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
+```
+
+## Motif-Based DMR Interactions
+
+```{r dmrs_interactions}
+interaction_results <- computeDMRsInteraction(
+    dmrs = motif_dmrs,
+    genome = genome,
+    array = array_type,
+    min_sim = 0.8,
+    flank_size = 5,
+    min_component_size = 2,
+    query_components_with_jaspar = FALSE
+)
+
+interaction_tbl <- interaction_results$interactions
+component_tbl <- interaction_results$components
+
+cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
+cat(sprintf("Components found: %d\n", nrow(component_tbl)))
+
+if (nrow(interaction_tbl) > 0) {
+    knitr::kable(
+        head(interaction_tbl[order(-interaction_tbl$sim), ], 20),
+        caption = "Top motif-similarity DMR interactions"
+    )
+}
+
+if (nrow(component_tbl) > 0) {
+    components_tbl <- component_tbl |>
+        dplyr::mutate(indices = vapply(indices, function(x) paste(x, collapse = ","), character(1))) |>
+        dplyr::select(component_id, size, consensus_seq, indices) |>
+        dplyr::arrange(dplyr::desc(size))
+    if (nrow(components_tbl) > 0) {
+        knitr::kable(head(components_tbl, 20), caption = "Motif interaction components")
+    }
+}
+```
+
+## DMR Visualization
+
+### Single DMR Plot
+
+```{r single_dmr_plot, fig.height=12}
+plotDMR(
+    dmrs = seq_regions,
+    dmr_index = 1,
+    beta = beta_handler,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    genome = genome,
+    array = array_type,
+    motif_flank_size = 5
+)
+```
+
+## Circos Plot
+
+```{r circos_plot, fig.height=10, fig.width=14}
+circos_dmrs <- motif_dmrs
+if ("rank" %in% colnames(mcols(circos_dmrs))) {
+    # Keep circos interaction components undirected/connected for robust link plotting.
+    mcols(circos_dmrs)$rank <- NULL
+}
+
+tryCatch(
+    {
+        plotDMRsCircos(
+            dmrs = circos_dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = genome,
+            array = array_type,
+            sample_group_col = "Sample_Group",
+            min_sim = 0.8,
+            flank_size = 5,
+            max_num_samples_per_group = 5,
+            max_dmrs_per_chr = 50,
+            max_cpgs_per_dmr = 5,
+            max_interactions = 1000000,
+            degenerate_resolution = 1e6,
+            verbose = 1
+        )
+    },
+    error = function(e) {
+        message("Circos plot generation failed: ", conditionMessage(e))
+        NULL
+    }
+)
+```
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

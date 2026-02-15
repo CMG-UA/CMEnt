@@ -161,7 +161,9 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
 #' # Access motif frequencies for the first DMR
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
-extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, flank_size = 5, plot.dir = NULL) {
+extractDMRMotifs <- function(
+    dmrs, genome, array = "450k", beta_locs = NULL, flank_size = 5, plot.dir = NULL
+) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
     use_abs <- FALSE
@@ -173,19 +175,23 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
     if (array_based) {
         bg_pwm <- getBackgroundArrayMotif(genome, array, flank_size = flank_size)
     }
-
-    sequences <- getDMRSequences(dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
+    sequences <- getDMRSequences(
+        dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1
+    )
     dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE, use_absolute_indices = use_abs)
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, beta_locs)
     end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, beta_locs)
+    beta_locs_start <- beta_locs[, "start"]
+    pwms <- vector("list", length(dmrs))
+    consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
         if (is.na(start_inds[i]) || is.na(end_inds[i])) {
             next
         }
         absolute_cpg_inds <- dmrs_cpgs_inds[[i]]
         sequence <- sequences[[i]]
-        start_loc_base <- beta_locs[start_inds[[i]], "start"]
-        seq_cpg_inds <- beta_locs[absolute_cpg_inds, "start"] - start_loc_base + 1 + flank_size
+        start_loc_base <- beta_locs_start[start_inds[[i]]]
+        seq_cpg_inds <- beta_locs_start[absolute_cpg_inds] - start_loc_base + 1 + flank_size
         cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
@@ -193,9 +199,11 @@ extractDMRMotifs <- function(dmrs, genome, array = "450k", beta_locs = NULL, fla
         if (array_based) {
             frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))
         }
-        mcols(dmrs)$pwm[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
-        mcols(dmrs)$consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
+        pwms[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
+        consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
+    mcols(dmrs)$pwm <- pwms
+    mcols(dmrs)$consensus_seq <- consensus_seq
     if (input_is_df) {
         dmrs <- as.data.frame(dmrs)
         colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
