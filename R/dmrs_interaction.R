@@ -199,6 +199,16 @@ extractDMRMotifs <- function(
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
+    if (!is.null(array)) {
+        if (length(array) > 1) {
+            array <- array[[1]]
+        }
+        array <- strex::match_arg(
+            array,
+            choices = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
+            ignore_case = TRUE
+        )
+    }
     use_abs <- FALSE
     if (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1 && file.exists(beta_locs))) {
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)

@@ -65,7 +65,7 @@ cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 
 ## DMR Summary and Ranking
 
-```{r dmr_summary_and_ranking}
+```{r}
 stopifnot(length(dmrs) > 0)
 
 if (!"rank" %in% colnames(mcols(dmrs)) || !"accuracy" %in% colnames(mcols(dmrs))) {
@@ -93,61 +93,6 @@ summary_tbl <- data.frame(
 )
 summary_tbl <- summary_tbl[order(summary_tbl$rank), ]
 knitr::kable(head(summary_tbl, 20), caption = "Top ranked DMRs from benchmark results")
-```
-
-## Gene Annotation
-
-```{r gene_annotation}
-if (!all(c("in_promoter_of", "in_gene_body_of") %in% colnames(mcols(dmrs)))) {
-    dmrs <- annotateDMRsWithGenes(dmrs, genome = genome)
-}
-
-annotation_tbl <- data.frame(
-    chr = as.character(seqnames(dmrs)),
-    start = start(dmrs),
-    end = end(dmrs),
-    in_promoter_of = mcols(dmrs)$in_promoter_of,
-    in_gene_body_of = mcols(dmrs)$in_gene_body_of,
-    rank = mcols(dmrs)$rank
-)
-annotation_tbl <- annotation_tbl[order(annotation_tbl$rank), ]
-knitr::kable(head(annotation_tbl, 10), caption = "Gene-level annotation for top DMRs")
-```
-
-## Sequence Extraction
-
-```{r sequence_extraction}
-seq_regions <- dmrs
-cat(sprintf(
-    "Using all identified DMRs: %d regions across %d chromosomes.\n",
-    length(seq_regions),
-    length(unique(as.character(seqnames(seq_regions))))
-))
-knitr::kable(
-    as.data.frame(table(as.character(seqnames(seq_regions)))),
-    col.names = c("chromosome", "n_dmrs"),
-    caption = "Chromosome distribution of selected DMRs"
-)
-
-dmr_sequences <- getDMRSequences(seq_regions, genome = genome)
-
-gc_content <- vapply(dmr_sequences, function(s) {
-    if (is.na(s) || nchar(s) == 0) {
-        return(NA_real_)
-    }
-    chars <- strsplit(toupper(s), split = "")[[1]]
-    mean(chars %in% c("G", "C"))
-}, numeric(1))
-
-sequence_tbl <- data.frame(
-    dmr_index = seq_along(seq_regions),
-    chr = as.character(seqnames(seq_regions)),
-    start = start(seq_regions),
-    end = end(seq_regions),
-    width = width(seq_regions),
-    gc_content = round(gc_content, 4)
-)
-knitr::kable(head(sequence_tbl, 20), caption = "Extracted DMR sequences and GC content")
 ```
 
 ## Motif Discovery
@@ -203,7 +148,7 @@ if (nrow(component_tbl) > 0) {
 }
 ```
 
-## DMR Visualization
+## Visualizations
 
 ### Single DMR Plot
 
@@ -220,9 +165,9 @@ plotDMR(
 )
 ```
 
-## Circos Plot
+### Summary Circos Plot
 
-```{r circos_plot, fig.height=10, fig.width=14}
+```{r circos_plot, fig.height=20, fig.width=20}
 circos_dmrs <- motif_dmrs
 if ("rank" %in% colnames(mcols(circos_dmrs))) {
     # Keep circos interaction components undirected/connected for robust link plotting.

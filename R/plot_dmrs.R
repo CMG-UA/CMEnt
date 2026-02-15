@@ -498,6 +498,148 @@ minmaxscale <- function(x) {
     (x - min(x)) / max(max(x) - min(x), 1e-10)
 }
 
+.summarizeMotifContext <- function(dmrs, dmr_index, genome, array, beta_locs, motif_flank_size = 5) {
+    ret <- list(top_interactions = data.frame(), jaspar = data.frame())
+    if (length(dmrs) < 2) {
+        return(ret)
+    }
+
+    top_n <- as.integer(getOption("DMRsegal.plotDMR_top_motif_interactions", 5L))
+    pool_size <- as.integer(getOption("DMRsegal.plotDMR_interaction_pool_size", 300L))
+    top_n <- ifelse(is.na(top_n) || top_n < 1, 5L, top_n)
+    pool_size <- ifelse(is.na(pool_size) || pool_size < 2, min(300L, length(dmrs)), pool_size)
+    pool_size <- min(pool_size, length(dmrs))
+
+    if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
+        ord <- order(S4Vectors::mcols(dmrs)$rank, na.last = TRUE)
+    } else if ("delta_beta" %in% colnames(S4Vectors::mcols(dmrs))) {
+        ord <- order(abs(S4Vectors::mcols(dmrs)$delta_beta), decreasing = TRUE, na.last = TRUE)
+    } else {
+        ord <- seq_along(dmrs)
+    }
+    candidate_inds <- unique(c(ord[seq_len(pool_size)], dmr_index))
+    cand_dmrs <- dmrs[candidate_inds]
+
+    if (!"pwm" %in% colnames(S4Vectors::mcols(cand_dmrs))) {
+        cand_dmrs <- extractDMRMotifs(
+            cand_dmrs,
+            genome = genome,
+            array = array,
+            beta_locs = beta_locs,
+            flank_size = motif_flank_size
+        )
+    }
+    local_idx <- match(dmr_index, candidate_inds)
+    if (is.na(local_idx) || !"pwm" %in% colnames(S4Vectors::mcols(cand_dmrs))) {
+        return(ret)
+    }
+    target_pwm <- S4Vectors::mcols(cand_dmrs)$pwm[[local_idx]]
+    if (is.null(target_pwm) || !is.matrix(target_pwm)) {
+        return(ret)
+    }
+
+    sim_matrix <- .extractMotifsSimilarity(cand_dmrs, flank_size = motif_flank_size)
+    sim_vec <- sim_matrix[local_idx, ]
+    sim_vec[local_idx] <- NA_real_
+    valid <- which(is.finite(sim_vec))
+    if (length(valid) > 0) {
+        ord_sim <- valid[order(sim_vec[valid], decreasing = TRUE)]
+        ord_sim <- head(ord_sim, top_n)
+        top_tbl <- data.frame(
+            dmr_index = candidate_inds[ord_sim],
+            chr = as.character(GenomicRanges::seqnames(cand_dmrs[ord_sim])),
+            start = GenomicRanges::start(cand_dmrs[ord_sim]),
+            end = GenomicRanges::end(cand_dmrs[ord_sim]),
+            sim = sim_vec[ord_sim],
+            stringsAsFactors = FALSE
+        )
+        if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
+            top_tbl$rank <- S4Vectors::mcols(dmrs)$rank[top_tbl$dmr_index]
+        }
+        ret$top_interactions <- top_tbl
+    }
+
+    if (isTRUE(getOption("DMRsegal.plotDMR_query_jaspar", TRUE))) {
+        ret$jaspar <- tryCatch(
+            comparePWMToJaspar(list(target_pwm)),
+            error = function(e) data.frame()
+        )
+    }
+    ret
+}
+
+.buildMotifContextLines <- function(motif_context, top_n = 5) {
+    lines <- c("Motif Context", "")
+    top_tbl <- motif_context$top_interactions
+    if (nrow(top_tbl) > 0) {
+        lines <- c(lines, "Top motif interactions:")
+        for (i in seq_len(min(top_n, nrow(top_tbl)))) {
+            rank_txt <- if ("rank" %in% colnames(top_tbl) && !is.na(top_tbl$rank[i])) {
+                paste0(" rank=", top_tbl$rank[i])
+            } else {
+                ""
+            }
+            lines <- c(lines, sprintf(
+                "%d) #%d %s:%s-%s sim=%.3f%s",
+                i,
+                top_tbl$dmr_index[i],
+                top_tbl$chr[i],
+                format(top_tbl$start[i], big.mark = ",", scientific = FALSE),
+                format(top_tbl$end[i], big.mark = ",", scientific = FALSE),
+                top_tbl$sim[i],
+                rank_txt
+            ))
+        }
+    } else {
+        lines <- c(lines, "Top motif interactions:", "none")
+    }
+
+    jas_tbl <- motif_context$jaspar
+    lines <- c(lines, "", "JASPAR matches:")
+    if (nrow(jas_tbl) > 0 && "jaspar_names" %in% colnames(jas_tbl) && !is.na(jas_tbl$jaspar_names[1])) {
+        names <- strsplit(jas_tbl$jaspar_names[1], ",", fixed = TRUE)[[1]]
+        cors <- if ("jaspar_corr" %in% colnames(jas_tbl) && !is.na(jas_tbl$jaspar_corr[1])) {
+            strsplit(jas_tbl$jaspar_corr[1], ",", fixed = TRUE)[[1]]
+        } else {
+            rep("", length(names))
+        }
+        n_show <- min(5L, length(names))
+        for (i in seq_len(n_show)) {
+            corr_txt <- if (i <= length(cors) && nzchar(cors[i])) paste0(" (", cors[i], ")") else ""
+            lines <- c(lines, paste0("- ", trimws(names[i]), corr_txt))
+        }
+        if (length(names) > n_show) {
+            lines <- c(lines, sprintf("... +%d more", length(names) - n_show))
+        }
+    } else {
+        lines <- c(lines, "none")
+    }
+    lines
+}
+
+.plotMotifContext <- function(lines) {
+    df <- data.frame(
+        x = 0,
+        y = rev(seq_along(lines)),
+        label = lines,
+        stringsAsFactors = FALSE
+    )
+    ggplot2::ggplot(df, ggplot2::aes(x = x, y = y, label = label)) +
+        ggplot2::geom_text(
+            hjust = 0,
+            vjust = 1,
+            size = 3,
+            family = "mono",
+            lineheight = 0.95
+        ) +
+        ggplot2::xlim(0, 1) +
+        ggplot2::theme_void() +
+        ggplot2::theme(
+            plot.margin = ggplot2::margin(4, 4, 4, 4),
+            panel.background = ggplot2::element_rect(fill = "white", colour = NA)
+        )
+}
+
 .plotPWM <- function(dmr, genome, array, beta_locs, motif_flank_size = 5) {
     # Extract DMR motifs if not already present
     if (!"pwm" %in% colnames(S4Vectors::mcols(dmr))) {
@@ -528,15 +670,17 @@ minmaxscale <- function(x) {
             ggplot2::theme(
                 panel.grid.major.x = ggplot2::element_blank(),
                 panel.grid.minor = ggplot2::element_blank(),
-                axis.text.x = ggplot2::element_text(size = 10),
-                axis.text.y = ggplot2::element_text(size = 10),
-                axis.title = ggplot2::element_text(size = 11, face = "bold"),
-                plot.title = ggplot2::element_text(size = 12, face = "bold", hjust = 0.5)
+                axis.text.x = ggplot2::element_text(size = 8),
+                axis.text.y = ggplot2::element_text(size = 8),
+                axis.title = ggplot2::element_text(size = 9, face = "bold"),
+                plot.title = ggplot2::element_text(size = 10, face = "bold", hjust = 0),
+                plot.margin = ggplot2::margin(4, 4, 4, 4),
+                aspect.ratio = 0.22
             ) +
             ggplot2::labs(
                 x = "Position Relative to CpG",
                 y = "Information Content (bits)",
-                title = paste0("Supporting CpG Motif PWM (consensus: ", consensus_seq, ")")
+                title = paste0("Motif PWM (consensus: ", consensus_seq, ")")
             ) +
             ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
     }))
@@ -811,13 +955,43 @@ plotDMR <- function(dmrs,
         .log_info("Generating motif PWM plot...", level = 3)
         pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_flank_size = motif_flank_size)
         if (!is.null(pwm_plot)) {
-            grobs <- c(grobs, list(ggplot2::ggplotGrob(pwm_plot)))
+            motif_context <- .summarizeMotifContext(
+                dmrs = dmrs,
+                dmr_index = dmr_index,
+                genome = genome,
+                array = array,
+                beta_locs = beta_locs,
+                motif_flank_size = motif_flank_size
+            )
+            motif_lines <- .buildMotifContextLines(motif_context)
+            motif_context_plot <- .plotMotifContext(motif_lines)
+            motif_panel <- gridExtra::arrangeGrob(
+                ggplot2::ggplotGrob(pwm_plot),
+                ggplot2::ggplotGrob(motif_context_plot),
+                ncol = 2,
+                widths = c(0.58, 0.42)
+            )
+            grobs <- c(grobs, list(motif_panel))
         }
     }
 
-    max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
-    combined <- do.call(gridExtra::gtable_rbind, grobs)
-    combined$widths <- max_width
+    if (length(grobs) == 3) {
+        combined <- gridExtra::arrangeGrob(
+            grobs = grobs,
+            ncol = 1,
+            heights = c(1.1, 1, 0.55)
+        )
+    } else if (length(grobs) == 2 && plot_motif && is.null(beta)) {
+        combined <- gridExtra::arrangeGrob(
+            grobs = grobs,
+            ncol = 1,
+            heights = c(1, 0.6)
+        )
+    } else {
+        max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
+        combined <- do.call(gridExtra::gtable_rbind, grobs)
+        combined$widths <- max_width
+    }
     grid::grid.draw(combined)
     if (!is.null(output_file)) {
         grDevices::dev.off()
@@ -1018,6 +1192,7 @@ plotDMRsCircos <- function(dmrs,
                 check.names = FALSE,
                 stringsAsFactors = FALSE
             )
+            previous_track_index <- circlize::get.current.track.index()
             circlize::circos.genomicHeatmap(
                 bed = heatmap_df_plot,
                 col = col_fun,
@@ -1027,36 +1202,47 @@ plotDMRsCircos <- function(dmrs,
                 line_lwd = 0,
                 heatmap_height = heatmap_height,
             )
+            heatmap_track_index <- previous_track_index + 1
         }
 
         if (length(valid_vals) > 0) {
-            suppressMessages(circlize::circos.track(track.index = circlize::get.current.track.index() - 1, panel.fun = function(x, y) {
+            suppressMessages(circlize::circos.track(track.index = heatmap_track_index, panel.fun = function(x, y) {
                 if (circlize::CELL_META$sector.numeric.index == length(unique_chrs)) { # the last sector
-                    groups <- reduced_pheno[[sample_group_col]]
-                    unique_groups <- unique(groups)
+                    groups <- as.character(reduced_pheno[[sample_group_col]])
+                    group_runs <- rle(groups)
+                    unique_groups <- unique(group_runs$values)
 
                     group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
                     names(group_colors) <- unique_groups
-                    csum <- 0
-                    for (i in seq_along(unique_groups)) {
-                        group <- unique_groups[i]
-                        group_size <- sum(groups == group)
+                    y_limits <- circlize::CELL_META$cell.ylim
+                    n_samples <- sum(group_runs$lengths)
+                    if (n_samples <= 0) {
+                        return(invisible(NULL))
+                    }
+                    row_height <- (y_limits[2] - y_limits[1]) / n_samples
+                    y_cursor <- y_limits[1]
+                    for (i in seq_along(group_runs$values)) {
+                        group <- group_runs$values[i]
+                        group_size <- group_runs$lengths[i]
+                        y_next <- y_cursor + group_size * row_height
+                        y_bottom <- min(y_cursor, y_next)
+                        y_top <- max(y_cursor, y_next)
                         circlize::circos.rect(
                             circlize::CELL_META$cell.xlim[2] + circlize::convert_x(1, "mm"),
-                            csum,
+                            y_bottom,
                             circlize::CELL_META$cell.xlim[2] + circlize::convert_x(5, "mm"),
-                            csum + group_size,
+                            y_top,
                             col = group_colors[group],
                             border = NA
                         )
                         circlize::circos.text(
                             circlize::CELL_META$cell.xlim[2] + circlize::convert_x(3, "mm"),
-                            csum + group_size / 2,
+                            y_bottom + (y_top - y_bottom) / 2,
                             group,
                             cex = 0.5,
                             facing = "clockwise"
                         )
-                        csum <- csum + group_size
+                        y_cursor <- y_next
                     }
                 }
             }, bg.border = NA))
