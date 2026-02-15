@@ -42,3 +42,4 @@ Rd2.tex
 *_cache/
 data/sim_bs.rds
 *.log
+figure-html
