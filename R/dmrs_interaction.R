@@ -324,7 +324,7 @@ computeDMRsInteraction <- function(
         to_show <- similarity_matrix
         diag(to_show) <- NA
         to_show[lower.tri(to_show)] <- NA
-        to_show[abs(to_show) < min_sim] <- NA
+        to_show[to_show < min_sim] <- NA
         sim_melt <- reshape2::melt(to_show, na.rm = TRUE)
         colnames(sim_melt) <- c("DMR1", "DMR2", "Similarity")
         p <- ggplot2::ggplot(sim_melt, ggplot2::aes_string(x = "DMR1", y = "DMR2", fill = "Similarity")) +
@@ -335,11 +335,13 @@ computeDMRsInteraction <- function(
             ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
         ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
-    mask <- !is.na(similarity_matrix) & (abs(similarity_matrix) >= min_sim)
+    mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_sim)
     # remove diagonal
     diag(mask) <- FALSE
     interactions_df <- data.frame()
     components_df <- data.frame()
+    components <- NULL
+    membership_to_component <- rep(NA_integer_, length(dmrs))
     if ((!find_components || min_component_size > 1) && !any(mask)) {
         .log_info("No motif similarities found above the threshold.", level = 2)
         return(list(
@@ -375,33 +377,30 @@ computeDMRsInteraction <- function(
             end2 = GenomicRanges::end(end_dmrs),
             sim = similarity_matrix[rowcol_df]
         )
+        interactions_df <- interactions_df[is.finite(interactions_df$sim) & interactions_df$sim >= min_sim, , drop = FALSE]
     }
 
     if (find_components) {
-        if (has_rank) {
-            g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "directed")
-        } else {
-            g1 <- igraph::graph_from_adjacency_matrix(mask, mode = "upper")
-        }
-        components <- igraph::components(g1, mode = "strong")
-        # compute consensus sequence for each connected component
-        # create a dataframe with columns component_id, dmrs
-        components_df <- data.frame(
-            component_id = seq_along(components$csize),
-            size = components$csize
-        )
-        components_df$indices <- lapply(seq_along(components$csize), function(i) {
-            which(components$membership == i)
-        })
-        # filter components by size
-        components_df <- components_df[components_df$size >= min_component_size, ]
-        if (nrow(components_df) == 0) {
+        # Components should represent undirected interaction connectivity, even when
+        # interaction links are oriented by rank.
+        component_mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_sim)
+        diag(component_mask) <- FALSE
+        component_mask <- component_mask | t(component_mask)
+        g1 <- igraph::graph_from_adjacency_matrix(component_mask, mode = "undirected", diag = FALSE)
+        components <- igraph::components(g1)
+        keep_component_ids <- which(components$csize >= min_component_size)
+
+        if (length(keep_component_ids) == 0) {
             .log_info("No connected components found with size >=", min_component_size, level = 2)
-            return(list(
-                interactions = interactions_df,
-                components = components_df
-            ))
         } else {
+            membership_to_component <- match(components$membership, keep_component_ids)
+            components_df <- data.frame(
+                component_id = seq_along(keep_component_ids),
+                size = as.numeric(components$csize[keep_component_ids])
+            )
+            components_df$indices <- lapply(keep_component_ids, function(i) {
+                which(components$membership == i)
+            })
             # Find the average PWM for each component
             components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
                 pwms <- mcols(dmrs)[idxs, "pwm"]
@@ -420,14 +419,7 @@ computeDMRsInteraction <- function(
         }
     }
     if (find_components && nrow(interactions_df) > 0) {
-        component_membership <- rep(NA_integer_, length(dmrs))
-        if (nrow(components_df) > 0) {
-            keep_component_ids <- components_df$component_id
-            member_ids <- components$membership
-            keep_member_mask <- member_ids %in% keep_component_ids
-            component_membership[keep_member_mask] <- member_ids[keep_member_mask]
-        }
-        interactions_df$component_id <- component_membership[interactions_df$index1]
+        interactions_df$component_id <- membership_to_component[interactions_df$index1]
     }
     list(
         interactions = interactions_df,

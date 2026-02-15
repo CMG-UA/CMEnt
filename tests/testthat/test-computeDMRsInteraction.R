@@ -170,6 +170,52 @@ test_that("computeDMRsInteraction validates similarity values", {
     }
 })
 
+test_that("computeDMRsInteraction enforces min_sim on reported interactions", {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+        skip("Benchmark DMRs not available")
+    }
+
+    result <- suppressWarnings(computeDMRsInteraction(
+        dmrs,
+        genome = "hg19",
+        array = "450K",
+        min_sim = 0.8
+    ))
+
+    if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
+        expect_true(all(result$interactions$sim >= 0.8))
+    }
+})
+
+test_that("computeDMRsInteraction assigns contiguous positive component IDs when ranks exist", {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+        skip("Benchmark DMRs not available")
+    }
+    mcols(dmrs)$rank <- seq_len(length(dmrs))
+
+    result <- suppressWarnings(computeDMRsInteraction(
+        dmrs,
+        genome = "hg19",
+        array = "450K",
+        min_sim = 0.7,
+        min_component_size = 1,
+        query_components_with_jaspar = FALSE
+    ))
+
+    expect_true("component_id" %in% colnames(result$components))
+    if (nrow(result$components) > 0) {
+        expect_true(all(result$components$component_id >= 1))
+        expect_false(any(result$components$component_id == 0))
+        expect_equal(result$components$component_id, seq_len(nrow(result$components)))
+        expect_true(all(result$components$size > 0))
+    }
+    if (nrow(result$interactions) > 0) {
+        expect_true("component_id" %in% colnames(result$interactions))
+    }
+})
+
 test_that("computeDMRsInteraction components are ordered by size", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
