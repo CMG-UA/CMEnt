@@ -133,13 +133,13 @@ comparePWMToJaspar <- function(pwm_queries) {
 }
 
 
-getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
+getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
         ".cache", "R", "DMRsegal", "annotations"
     ))
     dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array,"_", flank_size, ".rds"))
+    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", flank_size, ".rds"))
     if (!file.exists(cache_file)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -157,8 +157,7 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5){
     } else {
         bg_pwm <- readRDS(cache_file)
     }
-
-
+    bg_pwm
 }
 
 
@@ -255,7 +254,7 @@ extractDMRMotifs <- function(
     # Remove CpG position
     pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
     ret <- lsa::cosine(pwms)
-    return(ret)
+    ret
 }
 
 
