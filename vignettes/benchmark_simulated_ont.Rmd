@@ -224,7 +224,7 @@ cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
 
 ## Method 1: DMRsegal
 
-```{r, message=TRUE, warning=TRUE}
+```{r}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
 
@@ -259,8 +259,7 @@ if (!file.exists(dmrsegal_file)) {
         on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
     }
 
-    options("DMRsegal.verbose" = 4)
-    options("DMRsegal.njobs" = 8)
+    options("DMRsegal.njobs" = 16)
 
     t_handler_start <- Sys.time()
 
@@ -284,17 +283,18 @@ if (!file.exists(dmrsegal_file)) {
                     pheno = pheno,
                     seeds_id_col = "cpg_id",
                     sample_group_col = "Sample_Group",
+                    ignored_sample_groups = "Condition1", # Use only Condition2 as "case" group for ranking to avoid confusion with dmrseq/DMRcate which use the same design.
                     casecontrol_col = "casecontrol",
                     min_seeds = 2,
                     min_adj_seeds = 2,
                     min_cpgs = 3,
-                    max_lookup_dist = 1000,
+                    max_lookup_dist = 10000,
                     max_pval = 0.05,
                     pval_mode = "parametric",
                     chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
                     entanglement = "weak",
                     annotate_with_genes = FALSE,
-                    rank_dmrs = TRUE
+                    rank_dmrs = TRUE,
                 )
             )
         },
