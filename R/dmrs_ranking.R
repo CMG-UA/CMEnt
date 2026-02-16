@@ -60,10 +60,10 @@
         logistic_loss <- log1p(exp(-y[finite_mask] * decision_values[finite_mask]))
         margin_score <- exp(-mean(logistic_loss))
     }
-    c(accuracy = margin_score, cv_accuracy = cv_accuracy)
+    c(score = margin_score, cv_accuracy = cv_accuracy)
 }
 
-#' Rank DMRs Based on Classification Accuracy
+#' Rank DMRs Based on Classification Score
 #'
 #' @description Ranks Differentially Methylated Regions (DMRs) based on their ability to
 #' discriminate between sample groups using cross-validated Support Vector Machine (SVM)
@@ -79,9 +79,9 @@
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
 #' @param sample_group_col Character. Column name in pheno containing sample group information. Default is "Sample_Group"
 #'
-#' @return GRanges object with DMRs ordered by p-value and an additional metadata column:
+#' @return GRanges object with DMRs ordered by score and additional metadata columns:
 #' \itemize{
-#'   \item accuracy: Margin-sensitive cross-validated classification score for the DMR
+#'   \item score: Margin-sensitive cross-validated classification score for the DMR
 #'   \item cv_accuracy: Raw cross-validated classification accuracy for the DMR
 #' }
 #'
@@ -91,7 +91,7 @@
 #' option "DMRsegal.ranking_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 #' SVM is trained on the beta values of CpG sites within each DMR.
 #'
-#' The `accuracy` score combines classification correctness and margin confidence,
+#' The `score` combines classification correctness and margin confidence,
 #' making it more sensitive than plain cross-validated accuracy when many DMRs
 #' classify perfectly. The `cv_accuracy` column stores the raw cross-validated
 #' accuracy for reference.
@@ -164,8 +164,8 @@ rankDMRs <- function(
         future.stdout = NA
     )
     .finalizeParallel()
-    mcols(dmrs)$accuracy <- as.numeric(cv_metrics["accuracy", ])
+    mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
-    mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$accuracy, ties.method = "first")))
+    mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
     return(dmrs[order(mcols(dmrs)$rank)])
 }

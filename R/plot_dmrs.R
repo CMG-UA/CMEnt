@@ -975,12 +975,12 @@ plotDMR <- function(dmrs,
         }
     }
 
-    if (length(grobs) > 1) {
-        max_width <- do.call(grid::unit.pmax, lapply(grobs, function(g) g$widths))
-        grobs <- lapply(grobs, function(g) {
-            g$widths <- max_width
-            g
-        })
+    # Keep genomic schematic and beta heatmap perfectly aligned on x,
+    # but avoid forcing motif/context panel into the same gtable geometry.
+    if (!is.null(beta) && length(grobs) >= 2) {
+        max_width <- grid::unit.pmax(grobs[[1]]$widths, grobs[[2]]$widths)
+        grobs[[1]]$widths <- max_width
+        grobs[[2]]$widths <- max_width
     }
 
     if (length(grobs) == 3) {
@@ -1371,9 +1371,10 @@ plotDMRsCircos <- function(dmrs,
         link_data$colors <- link_colors(link_data[, "sim"])
 
         # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
-        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "consensus_seq", "jaspar_names", "jaspar_corr")]
+        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "size", "consensus_seq", "jaspar_names", "jaspar_corr")]
         link_legend_data <- data.frame(
             component_id = comp_data$component_id,
+            size = comp_data$size,
             consensus_seq = comp_data$consensus_seq,
             jaspar_names = comp_data$jaspar_names,
             jaspar_corr = comp_data$jaspar_corr,
@@ -1381,7 +1382,7 @@ plotDMRsCircos <- function(dmrs,
         )
         link_legend_colors <- component_colors
         link_legend_labels <- sapply(seq_len(nrow(link_legend_data)), function(i) {
-            label <- paste0("", link_legend_data$consensus_seq[i])
+            label <- paste0("[n=", link_legend_data$size[i], "] ", link_legend_data$consensus_seq[i])
             if (!is.na(link_legend_data$jaspar_names[i]) && link_legend_data$jaspar_names[i] != "") {
                 names <- strsplit(link_legend_data$jaspar_names[i], ",")[[1]]
                 cors <- strsplit(link_legend_data$jaspar_corr[i], ",")[[1]]
@@ -1398,7 +1399,7 @@ plotDMRsCircos <- function(dmrs,
         link_legend <- ComplexHeatmap::Legend(
             labels = link_legend_labels,
             legend_gp = grid::gpar(fill = link_legend_colors),
-            title = "DMR Interaction Components \n with Motif Consensus and Jaspar Matches",
+            title = "DMR Interaction Components (n DMRs)\nwith Motif Consensus and Jaspar Matches",
             title_position = "topcenter",
             title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
             labels_gp = grid::gpar(fontsize = 8)
@@ -1679,12 +1680,37 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_success("Found ", nrow(ret$interactions), " motif-based interactions")
+    if (!is.null(ret$components) && nrow(ret$components) > 0) {
+        largest_component <- max(ret$components$size, na.rm = TRUE)
+        if (is.finite(largest_component) && largest_component > 0.8 * length(dmrs)) {
+            .log_warn(
+                "Largest interaction component contains ", largest_component, " / ", length(dmrs),
+                " DMRs. This often indicates dense generic CpG-context motif connectivity."
+            )
+        }
+    }
     link_data <- ret$interactions
+    if ("component_id" %in% colnames(link_data)) {
+        link_data <- link_data[!is.na(link_data$component_id), , drop = FALSE]
+    }
     link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
     if (nrow(link_data) > max_interactions) {
         link_data <- do.call(rbind, lapply(split(link_data, link_data$component_id), function(x) x[seq_len(min(nrow(x), max_interactions)), ]))
         .log_info("Limiting to top ", max_interactions, " interactions per component based on similarity", level = 2)
     }
     link_data <- merge(link_data, ret$components, by = "component_id", all.x = TRUE, suffixes = c("", "_comp"))
+    # Keep only interactions whose component has a JASPAR annotation.
+    if ("jaspar_names" %in% colnames(link_data)) {
+        keep <- !is.na(link_data$jaspar_names) & nzchar(link_data$jaspar_names)
+        removed <- sum(!keep)
+        link_data <- link_data[keep, , drop = FALSE]
+        if (removed > 0) {
+            .log_info("Filtered out ", removed, " interactions without JASPAR matches.", level = 2)
+        }
+    }
+    if (nrow(link_data) == 0) {
+        .log_warn("No motif interactions with JASPAR matches remain after filtering. Skipping link track.")
+        return(NULL)
+    }
     link_data
 }

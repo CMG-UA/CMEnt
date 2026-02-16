@@ -261,9 +261,28 @@ extractDMRMotifs <- function(
     } else {
         pwms <- dmrs[, "pwm"]
     }
-    # Remove CpG position
-    pwms <- do.call(cbind, lapply(pwms, function(x) unlist(as.list(x[, -c(flank_size + 1, flank_size + 2)]))))
-    ret <- lsa::cosine(pwms)
+    if (length(pwms) == 0) {
+        return(matrix(0, nrow = 0, ncol = 0))
+    }
+    cpg_cols <- c(flank_size + 1, flank_size + 2)
+    # Compare motifs with a position-aware centered cosine:
+    # 1) remove central CpG positions,
+    # 2) center base frequencies around 0.25,
+    # 3) normalize each position independently,
+    # 4) average similarity over positions.
+    pwm_vectors <- lapply(pwms, function(x) {
+        keep_cols <- setdiff(seq_len(ncol(x)), cpg_cols)
+        x <- x[, keep_cols, drop = FALSE] - 0.25
+        col_norms <- sqrt(colSums(x^2))
+        col_norms[col_norms < 1e-10] <- 1e-10
+        x <- sweep(x, 2, col_norms, "/")
+        as.vector(x)
+    })
+    pwm_matrix <- do.call(cbind, pwm_vectors)
+    num_positions <- max(1, ncol(pwms[[1]]) - 2)
+    ret <- crossprod(pwm_matrix) / num_positions
+    ret[ret > 1] <- 1
+    ret[ret < -1] <- -1
     ret
 }
 
@@ -412,6 +431,20 @@ computeDMRsInteraction <- function(
             })
             # Order by component size
             components_df <- components_df[order(-components_df$size), ]
+            old_component_ids <- components_df$component_id
+            components_df$component_id <- seq_len(nrow(components_df))
+            id_remap <- rep(NA_integer_, max(old_component_ids))
+            id_remap[old_component_ids] <- components_df$component_id
+            membership_to_component <- id_remap[membership_to_component]
+            largest_component <- max(components_df$size)
+            if (largest_component >= ceiling(0.8 * length(dmrs))) {
+                .log_info(
+                    "Largest motif component spans ",
+                    largest_component, "/", length(dmrs),
+                    " DMRs. This indicates broad motif similarity; consider a stricter min_sim.",
+                    level = 2
+                )
+            }
             if (query_components_with_jaspar) {
                 # Find similarities to JASPAR motifs
                 components_df <- cbind(components_df, comparePWMToJaspar(components_df$avg_pwm))

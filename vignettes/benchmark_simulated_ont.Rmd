@@ -35,8 +35,8 @@ Methods:
 
 Data:
 
-- BSseq object: `data/sim_bs.rds`
-- Ground-truth DMRs: `data/sim_dmrs.tsv`
+- BSseq object: `data/sim_bs_1000.rds`
+- Ground-truth DMRs: `data/sim_dmrs_1000.tsv`
 
 Primary goal:
 
@@ -58,7 +58,16 @@ library(progressr)
 library(SummarizedExperiment)
 library(S4Vectors)
 library(limma)
-
+live_log <- function(fmt, ...) {
+    if (!is.character(fmt) || length(fmt) != 1) {
+        msg <- paste(capture.output(print(fmt)), collapse = "\n")
+    } else {
+        msg <- sprintf(fmt, ...)
+    }
+    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+    line <- sprintf("[%s] %s", stamp, msg)
+    cat(line, "\n", file = stderr())
+}
 progressr::handlers("cli")
 output_dir <- "simulated_ont"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -95,8 +104,8 @@ resolve_input_path <- function(path_in_repo) {
     hit
 }
 
-sim_bs_path <- resolve_input_path("data/sim_bs.rds")
-sim_truth_path <- resolve_input_path("data/sim_dmrs.tsv")
+sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
+sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
 
 if (!file.exists(sim_bs_path)) {
     stop("Missing BSseq input file: ", sim_bs_path)
@@ -111,7 +120,7 @@ stopifnot(inherits(sim_bs, "BSseq"))
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
     truth_df,
-    seqnames.field = "seqnames",
+    seqnames.field = "chr",
     start.field = "start",
     end.field = "end",
     keep.extra.columns = TRUE
@@ -218,16 +227,7 @@ cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
 ```{r, message=TRUE, warning=TRUE}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
-live_log <- function(fmt, ...) {
-    if (!is.character(fmt) || length(fmt) != 1) {
-        msg <- paste(capture.output(print(fmt)), collapse = "\n")
-    } else {
-        msg <- sprintf(fmt, ...)
-    }
-    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-    line <- sprintf("[%s] %s", stamp, msg)
-    cat(line, "\n", file = stderr())
-}
+
 
 
 if (!file.exists(dmrsegal_file)) {

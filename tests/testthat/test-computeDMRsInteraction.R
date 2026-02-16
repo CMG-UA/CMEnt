@@ -151,6 +151,26 @@ test_that("computeDMRsInteraction handles custom flank_size", {
     expect_type(result_custom, "list")
 })
 
+test_that("computeDMRsInteraction does not collapse into a giant component at strict threshold", {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+        skip("Benchmark DMRs not available")
+    }
+
+    result <- suppressWarnings(computeDMRsInteraction(
+        dmrs,
+        genome = "hg19",
+        array = "450K",
+        min_sim = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE
+    ))
+
+    if (nrow(result$components) > 0) {
+        expect_true(max(result$components$size) < (0.9 * length(dmrs)))
+    }
+})
+
 test_that("computeDMRsInteraction validates similarity values", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
