@@ -105,7 +105,7 @@
 
 
 .buildConnectivityArray <- function(
-    beta_handler, pheno, group_inds, max_pval = 0.05,
+    beta_handler, pheno, group_inds, col_names = NULL, max_pval = 0.05,
     min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
     chunk_size = getOption("DMRsegal.chunk_size", 1000), entanglement = "strong",
     aggfun = median, empirical_strategy = "auto",
@@ -137,10 +137,16 @@
         split <- splits[split_ind, ]
         beta_locs <- beta_handler$getBetaLocs()
         if (!bigmemory::is.big.matrix(beta_locs)) {
-            chunk_beta <- beta_handler$getBeta(row_names = rownames(beta_locs)[split[1]:split[2]], check_mem = TRUE)
+            chunk_beta <- beta_handler$getBeta(
+                row_names = rownames(beta_locs)[split[1]:split[2]],
+                col_names = col_names,
+                check_mem = TRUE
+            )
         } else {
             chunk_beta <- beta_handler$getBeta(
-                row_names = split[1]:split[2], check_mem = TRUE
+                row_names = split[1]:split[2],
+                col_names = col_names,
+                check_mem = TRUE
             )
         }
         x <- .testConnectivityBatch(
@@ -188,6 +194,7 @@
             future.globals = c(
                 "beta_handler",
                 "group_inds",
+                "col_names",
                 "pheno",
                 "covariates",
                 "max_pval",
@@ -983,7 +990,8 @@ findDMRsFromSeeds <- function(
     if (is.null(ignored_sample_groups)) {
         ignored_sample_groups <- c()
     } else {
-        ignored_sample_groups <- unlist(strsplit(ignored_sample_groups, ","))
+        ignored_sample_groups <- trimws(unlist(strsplit(ignored_sample_groups, ",")))
+        ignored_sample_groups <- ignored_sample_groups[nzchar(ignored_sample_groups)]
     }
     if (!is.null(output_prefix)) {
         output_dir <- dirname(output_prefix)
@@ -1011,22 +1019,33 @@ findDMRsFromSeeds <- function(
 
     beta_row_names <- beta_handler$getBetaRowNames()
     beta_col_names <- beta_handler$getBetaColNames()
+    missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
+    if (length(missing_pheno_samples) > 0) {
+        stop(
+            "The following beta samples are missing from pheno row names: ",
+            paste(head(missing_pheno_samples, 10), collapse = ","),
+            if (length(missing_pheno_samples) > 10) " ..." else ""
+        )
+    }
+    pheno_all <- pheno[beta_col_names, , drop = FALSE]
     beta_locs <- beta_handler$getBetaLocs()
 
 
-    samples_selection_mask <- !(pheno[, sample_group_col] %in% ignored_sample_groups)
+    samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups)
     if ("case" %in% ignored_sample_groups) {
-        samples_selection_mask <- samples_selection_mask & (pheno[, "__casecontrol__"] != 1)
+        samples_selection_mask <- samples_selection_mask & (pheno_all[, "__casecontrol__"] != 1)
     }
     if ("control" %in% ignored_sample_groups) {
-        samples_selection_mask <- samples_selection_mask & (pheno[, "__casecontrol__"] != 0)
+        samples_selection_mask <- samples_selection_mask & (pheno_all[, "__casecontrol__"] != 0)
     }
-    beta_col_names <- beta_col_names[samples_selection_mask]
-    pheno <- pheno[beta_col_names, ]
-    .log_info("Samples to process: ", length(beta_col_names), level = 1)
+    beta_col_names_detection <- beta_col_names[samples_selection_mask]
+    if (length(beta_col_names_detection) < 2) {
+        stop("At least two samples are required after applying ignored_sample_groups.")
+    }
+    pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
+    .log_info("Samples to process during DMR detection: ", length(beta_col_names_detection), level = 1)
 
-    pheno <- pheno[beta_col_names, ]
-    sample_groups <- factor(pheno[beta_col_names, sample_group_col])
+    sample_groups <- factor(pheno_detection[, sample_group_col])
     group_inds <- split(seq_along(sample_groups), sample_groups)
 
     .log_step("Reordering seeds by genomic location...", level = 2)
@@ -1099,7 +1118,7 @@ findDMRsFromSeeds <- function(
 
     .log_step("Subsetting beta matrix for seeds...", level = 2)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
-    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names, check_mem = TRUE)
+    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection, check_mem = TRUE)
     if (!is.null(output_prefix)) {
         seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
     }
@@ -1207,7 +1226,7 @@ findDMRsFromSeeds <- function(
             corr_ret <- .testConnectivityBatch(
                 sites_beta = cseeds_beta,
                 group_inds = group_inds,
-                pheno = pheno,
+                pheno = pheno_detection,
                 max_lookup_dist = max_lookup_dist,
                 sites_locs = cseeds_locs,
                 max_pval = max_pval,
@@ -1378,7 +1397,8 @@ findDMRsFromSeeds <- function(
         connectivity_array <- .buildConnectivityArray(
             beta_handler = beta_handler,
             group_inds = group_inds,
-            pheno = pheno,
+            col_names = beta_col_names_detection,
+            pheno = pheno_detection,
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
@@ -1683,11 +1703,11 @@ findDMRsFromSeeds <- function(
     all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(annotated_dmrs)), function(i) {
         seq(annotated_dmrs$start_cpg_ind[i], annotated_dmrs$end_cpg_ind[i])
     })))
-    all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs)
+    all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
     .log_step("Calculating per-CpG beta statistics..", level = 2)
     beta_stats <- .calculateBetaStats(
         beta_values = all_selected_cpgs_beta,
-        pheno = pheno,
+        pheno = pheno_all,
         aggfun = aggfun
     )
     .log_success("Per-CpG beta statistics calculated.", level = 2)
@@ -1830,7 +1850,7 @@ findDMRsFromSeeds <- function(
         ranked_dmrs_granges <- rankDMRs(
             final_dmrs_granges,
             beta = beta,
-            pheno = pheno,
+            pheno = pheno_all,
             genome = genome,
             array = array,
             sorted_locs = sorted_locs,

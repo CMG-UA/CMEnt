@@ -47,6 +47,30 @@ test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE
     expect_true(all(mcols(dmrs)$score <= 1))
 })
 
+test_that("ignored_sample_groups affects detection only, not downstream ranking", {
+    beta <- loadExampleInputData("beta")
+    dmps <- loadExampleInputData("dmps")
+    pheno <- loadExampleInputData("pheno")
+
+    dmrs <- expect_no_error(findDMRsFromSeeds(
+        rank_dmrs = TRUE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        ignored_sample_groups = "cancer",
+        min_seeds = 2,
+        min_cpgs = 2,
+        max_lookup_dist = 2000,
+        annotate_with_genes = FALSE,
+        verbose = 0
+    ))
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_true("score" %in% names(mcols(dmrs)))
+    expect_true("cv_accuracy" %in% names(mcols(dmrs)))
+})
+
 test_that("rankDMRs score values are meaningful", {
     beta <- loadExampleInputData("beta")
     pheno <- loadExampleInputData("pheno")

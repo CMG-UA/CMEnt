@@ -283,7 +283,7 @@ if (!file.exists(dmrsegal_file)) {
                     pheno = pheno,
                     seeds_id_col = "cpg_id",
                     sample_group_col = "Sample_Group",
-                    ignored_sample_groups = "Condition1", # Use only Condition2 as "case" group for ranking to avoid confusion with dmrseq/DMRcate which use the same design.
+                    ignored_sample_groups = "Condition1", # Limit ignored groups to DMR detection (seed connection/expansion) only.
                     casecontrol_col = "casecontrol",
                     min_seeds = 2,
                     min_adj_seeds = 2,

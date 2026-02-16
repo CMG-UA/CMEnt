@@ -3,6 +3,15 @@
 .performCrossPrediction <- function(beta_mat, groups, nfold = getOption("DMRsegal.ranking_nfold", 5)) {
     set.seed(getOption("DMRsegal.random_seed", 42))
     groups <- as.factor(groups)
+    if (ncol(beta_mat) != length(groups)) {
+        stop(
+            "Mismatch between beta matrix columns (", ncol(beta_mat),
+            ") and group labels (", length(groups), ")."
+        )
+    }
+    if (nlevels(groups) < 2) {
+        stop("Ranking requires at least two classes in '__casecontrol__'.")
+    }
     group_folds <- split(seq_len(ncol(beta_mat)), groups)
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
@@ -121,9 +130,24 @@ rankDMRs <- function(
     verbose <- getOption("DMRsegal.verbose", 1)
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
+    beta_col_names <- beta_handler$getBetaColNames()
+    missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
+    if (length(missing_pheno_samples) > 0) {
+        stop(
+            "The following beta samples are missing from pheno row names: ",
+            paste(head(missing_pheno_samples, 10), collapse = ","),
+            if (length(missing_pheno_samples) > 10) " ..." else ""
+        )
+    }
+    pheno <- pheno[beta_col_names, , drop = FALSE]
     supporting_sites <- getSupportingSites(dmrs, use_absolute_indices = FALSE, separate_by_section = FALSE)
     if (! "__casecontrol__" %in% colnames(pheno)) { 
         pheno[, "__casecontrol__"] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
+    }
+    class_values <- unique(pheno[, "__casecontrol__"])
+    class_values <- class_values[!is.na(class_values)]
+    if (length(class_values) < 2) {
+        stop("Ranking requires at least two classes in '__casecontrol__'.")
     }
     .setupParallel()
     p_con <- NULL
@@ -151,7 +175,7 @@ rankDMRs <- function(
         X = seq_along(dmrs),
         FUN = function(i) {
             site_indices <- supporting_sites[[i]]
-            beta_mat <- beta_handler$getBeta(row_names = site_indices)
+            beta_mat <- beta_handler$getBeta(row_names = site_indices, col_names = beta_col_names)
             if (!is.null(covariates)) {
                 beta_mat <- .remove_confounder_effect(beta_mat, design)
             }
