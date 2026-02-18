@@ -156,6 +156,7 @@
             covariates = covariates,
             max_pval = max_pval,
             min_delta_beta = min_delta_beta,
+            max_lookup_dist = max_lookup_dist,
             sites_locs = beta_locs[split[1]:split[2], ],
             entanglement = entanglement,
             aggfun = aggfun,
