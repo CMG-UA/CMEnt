@@ -285,9 +285,8 @@ if (!file.exists(dmrsegal_file)) {
                     ignored_sample_groups = "Condition1", # Limit  DMR detection (seed connection/expansion) to Condition2 only.
                     sample_group_col = "Sample_Group",
                     casecontrol_col = "casecontrol",
-                    min_seeds = 2,
-                    min_adj_seeds = 2,
-                    min_cpgs = 3,
+                    min_seeds = 1,
+                    min_cpgs = 10,
                     max_lookup_dist = 10000,
                     max_pval = 0.1,
                     pval_mode = "empirical",
