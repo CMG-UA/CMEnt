@@ -43,3 +43,4 @@ Rd2.tex
 data/sim_bs_1000.rds
 *.log
 figure-html
+simulated_ont/*
