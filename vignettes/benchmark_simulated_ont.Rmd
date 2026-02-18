@@ -151,12 +151,38 @@ table(pheno$Sample_Group)
 ```
 
 ## Extract Methylation Matrix and Generate Seeds
+This step is crucial for DMRsegal, which relies on seed CpGs to guide DMR assembly.
+We use a limma-based approach to identify candidate seeds based on differential methylation evidence.
+We extend beyond strict FDR significance to capture a broader set of potential seeds, which may improve sensitivity in DMRsegal's region assembly.
+We also rank seeds by a combined score of statistical significance and effect size (delta beta) to prioritize biologically relevant candidates.
+
 
 ```{r}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 seeds_tsv <- file.path(output_dir, "seeds.tsv")
-if (!file.exists(seeds_tsv)) {
+seeds_meta_rds <- file.path(output_dir, "seeds.meta.rds")
+seed_strategy_version <- "score_weighted_v2"
+rebuild_seeds <- !file.exists(seeds_tsv)
+
+if (!rebuild_seeds) {
+    if (!file.exists(seeds_meta_rds)) {
+        live_log("Seed cache found without metadata; rebuilding with strategy %s.", seed_strategy_version)
+        rebuild_seeds <- TRUE
+    } else {
+        seeds_meta <- readRDS(seeds_meta_rds)
+        if (is.null(seeds_meta$strategy_version) || !identical(seeds_meta$strategy_version, seed_strategy_version)) {
+            live_log(
+                "Seed cache strategy mismatch (cached=%s, expected=%s); rebuilding.",
+                as.character(seeds_meta$strategy_version),
+                seed_strategy_version
+            )
+            rebuild_seeds <- TRUE
+        }
+    }
+}
+
+if (rebuild_seeds) {
     gr <- granges(sim_bs)
     locs <- data.frame(
         chr = as.character(seqnames(gr)),
@@ -173,21 +199,35 @@ if (!file.exists(seeds_tsv)) {
 
     mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
 
-
-
-    fit <- limma::eBayes(limma::lmFit(mvalues, design))
-    pval_vec <- fit$p.value[, 2]
+    fit_raw <- limma::lmFit(mvalues, design)
+    valid_sigma <- is.finite(fit_raw$sigma) & (fit_raw$sigma > 0)
+    if (!all(valid_sigma)) {
+        live_log(
+            "Dropping %d CpGs with zero/invalid residual variance before empirical Bayes moderation.",
+            sum(!valid_sigma)
+        )
+    }
+    fit <- limma::eBayes(fit_raw[valid_sigma, , drop = FALSE])
+    pval_vec <- rep(1, nrow(mvalues))
+    pval_vec[valid_sigma] <- fit$p.value[, 2]
     qval_vec <- p.adjust(pval_vec, method = "BH")
+
 
     case_idx <- which(pheno$casecontrol)
     ctrl_idx <- which(!pheno$casecontrol)
     delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
         rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
+    seed_score <- -log10(pval_vec + .Machine$double.xmin) * abs(delta_beta)
 
-    sig_idx <- which(qval_vec < 0.05)
-    if (length(sig_idx) < 10) {
-        sig_idx <- order(pval_vec)[seq_len(min(50000, length(pval_vec)))]
+    target_seed_n <- sum(qval_vec < 0.05, na.rm = TRUE)
+    if (target_seed_n < 10) {
+        target_seed_n <- min(50000, length(pval_vec))
+        sig_idx <- order(pval_vec, na.last = NA)[seq_len(target_seed_n)]
         cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
+    } else {
+        ord_score <- order(seed_score, decreasing = TRUE, na.last = NA)
+        target_seed_n <- min(target_seed_n, length(ord_score))
+        sig_idx <- ord_score[seq_len(target_seed_n)]
     }
 
     sig_seeds <- data.frame(
@@ -195,8 +235,10 @@ if (!file.exists(seeds_tsv)) {
         pval = pval_vec[sig_idx],
         qval = qval_vec[sig_idx],
         delta_beta = delta_beta[sig_idx],
+        seed_score = seed_score[sig_idx],
         stringsAsFactors = FALSE
     )
+    sig_seeds <- sig_seeds[order(sig_seeds$seed_score, -sig_seeds$pval, decreasing = TRUE), , drop = FALSE]
 
     seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
     seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
@@ -215,11 +257,124 @@ if (!file.exists(seeds_tsv)) {
     }
 
     write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+    saveRDS(
+        list(
+            strategy_version = seed_strategy_version,
+            generated_at = Sys.time(),
+            target_seed_n = target_seed_n,
+            n_seeds = nrow(sig_seeds)
+        ),
+        seeds_meta_rds
+    )
 } else {
     sig_seeds <- data.table::fread(seeds_tsv)
     rownames(sig_seeds) <- sig_seeds$cpg_id
+    if (!"seed_score" %in% colnames(sig_seeds) && all(c("pval", "delta_beta") %in% colnames(sig_seeds))) {
+        sig_seeds$seed_score <- -log10(as.numeric(sig_seeds$pval) + .Machine$double.xmin) *
+            abs(as.numeric(sig_seeds$delta_beta))
+    }
 }
 cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
+```
+
+### Seed Overlap with Ground Truth
+
+```{r}
+seed_df <- as.data.frame(sig_seeds, stringsAsFactors = FALSE)
+if (!"cpg_id" %in% colnames(seed_df)) {
+    stop("Expected 'cpg_id' column in seed table.")
+}
+
+seed_df$chr <- sub(":.*$", "", seed_df$cpg_id)
+seed_df$start <- suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", seed_df$cpg_id)))
+seed_df <- seed_df[!is.na(seed_df$start) & nzchar(seed_df$chr), , drop = FALSE]
+seed_df$end <- seed_df$start
+
+seed_gr <- GenomicRanges::makeGRangesFromDataFrame(
+    seed_df,
+    seqnames.field = "chr",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+)
+
+seed_truth_hits <- GenomicRanges::findOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+seed_overlaps_truth <- rep(FALSE, length(seed_gr))
+truth_has_seed <- rep(FALSE, length(truth_dmrs))
+
+if (length(seed_truth_hits) > 0) {
+    seed_overlaps_truth[unique(S4Vectors::queryHits(seed_truth_hits))] <- TRUE
+    truth_has_seed[unique(S4Vectors::subjectHits(seed_truth_hits))] <- TRUE
+}
+
+seeds_per_truth <- if (length(truth_dmrs) > 0) {
+    tabulate(S4Vectors::subjectHits(seed_truth_hits), nbins = length(truth_dmrs))
+} else {
+    integer(0)
+}
+safe_pct <- function(x) if (length(x) == 0) 0 else 100 * mean(x)
+
+seed_truth_summary <- data.frame(
+    Seeds_Total = length(seed_gr),
+    Seeds_Overlapping_Truth = sum(seed_overlaps_truth),
+    Seeds_Overlap_Pct = safe_pct(seed_overlaps_truth),
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_With_Seed = sum(truth_has_seed),
+    Truth_DMRs_With_Seed_Pct = safe_pct(truth_has_seed),
+    Median_Seeds_Per_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_real_, stats::median(seeds_per_truth)),
+    Median_Seeds_Per_Hit_Truth_DMR = ifelse(sum(truth_has_seed) == 0, 0, stats::median(seeds_per_truth[truth_has_seed])),
+    Max_Seeds_In_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_integer_, max(seeds_per_truth))
+)
+
+if ("delta_beta" %in% colnames(seed_df) &&
+    "delta_beta" %in% names(SummarizedExperiment::mcols(truth_dmrs)) &&
+    length(seed_truth_hits) > 0) {
+    seed_sign <- sign(as.numeric(seed_df$delta_beta))
+    truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
+    pair_match <- seed_sign[S4Vectors::queryHits(seed_truth_hits)] ==
+        truth_sign[S4Vectors::subjectHits(seed_truth_hits)]
+
+    seed_pair_direction_match_pct <- if (all(is.na(pair_match))) NA_real_ else 100 * mean(pair_match, na.rm = TRUE)
+    per_seed_dir_match <- tapply(pair_match, S4Vectors::queryHits(seed_truth_hits), function(x) any(x, na.rm = TRUE))
+    seed_any_direction_match_pct <- if (length(per_seed_dir_match) == 0) NA_real_ else 100 * mean(per_seed_dir_match)
+
+    seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
+    seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
+}
+cat(sprintf("DMRsegal **maximum possible** DMR-truth overlaps: %d\n", length(seed_truth_hits)))
+knitr::kable(
+    seed_truth_summary,
+    digits = 2,
+    caption = "Seed overlap diagnostics against ground truth"
+)
+
+rank_col <- NULL
+if ("seed_score" %in% colnames(seed_df) && any(is.finite(as.numeric(seed_df$seed_score)))) {
+    rank_col <- "seed_score"
+    ord <- order(as.numeric(seed_df$seed_score), decreasing = TRUE, na.last = TRUE)
+} else if ("pval" %in% colnames(seed_df)) {
+    rank_col <- "pval"
+    ord <- order(as.numeric(seed_df$pval), na.last = TRUE)
+}
+
+if (!is.null(rank_col) && length(seed_gr) > 0) {
+    top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
+    top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
+        idx <- ord[seq_len(k)]
+        n_hit <- sum(seed_overlaps_truth[idx])
+        data.frame(
+            Top_Seeds = k,
+            Overlap_Count = n_hit,
+            Overlap_Pct = 100 * n_hit / k
+        )
+    }))
+
+    knitr::kable(
+        top_seed_overlap,
+        digits = 2,
+        caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds (%s)", rank_col)
+    )
+}
 ```
 
 ## Method 1: DMRsegal
@@ -282,13 +437,13 @@ if (!file.exists(dmrsegal_file)) {
                     seeds = sig_seeds,
                     pheno = pheno,
                     seeds_id_col = "cpg_id",
-                    ignored_sample_groups = "Condition1", # Limit  DMR detection (seed connection/expansion) to Condition2 only.
+                    # ignored_sample_groups = "Condition1", # Limit  DMR detection (seed connection/expansion) to Condition2 only.
                     sample_group_col = "Sample_Group",
                     casecontrol_col = "casecontrol",
-                    min_seeds = 1,
+                    min_seeds = 2,
                     min_cpgs = 10,
                     max_lookup_dist = 10000,
-                    max_pval = 0.1,
+                    max_pval = 0.05,
                     pval_mode = "empirical",
                     chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
                     entanglement = "weak",
