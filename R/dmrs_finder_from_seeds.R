@@ -961,12 +961,9 @@ findDMRsFromSeeds <- function(
     }
     stopifnot(!is.null(max_pval))
     stopifnot(!is.null(min_seeds))
-    if (min_seeds < 2) {
-        stop("min_seeds must be at least 2, to define a DMR")
-    }
     stopifnot(!is.null(min_cpgs))
-    if (min_cpgs < 2) {
-        stop("min_cpgs must be at least 2, to define a DMR")
+    if (min_seeds < 2 && min_cpgs < 2) {
+        stop("min_seeds or min_cpgs must be at least 2, to define a DMR")
     }
     stopifnot(!is.null(min_adj_seeds))
     if (min_adj_seeds < 2) {
