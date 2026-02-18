@@ -155,8 +155,8 @@ table(pheno$Sample_Group)
 ```{r}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
-seeds.tsv <- file.path(output_dir, "seeds.tsv")
-if (!file.exists(seeds.tsv)) {
+seeds_tsv <- file.path(output_dir, "seeds.tsv")
+if (!file.exists(seeds_tsv)) {
     gr <- granges(sim_bs)
     locs <- data.frame(
         chr = as.character(seqnames(gr)),
@@ -214,9 +214,9 @@ if (!file.exists(seeds.tsv)) {
         print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
     }
 
-    write.table(sig_seeds, seeds.tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+    write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
 } else {
-    sig_seeds <- data.table::fread(seeds.tsv)
+    sig_seeds <- data.table::fread(seeds_tsv)
     rownames(sig_seeds) <- sig_seeds$cpg_id
 }
 cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
