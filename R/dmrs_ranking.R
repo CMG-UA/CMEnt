@@ -123,10 +123,10 @@
 #'
 #' @export
 rankDMRs <- function(
-    dmrs, beta, pheno, covariates = NULL, 
+    dmrs, beta, pheno, covariates = NULL,
     genome = "hg19", array = "450K", sorted_locs = NULL,
     sample_group_col = "Sample_Group"
-    ) {
+) {
     verbose <- getOption("DMRsegal.verbose", 1)
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
@@ -141,7 +141,7 @@ rankDMRs <- function(
     }
     pheno <- pheno[beta_col_names, , drop = FALSE]
     supporting_sites <- getSupportingSites(dmrs, use_absolute_indices = FALSE, separate_by_section = FALSE)
-    if (! "__casecontrol__" %in% colnames(pheno)) { 
+    if (! "__casecontrol__" %in% colnames(pheno)) {
         pheno[, "__casecontrol__"] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
     class_values <- unique(pheno[, "__casecontrol__"])
@@ -176,6 +176,8 @@ rankDMRs <- function(
         FUN = function(i) {
             site_indices <- supporting_sites[[i]]
             beta_mat <- beta_handler$getBeta(row_names = site_indices, col_names = beta_col_names)
+            # Convert to M-values
+            beta_mat <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
             if (!is.null(covariates)) {
                 beta_mat <- .remove_confounder_effect(beta_mat, design)
             }

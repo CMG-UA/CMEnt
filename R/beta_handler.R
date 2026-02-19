@@ -427,7 +427,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$validate()
             if (!is.null(private$.bsseq_object)) {
                 .log_step("Extracting beta values from BSseq object..", level = 3)
-                beta_mat <- getMeth(private$.bsseq_object, type = "smooth")
+                beta_mat <- getMeth(private$.bsseq_object, type = "raw")
                 if (all(is.numeric(row_names))) {
                     return(beta_mat[row_names, , drop = FALSE])
                 }
