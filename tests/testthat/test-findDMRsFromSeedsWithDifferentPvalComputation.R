@@ -37,6 +37,22 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         annotate_with_genes = FALSE
     )
 
+    # Test automatic p-value mode selection
+    dmrs_pval_auto <- findDMRsFromSeeds(
+        rank_dmrs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        pval_mode = "auto",
+        empirical_strategy = "auto",
+        ntries = 100,
+        annotate_with_genes = FALSE
+    )
+
     # Test empirical mode with montecarlo strategy
     dmrs_empirical_mc <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
@@ -72,6 +88,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     # Assertions
     expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
     expect_true(is.null(dmrs_empirical_auto) || inherits(dmrs_empirical_auto, "GRanges"))
+    expect_true(is.null(dmrs_pval_auto) || inherits(dmrs_pval_auto, "GRanges"))
     expect_true(is.null(dmrs_empirical_mc) || inherits(dmrs_empirical_mc, "GRanges"))
     expect_true(is.null(dmrs_empirical_perm) || inherits(dmrs_empirical_perm, "GRanges"))
 
@@ -82,6 +99,10 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     if (!is.null(dmrs_empirical_auto) && length(dmrs_empirical_auto) > 0) {
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_empirical_auto))))
+    }
+
+    if (!is.null(dmrs_pval_auto) && length(dmrs_pval_auto) > 0) {
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_pval_auto))))
     }
 })
 

@@ -117,6 +117,11 @@ if (!file.exists(sim_truth_path)) {
 sim_bs <- readRDS(sim_bs_path)
 stopifnot(inherits(sim_bs, "BSseq"))
 
+# Drop CpGs with zero coverage across all samples to avoid issues in downstream methods.
+coverage <- bsseq::getCoverage(sim_bs, type = "Cov")
+valid_cpgs <- rowSums(coverage) > 0
+sim_bs <- sim_bs[valid_cpgs, ]
+
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
     truth_df,
@@ -219,7 +224,7 @@ if (rebuild_seeds) {
         rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
     seed_score <- -log10(pval_vec + .Machine$double.xmin) * abs(delta_beta)
 
-    target_seed_n <- sum(qval_vec < 0.05, na.rm = TRUE)
+    target_seed_n <- sum(qval_vec < 0.1, na.rm = TRUE)
     if (target_seed_n < 10) {
         target_seed_n <- min(50000, length(pval_vec))
         sig_idx <- order(pval_vec, na.last = NA)[seq_len(target_seed_n)]

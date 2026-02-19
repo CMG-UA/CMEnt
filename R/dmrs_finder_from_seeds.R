@@ -27,7 +27,7 @@
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
-#' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
+#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
@@ -109,7 +109,7 @@
     min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
     chunk_size = getOption("DMRsegal.chunk_size", 1000), entanglement = "strong",
     aggfun = median, empirical_strategy = "auto",
-    pval_mode = "empirical", ntries = 500, mid_p = TRUE, njobs = 1
+    pval_mode = "auto", ntries = 500, mid_p = TRUE, njobs = 1
 ) {
     splits <- c()
     chr_ends <- c()
@@ -386,6 +386,149 @@
     dmr
 }
 
+.winsorizeVector <- function(x, probs = c(0.05, 0.95)) {
+    if (!is.numeric(x) || length(x) == 0L) {
+        return(x)
+    }
+    q <- stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 8)
+    x[x < q[1]] <- q[1]
+    x[x > q[2]] <- q[2]
+    x
+}
+
+.momentStats <- function(x) {
+    if (!is.numeric(x) || length(x) < 3L) {
+        return(c(skew = NA_real_, excess_kurtosis = NA_real_))
+    }
+    s <- stats::sd(x)
+    if (!is.finite(s) || s <= 1e-12) {
+        return(c(skew = 0, excess_kurtosis = 0))
+    }
+    z <- (x - mean(x)) / s
+    c(
+        skew = mean(z^3),
+        excess_kurtosis = mean(z^4) - 3
+    )
+}
+
+.summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
+    min_nvalid_q10 <- getOption("DMRsegal.auto_pval_min_nvalid_q10", 10)
+    corr_delta_threshold <- getOption("DMRsegal.auto_pval_corr_delta_threshold", 0.10)
+    skew_threshold <- getOption("DMRsegal.auto_pval_skew_threshold", 2)
+    excess_kurtosis_threshold <- getOption("DMRsegal.auto_pval_excess_kurtosis_threshold", 7)
+    pilot_max_pairs <- as.integer(getOption("DMRsegal.auto_pval_pilot_pairs", 2000L))
+    pilot_max_pairs <- max(1L, pilot_max_pairs)
+
+    q10_n_valid <- if (length(n_valid) > 0L) {
+        as.numeric(stats::quantile(n_valid, probs = 0.10, na.rm = TRUE, names = FALSE, type = 7))
+    } else {
+        NA_real_
+    }
+    if (!is.finite(q10_n_valid) || q10_n_valid < min_nvalid_q10) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "low effective sample size"
+        ))
+    }
+
+    valid_idx <- which(n_valid >= 3L)
+    if (length(valid_idx) == 0L) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "no valid pairs for diagnostics"
+        ))
+    }
+
+    if (length(valid_idx) > pilot_max_pairs) {
+        sel_pos <- unique(as.integer(round(seq(1, length(valid_idx), length.out = pilot_max_pairs))))
+        valid_idx <- valid_idx[sel_pos]
+    }
+
+    delta_spearman <- rep(NA_real_, length(valid_idx))
+    delta_winsorized <- rep(NA_real_, length(valid_idx))
+    abs_skew <- rep(NA_real_, 2L * length(valid_idx))
+    excess_kurtosis <- rep(NA_real_, 2L * length(valid_idx))
+    k <- 0L
+    for (i in seq_along(valid_idx)) {
+        r <- valid_idx[i]
+        xv <- x_mat[r, ]
+        yv <- y_mat[r, ]
+        ok <- !is.na(xv) & !is.na(yv)
+        if (sum(ok) < 3L) {
+            next
+        }
+        xv <- xv[ok]
+        yv <- yv[ok]
+        r_pearson <- suppressWarnings(stats::cor(xv, yv, method = "pearson"))
+        r_spearman <- suppressWarnings(stats::cor(xv, yv, method = "spearman"))
+        xw <- .winsorizeVector(xv)
+        yw <- .winsorizeVector(yv)
+        r_winsor <- suppressWarnings(stats::cor(xw, yw, method = "pearson"))
+        if (is.finite(r_pearson) && is.finite(r_spearman)) {
+            delta_spearman[i] <- abs(r_pearson - r_spearman)
+        }
+        if (is.finite(r_pearson) && is.finite(r_winsor)) {
+            delta_winsorized[i] <- abs(r_pearson - r_winsor)
+        }
+        mx <- .momentStats(xv)
+        my <- .momentStats(yv)
+        k <- k + 1L
+        abs_skew[(2L * k) - 1L] <- abs(mx["skew"])
+        abs_skew[2L * k] <- abs(my["skew"])
+        excess_kurtosis[(2L * k) - 1L] <- mx["excess_kurtosis"]
+        excess_kurtosis[2L * k] <- my["excess_kurtosis"]
+    }
+
+    median_abs_delta_spearman <- median(delta_spearman, na.rm = TRUE)
+    median_abs_delta_winsorized <- median(delta_winsorized, na.rm = TRUE)
+    median_abs_skew <- median(abs_skew, na.rm = TRUE)
+    median_excess_kurtosis <- median(excess_kurtosis, na.rm = TRUE)
+    if (!is.finite(median_abs_delta_spearman)) {
+        median_abs_delta_spearman <- Inf
+    }
+    if (!is.finite(median_abs_delta_winsorized)) {
+        median_abs_delta_winsorized <- Inf
+    }
+    if (!is.finite(median_abs_skew)) {
+        median_abs_skew <- Inf
+    }
+    if (!is.finite(median_excess_kurtosis)) {
+        median_excess_kurtosis <- Inf
+    }
+
+    use_parametric <- (median_abs_delta_spearman <= corr_delta_threshold) &&
+        (median_abs_delta_winsorized <= corr_delta_threshold) &&
+        (median_abs_skew <= skew_threshold) &&
+        (median_excess_kurtosis <= excess_kurtosis_threshold)
+    reason <- if (use_parametric) {
+        "assumptions look acceptable"
+    } else {
+        "assumptions not met"
+    }
+    list(
+        use_parametric = use_parametric,
+        q10_n_valid = q10_n_valid,
+        median_abs_delta_spearman = median_abs_delta_spearman,
+        median_abs_delta_winsorized = median_abs_delta_winsorized,
+        median_abs_skew = median_abs_skew,
+        median_excess_kurtosis = median_excess_kurtosis,
+        n_pairs_used = k,
+        reason = reason
+    )
+}
+
 #' Vectorized connectivity testing for consecutive site pairs, given their beta values
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
@@ -397,7 +540,7 @@
                                    max_lookup_dist = NULL, sites_locs = NULL,
                                    entanglement = "strong",
                                    aggfun = mean,
-                                   pval_mode = c("parametric", "empirical"),
+                                   pval_mode = c("auto", "parametric", "empirical"),
                                    empirical_strategy = c("auto", "montecarlo", "permutations"),
                                    ntries = 0, mid_p = FALSE) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
@@ -534,8 +677,29 @@
         g_mask[na_r] <- FALSE
 
         ps <- rep(NA_real_, sn_pairs)
+        effective_pval_mode <- pval_mode
+        if (pval_mode == "auto") {
+            auto_diag <- .summarizeCorrelationAssumptions(
+                x_mat = x_mat,
+                y_mat = y_mat,
+                n_valid = n_valid
+            )
+            effective_pval_mode <- if (auto_diag$use_parametric) "parametric" else "empirical"
+            .log_info(
+                "Auto-selected pval_mode='", effective_pval_mode, "' for group '", g,
+                "' (q10_n_valid=", signif(auto_diag$q10_n_valid, 3),
+                ", median|pearson-spearman|=", signif(auto_diag$median_abs_delta_spearman, 3),
+                ", median|pearson-winsorized|=", signif(auto_diag$median_abs_delta_winsorized, 3),
+                ", median|skew|=", signif(auto_diag$median_abs_skew, 3),
+                ", median_excess_kurtosis=", signif(auto_diag$median_excess_kurtosis, 3),
+                ", pilot_pairs=", auto_diag$n_pairs_used,
+                ", reason=", auto_diag$reason, ").",
+                level = 4
+            )
+        }
+
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
-        if (pval_mode == "parametric") {
+        if (effective_pval_mode == "parametric") {
             tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
             # Compute t-statistics (vectorized)
             na_tstat <- is.na(tstats) & g_mask
@@ -738,7 +902,7 @@
 #' @param genome Character. Genome version. Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
-#' @param pval_mode Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.
+#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.
@@ -776,7 +940,7 @@ findDMRsFromSeeds <- function(
     genome = "hg19",
     max_pval = 0.05,
     entanglement = c("strong", "weak"),
-    pval_mode = c("parametric", "empirical"),
+    pval_mode = c("auto", "parametric", "empirical"),
     empirical_strategy = c("auto", "montecarlo", "permutations"),
     ntries = 200L,
     mid_p = FALSE,

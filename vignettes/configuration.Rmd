@@ -308,14 +308,15 @@ dmrs <- findDMRsFromSeeds(
 
 ### `pval_mode`
 **Type:** Character  
-**Options:** `"parametric"`, `"empirical"`  
-**Default:** `"parametric"`  
+**Options:** `"parametric"`, `"empirical"`, `"auto"`  
+**Default:** `"auto"`  
 **Description:** Method for calculating p-values during connectivity testing:
 
 - `"parametric"`: Uses t-based correlation p-values (faster, assumes normal distribution)
 - `"empirical"`: Uses permutation-based p-values (slower, no distribution assumptions)
+- `"auto"`: Evaluates correlation test assumptions per sample group and chooses `"parametric"` only when diagnostics are acceptable; otherwise switches to `"empirical"`
 
-**Recommendation:** Use `"parametric"` for most cases. Use `"empirical"` for small sample sizes or non-normal data.
+**Recommendation:** Use `"auto"` when you want robust defaults across heterogeneous datasets. Use `"parametric"` when assumptions are known to hold and runtime is critical, and `"empirical"` when assumptions are clearly questionable.
 
 **Example:**
 ```{r}
