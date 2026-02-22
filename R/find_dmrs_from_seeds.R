@@ -35,7 +35,7 @@ findDMRsFromSeedsCLI <- function(args) {
     if (!is.null(covariates)) {
         covariates <- strsplit(covariates, ",")[[1]]
     }
-    if (tolower(array) == 'null') {
+    if (tolower(array) == "null") {
         array <- NULL
     }
     # Prepare arguments for findDMRsFromSeeds
@@ -54,6 +54,7 @@ findDMRsFromSeedsCLI <- function(args) {
         max_lookup_dist = args$max_lookup_dist,
         connectivity_window_bp = args$connectivity_window_bp,
         max_bridge_seeds_gaps = args$max_bridge_seeds_gaps,
+        max_bridge_extension_gaps = args$max_bridge_extension_gaps,
         min_seeds = args$min_seeds,
         min_adj_seeds = args$min_adj_seeds,
         min_cpgs = args$min_cpgs,

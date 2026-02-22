@@ -1104,7 +1104,7 @@
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param connectivity_window_bp Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
-#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 5 (i.e., at most 5 consecutive failing CpG to bridge).
+#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
@@ -1147,7 +1147,7 @@ findDMRsFromSeeds <- function(
     max_lookup_dist = 10000,
     connectivity_window_bp = "auto",
     max_bridge_seeds_gaps = 1L,
-    max_bridge_extension_gaps = 5L,
+    max_bridge_extension_gaps = 1L,
     min_seeds = 2,
     min_adj_seeds = 2,
     min_cpgs = 50,

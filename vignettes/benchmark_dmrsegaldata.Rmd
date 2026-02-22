@@ -175,6 +175,8 @@ if (!file.exists(DMRsegal_file)) {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         covariates = c("Age", "Gender"),
+        max_bridge_seeds_gaps  = 1,
+        max_bridge_extension_gaps = 1,
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,

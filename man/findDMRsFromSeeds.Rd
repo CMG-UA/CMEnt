@@ -26,7 +26,7 @@ findDMRsFromSeeds(
   max_lookup_dist = 10000,
   connectivity_window_bp = "auto",
   max_bridge_seeds_gaps = 1L,
-  max_bridge_extension_gaps = 5L,
+  max_bridge_extension_gaps = 1L,
   min_seeds = 2,
   min_adj_seeds = 2,
   min_cpgs = 50,

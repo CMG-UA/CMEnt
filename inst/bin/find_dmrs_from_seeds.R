@@ -29,6 +29,7 @@ option_list <- list(
         help = "Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets."
     ),
     make_option("--max_bridge_seeds_gaps", default = 1, type = "integer", help = "Maximum number of consecutive failed seed edges to bridge during Stage 1 when p-value-driven and flanked by connected edges (default: 1)."),
+    make_option("--max_bridge_extension_gaps", default = 1, type = "integer", help = "Maximum number of consecutive failed CpG edges to extend during Stage 2 when p-value-driven and flanked by connected edges (default: 1)."),
     make_option("--output_prefix", default = NULL, help = "Optional prefix for output files"),
     make_option("--sample_group_col", default = "Sample_Group", help = "Sample group column in samplesheet"),
     make_option("--njobs", default = 1, type = "integer", help = "Number of parallel jobs"),
