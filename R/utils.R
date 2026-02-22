@@ -1433,7 +1433,23 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         ,
         "end"
     ] == locs[, "start"], "start"] + 1
-    saveRDS(locs, cache_file)
+    tryCatch(
+        {
+            saveRDS(locs, cache_file)
+        },
+        warning = function(w) {
+            .log_warn(
+                "Could not write annotation cache file '", cache_file,
+                "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+            )
+        },
+        error = function(e) {
+            .log_warn(
+                "Could not write annotation cache file '", cache_file,
+                "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+            )
+        }
+    )
     locs
 }
 

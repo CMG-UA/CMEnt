@@ -52,12 +52,11 @@ library(bsseq)
 library(data.table)
 library(ggplot2)
 library(dplyr)
-library(tidyr)
 library(GenomicRanges)
 library(progressr)
 library(SummarizedExperiment)
 library(S4Vectors)
-library(limma)
+
 progressr::handlers("cli")
 output_dir <- "simulated_ont"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -77,6 +76,15 @@ if (!requireNamespace("DMRcate", quietly = TRUE)) {
 if (!requireNamespace("dmrseq", quietly = TRUE)) {
     BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
 }
+
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+    install.packages("tidyr")
+}
+if (!requireNamespace("limma", quietly = TRUE)) {
+    BiocManager::install("limma", update = FALSE, ask = FALSE)
+}
+
+library(limma)
 ```
 
 ## Load Simulated Data and Ground Truth

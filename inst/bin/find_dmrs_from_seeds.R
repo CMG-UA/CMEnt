@@ -19,7 +19,7 @@ option_list <- list(
     make_option("--min_cpg_delta_beta", default = 0.1, type = "double", help = "The minimum CpG delta beta during DMR expansion, to filter CpGs based on delta beta (default: 0.1)."),
     make_option("--adaptive_min_cpg_delta_beta", default = TRUE, type = "logical", help = "Whether to adaptively increase min_cpg_delta_beta from the seed-level delta-beta distribution (default: TRUE)."),
     make_option("--ignored_sample_groups", default = NULL, help = "The sample groups to ignore while considering connection and expansion, comma separated. Can also be 'case' or 'control'."),
-    make_option("--expansion_step", default = 500, type = "integer", help = "The DMR expansion step in bp, defaults to 500"),
+    make_option("--expansion_step", default = 500, type = "integer", help = "The index-specific DMR expansion step, defaults to 500"),
     make_option("--array", default = "450K", help = "Array platform ('450K', '27K', 'EPIC', 'EPICv2', 'Mouse', 'NULL'). Must be 'NULL' if not applicable"),
     make_option("--genome", default = "hg19", help = "Reference genome identifier. For an array-based experiment only hg19, hg38, mm10 and mm39 are supported."),
     make_option("--beta_row_names_file", default = NULL),

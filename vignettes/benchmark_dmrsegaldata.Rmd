@@ -76,6 +76,10 @@ if (!requireNamespace("doParallel", quietly = TRUE)) {
     install.packages("doParallel")
 }
 
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+    install.packages("tidyr")
+}
+
 if (!requireNamespace("reticulate", quietly = TRUE)) {
     install.packages("reticulate")
 }

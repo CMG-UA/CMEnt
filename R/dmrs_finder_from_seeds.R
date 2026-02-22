@@ -24,7 +24,7 @@
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
-#' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
+#' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -34,7 +34,7 @@
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param connectivity_window_bp Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
-#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 5 (i.e., at most 5 consecutive failing CpG to bridge).
+#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
 #' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
@@ -230,7 +230,7 @@
         if (min_delta_beta > 0) {
             ret$delta_beta <- rep(NA_real_, n_sites)
         }
-        return(ret)
+        return(list(connectivity_array = ret, splits = NULL))
     }
     beta_chr <- as.character(beta_locs[, "chr"])
     chr_ends <- as.integer(vapply(split(seq_len(n_sites), beta_chr), max, integer(1)))
@@ -959,48 +959,57 @@
                 } else {
                     stop("Unknown empirical_strategy: ", empirical_strategy)
                 }
+                skip_empirical <- FALSE
                 if (do_permutations) {
                     min_possible_pval <- 1 / (1 + factorial(m))
                     if (min_possible_pval > max_pval_corrected) {
-                        .log_warn("Skipping empirical p-value computation for group '", g, "' since minimum possible p-value (", min_possible_pval, ") exceeds max_pval_corrected (", max_pval_corrected, ").")
-                        next
+                        .log_warn(
+                            "Cannot compute sufficiently small empirical p-values for group '", g,
+                            "' because minimum possible p-value (", min_possible_pval,
+                            ") exceeds max_pval_corrected (", max_pval_corrected,
+                            "). Marking currently eligible pairs as not connected for this group."
+                        )
+                        ps[g_mask] <- 1
+                        skip_empirical <- TRUE
                     }
                 }
-                .log_info("Computing empirical p-values for group '", g, "' using ", if (do_permutations) "permutations" else "Monte Carlo", " with ", ntries, " tries.", level = 4)
-                if (ntries == 0) {
-                    if (do_permutations) {
-                        ntries <- min(500L, factorial(m))
+                if (!skip_empirical) {
+                    .log_info("Computing empirical p-values for group '", g, "' using ", if (do_permutations) "permutations" else "Monte Carlo", " with ", ntries, " tries.", level = 4)
+                    if (ntries == 0) {
+                        if (do_permutations) {
+                            ntries <- min(500L, factorial(m))
+                        } else {
+                            ntries <- 500
+                        }
+                    }
+                    maxval <- max(y_mat, na.rm = TRUE)
+                    minval <- min(y_mat, na.rm = TRUE)
+                    abs_cors <- abs(cors)
+                    for (b in seq_len(ntries)) {
+                        # Permute sample labels (columns) only for y; x remains fixed
+                        if (do_permutations) {
+                            perm <- sample.int(m, size = m, replace = FALSE)
+                            yp <- y_mat[, perm, drop = FALSE]
+                        } else {
+                            yp <- matrix(stats::runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
+                        }
+                        yc <- yp - rowMeans(yp, na.rm = TRUE)
+                        sxy <- rowSums(x_centered * yc, na.rm = TRUE)
+                        sy2 <- rowSums(yc^2, na.rm = TRUE)
+                        rperm <- sxy / sqrt(sum_x2 * sy2)
+                        comp_mask <- is.finite(rperm)
+                        if (any(comp_mask)) {
+                            ap <- abs(rperm[comp_mask])
+                            ao <- abs_cors[comp_mask]
+                            counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
+                            counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
+                        }
+                    }
+                    if (mid_p) {
+                        ps <- (counts_ge + 0.5 * counts_eq + 1) / (ntries + 1)
                     } else {
-                        ntries <- 500
+                        ps <- (counts_ge + counts_eq + 1) / (ntries + 1)
                     }
-                }
-                maxval <- max(y_mat, na.rm = TRUE)
-                minval <- min(y_mat, na.rm = TRUE)
-                abs_cors <- abs(cors)
-                for (b in seq_len(ntries)) {
-                    # Permute sample labels (columns) only for y; x remains fixed
-                    if (do_permutations) {
-                        perm <- sample.int(m, size = m, replace = FALSE)
-                        yp <- y_mat[, perm, drop = FALSE]
-                    } else {
-                        yp <- matrix(stats::runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
-                    }
-                    yc <- yp - rowMeans(yp, na.rm = TRUE)
-                    sxy <- rowSums(x_centered * yc, na.rm = TRUE)
-                    sy2 <- rowSums(yc^2, na.rm = TRUE)
-                    rperm <- sxy / sqrt(sum_x2 * sy2)
-                    comp_mask <- is.finite(rperm)
-                    if (any(comp_mask)) {
-                        ap <- abs(rperm[comp_mask])
-                        ao <- abs_cors[comp_mask]
-                        counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
-                        counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
-                    }
-                }
-                if (mid_p) {
-                    ps <- (counts_ge + 0.5 * counts_eq + 1) / (ntries + 1)
-                } else {
-                    ps <- (counts_ge + counts_eq + 1) / (ntries + 1)
                 }
             }
         }
@@ -1017,7 +1026,13 @@
         if (strict_mode) {
             sconnected <- connected[nexdist_mask]
             broad_mask <- nexdist_mask & connected
-            pvals[broad_mask] <- pmax(pvals[broad_mask], ps[sconnected])
+            prev_p <- pvals[broad_mask]
+            next_p <- ps[sconnected]
+            pvals[broad_mask] <- ifelse(
+                is.na(prev_p),
+                next_p,
+                pmax(prev_p, next_p)
+            )
             reasons[broad_mask] <- g_reasons[sconnected]
             failing_groups[broad_mask] <- ifelse(g_mask[sconnected], "", g)
             connected[broad_mask] <- connected[broad_mask] & g_mask[sconnected]
@@ -1031,7 +1046,12 @@
         not_failed <- per_group_reasons == ""
         connected <- colSums(per_group_reasons == "") > 0
         pvals[connected] <- as.vector(apply(
-            per_group_p[, connected, drop = FALSE], 2, function(v) max(v)
+            per_group_p[, connected, drop = FALSE], 2, function(v) {
+                if (all(is.na(v))) {
+                    return(NA_real_)
+                }
+                max(v, na.rm = TRUE)
+            }
         ))
         reasons[!connected] <- apply(
             per_group_reasons[, !connected, drop = FALSE], 2, function(v) paste(v, collapse = ";")
@@ -1093,7 +1113,7 @@
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
-#' @param expansion_step Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
+#' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is "hg19".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -1796,14 +1816,6 @@ findDMRsFromSeeds <- function(
             )
         }
     }
-    cases_num <- dmrs$cases_num
-    controls_num <- dmrs$controls_num
-    if (anyNA(c(cases_num, controls_num))) {
-        .log_warn("NAs introduced while coercing cases_num / controls_num to numeric; replacing NAs with 1 to avoid division errors.")
-        cases_num[is.na(cases_num)] <- 1
-        controls_num[is.na(controls_num)] <- 1
-    }
-
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
     .log_info("Summary of connected seeds DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 3)
     .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)

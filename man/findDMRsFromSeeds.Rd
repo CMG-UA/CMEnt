@@ -87,7 +87,7 @@ findDMRsFromSeeds(
 
 \item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
 
-\item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 5 (i.e., at most 5 consecutive failing CpG to bridge).}
+\item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).}
 
 \item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.}
 

@@ -274,11 +274,16 @@ Set to `<= 0` to compute connectivity genome-wide.
 **Default:** `1`  
 **Description:** In Stage 1 seed connectivity, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
 
+### `max_bridge_extension_gaps`
+**Type:** Integer
+**Default:** `1`
+**Description:** In Stage 2 DMR extension, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
+
 ### `expansion_step`
 **Type:** Integer  
 **Default:** `500`  
 **Unit:** Base pairs  
-**Description:** Step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
+**Description:** Index-specific step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
 
 **Trade-off:**
 - Smaller values (100-300): Lower memory, slower computation

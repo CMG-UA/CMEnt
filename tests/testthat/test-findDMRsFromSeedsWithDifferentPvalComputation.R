@@ -231,3 +231,42 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
     }
 })
+
+test_that(".testConnectivityBatch marks edges as failing when empirical permutation p-values cannot reach threshold", {
+    set.seed(1)
+    sites_beta <- matrix(runif(5 * 12, min = 0.05, max = 0.95), nrow = 5, ncol = 12)
+    pheno <- data.frame(dummy = seq_len(12))
+    pheno[["__casecontrol__"]] <- c(rep(0, 6), rep(1, 6))
+    group_inds <- list(g1 = 1:6, g2 = 7:12)
+
+    ret_strong <- DMRsegal:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
+        pheno = pheno,
+        max_pval = 1e-5,
+        entanglement = "strong",
+        aggfun = median,
+        pval_mode = "empirical",
+        empirical_strategy = "permutations",
+        ntries = 50,
+        mid_p = FALSE
+    )
+    expect_true(all(!ret_strong$connected))
+    expect_true(all(ret_strong$reason == "pval>max_pval"))
+    expect_true(all(ret_strong$pval == 1))
+
+    ret_weak <- DMRsegal:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
+        pheno = pheno,
+        max_pval = 1e-5,
+        entanglement = "weak",
+        aggfun = median,
+        pval_mode = "empirical",
+        empirical_strategy = "permutations",
+        ntries = 50,
+        mid_p = FALSE
+    )
+    expect_true(all(!ret_weak$connected))
+    expect_true(all(grepl("pval>max_pval", ret_weak$reason, fixed = TRUE)))
+})
