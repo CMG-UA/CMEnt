@@ -305,7 +305,7 @@ seed_truth_summary <- data.frame(
 
 if ("delta_beta" %in% colnames(seed_df) &&
         "delta_beta" %in% names(SummarizedExperiment::mcols(truth_dmrs)) &&
-    length(seed_truth_hits) > 0) {
+        length(seed_truth_hits) > 0) {
     seed_sign <- sign(as.numeric(seed_df$delta_beta))
     truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
     pair_match <- seed_sign[S4Vectors::queryHits(seed_truth_hits)] ==
@@ -356,7 +356,7 @@ if (!is.null(rank_col) && length(seed_gr) > 0) {
 
 ## Method 1: DMRsegal
 
-```{r}
+```{r dmrsegal}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
 if (!file.exists(dmrsegal_file)) {
@@ -388,6 +388,7 @@ if (!file.exists(dmrsegal_file)) {
                     seeds_id_col = "cpg_id",
                     sample_group_col = "Sample_Group",
                     casecontrol_col = "casecontrol",
+                    max_bridge_extension_gaps = 5L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
                     min_seeds = 2,
                     min_cpgs = 3,
                     max_lookup_dist = 10000,
@@ -431,7 +432,7 @@ cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_segal), round
 
 ## Method 2: DMRcate
 
-```{r}
+```{r dmrcate}
 dmrcate_file <- file.path(output_dir, "dmrs.DMRcate.rds")
 
 run_dmrcate_bsseq <- function(
@@ -581,7 +582,7 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 
 ## Method 3: dmrseq
 
-```{r}
+```{r dmrseq}
 dmrseq_file <- file.path(output_dir, "dmrs.dmrseq.rds")
 
 run_dmrseq_bsseq <- function(
@@ -853,7 +854,7 @@ truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
     out
 }))
 
-truth_eval <- truth_eval %>%
+truth_eval <- truth_eval |>
     dplyr::select(
         Method,
         TP_regions, FP_regions, FN_regions,
@@ -905,8 +906,8 @@ knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (rows o
 ### Ground-Truth Metrics
 
 ```{r, fig.width=10, fig.height=5}
-plot_df <- truth_eval %>%
-    dplyr::select(Method, F1_regions, F1_bp, IoU_bp) %>%
+plot_df <- truth_eval |>
+    dplyr::select(Method, F1_regions, F1_bp, IoU_bp) |>
     tidyr::pivot_longer(
         cols = c(F1_regions, F1_bp, IoU_bp),
         names_to = "Metric",

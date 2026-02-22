@@ -157,8 +157,12 @@ cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
 cat(sprintf("Components found: %d\n", nrow(component_tbl)))
 if (nrow(component_tbl) > 0) {
     largest_component <- max(component_tbl$size, na.rm = TRUE)
-    cat(sprintf("Largest component size: %d / %d DMRs (%.2f%%)\n",
-        largest_component, length(motif_dmrs), 100 * largest_component / length(motif_dmrs)))
+    cat(
+        sprintf(
+            "Largest component size: %d / %d DMRs (%.2f%%)\n",
+            largest_component, length(motif_dmrs), 100 * largest_component / length(motif_dmrs)
+        )
+    )
 }
 annotated_components <- sum(!is.na(component_tbl$jaspar_names) & nzchar(component_tbl$jaspar_names))
 cat(sprintf("Components with JASPAR annotation: %d / %d\n", annotated_components, nrow(component_tbl)))
@@ -238,7 +242,7 @@ tryCatch(
 ```
 
 ```{r circos_plot_scroll_close, echo=FALSE, results='asis'}
-cat('</div>')
+cat("</div>")
 ```
 
 ## Session Info

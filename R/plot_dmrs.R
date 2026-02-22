@@ -490,7 +490,7 @@ if (getRversion() >= "2.15.1") {
                 alpha = 0.7
             )
     }
-    return(heatmap_plot)
+    heatmap_plot
 }
 
 
@@ -685,7 +685,7 @@ minmaxscale <- function(x) {
             ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
     }))
 
-    return(pwm_plot)
+    pwm_plot
 }
 
 #' Plot Multiple DMRs in a Grid

@@ -94,7 +94,7 @@ test_that("getDMRSequences accepts parallel processing parameters", {
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
 
-    sequences <- getDMRSequences(dmrs, genome = "hg19", use_online = TRUE, 
+    sequences <- getDMRSequences(dmrs, genome = "hg19", use_online = TRUE,
                                  batch_size = 50, njobs = 2)
 
     expect_type(sequences, "character")

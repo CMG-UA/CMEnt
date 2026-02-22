@@ -1612,7 +1612,7 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
             )
         }
     }
-    return(pkg_name)
+    pkg_name
 
 }
 
@@ -1731,10 +1731,12 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         })
         return(unlist(cpg_counts))
     }
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir", file.path(
             path.expand("~"),
             ".cache", "R", "DMRsegal", "annotations"
-        ))
+        )
+    )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -1790,7 +1792,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         by.y = c("chr", "start", "end"),
     )[, .N, by = id]
     cpg_counts <- cpg_counts[order(cpg_counts$id), "N"]
-    return(unlist(cpg_counts))
+    unlist(cpg_counts)
     # }
 }
 

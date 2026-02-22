@@ -273,7 +273,7 @@
             row_names = site_indices,
             col_names = col_names,
             check_mem = TRUE
-        )   
+        )
     }
 
     .chunk_pair_ranges <- function(pair_ranges_df) {
@@ -640,7 +640,7 @@
         # pick the first run of FALSE
         fail_runs <- which(!corr_ret$connected)
         # [----+---0] where - is connected, + is not connected, 0 stands for the current DMR start (ustream_exp),
-        # then fail_start_idx is the first + from the right, 4 in this case. 
+        # then fail_start_idx is the first + from the right, 4 in this case.
         # That means that the 4th from the right failed to connect to the 3rd from the right.
         if (length(fail_runs) > 0) {
             fail_start_idx <- fail_runs[[1]] # first failing index in the reversed corr_ret
@@ -670,7 +670,7 @@
         # pick the first run of FALSE
         fail_runs <- which(!corr_ret$connected)
         # [0----+---] where - is connected, + is not connected, 0 stands for the current DMR start (dstream_exp),
-        # then fail_start_idx is the first + from the left, 5 in this case. 
+        # then fail_start_idx is the first + from the left, 5 in this case.
         # That means that the 5th from the left failed to connect to the 6th from the left.
         # That means we need to expand the DMR to include the 5th from the left, which is dstream_exp + fail_start_idx - 1
         if (length(fail_runs) > 0) {

@@ -9,7 +9,7 @@ test_that("plotDMRsCircos creates a circos plot", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))) , drop = FALSE]
+    dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))), drop = FALSE]
     options("DMRsegal.verbose" = 2)
     expect_no_error(
         plotDMRsCircos(
@@ -34,7 +34,7 @@ test_that("plotDMRsCircos works with interactions", {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[as.character(dmrs@seqnames) %in% c("chr5", "chr11"),, drop = FALSE]
+    dmrs_subset <- dmrs[as.character(dmrs@seqnames) %in% c("chr5", "chr11"), , drop = FALSE]
 
     expect_no_error(
         plotDMRsCircos(

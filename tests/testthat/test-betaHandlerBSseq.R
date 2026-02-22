@@ -9,15 +9,15 @@ test_that("BetaHandler can be created from BSseq object", {
     set.seed(123)
     n_loci <- 100
     n_samples <- 10
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
     names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -30,8 +30,8 @@ test_that("BetaHandler can extract row names from BSseq object", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
@@ -39,7 +39,7 @@ test_that("BetaHandler can extract row names from BSseq object", {
     cpg_names <- paste0("cg", seq_len(n_loci))
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -52,8 +52,8 @@ test_that("BetaHandler can extract column names from BSseq object", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
@@ -61,7 +61,7 @@ test_that("BetaHandler can extract column names from BSseq object", {
     names(gr) <- paste0("cg", seq_len(n_loci))
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = sample_names
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -74,8 +74,8 @@ test_that("BetaHandler can extract beta values from BSseq object", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
@@ -84,7 +84,7 @@ test_that("BetaHandler can extract beta values from BSseq object", {
     names(gr) <- cpg_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = sample_names
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -92,7 +92,7 @@ test_that("BetaHandler can extract beta values from BSseq object", {
     expect_equal(dim(beta_values), c(n_loci, n_samples))
     expect_equal(rownames(beta_values), cpg_names)
     expect_equal(colnames(beta_values), sample_names)
-    expected_beta <- M / Cov
+    expected_beta <- met / cov
     rownames(expected_beta) <- cpg_names
     colnames(expected_beta) <- sample_names
     expect_equal(beta_values, expected_beta, tolerance = 1e-6)
@@ -102,8 +102,8 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
@@ -111,7 +111,7 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
     cpg_names <- paste0("cg", seq_len(n_loci))
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -125,8 +125,8 @@ test_that("BetaHandler can subset beta values from BSseq object by column names"
     set.seed(123)
     n_loci <- 50
     n_samples <- 10
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
@@ -134,7 +134,7 @@ test_that("BetaHandler can subset beta values from BSseq object by column names"
     names(gr) <- paste0("cg", seq_len(n_loci))
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = sample_names
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -148,8 +148,8 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     start_positions <- seq(1000, by = 100, length.out = n_loci)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
@@ -157,7 +157,7 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     )
     names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -172,14 +172,14 @@ test_that("BetaHandler handles missing row names in BSseq gracefully", {
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -192,15 +192,15 @@ test_that("BetaHandler throws error when requesting non-existent CpGs from BSseq
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
     names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
@@ -214,15 +214,15 @@ test_that("BetaHandler allows missing CpGs from BSseq when allow_missing=TRUE", 
     set.seed(123)
     n_loci <- 50
     n_samples <- 5
-    Cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
-    M <- matrix(rbinom(n_loci * n_samples, size = Cov, prob = 0.5), ncol = n_samples)
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
     gr <- GRanges(
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
     names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
-        M = M, Cov = Cov, gr = gr,
+        M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)

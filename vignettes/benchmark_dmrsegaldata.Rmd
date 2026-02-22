@@ -163,8 +163,8 @@ names(dmps_gr) <- rownames(dmps)
 ## Method 1: DMRsegal
 
 ```{r DMRsegal}
-DMRsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
-if (!file.exists(DMRsegal_file)) {
+dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
+if (!file.exists(dmrsegal_file)) {
     options("DMRsegal.verbose" = 1)
     options("DMRsegal.njobs" = 8)
     start_time <- Sys.time()
@@ -187,10 +187,10 @@ if (!file.exists(DMRsegal_file)) {
     ))
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_dmrsegal, time = time_dmrsegal), DMRsegal_file)
+    saveRDS(list(dmrs = dmrs_dmrsegal, time = time_dmrsegal), dmrsegal_file)
     rm(beta_handler)
 } else {
-    ret <- readRDS(DMRsegal_file)
+    ret <- readRDS(dmrsegal_file)
     dmrs_dmrsegal <- ret$dmrs
     time_dmrsegal <- ret$time
 }
@@ -288,9 +288,9 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 
 ## Method 3: probeLasso
 ```{r probeLasso}
-probeLasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
+probelasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
 
-run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
+run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
         warning("ChAMP not installed. probeLasso requires ChAMP.")
         warning("Install with: BiocManager::install('ChAMP')")
@@ -314,7 +314,7 @@ run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 minDmrSize = 50,
                 PDFplot = FALSE,
                 Rplot = FALSE,
-                resultsDir = "/tmp/champ_probeLasso"
+                resultsDir = "/tmp/champ_probelasso"
             )
 
             pl_dmr <- result$ProbeLassoDMR
@@ -342,24 +342,24 @@ run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
         },
         error = function(e) {
             warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
-            return(GRanges())
+            GRanges()
         }
     )
 }
 
-if (!file.exists(probeLasso_file)) {
+if (!file.exists(probelasso_file)) {
     start_time <- Sys.time()
-    dmrs_probeLasso <- run_probeLasso_champ(beta_mat, pheno, array_type = "450K")
+    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K")
     end_time <- Sys.time()
-    time_probeLasso <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_probeLasso, time = time_probeLasso), probeLasso_file)
+    time_probelasso <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_probelasso, time = time_probelasso), probelasso_file)
 } else {
-    ret <- readRDS(probeLasso_file)
-    dmrs_probeLasso <- ret$dmrs
-    time_probeLasso <- ret$time
+    ret <- readRDS(probelasso_file)
+    dmrs_probelasso <- ret$dmrs
+    time_probelasso <- ret$time
 }
 
-cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probeLasso), round(as.numeric(time_probeLasso, units = "secs"))))
+cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso), round(as.numeric(time_probelasso, units = "secs"))))
 ```
 
 ## Method 4: DMRcate
@@ -401,16 +401,11 @@ if (!file.exists(bumphunter_file)) {
     library(doParallel)
     start_time <- Sys.time()
     # Safer defaults for local/WSL rendering; override via options().
-    bh_cores <- as.integer(getOption("DMRsegal.bumphunter_cores", 1L))
-    bh_B <- as.integer(getOption("DMRsegal.bumphunter_B", 100L))
-    bh_max_dmrs <- as.integer(getOption("DMRsegal.bumphunter_max_dmrs_for_cutoff", 1000000L))
-    bh_max_gap <- as.integer(getOption("DMRsegal.bumphunter_maxGap", 2000L))
-    bh_min_l <- as.integer(getOption("DMRsegal.bumphunter_min_cpgs", 2L))
-    bh_cores <- ifelse(is.na(bh_cores) || bh_cores < 1L, 1L, bh_cores)
-    bh_B <- ifelse(is.na(bh_B) || bh_B < 0L, 100L, bh_B)
-    bh_max_dmrs <- ifelse(is.na(bh_max_dmrs) || bh_max_dmrs < 1L, 1000000L, bh_max_dmrs)
-    bh_max_gap <- ifelse(is.na(bh_max_gap) || bh_max_gap < 1L, 2000L, bh_max_gap)
-    bh_min_l <- ifelse(is.na(bh_min_l) || bh_min_l < 1L, 2L, bh_min_l)
+    bh_cores <- 1
+    bh_b <- 100L
+    bh_max_dmrs <- 1000000L
+    bh_max_gap <- 2000L
+    bh_min_l <- 2L
 
     doParallel::registerDoParallel(cores = bh_cores)
     on.exit({
@@ -445,7 +440,7 @@ if (!file.exists(bumphunter_file)) {
     final_cutoff <- dmrs_cutoff / 1.2
     cat(sprintf(
         "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
-        final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_B
+        final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_b
     ))
     bumphunter_results <- bumphunter(beta_mat,
         design = design,
@@ -454,7 +449,7 @@ if (!file.exists(bumphunter_file)) {
         cutoff = final_cutoff,
         maxGap = max_gap,
         nullMethod = "bootstrap",
-        B = bh_B,
+        B = bh_b,
         type = "Beta",
         coef = 2
     )
@@ -513,7 +508,7 @@ get_dmr_stats <- function(dmrs, method) {
 stats_list <- list(
     get_dmr_stats(dmrs_dmrsegal, "DMRsegal"),
     get_dmr_stats(dmrs_combp, "comb-p"),
-    get_dmr_stats(dmrs_probeLasso, "probeLasso"),
+    get_dmr_stats(dmrs_probelasso, "probeLasso"),
     get_dmr_stats(dmrs_dmrcate, "DMRcate"),
     get_dmr_stats(dmrs_bumphunter, "Bumphunter")
 )
@@ -528,7 +523,7 @@ knitr::kable(results_comparison, digits = 2, caption = "Basic DMR Statistics Acr
 methods_list <- list(
     DMRsegal = dmrs_dmrsegal,
     `comb-p` = dmrs_combp,
-    probeLasso = dmrs_probeLasso,
+    probeLasso = dmrs_probelasso,
     DMRcate = dmrs_dmrcate,
     Bumphunter = dmrs_bumphunter
 )
@@ -622,8 +617,8 @@ knitr::kable(iou_matrix, digits = 4, caption = "IoU (genomic coverage-based simi
 ### DMR Count and Coverage Comparison
 
 ```{r, fig.width=10, fig.height=5}
-viz_data <- results_comparison %>%
-    dplyr::select(Method, Number_of_DMRs, Total_Coverage_bp) %>%
+viz_data <- results_comparison |>
+    dplyr::select(Method, Number_of_DMRs, Total_Coverage_bp) |>
     tidyr::pivot_longer(
         cols = c(Number_of_DMRs, Total_Coverage_bp),
         names_to = "Metric", values_to = "Value"
@@ -831,8 +826,8 @@ if (requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
     gene_annotation_df <- do.call(rbind, gene_annotation_list)
     knitr::kable(gene_annotation_df, caption = "DMR Gene Context Annotation")
 
-    gene_plot_data <- gene_annotation_df %>%
-        dplyr::select(Method, Pct_Promoters, Pct_Gene_Bodies, Pct_Intergenic) %>%
+    gene_plot_data <- gene_annotation_df |>
+        dplyr::select(Method, Pct_Promoters, Pct_Gene_Bodies, Pct_Intergenic) |>
         tidyr::pivot_longer(cols = -Method, names_to = "Context", values_to = "Percentage")
 
     gene_plot_data$Context <- gsub("Pct_", "", gene_plot_data$Context)
@@ -942,8 +937,7 @@ find_consensus <- function(methods_list, min_methods = 2) {
 
     consensus_dmrs <- all_dmrs[consensus_counts >= min_methods]
     mcols(consensus_dmrs)$n_methods <- consensus_counts[consensus_counts >= min_methods]
-
-    return(consensus_dmrs)
+    consensus_dmrs
 }
 
 consensus_2plus <- find_consensus(methods_list, min_methods = 2)
@@ -1001,7 +995,7 @@ find_specific_dmrs <- function(target_method, methods_list) {
     }
 
     specific <- target_dmrs[countOverlaps(target_dmrs, all_others) == 0]
-    return(specific)
+    specific
 }
 
 specificity_df <- do.call(rbind, lapply(names(methods_list), function(method) {
@@ -1023,8 +1017,8 @@ specificity_df <- do.call(rbind, lapply(names(methods_list), function(method) {
 
 knitr::kable(specificity_df, caption = "Method-Specific vs Shared DMRs")
 
-specificity_plot_data <- specificity_df %>%
-    dplyr::select(Method, Pct_Specific, Pct_Shared_2plus) %>%
+specificity_plot_data <- specificity_df |>
+    dplyr::select(Method, Pct_Specific, Pct_Shared_2plus) |>
     tidyr::pivot_longer(cols = -Method, names_to = "Type", values_to = "Percentage")
 
 specificity_plot_data$Type <- ifelse(specificity_plot_data$Type == "Pct_Specific",
@@ -1160,10 +1154,10 @@ if ("rank" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
 ## Summary Statistics
 
 ```{r}
-summary_table <- results_comparison %>%
-    left_join(effect_size_df, by = "Method") %>%
-    left_join(capture_df, by = "Method") %>%
-    left_join(specificity_df %>% dplyr::select(Method, Pct_Specific, Pct_Shared_2plus, Pct_Shared_3plus), by = "Method")
+summary_table <- results_comparison |>
+    left_join(effect_size_df, by = "Method") |>
+    left_join(capture_df, by = "Method") |>
+    left_join(specificity_df |> dplyr::select(Method, Pct_Specific, Pct_Shared_2plus, Pct_Shared_3plus), by = "Method")
 
 knitr::kable(summary_table, digits = 2, caption = "Comprehensive Method Comparison Summary")
 ```
