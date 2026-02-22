@@ -159,11 +159,11 @@ dmrs <- findDMRsFromSeeds(
 
 ### `min_cpg_delta_beta`
 **Type:** Numeric  
-**Default:** `0`  
+**Default:** `0.1`  
 **Range:** 0 to 1  
 **Description:** Minimum absolute delta beta value for CpGs to be included in DMRs, during the **second stage** of DMR extension. Use this to filter out low-confidence DMRs.
 
-**Recommendation:** For most applications, 0 is appropriate, to extend DMRs independently of effect size. Consider using 0.05 or 0.1 for stricter filtering.
+**Recommendation:** Keep 0.1 for balanced precision/recall. Lower to 0.05 or 0 only when prioritizing sensitivity.
 
 **Example:**
 ```{r}
@@ -172,6 +172,21 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     min_cpg_delta_beta = 0.1
+)
+```
+
+### `adaptive_min_cpg_delta_beta`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** When enabled, DMRsegal adaptively increases `min_cpg_delta_beta` based on the seed-level delta-beta distribution (never below `min_cpg_delta_beta`).
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    adaptive_min_cpg_delta_beta = TRUE
 )
 ```
 
@@ -246,6 +261,18 @@ dmrs <- findDMRsFromSeeds(
     max_lookup_dist = 5000
 )
 ```
+
+### `connectivity_window_bp`
+**Type:** Numeric  
+**Default:** `1e6`  
+**Description:** Stage 2 connectivity is computed only around seed-derived Stage 1 neighborhoods, using this total window width in base pairs.
+
+Set to `<= 0` to compute connectivity genome-wide.
+
+### `max_bridge_seeds_gaps`
+**Type:** Integer  
+**Default:** `1`  
+**Description:** In Stage 1 seed connectivity, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
 
 ### `expansion_step`
 **Type:** Integer  

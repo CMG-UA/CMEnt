@@ -10,7 +10,7 @@ getBetaHandler(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   beta_row_names_file = NULL,
   sorted_locs = NULL,
-  njobs = 1
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
 )
 }
 \arguments{
@@ -34,7 +34,7 @@ Create a new BetaHandler object that manages methylation beta values
 from various input formats (files, matrices, tabix, BSseq objects) with memory-efficient access patterns.
 }
 \examples{
-beta_matrix <- beta <- loadExampleInputData("beta")
+beta_matrix <- loadExampleInputData("beta")
 
 beta_handler <- getBetaHandler(
     beta = beta_matrix,

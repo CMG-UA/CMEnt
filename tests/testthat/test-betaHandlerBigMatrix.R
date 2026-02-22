@@ -1,5 +1,5 @@
 test_that("getBeta returns big.matrix when size exceeds threshold with file input", {
-    beta <- DMRsegal::loadExampleInputData("beta")[1:1000, ]
+    beta <- DMRsegal::loadExampleInputDataChr5And11("beta")[1:1000, ]
 
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
@@ -22,7 +22,7 @@ test_that("getBeta returns big.matrix when size exceeds threshold with file inpu
 })
 
 test_that("getBeta returns regular matrix when size below threshold", {
-    beta <- DMRsegal::loadExampleInputData("beta")[1:1000, ]
+    beta <- DMRsegal::loadExampleInputDataChr5And11("beta")[1:1000, ]
 
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
@@ -45,7 +45,7 @@ test_that("getBeta returns regular matrix when size below threshold", {
 })
 
 test_that("getBeta big.matrix has correct values", {
-    beta <- DMRsegal::loadExampleInputData("beta")[1:1000, ]
+    beta <- DMRsegal::loadExampleInputDataChr5And11("beta")[1:1000, ]
     options("DMRsegal.verbose" = 3)
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
@@ -75,7 +75,7 @@ test_that("getBeta big.matrix has correct values", {
 })
 
 test_that("getBeta big.matrix with column subset", {
-    beta <- DMRsegal::loadExampleInputData("beta")[1:1000, ]
+    beta <- DMRsegal::loadExampleInputDataChr5And11("beta")[1:1000, ]
 
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))
@@ -101,7 +101,7 @@ test_that("getBeta big.matrix with column subset", {
 })
 
 test_that("getBeta big.matrix handles all rows", {
-    beta <- DMRsegal::loadExampleInputData("beta")[1:1000, ]
+    beta <- DMRsegal::loadExampleInputDataChr5And11("beta")[1:1000, ]
 
     temp_file <- tempfile(fileext = ".tsv")
     beta_df <- cbind(CpG = rownames(beta), as.data.frame(beta))

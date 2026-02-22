@@ -670,10 +670,10 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     )
 
 
-    return(list(
+    list(
         tabix_file = tabix_file_path,
         locations_file = locations_file
-    ))
+    )
 }
 
 
@@ -1173,7 +1173,7 @@ sortBetaFileByCoordinates <- function(beta_file,
         col.names = TRUE
     )
 
-    return(output_file)
+    output_file
 }
 
 .remove_confounder_effect <- function(signal, covariate_matrix) {
@@ -1364,7 +1364,12 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         } else if (array == "27k") {
             pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
         } else {
-            stop("Incorrect array and genome combination was provided. For hg19 and hg38, ('450K','EPIC','EPICv2','27K') arrays are supported.") 
+            stop(
+                paste0(
+                    "Incorrect array and genome combination was provided. ",
+                    "For hg19 and hg38, ('450K','EPIC','EPICv2','27K') arrays are supported."
+                )
+            )
         }
     } else if (genome %in% c("mm10", "mm39")) {
         if (array != "Mouse") {
@@ -1556,14 +1561,13 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
         BiocGenerics::start(granges) <- pmax(flanked_start, 1)
         BiocGenerics::end(granges) <- pmin(flanked_end, seqls)
         ret <- list(granges = granges, start_off_limit = start_off_limit, end_off_limit = end_off_limit)
-        return(ret)
     } else {
         ret <- list(granges = granges, start_off_limit = rep(0, length(granges)), end_off_limit = rep(0, length(granges)))
-        return(ret)
     }
+    ret
 }
 
-.getBSGenomePackage <- function(genome){
+.getBSGenomePackage <- function(genome) {
     if (genome == "hg19") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
@@ -1606,7 +1610,6 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
                     pkg_name <<- NULL
                 }
             )
-            
         }
     }
     return(pkg_name)
@@ -1669,7 +1672,7 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
                             batch_size = 100, njobs = 1) {
 
-    if (!use_online ) {
+    if (!use_online) {
         pkg_name <- .getBSGenomePackage(genome)
         use_bsgenome <- !is.null(pkg_name)
     } else {
@@ -1758,8 +1761,17 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
         names(cgs) <- chrs
         suppressWarnings(
-            cpgs <- do.call(c, lapply(seq_along(chrs), function(x) GenomicRanges::GRanges(seqnames=chrs[x],
-                ranges=IRanges::IRanges(cgs[[x]], width = 2))))
+            cpgs <- do.call(
+                c, lapply(
+                    seq_along(chrs),
+                    function(x) {
+                        GenomicRanges::GRanges(
+                            seqnames = chrs[x],
+                            ranges = IRanges::IRanges(cgs[[x]], width = 2)
+                        )
+                    }
+                )
+            )
         )
         cpgs <- data.table::as.data.table(as.data.frame(cpgs, stringsAsFactors = FALSE))[, 1:2]
         colnames(cpgs) <- c("chr", "start")
@@ -1772,53 +1784,6 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
     colnames(regions) <- c("rchr", "rstart", "rend")
     regions[, "id"] <- seq_len(nrow(regions))
     data.table::setkey(regions, rchr, rstart, rend)
-    # if (non_overlapping_regions) {
-    #     regions <- as.data.frame(regions)
-    #     cpgs <- as.data.frame(cpgs)
-    #     cpg_ind <- 1
-    #     region_ind <- 1
-    #     cpg_counts <- integer(nrow(regions))
-    #     for (chr in unique(regions$rchr)) {
-    #         chr_regions_inds <- which(regions$rchr == chr)
-    #         chr_regions <- regions[chr_regions_inds, ]
-    #         chr_cpgs <- cpgs[cpgs$chr == chr, ]
-    #         chr_counts <- integer(length(chr_regions))
-    #         updated_regions_ind <- TRUE
-    #         while (cpg_ind <= nrow(chr_cpgs) && region_ind <= nrow(chr_regions)) {
-    #             print(paste0("chr: ", chr, " cpg_ind: ", cpg_ind, " region_ind: ", region_ind))
-    #             if (updated_regions_ind) {
-    #                 cregion <- chr_regions[region_ind, ]
-    #                 ccount <- 0
-    #                 # batched search for the next candidate cpg index (R does not handle first occurrence search efficiently)
-    #                 bcnt <- cpg_ind
-    #                 batch_size <- 1000
-    #                 found <- FALSE
-    #                 for (bcnt in seq(cpg_ind, nrow(chr_cpgs), by = batch_size)) {
-    #                     end_catch <- min(bcnt + batch_size - 1, nrow(chr_cpgs))
-    #                     cand_cpg_ind <- which(chr_cpgs[bcnt:end_catch, "start"] >= chr_regions[region_ind, "rstart"])
-    #                     if (length(cand_cpg_ind) > 0) {
-    #                         cpg_ind <- cand_cpg_ind[1] + bcnt - 1
-    #                         found <- TRUE
-    #                         break
-    #                     }
-    #                 }
-    #                 if (!found) break
-    #                 updated_regions_ind <- FALSE
-    #                 cpg_ind <- cand_cpg_ind[1] + cpg_ind - 1
-    #             }
-    #             if (cregion$rend >= chr_cpgs[cpg_ind, "start"]) {
-    #                 ccount <- ccount + 1
-    #                 cpg_ind <- cpg_ind + 1
-    #             } else {
-    #                 chr_counts[region_ind] <- ccount
-    #                 region_ind <- region_ind + 1
-    #                 updated_regions_ind <- TRUE
-    #             }
-    #         }
-    #         cpg_counts[chr_regions_inds] <- chr_counts
-    #     }
-    #     cpg_counts <- cpg_counts[order(regions$id)]
-    # } else {
     cpg_counts <- data.table::foverlaps(regions,
         cpgs,
         by.x = c("rchr", "rstart", "rend"),
@@ -2159,7 +2124,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         dmrs <- as.data.frame(dmrs)
         colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
     }
-    return(dmrs)
+    dmrs
 }
 
 idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
@@ -2248,6 +2213,244 @@ convertToGRanges <- function(obj, genome) {
     future::plan(future::sequential)
 }
 
+#' @keywords internal
+#' @noRd
+.calculateBetaStats <- function(beta_values, pheno, aggfun) {
+    is_case <- pheno[, "__casecontrol__"] == 1
+    cases <- beta_values[, is_case, drop = FALSE]
+    cases <- as.matrix(cases, ncol = ncol(cases))
+
+    if (identical(aggfun, mean)) {
+        cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        cases_beta <- matrixStats::rowMedians(cases, na.rm = TRUE)
+    } else {
+        cases_beta <- apply(cases, 1, aggfun, na.rm = TRUE)
+    }
+    cases_sd <- matrixStats::rowSds(cases, na.rm = TRUE)
+    cases_num <- matrixStats::rowCounts(!is.na(cases))
+    rm(cases)
+
+    is_ctrl <- !is_case
+    ctrl <- beta_values[, is_ctrl, drop = FALSE]
+    ctrl <- as.matrix(ctrl, ncol = ncol(ctrl))
+    if (identical(aggfun, mean)) {
+        controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        controls_beta <- matrixStats::rowMedians(ctrl, na.rm = TRUE)
+    } else {
+        controls_beta <- apply(ctrl, 1, aggfun, na.rm = TRUE)
+    }
+    controls_sd <- matrixStats::rowSds(ctrl, na.rm = TRUE)
+    controls_num <- matrixStats::rowCounts(!is.na(ctrl))
+    rm(ctrl)
+
+    list(
+        cases_beta = cases_beta,
+        controls_beta = controls_beta,
+        cases_beta_sd = cases_sd,
+        controls_beta_sd = controls_sd,
+        cases_num = cases_num,
+        controls_num = controls_num
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.resolveAdaptiveMinCpgDeltaBeta <- function(seeds_beta, pheno, aggfun, base_threshold = 0.1) {
+    if (!is.finite(base_threshold)) {
+        return(base_threshold)
+    }
+    case_mask <- pheno[, "__casecontrol__"] == 1
+    ctrl_mask <- pheno[, "__casecontrol__"] == 0
+    if (sum(case_mask, na.rm = TRUE) == 0L || sum(ctrl_mask, na.rm = TRUE) == 0L) {
+        return(base_threshold)
+    }
+    if (bigmemory::is.big.matrix(seeds_beta)) {
+        max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
+        max_rows <- max(1L, max_rows)
+        end_row <- min(nrow(seeds_beta), max_rows)
+        beta_mat <- as.matrix(bigmemory::sub.big.matrix(seeds_beta, firstRow = 1L, lastRow = end_row))
+    } else {
+        beta_mat <- as.matrix(seeds_beta)
+        max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
+        max_rows <- max(1L, max_rows)
+        if (nrow(beta_mat) > max_rows) {
+            sel <- unique(as.integer(round(seq(1, nrow(beta_mat), length.out = max_rows))))
+            beta_mat <- beta_mat[sel, , drop = FALSE]
+        }
+    }
+    if (identical(aggfun, mean)) {
+        cases <- matrixStats::rowMeans2(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
+        ctrls <- matrixStats::rowMeans2(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        cases <- matrixStats::rowMedians(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
+        ctrls <- matrixStats::rowMedians(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
+    } else {
+        cases <- apply(beta_mat[, case_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        ctrls <- apply(beta_mat[, ctrl_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
+    }
+    deltas <- abs(cases - ctrls)
+    deltas <- deltas[is.finite(deltas)]
+    if (length(deltas) == 0L) {
+        return(base_threshold)
+    }
+    qprob <- getOption("DMRsegal.adaptive_min_cpg_delta_beta_quantile", 0.25)
+    adaptive <- as.numeric(stats::quantile(deltas, probs = qprob, na.rm = TRUE, names = FALSE, type = 7))
+    if (!is.finite(adaptive)) {
+        return(base_threshold)
+    }
+    max(base_threshold, adaptive)
+}
+
+#' @keywords internal
+#' @noRd
+.winsorizeVector <- function(x, probs = c(0.05, 0.95)) {
+    if (!is.numeric(x) || length(x) == 0L) {
+        return(x)
+    }
+    q <- stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 8)
+    x[x < q[1]] <- q[1]
+    x[x > q[2]] <- q[2]
+    x
+}
+
+#' @keywords internal
+#' @noRd
+.momentStats <- function(x) {
+    if (!is.numeric(x) || length(x) < 3L) {
+        return(c(skew = NA_real_, excess_kurtosis = NA_real_))
+    }
+    s <- stats::sd(x)
+    if (!is.finite(s) || s <= 1e-12) {
+        return(c(skew = 0, excess_kurtosis = 0))
+    }
+    z <- (x - mean(x)) / s
+    c(
+        skew = mean(z^3),
+        excess_kurtosis = mean(z^4) - 3
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
+    min_nvalid_q10 <- getOption("DMRsegal.auto_pval_min_nvalid_q10", 10)
+    corr_delta_threshold <- getOption("DMRsegal.auto_pval_corr_delta_threshold", 0.10)
+    skew_threshold <- getOption("DMRsegal.auto_pval_skew_threshold", 2)
+    excess_kurtosis_threshold <- getOption("DMRsegal.auto_pval_excess_kurtosis_threshold", 7)
+    pilot_max_pairs <- as.integer(getOption("DMRsegal.auto_pval_pilot_pairs", 2000L))
+    pilot_max_pairs <- max(1L, pilot_max_pairs)
+
+    q10_n_valid <- if (length(n_valid) > 0L) {
+        as.numeric(stats::quantile(n_valid, probs = 0.10, na.rm = TRUE, names = FALSE, type = 7))
+    } else {
+        NA_real_
+    }
+    if (!is.finite(q10_n_valid) || q10_n_valid < min_nvalid_q10) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "low effective sample size"
+        ))
+    }
+
+    valid_idx <- which(n_valid >= 3L)
+    if (length(valid_idx) == 0L) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "no valid pairs for diagnostics"
+        ))
+    }
+
+    if (length(valid_idx) > pilot_max_pairs) {
+        sel_pos <- unique(as.integer(round(seq(1, length(valid_idx), length.out = pilot_max_pairs))))
+        valid_idx <- valid_idx[sel_pos]
+    }
+
+    delta_spearman <- rep(NA_real_, length(valid_idx))
+    delta_winsorized <- rep(NA_real_, length(valid_idx))
+    abs_skew <- rep(NA_real_, 2L * length(valid_idx))
+    excess_kurtosis <- rep(NA_real_, 2L * length(valid_idx))
+    k <- 0L
+    for (i in seq_along(valid_idx)) {
+        r <- valid_idx[i]
+        xv <- x_mat[r, ]
+        yv <- y_mat[r, ]
+        ok <- !is.na(xv) & !is.na(yv)
+        if (sum(ok) < 3L) {
+            next
+        }
+        xv <- xv[ok]
+        yv <- yv[ok]
+        r_pearson <- suppressWarnings(stats::cor(xv, yv, method = "pearson"))
+        r_spearman <- suppressWarnings(stats::cor(xv, yv, method = "spearman"))
+        xw <- .winsorizeVector(xv)
+        yw <- .winsorizeVector(yv)
+        r_winsor <- suppressWarnings(stats::cor(xw, yw, method = "pearson"))
+        if (is.finite(r_pearson) && is.finite(r_spearman)) {
+            delta_spearman[i] <- abs(r_pearson - r_spearman)
+        }
+        if (is.finite(r_pearson) && is.finite(r_winsor)) {
+            delta_winsorized[i] <- abs(r_pearson - r_winsor)
+        }
+        mx <- .momentStats(xv)
+        my <- .momentStats(yv)
+        k <- k + 1L
+        abs_skew[(2L * k) - 1L] <- abs(mx["skew"])
+        abs_skew[2L * k] <- abs(my["skew"])
+        excess_kurtosis[(2L * k) - 1L] <- mx["excess_kurtosis"]
+        excess_kurtosis[2L * k] <- my["excess_kurtosis"]
+    }
+
+    median_abs_delta_spearman <- median(delta_spearman, na.rm = TRUE)
+    median_abs_delta_winsorized <- median(delta_winsorized, na.rm = TRUE)
+    median_abs_skew <- median(abs_skew, na.rm = TRUE)
+    median_excess_kurtosis <- median(excess_kurtosis, na.rm = TRUE)
+    if (!is.finite(median_abs_delta_spearman)) {
+        median_abs_delta_spearman <- Inf
+    }
+    if (!is.finite(median_abs_delta_winsorized)) {
+        median_abs_delta_winsorized <- Inf
+    }
+    if (!is.finite(median_abs_skew)) {
+        median_abs_skew <- Inf
+    }
+    if (!is.finite(median_excess_kurtosis)) {
+        median_excess_kurtosis <- Inf
+    }
+
+    use_parametric <- (median_abs_delta_spearman <= corr_delta_threshold) &&
+        (median_abs_delta_winsorized <= corr_delta_threshold) &&
+        (median_abs_skew <= skew_threshold) &&
+        (median_excess_kurtosis <= excess_kurtosis_threshold)
+    reason <- if (use_parametric) {
+        "assumptions look acceptable"
+    } else {
+        "assumptions not met"
+    }
+    list(
+        use_parametric = use_parametric,
+        q10_n_valid = q10_n_valid,
+        median_abs_delta_spearman = median_abs_delta_spearman,
+        median_abs_delta_winsorized = median_abs_delta_winsorized,
+        median_abs_skew = median_abs_skew,
+        median_excess_kurtosis = median_excess_kurtosis,
+        n_pairs_used = k,
+        reason = reason
+    )
+}
 
 #' Load DMRsegal Data Resources
 #'
@@ -2388,4 +2591,20 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         "Resource '", resource, "' not found in package or ExperimentHub.\n",
         "Available resources: ", paste(available_resources, collapse = ", ")
     )
+}
+
+#' @export
+loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
+    ret <- loadExampleInputData(resource, use_experiment_hub = use_experiment_hub)
+    if (resource == "beta") {
+        getBetaHandler(ret, array = "450k")$getBeta(chr = c("chr5", "chr11"))
+    } else if (resource == "pheno") {
+        ret
+    } else if (resource == "dmps") {
+        locs <- getSortedGenomicLocs(array = "450k")
+        locs <- locs[locs$chr %in% c("chr5", "chr11"), ]
+        ret[rownames(ret) %in% rownames(locs), , drop = FALSE]
+    } else if (resource == "array_type") {
+        ret
+    }
 }

@@ -161,10 +161,14 @@ Data frame of genomic locations
 \if{html}{\out{<a id="method-BetaHandler-getBetaChunkSize"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-getBetaChunkSize}{}}}
 \subsection{Method \code{getBetaChunkSize()}}{
+Get the chunk size used for beta subsetting
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBetaChunkSize()}\if{html}{\out{</div>}}
 }
 
+\subsection{Returns}{
+Integer chunk size
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaHandler-getBeta"></a>}}
@@ -176,7 +180,8 @@ Extract beta values for specific CpG sites and samples
   row_names = NULL,
   col_names = NULL,
   allow_missing = FALSE,
-  check_mem = FALSE
+  check_mem = FALSE,
+  chr = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -190,6 +195,8 @@ Extract beta values for specific CpG sites and samples
 \item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
 
 \item{\code{check_mem}}{Logical. If TRUE, checks memory usage and may return a big.matrix if size exceeds threshold (default: TRUE)}
+
+\item{\code{chr}}{Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)}
 }
 \if{html}{\out{</div>}}
 }

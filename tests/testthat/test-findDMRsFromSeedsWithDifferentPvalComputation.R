@@ -3,9 +3,9 @@ library(testthat)
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
@@ -108,9 +108,9 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
 test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibility", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
@@ -172,9 +172,9 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(

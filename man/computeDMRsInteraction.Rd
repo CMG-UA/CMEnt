@@ -8,7 +8,7 @@ computeDMRsInteraction(
   dmrs,
   genome = "hg19",
   array = "450K",
-  min_sim = getOption("DMRsegal.min_motif_similarity", 0.8),
+  min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
   beta_locs = NULL,
   flank_size = 5,
   find_components = TRUE,
@@ -24,7 +24,7 @@ computeDMRsInteraction(
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
 
-\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)}
+\item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

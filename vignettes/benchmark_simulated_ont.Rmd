@@ -58,16 +58,6 @@ library(progressr)
 library(SummarizedExperiment)
 library(S4Vectors)
 library(limma)
-live_log <- function(fmt, ...) {
-    if (!is.character(fmt) || length(fmt) != 1) {
-        msg <- paste(capture.output(print(fmt)), collapse = "\n")
-    } else {
-        msg <- sprintf(fmt, ...)
-    }
-    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-    line <- sprintf("[%s] %s", stamp, msg)
-    cat(line, "\n", file = stderr())
-}
 progressr::handlers("cli")
 output_dir <- "simulated_ont"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -168,26 +158,8 @@ colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 seeds_tsv <- file.path(output_dir, "seeds.tsv")
 seeds_meta_rds <- file.path(output_dir, "seeds.meta.rds")
 seed_strategy_version <- "score_weighted_v2"
-rebuild_seeds <- !file.exists(seeds_tsv)
 
-if (!rebuild_seeds) {
-    if (!file.exists(seeds_meta_rds)) {
-        live_log("Seed cache found without metadata; rebuilding with strategy %s.", seed_strategy_version)
-        rebuild_seeds <- TRUE
-    } else {
-        seeds_meta <- readRDS(seeds_meta_rds)
-        if (is.null(seeds_meta$strategy_version) || !identical(seeds_meta$strategy_version, seed_strategy_version)) {
-            live_log(
-                "Seed cache strategy mismatch (cached=%s, expected=%s); rebuilding.",
-                as.character(seeds_meta$strategy_version),
-                seed_strategy_version
-            )
-            rebuild_seeds <- TRUE
-        }
-    }
-}
-
-if (rebuild_seeds) {
+if (!file.exists(seeds_tsv)) {
     gr <- granges(sim_bs)
     locs <- data.frame(
         chr = as.character(seqnames(gr)),
@@ -207,10 +179,10 @@ if (rebuild_seeds) {
     fit_raw <- limma::lmFit(mvalues, design)
     valid_sigma <- is.finite(fit_raw$sigma) & (fit_raw$sigma > 0)
     if (!all(valid_sigma)) {
-        live_log(
-            "Dropping %d CpGs with zero/invalid residual variance before empirical Bayes moderation.",
+        cat(sprintf(
+            "Dropping %d CpGs with zero/invalid residual variance before empirical Bayes moderation.\n",
             sum(!valid_sigma)
-        )
+        ))
     }
     fit <- limma::eBayes(fit_raw[valid_sigma, , drop = FALSE])
     pval_vec <- rep(1, nrow(mvalues))
@@ -247,7 +219,7 @@ if (rebuild_seeds) {
 
     seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
     seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
-    live_log("Top seed chromosomes:")
+    cat("Top seed chromosomes:\n")
     print(utils::head(seed_chr_tbl, 10))
 
     seed_locs <- locs[sig_seeds$cpg_id, , drop = FALSE]
@@ -257,7 +229,7 @@ if (rebuild_seeds) {
         diff(x)
     }))
     if (length(seed_dist) > 0) {
-        live_log("Seed distance quantiles (bp):")
+        cat("Seed distance quantiles (bp):\n")
         print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
     }
 
@@ -332,7 +304,7 @@ seed_truth_summary <- data.frame(
 )
 
 if ("delta_beta" %in% colnames(seed_df) &&
-    "delta_beta" %in% names(SummarizedExperiment::mcols(truth_dmrs)) &&
+        "delta_beta" %in% names(SummarizedExperiment::mcols(truth_dmrs)) &&
     length(seed_truth_hits) > 0) {
     seed_sign <- sign(as.numeric(seed_df$delta_beta))
     truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
@@ -387,53 +359,25 @@ if (!is.null(rank_col) && length(seed_gr) > 0) {
 ```{r}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
-
-
-
 if (!file.exists(dmrsegal_file)) {
-    # Runtime diagnostics for large BSseq-derived matrices.
-    live_log("DMRsegal diagnostics")
-    live_log("CpGs in beta matrix: %s", format(nrow(sim_bs), big.mark = ","))
-    live_log("Samples in beta matrix: %d", ncol(sim_bs))
-    live_log("Seed CpGs: %s", format(nrow(sig_seeds), big.mark = ","))
+    options("DMRsegal.njobs" = 16)
+    cat(sprintf("CpGs in beta matrix: %s\n", format(nrow(sim_bs), big.mark = ",")))
+    cat(sprintf("Samples in beta matrix: %d\n", ncol(sim_bs)))
+    cat(sprintf("Seed CpGs: %s\n", format(nrow(sig_seeds), big.mark = ",")))
+    start_time <- Sys.time()
 
-
-    # Optional debugging knob to speed up test runs while profiling logs.
-    # Example: options(DMRsegal.debug_max_seeds = 100000L)
     debug_max_seeds <- getOption("DMRsegal.debug_max_seeds", NA_integer_)
     if (!is.na(debug_max_seeds) && is.numeric(debug_max_seeds) && nrow(sig_seeds) > debug_max_seeds) {
-        live_log("Applying debug seed cap: %s -> %s seeds",
+        cat(sprintf("Applying debug seed cap: %s -> %s seeds\n",
             format(nrow(sig_seeds), big.mark = ","),
             format(as.integer(debug_max_seeds), big.mark = ",")
-        )
+        ))
         sig_seeds <- sig_seeds[order(sig_seeds$pval), , drop = FALSE]
         sig_seeds <- sig_seeds[seq_len(as.integer(debug_max_seeds)), , drop = FALSE]
     }
-
-    # Optional hard timeout to avoid hanging on very large runs.
-    # Example: options(DMRsegal.max_runtime_minutes = 30)
-    max_runtime_minutes <- getOption("DMRsegal.max_runtime_minutes", NA_real_)
-    if (!is.na(max_runtime_minutes) && is.numeric(max_runtime_minutes) && max_runtime_minutes > 0) {
-        live_log("Applying runtime guard: %.1f minutes", max_runtime_minutes)
-        setTimeLimit(elapsed = as.numeric(max_runtime_minutes) * 60, transient = TRUE)
-        on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
-    }
-
-    options("DMRsegal.njobs" = 16)
-
-    t_handler_start <- Sys.time()
-
     beta_handler <- DMRsegal::getBetaHandler(
         beta = sim_bs
     )
-    t_handler_end <- Sys.time()
-    live_log(
-        "BetaHandler setup elapsed: %.1f sec",
-        as.numeric(difftime(t_handler_end, t_handler_start, units = "secs"))
-    )
-
-    t_dmrs_start <- Sys.time()
-
     dmrs_segal <- tryCatch(
         {
             progressr::with_progress(
@@ -473,18 +417,16 @@ if (!file.exists(dmrsegal_file)) {
             stop(e)
         }
     )
-    t_dmrs_end <- Sys.time()
-    live_log(
-        "findDMRsFromSeeds elapsed: %.1f sec",
-        as.numeric(difftime(t_dmrs_end, t_dmrs_start, units = "secs"))
-    )
-    saveRDS(dmrs_segal, dmrsegal_file)
+    end_time <- Sys.time()
+    time_dmrsegal <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)
 } else {
-    live_log("Using cached DMRsegal output: %s", dmrsegal_file)
-    dmrs_segal <- readRDS(dmrsegal_file)
+    ret <- readRDS(dmrsegal_file)
+    dmrs_segal <- ret$dmrs
+    time_dmrsegal <- ret$time
 }
 
-cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
+cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_segal), round(as.numeric(time_dmrsegal, units = "secs"))))
 ```
 
 ## Method 2: DMRcate
@@ -525,7 +467,7 @@ run_dmrcate_bsseq <- function(
     names(dmrs_by_chr) <- chr_vec
 
     for (chr_name in chr_vec) {
-        live_log("DMRcate: processing %s", chr_name)
+        cat(sprintf("DMRcate: processing %s\n", chr_name))
 
         chr_idx <- which(all_seqnames == chr_name)
         if (length(chr_idx) == 0) {
@@ -547,14 +489,14 @@ run_dmrcate_bsseq <- function(
             core_start_pos <- all_pos[chr_idx[core_from]]
             core_end_pos <- all_pos[chr_idx[core_to]]
 
-            live_log(
-                "DMRcate: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)",
+            cat(sprintf(
+                "DMRcate: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)\n",
                 chr_name,
                 chunk_i,
                 length(chunk_starts),
                 format(core_to - core_from + 1L, big.mark = ","),
                 format(length(idx_ext), big.mark = ",")
-            )
+            ))
 
             chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
             chunk_out <- tryCatch(
@@ -585,8 +527,8 @@ run_dmrcate_bsseq <- function(
                     ranges_out
                 },
                 error = function(e) {
-                    message(sprintf(
-                        "DMRcate chunk failed (%s chunk %d/%d, fdr=0.05): %s",
+                    cat(sprintf(
+                        "DMRcate chunk failed (%s chunk %d/%d, fdr=0.05): %s\n",
                         chr_name,
                         chunk_i,
                         length(chunk_starts),
@@ -623,13 +565,18 @@ run_dmrcate_bsseq <- function(
 }
 
 if (!file.exists(dmrcate_file)) {
+    start_time <- Sys.time()
     dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg38")
-    saveRDS(dmrs_dmrcate, dmrcate_file)
+    end_time <- Sys.time()
+    time_dmrcate <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
 } else {
-    dmrs_dmrcate <- readRDS(dmrcate_file)
+    ret <- readRDS(dmrcate_file)
+    dmrs_dmrcate <- ret$dmrs
+    time_dmrcate <- ret$time
 }
 
-cat(sprintf("DMRcate: Found %d DMRs\n", length(dmrs_dmrcate)))
+cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
 ```
 
 ## Method 3: dmrseq
@@ -671,7 +618,7 @@ run_dmrseq_bsseq <- function(
     names(dmrs_by_chr) <- chr_vec
 
     for (chr_name in chr_vec) {
-        live_log("dmrseq: processing %s", chr_name)
+        cat(sprintf("dmrseq: processing %s\n", chr_name))
 
         chr_idx <- which(all_seqnames == chr_name)
         if (length(chr_idx) == 0) {
@@ -693,14 +640,14 @@ run_dmrseq_bsseq <- function(
             core_start_pos <- all_pos[chr_idx[core_from]]
             core_end_pos <- all_pos[chr_idx[core_to]]
 
-            live_log(
-                "dmrseq: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)",
+            cat(sprintf(
+                "dmrseq: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)\n",
                 chr_name,
                 chunk_i,
                 length(chunk_starts),
                 format(core_to - core_from + 1L, big.mark = ","),
                 format(length(idx_ext), big.mark = ",")
-            )
+            ))
 
             chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
             chunk_out <- tryCatch(
@@ -744,8 +691,8 @@ run_dmrseq_bsseq <- function(
                     fit
                 },
                 error = function(e) {
-                    message(sprintf(
-                        "dmrseq chunk failed (%s chunk %d/%d): %s",
+                    cat(sprintf(
+                        "dmrseq chunk failed (%s chunk %d/%d): %s\n",
                         chr_name,
                         chunk_i,
                         length(chunk_starts),
@@ -782,13 +729,18 @@ run_dmrseq_bsseq <- function(
 }
 
 if (!file.exists(dmrseq_file)) {
+    start_time <- Sys.time()
     dmrs_dmrseq <- run_dmrseq_bsseq(sim_bs)
-    saveRDS(dmrs_dmrseq, dmrseq_file)
+    end_time <- Sys.time()
+    time_dmrseq <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrseq, time = time_dmrseq), dmrseq_file)
 } else {
-    dmrs_dmrseq <- readRDS(dmrseq_file)
+    ret <- readRDS(dmrseq_file)
+    dmrs_dmrseq <- ret$dmrs
+    time_dmrseq <- ret$time
 }
 
-cat(sprintf("dmrseq: Found %d DMRs\n", length(dmrs_dmrseq)))
+cat(sprintf("dmrseq: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
 ```
 
 ## Comparative Analysis

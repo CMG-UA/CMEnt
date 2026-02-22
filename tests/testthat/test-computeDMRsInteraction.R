@@ -10,7 +10,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     expect_type(result, "list")
@@ -46,7 +46,7 @@ test_that("computeDMRsInteraction handles GRanges input", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     expect_type(result, "list")
@@ -72,7 +72,7 @@ test_that("computeDMRsInteraction works with precomputed motifs", {
         dmrs_with_motifs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     expect_type(result, "list")
@@ -90,14 +90,14 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.9,
+        min_similarity = 0.9,
     ))
 
     result_low <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.5
+        min_similarity = 0.5
     ))
 
     expect_type(result_high, "list")
@@ -117,7 +117,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.99
+        min_similarity = 0.99
     ))
 
     if (is.null(result$interactions)) {
@@ -161,7 +161,7 @@ test_that("computeDMRsInteraction does not collapse into a giant component at st
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.8,
+        min_similarity = 0.8,
         min_component_size = 2,
         query_components_with_jaspar = FALSE
     ))
@@ -181,7 +181,7 @@ test_that("computeDMRsInteraction validates similarity values", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
@@ -190,7 +190,7 @@ test_that("computeDMRsInteraction validates similarity values", {
     }
 })
 
-test_that("computeDMRsInteraction enforces min_sim on reported interactions", {
+test_that("computeDMRsInteraction enforces min_similarity on reported interactions", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
@@ -200,7 +200,7 @@ test_that("computeDMRsInteraction enforces min_sim on reported interactions", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.8
+        min_similarity = 0.8
     ))
 
     if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
@@ -213,13 +213,13 @@ test_that("computeDMRsInteraction assigns contiguous positive component IDs when
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
-    mcols(dmrs)$rank <- seq_len(length(dmrs))
+    mcols(dmrs)$rank <- seq_along(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7,
+        min_similarity = 0.7,
         min_component_size = 1,
         query_components_with_jaspar = FALSE
     ))
@@ -246,7 +246,7 @@ test_that("computeDMRsInteraction components are ordered by size", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.5
+        min_similarity = 0.5
     ))
 
     expect_true(
@@ -265,7 +265,7 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     if (nrow(result$components) > 0) {
@@ -285,14 +285,14 @@ test_that("computeDMRsInteraction works with different array types", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     result_epic <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "EPIC",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     expect_type(result_450k, "list")
@@ -312,7 +312,7 @@ test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7,
+        min_similarity = 0.7,
         plot.dir = plot_dir
     ))
 
@@ -335,7 +335,7 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7,
+        min_similarity = 0.7,
         flank_size = 5
     ))
 

@@ -109,7 +109,7 @@
 #' # Load example data
 #' beta <- loadExampleInputData("beta")
 #' pheno <- loadExampleInputData("pheno")
-#' 
+#'
 #' # Load pre-computed DMRs
 #' dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
 #'
@@ -193,5 +193,5 @@ rankDMRs <- function(
     mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
-    return(dmrs[order(mcols(dmrs)$rank)])
+    dmrs[order(mcols(dmrs)$rank)]
 }

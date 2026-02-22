@@ -1036,7 +1036,7 @@ plotDMR <- function(dmrs,
 #' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
-#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
+#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
 #' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
@@ -1069,11 +1069,12 @@ plotDMRsCircos <- function(dmrs,
                            array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
-                           min_sim = 0.7,
+                           min_similarity = 0.7,
                            flank_size = 5,
                            max_num_samples_per_group = 5,
                            max_dmrs_per_chr = 10,
                            max_cpgs_per_dmr = 5,
+                           min_component_size = 2,
                            max_interactions = 30,
                            degenerate_resolution = 1e6,
                            output_file = NULL,
@@ -1105,10 +1106,10 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing data for Circos plot...")
 
     .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
-    dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
-    .log_success("DMRs filtered for Circos plot", level = 2)
+    heatmap_dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
+    .log_success("DMRs filtered for Circos plot heatmap", level = 2)
 
-    .log_info("Total DMRs to plot: ", length(dmrs), level = 2)
+    .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
 
     cytoband <- .getCytobandData(genome)
 
@@ -1123,7 +1124,7 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
-        dmrs, beta_handler, pheno, sample_group_col,
+        heatmap_dmrs, beta_handler, pheno, sample_group_col,
         max_cpgs_per_dmr, max_num_samples_per_group
     )
     heatmap_df <- heatmap_data$heatmap_df
@@ -1138,7 +1139,7 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, beta_locs, min_sim, flank_size, max_interactions
+        dmrs, genome, array, beta_locs, min_similarity, flank_size, max_interactions, min_component_size
     )
 
     .log_success("DMR interactions data prepared", level = 2)
@@ -1655,17 +1656,17 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_sim, flank_size, max_interactions) {
+.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_similarity, flank_size, max_interactions, min_component_size) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(
                 dmrs = dmrs,
                 genome = genome,
                 array = array,
-                min_sim = min_sim,
+                min_similarity = min_similarity,
                 beta_locs = beta_locs,
                 flank_size = flank_size,
-                min_component_size = 2
+                min_component_size = min_component_size
             )
         },
         error = function(e) {
@@ -1675,7 +1676,7 @@ plotDMRsCircos <- function(dmrs,
     )
 
     if (is.null(ret) || nrow(ret$interactions) == 0) {
-        .log_warn("No significant interactions found at similarity >=", min_sim, ". Skipping link track.")
+        .log_warn("No significant interactions found at similarity >=", min_similarity, ". Skipping link track.")
         return(NULL)
     }
 
@@ -1699,15 +1700,6 @@ plotDMRsCircos <- function(dmrs,
         .log_info("Limiting to top ", max_interactions, " interactions per component based on similarity", level = 2)
     }
     link_data <- merge(link_data, ret$components, by = "component_id", all.x = TRUE, suffixes = c("", "_comp"))
-    # Keep only interactions whose component has a JASPAR annotation.
-    if ("jaspar_names" %in% colnames(link_data)) {
-        keep <- !is.na(link_data$jaspar_names) & nzchar(link_data$jaspar_names)
-        removed <- sum(!keep)
-        link_data <- link_data[keep, , drop = FALSE]
-        if (removed > 0) {
-            .log_info("Filtered out ", removed, " interactions without JASPAR matches.", level = 2)
-        }
-    }
     if (nrow(link_data) == 0) {
         .log_warn("No motif interactions with JASPAR matches remain after filtering. Skipping link track.")
         return(NULL)

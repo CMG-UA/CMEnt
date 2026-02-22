@@ -133,6 +133,9 @@ dmps <- suppressWarnings(dmpFinder(mvalues,
     type = "categorical",
     shrinkVar = TRUE
 ))
+# sort DMPs by location
+dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
+dmps <- dmps[rownames(dmp_locs), , drop = FALSE]
 dmps <- dmps[!is.na(dmps$pval), ]
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
@@ -143,7 +146,6 @@ dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
 
 sig_dmps <- dmps[dmps$pval_adj < 0.01 & abs(dmps$delta_beta) >= 0.05, ]
 cat(sprintf("Found %d significant DMPs (FDR < 0.01, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
-
 dmps_gr <- makeGRangesFromDataFrame(
     data.frame(
         chr = locs$chr,
@@ -160,13 +162,13 @@ names(dmps_gr) <- rownames(dmps)
 
 ## Method 1: DMRsegal
 
-```{r}
+```{r DMRsegal}
 DMRsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 if (!file.exists(DMRsegal_file)) {
     options("DMRsegal.verbose" = 1)
     options("DMRsegal.njobs" = 8)
-
-    dmrs_segal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
+    start_time <- Sys.time()
+    dmrs_dmrsegal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
         beta = beta_handler,
         seeds = sig_dmps,
         pheno = pheno,
@@ -181,18 +183,22 @@ if (!file.exists(DMRsegal_file)) {
         entanglement = "weak",
         rank_dmrs = TRUE
     ))
-    saveRDS(dmrs_segal, DMRsegal_file)
+    end_time <- Sys.time()
+    time_dmrsegal <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrsegal, time = time_dmrsegal), DMRsegal_file)
     rm(beta_handler)
 } else {
-    dmrs_segal <- readRDS(DMRsegal_file)
+    ret <- readRDS(DMRsegal_file)
+    dmrs_dmrsegal <- ret$dmrs
+    time_dmrsegal <- ret$time
 }
 
-cat(sprintf("DMRsegal: Found %d DMRs\n", length(dmrs_segal)))
+cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_dmrsegal), round(as.numeric(time_dmrsegal, units = "secs"))))
 ```
 
 ## Method 2: comb-p
 
-```{r}
+```{r comb-p}
 combp_file <- file.path(output_dir, "dmrs.combp.rds")
 
 run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
@@ -223,7 +229,6 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
     )
 
     output_prefix <- file.path(output_dir, "combp_output")
-
     cmd <- sprintf(
         "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.01 --region-filter-n 3 %s",
         seed, dist, output_prefix, bed_file
@@ -259,23 +264,28 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
         },
         error = function(e) {
             warning(sprintf("comb-p failed: %s", e$message))
-            return(GRanges())
+            GRanges()
         }
     )
 }
 
 if (!file.exists(combp_file)) {
+    start_time <- Sys.time()
     dmrs_combp <- run_combp(dmps_gr, output_dir)
-    saveRDS(dmrs_combp, combp_file)
+    end_time <- Sys.time()
+    time_combp <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_combp, time = time_combp), combp_file)
 } else {
-    dmrs_combp <- readRDS(combp_file)
+    ret <- readRDS(combp_file)
+    dmrs_combp <- ret$dmrs
+    time_combp <- ret$time
 }
 
-cat(sprintf("comb-p: Found %d DMRs\n", length(dmrs_combp)))
+cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(as.numeric(time_combp, units = "secs"))))
 ```
 
 ## Method 3: probeLasso
-```{r}
+```{r probeLasso}
 probeLasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
 
 run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
@@ -336,30 +346,27 @@ run_probeLasso_champ <- function(beta_mat, pheno, array_type = "450K") {
 }
 
 if (!file.exists(probeLasso_file)) {
+    start_time <- Sys.time()
     dmrs_probeLasso <- run_probeLasso_champ(beta_mat, pheno, array_type = "450K")
-    saveRDS(dmrs_probeLasso, probeLasso_file)
+    end_time <- Sys.time()
+    time_probeLasso <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_probeLasso, time = time_probeLasso), probeLasso_file)
 } else {
-    dmrs_probeLasso <- readRDS(probeLasso_file)
-    # Recompute stale cached empties produced when probeLasso dependencies were unavailable.
-    if (length(dmrs_probeLasso) == 0 &&
-        isTRUE(getOption("DMRsegal.probeLasso_rerun_if_empty", TRUE)) &&
-        requireNamespace("ChAMP", quietly = TRUE)) {
-        cat("probeLasso: cached result is empty, recomputing...\n")
-        dmrs_probeLasso <- run_probeLasso_champ(beta_mat, pheno, array_type = "450K")
-        saveRDS(dmrs_probeLasso, probeLasso_file)
-    }
+    ret <- readRDS(probeLasso_file)
+    dmrs_probeLasso <- ret$dmrs
+    time_probeLasso <- ret$time
 }
 
-cat(sprintf("probeLasso: Found %d DMRs\n", length(dmrs_probeLasso)))
+cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probeLasso), round(as.numeric(time_probeLasso, units = "secs"))))
 ```
 
 ## Method 4: DMRcate
 
-```{r}
+```{r dmrcate}
 dmrcate_file <- file.path(output_dir, "dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
-
+    start_time <- Sys.time()
     design <- model.matrix(~Sample_Group, data = pheno)
     colnames(design) <- c("(Intercept)", "cancer_vs_normal")
 
@@ -371,22 +378,26 @@ if (!file.exists(dmrcate_file)) {
 
     dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
     dmrs_dmrcate <- extractRanges(dmrcate_results, genome = "hg19")
-    saveRDS(dmrs_dmrcate, dmrcate_file)
+    end_time <- Sys.time()
+    time_dmrcate <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
 } else {
-    dmrs_dmrcate <- readRDS(dmrcate_file)
+    ret <- readRDS(dmrcate_file)
+    dmrs_dmrcate <- ret$dmrs
+    time_dmrcate <- ret$time
 }
 
-cat(sprintf("DMRcate: Found %d DMRs\n", length(dmrs_dmrcate)))
+cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
 ```
 
 ## Method 5: Bumphunter
 
-```{r}
+```{r bumphunter}
 bumphunter_file <- file.path(output_dir, "dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     library(doParallel)
-
+    start_time <- Sys.time()
     # Safer defaults for local/WSL rendering; override via options().
     bh_cores <- as.integer(getOption("DMRsegal.bumphunter_cores", 1L))
     bh_B <- as.integer(getOption("DMRsegal.bumphunter_B", 100L))
@@ -456,13 +467,16 @@ if (!file.exists(bumphunter_file)) {
         end.field = "end",
         keep.extra.columns = TRUE
     )
-
-    saveRDS(dmrs_bumphunter, bumphunter_file)
+    end_time <- Sys.time()
+    time_bumphunter <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_bumphunter, time = time_bumphunter), bumphunter_file)
 } else {
-    dmrs_bumphunter <- readRDS(bumphunter_file)
+    ret <- readRDS(bumphunter_file)
+    dmrs_bumphunter <- ret$dmrs
+    time_bumphunter <- ret$time
 }
 
-cat(sprintf("Bumphunter: Found %d DMRs\n", length(dmrs_bumphunter)))
+cat(sprintf("Bumphunter: Found %d DMRs in %d seconds\n", length(dmrs_bumphunter), round(as.numeric(time_bumphunter, units = "secs"))))
 ```
 
 ## Comparative Analysis
@@ -495,7 +509,7 @@ get_dmr_stats <- function(dmrs, method) {
 }
 
 stats_list <- list(
-    get_dmr_stats(dmrs_segal, "DMRsegal"),
+    get_dmr_stats(dmrs_dmrsegal, "DMRsegal"),
     get_dmr_stats(dmrs_combp, "comb-p"),
     get_dmr_stats(dmrs_probeLasso, "probeLasso"),
     get_dmr_stats(dmrs_dmrcate, "DMRcate"),
@@ -510,7 +524,7 @@ knitr::kable(results_comparison, digits = 2, caption = "Basic DMR Statistics Acr
 
 ```{r, results='asis'}
 methods_list <- list(
-    DMRsegal = dmrs_segal,
+    DMRsegal = dmrs_dmrsegal,
     `comb-p` = dmrs_combp,
     probeLasso = dmrs_probeLasso,
     DMRcate = dmrs_dmrcate,
@@ -1103,8 +1117,8 @@ if (length(consensus_3plus) > 0) {
 ## DMRsegal Ranking Quality Assessment
 
 ```{r}
-if ("rank" %in% names(mcols(dmrs_segal)) && length(dmrs_segal) > 10) {
-    dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$rank)]
+if ("rank" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
+    dmrs_segal_ranked <- dmrs_dmrsegal[order(mcols(dmrs_dmrsegal)$rank)]
 
     n_bins <- min(10, floor(length(dmrs_segal_ranked) / 5))
     bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)

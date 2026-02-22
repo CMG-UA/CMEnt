@@ -144,7 +144,7 @@ interaction_results <- computeDMRsInteraction(
     dmrs = motif_dmrs,
     genome = genome,
     array = array_type,
-    min_sim = 0.8,
+    min_similarity = 0.8,
     flank_size = 5,
     min_component_size = 2,
     query_components_with_jaspar = TRUE
@@ -220,7 +220,7 @@ tryCatch(
             genome = genome,
             array = array_type,
             sample_group_col = "Sample_Group",
-            min_sim = 0.8,
+            min_similarity = 0.8,
             flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 50,

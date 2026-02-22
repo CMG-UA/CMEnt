@@ -12,11 +12,12 @@ plotDMRsCircos(
   array = c("450K", "27K", "EPIC", "EPICv2"),
   sorted_locs = NULL,
   sample_group_col = "Sample_Group",
-  min_sim = 0.7,
+  min_similarity = 0.7,
   flank_size = 5,
   max_num_samples_per_group = 5,
   max_dmrs_per_chr = 10,
   max_cpgs_per_dmr = 5,
+  min_component_size = 2,
   max_interactions = 30,
   degenerate_resolution = 1e+06,
   output_file = NULL,
@@ -40,7 +41,7 @@ rownames matching beta column names (required for beta track).}
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
-\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
+\item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
 
 \item{flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
 

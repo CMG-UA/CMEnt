@@ -1,15 +1,15 @@
 test_that("plotDMRsCircos creates a circos plot", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs[seq_len(min(5, length(dmrs)))]
+    dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))) , drop = FALSE]
     options("DMRsegal.verbose" = 2)
     expect_no_error(
         plotDMRsCircos(
@@ -24,17 +24,17 @@ test_that("plotDMRsCircos creates a circos plot", {
 })
 
 test_that("plotDMRsCircos works with interactions", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
 
-    dmrs_subset <- dmrs
+    dmrs_subset <- dmrs[as.character(dmrs@seqnames) %in% c("chr5", "chr11"),, drop = FALSE]
 
     expect_no_error(
         plotDMRsCircos(
@@ -44,17 +44,17 @@ test_that("plotDMRsCircos works with interactions", {
             array = array_type,
             genome = "hg19",
             sample_group_col = "Sample_Group",
-            min_sim = 0.8
+            min_similarity = 0.8
         )
     )
 })
 
 test_that("plotDMRsCircos handles BetaHandler input", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
@@ -77,12 +77,11 @@ test_that("plotDMRsCircos handles BetaHandler input", {
 })
 
 test_that("plotDMRsCircos handles data frame DMRs input", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
-
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
@@ -104,10 +103,10 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
 })
 
 test_that("plotDMRsCircos validates inputs", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")

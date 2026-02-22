@@ -1,9 +1,3 @@
-.PWMPearson <- function(pwm1, pwm2) { # nolint
-    top <- colSums((pwm1 - 0.25) * (pwm2 - 0.25))
-    bottom <- sqrt(colSums((pwm1 - 0.25)^2) * colSums((pwm2 - 0.25)^2))
-    r <- 1 / ncol(pwm1) * sum((top / (bottom + 1e-10)))
-    r
-}
 .maxPWMCorr <- function(pwm1, pwm2) {
     widthMin <- min(ncol(pwm1), ncol(pwm2))
     n1 <- ncol(pwm1) - widthMin + 1L
@@ -295,7 +289,7 @@ extractDMRMotifs <- function(
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
-#' @param min_sim Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)
+#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
@@ -329,8 +323,11 @@ extractDMRMotifs <- function(
 #' )
 #' @export
 computeDMRsInteraction <- function(
-    dmrs, genome = "hg19", array = "450K", min_sim = getOption("DMRsegal.min_motif_similarity", 0.8), beta_locs = NULL, flank_size = 5,
-    find_components = TRUE, min_component_size = 2, query_components_with_jaspar = TRUE, plot.dir = NULL
+    dmrs, genome = "hg19", array = "450K",
+    min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
+    beta_locs = NULL, flank_size = 5,
+    find_components = TRUE, min_component_size = 2,
+    query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
@@ -343,7 +340,7 @@ computeDMRsInteraction <- function(
         to_show <- similarity_matrix
         diag(to_show) <- NA
         to_show[lower.tri(to_show)] <- NA
-        to_show[to_show < min_sim] <- NA
+        to_show[to_show < min_similarity] <- NA
         sim_melt <- reshape2::melt(to_show, na.rm = TRUE)
         colnames(sim_melt) <- c("DMR1", "DMR2", "Similarity")
         p <- ggplot2::ggplot(sim_melt, ggplot2::aes_string(x = "DMR1", y = "DMR2", fill = "Similarity")) +
@@ -354,7 +351,7 @@ computeDMRsInteraction <- function(
             ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
         ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
-    mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_sim)
+    mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_similarity)
     # remove diagonal
     diag(mask) <- FALSE
     interactions_df <- data.frame()
@@ -396,13 +393,13 @@ computeDMRsInteraction <- function(
             end2 = GenomicRanges::end(end_dmrs),
             sim = similarity_matrix[rowcol_df]
         )
-        interactions_df <- interactions_df[is.finite(interactions_df$sim) & interactions_df$sim >= min_sim, , drop = FALSE]
+        interactions_df <- interactions_df[is.finite(interactions_df$sim) & interactions_df$sim >= min_similarity, , drop = FALSE]
     }
 
     if (find_components) {
         # Components should represent undirected interaction connectivity, even when
         # interaction links are oriented by rank.
-        component_mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_sim)
+        component_mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_similarity)
         diag(component_mask) <- FALSE
         component_mask <- component_mask | t(component_mask)
         g1 <- igraph::graph_from_adjacency_matrix(component_mask, mode = "undirected", diag = FALSE)
@@ -441,7 +438,7 @@ computeDMRsInteraction <- function(
                 .log_info(
                     "Largest motif component spans ",
                     largest_component, "/", length(dmrs),
-                    " DMRs. This indicates broad motif similarity; consider a stricter min_sim.",
+                    " DMRs. This indicates broad motif similarity; consider a stricter min_similarity.",
                     level = 2
                 )
             }

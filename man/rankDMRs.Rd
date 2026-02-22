@@ -2,7 +2,7 @@
 % Please edit documentation in R/dmrs_ranking.R
 \name{rankDMRs}
 \alias{rankDMRs}
-\title{Rank DMRs Based on Classification Accuracy}
+\title{Rank DMRs Based on Classification Score}
 \usage{
 rankDMRs(
   dmrs,
@@ -31,17 +31,18 @@ rankDMRs(
 \item{sample_group_col}{Character. Column name in pheno containing sample group information. Default is "Sample_Group"}
 }
 \value{
-GRanges object with DMRs ordered by p-value and an additional metadata column:
+GRanges object with DMRs ordered by score and additional metadata columns:
 \itemize{
-\item accuracy: Cross-validated classification accuracy for the DMR
+\item score: Margin-sensitive cross-validated classification score for the DMR
+\item cv_accuracy: Raw cross-validated classification accuracy for the DMR
 }
 }
 \description{
 Ranks Differentially Methylated Regions (DMRs) based on their ability to
 discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 classification. For each DMR, this function performs stratified k-fold cross-prediction
-using an RBF kernel SVM to compute classification accuracy, which serves as a measure
-of the DMR's discriminative power.
+using an RBF kernel SVM and computes a margin-sensitive classification score based on
+decision values, which serves as a measure of the DMR's discriminative power.
 }
 \details{
 The function uses stratified k-fold cross-prediction to ensure balanced representation
@@ -49,9 +50,10 @@ of sample groups in each fold. The number of folds can be controlled using the
 option "DMRsegal.ranking_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 SVM is trained on the beta values of CpG sites within each DMR.
 
-Classification accuracy represents how well the methylation pattern of a DMR can
-distinguish between sample groups. Higher accuracy values indicate stronger
-discriminative power and potentially more biologically relevant regions.
+The \code{score} combines classification correctness and margin confidence,
+making it more sensitive than plain cross-validated accuracy when many DMRs
+classify perfectly. The \code{cv_accuracy} column stores the raw cross-validated
+accuracy for reference.
 }
 \examples{
 # Load example data

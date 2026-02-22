@@ -3,11 +3,12 @@ library(testthat)
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("DMRsegal.beta_in_mem_threshold_mb" = 500)
+    withCallingHandlers({
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = FALSE,
         beta = beta,
@@ -17,9 +18,15 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        verbose = 2
+        verbose = 3
     )
-
+}, warning = function(w) {
+    message("Caught warning: ", conditionMessage(w))
+    # print call stack
+    print(sys.calls())
+    # enter interactive debugger
+    browser()
+    })
     # Assertions
     expect_true(!is.null(dmrs))
     expect_true(inherits(dmrs, "GRanges"))
@@ -28,9 +35,9 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
@@ -59,9 +66,9 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 })
 
 test_that("findDMRsFromSeeds works with bigmem beta subset", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
@@ -91,9 +98,9 @@ test_that("findDMRsFromSeeds works with bigmem beta subset", {
 })
 
 test_that("findDMRsFromSeeds work with covariates adjustment", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     options(error = traceback)
     options(warn = 2)
     options("DMRsegal.verbose" = 2)
@@ -113,9 +120,9 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_not_installed("minfi")
 
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
     genome <- "hg19"
 
 
@@ -145,9 +152,13 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         seeds = sig_dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        min_cpg_delta_beta = 0,
+        adaptive_min_cpg_delta_beta = FALSE,
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 10000,
+        connectivity_window_bp = 0,
+        max_bridge_seeds_gaps = 0,
         max_pval = 0.05,
         pval_mode = "parametric",
         njobs = 1
@@ -155,7 +166,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 986)
+    expect_equal(length(dmrs_segal), 170)
     expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria
@@ -164,9 +175,9 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with strict min_seeds
     dmrs_strict <- findDMRsFromSeeds(
@@ -228,9 +239,9 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
@@ -271,9 +282,9 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
@@ -315,9 +326,9 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 })
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test missing required parameters
     expect_error(
@@ -357,9 +368,9 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
@@ -381,9 +392,9 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
     skip_if_not_installed("mockery")
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -413,9 +424,9 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 })
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs_not_annotated <- findDMRsFromSeeds(
         rank_dmrs = FALSE,

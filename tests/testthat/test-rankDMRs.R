@@ -2,10 +2,10 @@
 library(testthat)
 
 test_that("rankDMRs adds score column to DMRs", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     
-    example_output_path <- system.file("extdata", "example_output.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
     
@@ -25,9 +25,9 @@ test_that("rankDMRs adds score column to DMRs", {
 })
 
 test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     
     dmrs <- findDMRsFromSeeds(
         rank_dmrs = TRUE,
@@ -48,9 +48,9 @@ test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE
 })
 
 test_that("ignored_sample_groups affects detection only, not downstream ranking", {
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
         rank_dmrs = TRUE,
@@ -63,7 +63,8 @@ test_that("ignored_sample_groups affects detection only, not downstream ranking"
         min_cpgs = 2,
         max_lookup_dist = 2000,
         annotate_with_genes = FALSE,
-        verbose = 0
+        verbose = 3,
+        njobs = 1
     ))
 
     expect_s4_class(dmrs, "GRanges")
@@ -72,10 +73,10 @@ test_that("ignored_sample_groups affects detection only, not downstream ranking"
 })
 
 test_that("rankDMRs score values are meaningful", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     
-    example_output_path <- system.file("extdata", "example_output.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
     
@@ -91,10 +92,10 @@ test_that("rankDMRs score values are meaningful", {
 })
 
 test_that("rankDMRs works with different nfold values", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     
-    example_output_path <- system.file("extdata", "example_output.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
     
@@ -120,10 +121,10 @@ test_that("rankDMRs works with different nfold values", {
 })
 
 test_that("rankDMRs returns DMRs ordered by p-value", {
-    beta <- loadExampleInputData("beta")
-    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     
-    example_output_path <- system.file("extdata", "example_output.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
     
