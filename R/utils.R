@@ -1488,79 +1488,163 @@ orderByLoc <- function(x,
     stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
 }
 
+#' @keywords internal
+#' @noRd
+.splitCsvValues <- function(x) {
+    if (length(x) == 0 || is.null(x)) {
+        return(character(0))
+    }
+    x <- x[[1]]
+    if (is.na(x) || !nzchar(as.character(x))) {
+        return(character(0))
+    }
+    vals <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+    vals <- trimws(vals)
+    vals <- vals[nzchar(vals)]
+    vals[!is.na(vals)]
+}
 
-#' Get Supporting CpG Sites for DMRs
-#'
-#' @description For each Differentially Methylated Region (DMR) in a GRanges object,
-#' retrieves the CpG sites that support the DMR, including upstream and downstream
-#' CpGs as well as the CpGs within the DMR itself. The function allows for limiting
-#' the number of supporting CpGs on each side of the DMR.
-#' @param dmrs GRanges object containing DMRs with metadata columns:
-#' \itemize{
-#'   \item start_cpg_ind: ID of the first CpG in the DMR, index in the processed beta file
-#'   \item end_cpg_ind: ID of the last CpG in the DMR, index in the processed beta file
-#'   \item seeds_inds: Comma-separated string of CpG IDs within the DMR, index in the processed beta file
-#' }
-#' @param max_sup_cpgs_per_dmr_side Integer. Maximum number of supporting CpGs to retrieve
-#'   upstream and downstream of each DMR (default: NULL, meaning no limit)
-#' @param separate_by_section Logical. If TRUE, returns a list with separate entries for upstream,
-#'   downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)
-#' @param use_absolute_indices Logical. If TRUE, uses absolute indices from metadata columns
-#'   (start_cpg_ind_abs, end_cpg_ind_abs, seeds_inds_abs). If FALSE, uses relative indices
-#'   (start_cpg_ind, end_cpg_ind, seeds_inds) (default: TRUE)
-#' @return A list where each element corresponds to a DMR and contains:
-#' \itemize{
-#'   \item upstream: Vector of upstream supporting CpG IDs or indices
-#'   \item downstream: Vector of downstream supporting CpG IDs or indices
-#'   \item seeds: Vector of CpG IDs or indices within the DMR
-#' }
-#' @examples
-#' # Assume dmrs is a GRanges object with appropriate metadata columns
-#' available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
-#' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
-#' @export
-getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_by_section = TRUE, use_absolute_indices = TRUE) {
-    if (use_absolute_indices) {
-        cpg_starts <- S4Vectors::mcols(dmrs)$start_cpg_ind_abs
-        seeds_inds <- S4Vectors::mcols(dmrs)$seeds_inds_abs
-        cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind_abs
+
+#' @keywords internal
+#' @noRd
+.splitCsvIndices <- function(x) {
+    vals <- .splitCsvValues(x)
+    if (length(vals) == 0) {
+        return(integer(0))
+    }
+    suppressWarnings({
+        inds <- as.integer(vals)
+    })
+    inds[!is.na(inds)]
+}
+
+
+#' @keywords internal
+#' @noRd
+.downsampleFlankIndices <- function(indices, max_sup_cpgs_per_dmr_side) {
+    if (is.null(max_sup_cpgs_per_dmr_side) || max_sup_cpgs_per_dmr_side <= 0) {
+        return(indices)
+    }
+    if (length(indices) <= max_sup_cpgs_per_dmr_side) {
+        return(indices)
+    }
+    step <- ceiling(length(indices) / max_sup_cpgs_per_dmr_side)
+    indices[seq.int(1L, length(indices), by = step)]
+}
+
+
+#' @keywords internal
+#' @noRd
+.getSupportingSitesFromColumns <- function(dmrs,
+                                           max_sup_cpgs_per_dmr_side = NULL,
+                                           separate_by_section = TRUE,
+                                           use_absolute_indices = TRUE,
+                                           beta_locs = NULL) {
+    md <- if (inherits(dmrs, "GRanges")) {
+        as.data.frame(S4Vectors::mcols(dmrs), stringsAsFactors = FALSE)
+    } else if (is.data.frame(dmrs)) {
+        dmrs
     } else {
-        cpg_starts <- mcols(dmrs)$start_cpg_ind
-        seeds_inds <- mcols(dmrs)$seeds_inds
-        cpg_ends <- mcols(dmrs)$end_cpg_ind
+        stop("dmrs must be a GRanges or data.frame object")
     }
-    seeds_inds <- lapply(seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
-    dmrs_cpgs <- list()
-    for (i in seq_along(dmrs)) {
-        start_cpg_ind <- cpg_starts[[i]]
-        dmr_seeds_inds <- seeds_inds[[i]]
-        end_cpg_ind <- cpg_ends[[i]]
-        start_seed_ind <- seeds_inds[[i]][1]
-        end_seed_ind <- seeds_inds[[i]][length(seeds_inds[[i]])]
-        start_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (start_seed_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
-            start_step <- ceiling((start_seed_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
-        }
-        end_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_seed_ind) > max_sup_cpgs_per_dmr_side) {
-            end_step <- ceiling((end_cpg_ind - end_seed_ind) / max_sup_cpgs_per_dmr_side)
-        }
-        if (start_cpg_ind < start_seed_ind) {
-            upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_seed_ind - 1, by = start_step)
-        } else {
-            upstream_sup_cpgs_inds <- c()
-        }
-        if (end_seed_ind < end_cpg_ind) {
-            downstream_sup_cpgs_inds <- seq(end_seed_ind + 1, end_cpg_ind, by = end_step)
-        } else {
-            downstream_sup_cpgs_inds <- c()
-        }
-        dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
+    n_dmrs <- nrow(md)
+    if (n_dmrs == 0) {
+        return(list())
+    }
 
-        if (!separate_by_section) {
-            dmrs_cpgs[[i]] <- unlist(dmrs_cpgs[[i]])
+    get_col <- function(col_name) {
+        if (col_name %in% colnames(md)) {
+            md[[col_name]]
+        } else {
+            rep(NA_character_, n_dmrs)
         }
     }
+
+    if (use_absolute_indices) {
+        start_col <- "start_cpg_ind_abs"
+        end_col <- "end_cpg_ind_abs"
+        seed_inds_col <- "seeds_inds_abs"
+        upstream_inds_col <- "upstream_cpgs_inds_abs"
+        downstream_inds_col <- "downstream_cpgs_inds_abs"
+    } else {
+        start_col <- "start_cpg_ind"
+        end_col <- "end_cpg_ind"
+        seed_inds_col <- "seeds_inds"
+        upstream_inds_col <- "upstream_cpgs_inds"
+        downstream_inds_col <- "downstream_cpgs_inds"
+    }
+
+    starts <- suppressWarnings(as.integer(get_col(start_col)))
+    ends <- suppressWarnings(as.integer(get_col(end_col)))
+
+    seeds_inds <- lapply(get_col(seed_inds_col), .splitCsvIndices)
+    upstream_inds <- lapply(get_col(upstream_inds_col), .splitCsvIndices)
+    downstream_inds <- lapply(get_col(downstream_inds_col), .splitCsvIndices)
+
+    seeds_ids <- get_col("seeds")
+    upstream_ids <- get_col("upstream_cpgs")
+    downstream_ids <- get_col("downstream_cpgs")
+
+    map_ids_to_indices <- function(ids) {
+        if (is.null(beta_locs)) {
+            return(integer(0))
+        }
+        ids <- .splitCsvValues(ids)
+        if (length(ids) == 0) {
+            return(integer(0))
+        }
+        inds <- suppressWarnings(as.integer(idToGenomicLocsIndex(ids, beta_locs)))
+        inds[!is.na(inds)]
+    }
+
+    dmrs_cpgs <- vector("list", n_dmrs)
+    for (i in seq_len(n_dmrs)) {
+        seed_idx <- seeds_inds[[i]]
+        if (length(seed_idx) == 0) {
+            seed_idx <- map_ids_to_indices(seeds_ids[[i]])
+        }
+        if (length(seed_idx) == 0 && !is.na(starts[[i]]) && !is.na(ends[[i]]) && starts[[i]] <= ends[[i]]) {
+            seed_idx <- seq.int(starts[[i]], ends[[i]])
+        }
+
+        upstream_idx <- upstream_inds[[i]]
+        if (length(upstream_idx) == 0) {
+            upstream_idx <- map_ids_to_indices(upstream_ids[[i]])
+        }
+        downstream_idx <- downstream_inds[[i]]
+        if (length(downstream_idx) == 0) {
+            downstream_idx <- map_ids_to_indices(downstream_ids[[i]])
+        }
+
+        if (length(seed_idx) > 0) {
+            start_seed <- seed_idx[[1]]
+            end_seed <- seed_idx[[length(seed_idx)]]
+            if (length(upstream_idx) == 0 && !is.na(starts[[i]]) && starts[[i]] < start_seed) {
+                upstream_idx <- seq.int(starts[[i]], start_seed - 1L)
+            }
+            if (length(downstream_idx) == 0 && !is.na(ends[[i]]) && end_seed < ends[[i]]) {
+                downstream_idx <- seq.int(end_seed + 1L, ends[[i]])
+            }
+        }
+
+        upstream_idx <- as.integer(upstream_idx[!is.na(upstream_idx)])
+        seed_idx <- as.integer(seed_idx[!is.na(seed_idx)])
+        downstream_idx <- as.integer(downstream_idx[!is.na(downstream_idx)])
+
+        upstream_idx <- .downsampleFlankIndices(upstream_idx, max_sup_cpgs_per_dmr_side)
+        downstream_idx <- .downsampleFlankIndices(downstream_idx, max_sup_cpgs_per_dmr_side)
+
+        if (separate_by_section) {
+            dmrs_cpgs[[i]] <- list(
+                upstream = upstream_idx,
+                seeds = seed_idx,
+                downstream = downstream_idx
+            )
+        } else {
+            dmrs_cpgs[[i]] <- as.integer(unique(c(upstream_idx, seed_idx, downstream_idx)))
+        }
+    }
+
     dmrs_cpgs
 }
 

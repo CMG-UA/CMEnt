@@ -53,25 +53,26 @@ if (getRversion() >= "2.15.1") {
 
     # Extract DMR information
 
-    supporting_sites <- getSupportingSites(
+    supporting_sites <- .getSupportingSitesFromColumns(
         dmr,
         max_sup_cpgs_per_dmr_side = NULL,
         separate_by_section = TRUE,
-        use_absolute_indices = use_abs
+        use_absolute_indices = use_abs,
+        beta_locs = beta_locs
     )
     upstream_sup_cpgs_inds <- supporting_sites[[1]]$upstream
     downstream_sup_cpgs_inds <- supporting_sites[[1]]$downstream
-    upstream_sup_cpgs <- beta_locs[upstream_sup_cpgs_inds, ]
-    downstream_sup_cpgs <- beta_locs[downstream_sup_cpgs_inds, ]
+    upstream_sup_cpgs <- beta_locs[upstream_sup_cpgs_inds, , drop = FALSE]
+    downstream_sup_cpgs <- beta_locs[downstream_sup_cpgs_inds, , drop = FALSE]
     seeds_inds <- supporting_sites[[1]]$seeds
     start_seed_ind <- min(seeds_inds)
     end_seed_ind <- max(seeds_inds)
-    if (is.null(upstream_sup_cpgs_inds)) {
+    if (length(upstream_sup_cpgs_inds) == 0) {
         start_cpg_ind <- start_seed_ind
     } else {
         start_cpg_ind <- min(upstream_sup_cpgs_inds)
     }
-    if (is.null(downstream_sup_cpgs_inds)) {
+    if (length(downstream_sup_cpgs_inds) == 0) {
         end_cpg_ind <- end_seed_ind
     } else {
         end_cpg_ind <- max(downstream_sup_cpgs_inds)
@@ -1591,13 +1592,18 @@ plotDMRsCircos <- function(dmrs,
     }
     # Order pheno by sample group
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    dmrs_cpgs_list <- getSupportingSites(
+    dmrs_cpgs_list <- .getSupportingSitesFromColumns(
         dmrs,
         max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
         separate_by_section = FALSE,
-        use_absolute_indices = FALSE
+        use_absolute_indices = FALSE,
+        beta_locs = beta_handler$getBetaLocs()
     )
-    dmrs_cpgs_inds <- unlist(dmrs_cpgs_list)
+    dmrs_cpgs_inds <- unique(unlist(dmrs_cpgs_list, use.names = FALSE))
+    if (length(dmrs_cpgs_inds) == 0) {
+        .log_warn("No supporting CpGs available for selected DMRs. Skipping heatmap track.")
+        return(list(heatmap_df = NULL, reduced_pheno = NULL))
+    }
 
 
     shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]

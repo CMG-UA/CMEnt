@@ -215,7 +215,12 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1
     )
-    dmrs_cpgs_inds <- getSupportingSites(dmrs, separate_by_section = FALSE, use_absolute_indices = use_abs)
+    dmrs_cpgs_inds <- .getSupportingSitesFromColumns(
+        dmrs,
+        separate_by_section = FALSE,
+        use_absolute_indices = use_abs,
+        beta_locs = beta_locs
+    )
     start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, beta_locs)
     end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, beta_locs)
     beta_locs_start <- beta_locs[, "start"]

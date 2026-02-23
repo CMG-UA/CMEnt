@@ -194,7 +194,7 @@
             next
         }
         connected[gap_start:gap_end] <- TRUE
-        reasons[gap_start:gap_end] <- ""
+        reasons[gap_start:gap_end] <- "bridged"
         bridged <- bridged + gap_len
     }
     corr_ret$connected <- connected
@@ -754,10 +754,48 @@
         dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
         dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
     }
-    dmr["upstream_cpg_expansion"] <- dmr_start_ind - ustream_exp
+    to_cpg_ids <- function(local_inds) {
+        if (length(local_inds) == 0) {
+            return(character(0))
+        }
+        if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
+            return(as.character(local_inds + chr_start_base))
+        }
+        rownames(chr_locs)[local_inds]
+    }
+
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
-    dmr["downstream_cpg_expansion"] <- dstream_exp - dmr_end_ind
+    upstream_candidate <- if (ustream_exp <= (dmr_start_ind - 1L)) {
+        seq.int(ustream_exp, dmr_start_ind - 1L)
+    } else {
+        integer(0)
+    }
+    if (length(upstream_candidate) > 0) {
+        bridged_upstream_m <- chr_array[upstream_candidate, "connection_reason"] == "bridged"
+        upstream_kept <- upstream_candidate[!bridged_upstream_m]
+    } else {
+        upstream_kept <- integer(0)
+    }
+    dmr["upstream_cpgs_inds"] <- paste(upstream_kept + chr_start_base, collapse = ",")
+    dmr["upstream_cpgs"] <- paste(to_cpg_ids(upstream_kept), collapse = ",")
+    dmr["upstream_cpg_expansion"] <- length(upstream_kept)
+
     dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
+    downstream_candidate <- if ((dmr_end_ind + 1L) <= dstream_exp) {
+        seq.int(dmr_end_ind + 1L, dstream_exp)
+    } else {
+        integer(0)
+    }
+    if (length(downstream_candidate) > 0) {
+        bridged_downstream_m <- chr_array[downstream_candidate, "connection_reason"] == "bridged"
+        downstream_kept <- downstream_candidate[!bridged_downstream_m]
+    } else {
+        downstream_kept <- integer(0)
+    }
+    dmr["downstream_cpgs_inds"] <- paste(downstream_kept + chr_start_base, collapse = ",")
+    dmr["downstream_cpgs"] <- paste(to_cpg_ids(downstream_kept), collapse = ",")
+    dmr["downstream_cpg_expansion"] <- length(downstream_kept)
+
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 4)
     dmr
 }
@@ -1691,6 +1729,9 @@ findDMRsFromSeeds <- function(
                     single_seeds <- single_seeds + 1
                 }
                 dmr_seeds_inds <- seq.int(start_seed_ind, end_seed_ind)
+                bridged_inds <- which(corr_ret$reason[dmr_seeds_inds] == "bridged")
+                bridged_inds <- dmr_seeds_inds[bridged_inds]
+                dmr_seeds_inds <- setdiff(dmr_seeds_inds, bridged_inds)
                 if (end_seed_ind == start_seed_ind) {
                     connection_corr_pval <- NA
                 } else {
@@ -2063,21 +2104,45 @@ findDMRsFromSeeds <- function(
         agg_df[i, "end_seed"] <- cols_vals$end_seed[[length(inds)]]
         agg_df[i, "start_seed_pos"] <- cols_vals$start_seed_pos[[1]]
         agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[length(inds)]]
-        agg_seeds <- unique(unlist(strsplit(cols_vals$seeds, ",")))
+        agg_seeds <- unique(unlist(lapply(cols_vals$seeds, .splitCsvValues), use.names = FALSE))
         agg_df[i, "seeds"] <- paste(agg_seeds, collapse = ",")
-        agg_df[i, "seeds_inds"] <- paste(sort(as.integer(unique(unlist(strsplit(cols_vals$seeds_inds, ","))))), collapse = ",")
         agg_df[i, "seeds_num"] <- length(agg_seeds)
+        agg_seeds_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$seeds_inds, .splitCsvValues), use.names = FALSE)))
+        agg_seeds_inds <- sort(unique(agg_seeds_inds[!is.na(agg_seeds_inds)]))
+        agg_df[i, "seeds_inds"] <- paste(agg_seeds_inds, collapse = ",")
         agg_df[i, "connection_corr_pval"] <- aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE)
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
         agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
         agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
+        agg_upstream_cpgs <- unique(unlist(lapply(cols_vals$upstream_cpgs, .splitCsvValues), use.names = FALSE))
         agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
+        agg_df[i, "upstream_cpgs"] <- paste(agg_upstream_cpgs, collapse = ",")
+        agg_upstream_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$upstream_cpgs_inds, .splitCsvValues), use.names = FALSE)))
+        agg_upstream_inds <- sort(unique(agg_upstream_inds[!is.na(agg_upstream_inds)]))
+        agg_df[i, "upstream_cpgs_inds"] <- paste(agg_upstream_inds, collapse = ",")
         agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
+        agg_downsteam_cpgs <- unique(unlist(lapply(cols_vals$downstream_cpgs, .splitCsvValues), use.names = FALSE))
+        agg_df[i, "downstream_cpgs"] <- paste(agg_downsteam_cpgs, collapse = ",")
+        agg_downstream_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$downstream_cpgs_inds, .splitCsvValues), use.names = FALSE)))
+        agg_downstream_inds <- sort(unique(agg_downstream_inds[!is.na(agg_downstream_inds)]))
+        agg_df[i, "downstream_cpgs_inds"] <- paste(agg_downstream_inds, collapse = ",")
         agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
+    agg_df[, "cpgs"] <- apply(agg_df[, c("seeds", "upstream_cpgs", "downstream_cpgs")], 1, function(x) {
+        vals <- unique(unlist(lapply(x, .splitCsvValues), use.names = FALSE))
+        paste(vals, collapse = ",")
+    })
+    agg_df[, "supporting_cpgs_num"] <- vapply(agg_df$cpgs, function(x) {
+        length(.splitCsvValues(x))
+    }, integer(1))
     agg_df[, "cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
+    agg_df[, "cpgs_inds"] <- apply(agg_df[, c("seeds_inds", "upstream_cpgs_inds", "downstream_cpgs_inds")], 1, function(x) {
+        vals <- suppressWarnings(as.integer(unlist(lapply(x, .splitCsvValues), use.names = FALSE)))
+        vals <- sort(unique(vals[!is.na(vals)]))
+        paste(vals, collapse = ",")
+    })
     agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
@@ -2114,7 +2179,7 @@ findDMRsFromSeeds <- function(
             min_seeds,
             " supporting seeds and ",
             min_cpgs,
-            " supporting CpGs.",
+            " CpGs.",
             level = 1
         )
     } else {
@@ -2123,16 +2188,16 @@ findDMRsFromSeeds <- function(
     filtered_dmrs <- as.data.frame(filtered_dmrs_ranges)
     colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
 
-
-    filtered_dmrs$cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
     array_based <- !is.null(array)
+    underlying_cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
+
     if (array_based && min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
         filtered_dmrs$cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
 
-        filtered_dmrs[filtered_dmrs$cpgs_num == 0, "cpgs_num"] <- 1
+        underlying_cpgs_num[underlying_cpgs_num == 0] <- 1
 
-        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
+        filtered_dmrs$seeds_num_adj <- ceiling(underlying_cpgs_num / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
 
         .log_success("CpG content calculated.", level = 2)
         adj_filtered_dmrs <- filtered_dmrs[
@@ -2259,6 +2324,33 @@ findDMRsFromSeeds <- function(
         end_cpgs <- as.integer(annotated_dmrs$end_cpg)
         annotated_dmrs$start_cpg <- paste0(chr_levels[beta_locs[start_cpgs, "chr"]], ":", beta_locs[start_cpgs, "start"])
         annotated_dmrs$end_cpg <- paste0(chr_levels[beta_locs[end_cpgs, "chr"]], ":", beta_locs[end_cpgs, "start"])
+        annotated_dmrs$upstream_cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
+            cpgs <- annotated_dmrs$upstream_cpgs[i]
+            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
+            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
+            if (length(cpg_inds) == 0) {
+                return("")
+            }
+            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
+        })
+        annotated_dmrs$downstream_cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
+            cpgs <- annotated_dmrs$downstream_cpgs[i]
+            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
+            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
+            if (length(cpg_inds) == 0) {
+                return("")
+            }
+            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
+        })
+        annotated_dmrs$cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
+            cpgs <- annotated_dmrs$cpgs[i]
+            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
+            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
+            if (length(cpg_inds) == 0) {
+                return("")
+            }
+            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
+        })
         annotated_dmrs$tmp_id <- seq_len(nrow(annotated_dmrs))
         annotated_dmrs$seeds_unlisted <- sapply(annotated_dmrs$seeds, function(seed_ids) {
             as.integer(unlist(strsplit(seed_ids, ",")))

@@ -140,7 +140,12 @@ rankDMRs <- function(
         )
     }
     pheno <- pheno[beta_col_names, , drop = FALSE]
-    supporting_sites <- getSupportingSites(dmrs, use_absolute_indices = FALSE, separate_by_section = FALSE)
+    supporting_sites <- .getSupportingSitesFromColumns(
+        dmrs,
+        use_absolute_indices = FALSE,
+        separate_by_section = FALSE,
+        beta_locs = beta_handler$getBetaLocs()
+    )
     if (! "__casecontrol__" %in% colnames(pheno)) {
         pheno[, "__casecontrol__"] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
