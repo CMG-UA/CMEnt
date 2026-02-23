@@ -508,14 +508,14 @@ if (getRversion() >= "2.15.1") {
     q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
     if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
         q <- sort(c(q[1], 0.5, q[2]))
-        coloring = ggplot2::scale_fill_gradientn(
+        coloring <- ggplot2::scale_fill_gradientn(
             colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
             breaks = signif(q, digits = 2),
             limits = beta_limits,
             name = "\u03b2-values"
         )
     } else if (beta_limits[2] <= 0.5) {
-        coloring = ggplot2::scale_fill_gradient(
+        coloring <- ggplot2::scale_fill_gradient(
             low = "#2b83ba",
             high = "#f7f7f7",
             breaks = signif(q, digits = 2),
@@ -523,7 +523,7 @@ if (getRversion() >= "2.15.1") {
             name = "\u03b2-values"
         )
     } else {
-        coloring = ggplot2::scale_fill_gradient(
+        coloring <- ggplot2::scale_fill_gradient(
             low = "#f7f7f7",
             high = "#d7191c",
             breaks = signif(q, digits = 2),
@@ -1248,13 +1248,14 @@ plotDMR <- function(dmrs,
                 return(NULL)
             }
             overlap <- chr_dmrs[S4Vectors::queryHits(overlaps)]
-            new_seqlevel <- sprintf("%s:%d-%d",
+            new_seqlevel <- sprintf(
+                "%s:%d-%d",
                 region_df$chr[i],
                 region_df$start[i],
                 region_df$end[i]
             )
             names(new_seqlevel) <- chr
-            overlap  <-  GenomeInfoDb::renameSeqlevels(overlap, new_seqlevel)
+            overlap <- GenomeInfoDb::renameSeqlevels(overlap, new_seqlevel)
             overlap
         })
         ret <- suppressWarnings(do.call(c, ret)) # we know the seqlevels differ
@@ -1356,11 +1357,12 @@ plotDMR <- function(dmrs,
             if (nrow(overlap) == 0) {
                 return(NULL)
             }
-            overlap$V1 <-  sprintf("%s:%d-%d",
+            overlap$V1 <- sprintf(
+                "%s:%d-%d",
                 region_df$chr[i],
                 reg_start,
                 reg_end
-            ) 
+            )
             overlap$V2 <- pmax(overlap$V2, reg_start)
             overlap$V3 <- pmin(overlap$V3, reg_end)
             overlap[overlap$V2 < overlap$V3, , drop = FALSE]
@@ -1516,7 +1518,7 @@ plotDMRsCircos <- function(dmrs,
         stop("unmatched_interaction_color must be a single non-empty color string.")
     }
     if (!is.numeric(legend_width_ratio) || length(legend_width_ratio) != 1 || is.na(legend_width_ratio) ||
-        legend_width_ratio <= 0.05 || legend_width_ratio >= 0.80) {
+            legend_width_ratio <= 0.05 || legend_width_ratio >= 0.80) {
         stop("legend_width_ratio must be a single numeric value in (0.05, 0.80).")
     }
 
@@ -1534,7 +1536,7 @@ plotDMRsCircos <- function(dmrs,
     cytoband <- .getCytobandData(genome)
 
     region_df <- .normalizeCircosRegion(region, cytoband)
-    # if region_df is provided, the following function will result in dmrs with modified seqnames in the form "chr:start-end" to represent the region-based sectors. 
+    # if region_df is provided, the following function will result in dmrs with modified seqnames in the form "chr:start-end" to represent the region-based sectors.
     dmrs <- .filterDMRsByScopeForCircos(dmrs, chromosomes = requested_chrs, region_df = region_df)
     if (length(dmrs) == 0) {
         stop("No DMRs remain after applying chromosome/region filters.")
@@ -1544,7 +1546,9 @@ plotDMRsCircos <- function(dmrs,
 
     if (!is.null(region_df)) {
         region_df <- region_df[
-            sprintf("%s:%d-%d", region_df$chr, region_df$start, region_df$end) %in% unique_chrs, , drop = FALSE]
+            sprintf("%s:%d-%d", region_df$chr, region_df$start, region_df$end) %in% unique_chrs, ,
+            drop = FALSE
+        ]
         if (nrow(region_df) == 0) {
             stop("No region entries overlap the selected chromosomes/DMRs.")
         }
@@ -1575,7 +1579,7 @@ plotDMRsCircos <- function(dmrs,
         # Also pass the region_df to filter beta_locs to ensure only probes within the specified region are included, and to align with the modified chromosome naming in dmrs.
         beta_locs <- as.data.frame(.filterDMRsByScopeForCircos(makeGRangesFromDataFrame(beta_locs), chromosomes = requested_chrs, region_df = region_df))
         colnames(beta_locs)[colnames(beta_locs) == "seqnames"] <- "chr"
-        beta_locs <- beta_locs[-c(4,5)]
+        beta_locs <- beta_locs[-c(4, 5)]
     }
     .log_step("Preparing data for Circos plot...")
 
@@ -1587,7 +1591,7 @@ plotDMRsCircos <- function(dmrs,
 
     # This as well modifies the chromosome names in the cytoband data to match those in dmrs if region_df is provided, ensuring proper alignment of ideogram sectors with the DMRs.
     cytoband_subset <- .subsetCytobandForCircos(cytoband, unique_chrs, region_df = region_df)
-    
+
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
@@ -1598,7 +1602,7 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Preparing heatmap data...", level = 2)
-    
+
     heatmap_data <- .prepareCircosHeatmapData(
         heatmap_dmrs, beta_handler, pheno, sample_group_col,
         max_cpgs_per_dmr, max_num_samples_per_group
@@ -1659,7 +1663,7 @@ plotDMRsCircos <- function(dmrs,
     link_legend <- NULL
     use_manual_init <- FALSE
     if (!is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
-        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"), tickLabelsStartFromZero  = FALSE)
+        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"), tickLabelsStartFromZero = FALSE)
     } else {
         circlize::circos.initializeWithIdeogram(species = genome, chromosome.index = unique_chrs, plotType = c("labels", "axis"))
     }

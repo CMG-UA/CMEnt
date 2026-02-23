@@ -984,7 +984,7 @@ if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
         s <- (i - 1) * bin_size + 1
         e <- min(i * bin_size, length(dmrs_segal_ranked))
         bin_dmrs <- dmrs_segal_ranked[s:e]
-        tp_bin <- sum(width(subsetByOverlaps(bin_dmrs, truth_dmrs, ignore.strand = TRUE))) /sum(width(bin_dmrs))
+        tp_bin <- sum(width(subsetByOverlaps(bin_dmrs, truth_dmrs, ignore.strand = TRUE))) / sum(width(bin_dmrs))
         data.frame(
             Rank_Bin = i,
             DMRs_in_Bin = length(bin_dmrs),
