@@ -1,6 +1,6 @@
 # Avoid NSE warnings from R CMD check for ggplot2 aes()
 if (getRversion() >= "2.15.1") {
-    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start"))
+    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position", "score", "region_class", "chr"))
 }
 
 #' Plot DMR Structure with seeds and Extended CpGs
@@ -1023,6 +1023,254 @@ plotDMR <- function(dmrs,
     filtered_dmrs
 }
 
+.hasNonEmptyString <- function(x) {
+    x <- as.character(x)
+    !is.na(x) & nzchar(trimws(x))
+}
+
+.normalizeCircosRegion <- function(region) {
+    if (is.null(region)) {
+        return(NULL)
+    }
+
+    region_df <- NULL
+    if (inherits(region, "GRanges")) {
+        if (length(region) == 0) {
+            return(NULL)
+        }
+        region_df <- data.frame(
+            chr = as.character(GenomeInfoDb::seqnames(region)),
+            start = GenomicRanges::start(region),
+            end = GenomicRanges::end(region),
+            stringsAsFactors = FALSE
+        )
+    } else if (is.character(region) && length(region) == 1) {
+        clean <- gsub(",", "", trimws(region))
+        m <- regexec("^([^:]+):(\\d+)-(\\d+)$", clean)
+        parsed <- regmatches(clean, m)[[1]]
+        if (length(parsed) != 4) {
+            stop("region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000').")
+        }
+        region_df <- data.frame(
+            chr = parsed[2],
+            start = as.numeric(parsed[3]),
+            end = as.numeric(parsed[4]),
+            stringsAsFactors = FALSE
+        )
+    } else if (is.data.frame(region)) {
+        req_cols <- c("chr", "start", "end")
+        if (!all(req_cols %in% colnames(region))) {
+            stop("region data frame must contain columns: chr, start, end.")
+        }
+        region_df <- data.frame(
+            chr = as.character(region$chr),
+            start = as.numeric(region$start),
+            end = as.numeric(region$end),
+            stringsAsFactors = FALSE
+        )
+    } else if (is.list(region) && all(c("chr", "start", "end") %in% names(region))) {
+        region_df <- data.frame(
+            chr = as.character(region$chr),
+            start = as.numeric(region$start),
+            end = as.numeric(region$end),
+            stringsAsFactors = FALSE
+        )
+    } else {
+        stop("region must be NULL, GRanges, a 'chr:start-end' string, or a data.frame/list with chr/start/end.")
+    }
+
+    region_df <- region_df[.hasNonEmptyString(region_df$chr), , drop = FALSE]
+    if (nrow(region_df) == 0) {
+        return(NULL)
+    }
+    if (any(!is.finite(region_df$start)) || any(!is.finite(region_df$end))) {
+        stop("region start/end must be finite numeric values.")
+    }
+    region_df$start <- floor(region_df$start)
+    region_df$end <- ceiling(region_df$end)
+    if (any(region_df$start < 1L) || any(region_df$end < 1L)) {
+        stop("region start/end must be >= 1.")
+    }
+    if (any(region_df$start > region_df$end)) {
+        stop("region start must be <= end.")
+    }
+    unique(region_df)
+}
+
+.filterDMRsByScopeForCircos <- function(dmrs, chromosomes = NULL, region_df = NULL) {
+    ret <- dmrs
+    if (!is.null(chromosomes)) {
+        keep_chr <- as.character(GenomicRanges::seqnames(ret)) %in% chromosomes
+        ret <- ret[keep_chr]
+    }
+    if (!is.null(region_df) && nrow(region_df) > 0) {
+        region_gr <- GenomicRanges::GRanges(
+            seqnames = region_df$chr,
+            ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
+        )
+        overlaps <- GenomicRanges::findOverlaps(ret, region_gr, ignore.strand = TRUE)
+        keep_region <- seq_along(ret) %in% S4Vectors::queryHits(overlaps)
+        ret <- ret[keep_region]
+    }
+    ret
+}
+
+.orderChromosomesNaturally <- function(chromosomes) {
+    chromosomes <- unique(as.character(chromosomes))
+    if (length(chromosomes) == 0) {
+        return(chromosomes)
+    }
+    chr_clean <- gsub("^chr", "", chromosomes, ignore.case = TRUE)
+    chr_num <- suppressWarnings(as.numeric(chr_clean))
+    chr_special <- match(toupper(chr_clean), c("X", "Y", "M", "MT"))
+    chr_special[is.na(chr_special)] <- Inf
+    ord <- order(is.na(chr_num), chr_num, chr_special, chr_clean)
+    chromosomes[ord]
+}
+
+.getCircosSectorBounds <- function(dmrs, unique_chrs, region_df = NULL) {
+    if (!is.null(region_df) && nrow(region_df) > 0) {
+        bounds <- do.call(rbind, lapply(unique_chrs, function(chr) {
+            chr_rows <- region_df[region_df$chr == chr, , drop = FALSE]
+            if (nrow(chr_rows) == 0) {
+                return(NULL)
+            }
+            data.frame(
+                chr = chr,
+                start = min(chr_rows$start),
+                end = max(chr_rows$end),
+                stringsAsFactors = FALSE
+            )
+        }))
+    } else {
+        bounds <- do.call(rbind, lapply(unique_chrs, function(chr) {
+            chr_dmrs <- dmrs[as.character(GenomicRanges::seqnames(dmrs)) == chr]
+            if (length(chr_dmrs) == 0) {
+                return(NULL)
+            }
+            data.frame(
+                chr = chr,
+                start = min(GenomicRanges::start(chr_dmrs)),
+                end = max(GenomicRanges::end(chr_dmrs)),
+                stringsAsFactors = FALSE
+            )
+        }))
+    }
+    if (is.null(bounds) || nrow(bounds) == 0) {
+        return(NULL)
+    }
+    bounds$start <- pmax(1L, floor(bounds$start))
+    bounds$end <- pmax(bounds$start + 1L, ceiling(bounds$end))
+    bounds
+}
+
+.clampPointToSectorBounds <- function(point, chr, sector_bounds) {
+    if (is.null(sector_bounds) || length(point) == 0) {
+        return(point)
+    }
+    idx <- match(chr, sector_bounds$chr)
+    if (is.na(idx)) {
+        return(point)
+    }
+    lower <- sector_bounds$start[idx]
+    upper <- sector_bounds$end[idx]
+    point <- pmax(lower, pmin(upper, point))
+    if (length(point) == 2 && point[1] > point[2]) {
+        point <- sort(point)
+    }
+    point
+}
+
+.subsetCytobandForCircos <- function(cytoband, unique_chrs, region_df = NULL) {
+    if (is.null(cytoband) || nrow(cytoband) == 0) {
+        return(NULL)
+    }
+    cb <- cytoband[cytoband$V1 %in% unique_chrs, , drop = FALSE]
+    if (nrow(cb) == 0) {
+        return(NULL)
+    }
+
+    if (!is.null(region_df) && nrow(region_df) > 0) {
+        trimmed <- do.call(rbind, lapply(seq_len(nrow(region_df)), function(i) {
+            chr <- region_df$chr[i]
+            chr_cb <- cb[cb$V1 == chr, , drop = FALSE]
+            if (nrow(chr_cb) == 0) {
+                return(NULL)
+            }
+            reg_start <- region_df$start[i]
+            reg_end <- region_df$end[i]
+            overlap <- chr_cb[chr_cb$V3 >= reg_start & chr_cb$V2 <= reg_end, , drop = FALSE]
+            if (nrow(overlap) == 0) {
+                return(NULL)
+            }
+            overlap$V2 <- pmax(overlap$V2, reg_start)
+            overlap$V3 <- pmin(overlap$V3, reg_end)
+            overlap[overlap$V2 < overlap$V3, , drop = FALSE]
+        }))
+        if (is.null(trimmed) || nrow(trimmed) == 0) {
+            return(NULL)
+        }
+        cb <- unique(trimmed)
+    }
+    cb <- cb[order(match(cb$V1, unique_chrs), cb$V2, cb$V3), , drop = FALSE]
+    cb
+}
+
+.orderCircosInteractionRows <- function(link_data) {
+    if (is.null(link_data) || nrow(link_data) == 0) {
+        return(link_data)
+    }
+    if ("component_best_rank" %in% colnames(link_data) && any(is.finite(link_data$component_best_rank))) {
+        rank_vec <- link_data$component_best_rank
+        rank_vec[!is.finite(rank_vec)] <- Inf
+        ord <- order(rank_vec, -link_data$sim, link_data$component_id)
+    } else {
+        ord <- order(-link_data$sim, link_data$component_id)
+    }
+    link_data[ord, , drop = FALSE]
+}
+
+.selectCircosInteractions <- function(link_data, max_components) {
+    link_data <- .orderCircosInteractionRows(link_data)
+    if (is.null(link_data) || nrow(link_data) == 0) {
+        return(link_data)
+    }
+    if (is.null(max_components) || !is.finite(max_components)) {
+        return(link_data)
+    }
+    max_components <- as.integer(max_components)
+    if (max_components < 1L) {
+        return(link_data[0, , drop = FALSE])
+    }
+    if (nrow(link_data) <= max_components) {
+        return(link_data)
+    }
+
+    matched_mask <- !is.na(link_data$has_jaspar_match) & link_data$has_jaspar_match
+    matched <- .orderCircosInteractionRows(link_data[matched_mask, , drop = FALSE])
+    unmatched <- .orderCircosInteractionRows(link_data[!matched_mask, , drop = FALSE])
+    unique_matched <- unique(matched$component_id) # order is preserved from matched
+    n_matched_take <- min(length(unique_matched), max_components)
+    matched_comps <- unique_matched[seq_len(n_matched_take)]
+
+    ret <- if (n_matched_take > 0) {
+        matched[matched$component_id %in% matched_comps, , drop = FALSE]
+    } else {
+        matched[0, , drop = FALSE]
+    }
+    if (length(matched_comps) < max_components && nrow(unmatched) > 0) {
+        unique_unmatched <- unique(unmatched$component_id)
+        n_unmatched_take <- min(length(unique_unmatched), max_components - length(matched_comps))
+        unmatched_comps <- unique_unmatched[seq_len(n_unmatched_take)]
+        ret <- rbind(ret, unmatched[unmatched$component_id %in% unmatched_comps, , drop = FALSE])
+    }
+    ret
+}
+
+.wrapCircosLegendLabel <- function(label, width = 88L) {
+    paste(strwrap(label, width = width), collapse = "\n")
+}
+
 #' Plot Circos Visualization of DMRs
 #'
 #' @description Creates a circular genome plot using circlize showing DMRs with multiple tracks:
@@ -1042,7 +1290,15 @@ plotDMR <- function(dmrs,
 #' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
 #' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
 #' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).
-#' @param max_interactions Integer. Maximum number of interactions to plot (default: 30).
+#' @param max_components Integer. Maximum number of interactions to plot (default: 30).
+#' @param chromosomes Character vector. Subset of chromosomes to display (default: NULL, show all available).
+#' @param region Genomic region to display. Can be NULL, a GRanges, a string in the form `chr:start-end`,
+#'   or a data.frame/list with columns `chr`, `start`, `end`.
+#' @param link_geometry Character. Geometry of interaction links: `"midpoint"` (compact, file-size friendly)
+#'   or `"range"` (uses full DMR span where possible). Default: `"midpoint"`.
+#' @param unmatched_interaction_color Character. Color used for interaction components without JASPAR matches.
+#'   These links are shown but omitted from the interaction legend (default: `"#B3B3B3"`).
+#' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
 #' @param degenerate_resolution Integer. Resolution in base pairs for showing lines instead of ribbons/lines instead of rectangles (default: 1e6).
 #' @param ... Additional arguments (currently unused).
 #'
@@ -1076,12 +1332,67 @@ plotDMRsCircos <- function(dmrs,
                            max_dmrs_per_chr = 10,
                            max_cpgs_per_dmr = 5,
                            min_component_size = 3,
-                           max_interactions = 30,
+                           max_components = 30,
+                           chromosomes = NULL,
+                           region = NULL,
+                           link_geometry = c("midpoint", "range"),
+                           unmatched_interaction_color = "#B3B3B3",
+                           legend_width_ratio = 0.34,
                            degenerate_resolution = 1e6,
                            output_file = NULL,
                            verbose = NULL,
                            ...) {
     dmrs <- convertToGRanges(dmrs, genome)
+    link_geometry <- strex::match_arg(link_geometry, ignore_case = TRUE)
+    if (!is.null(max_components)) {
+        if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
+            stop("max_components must be NULL or a single numeric value.")
+        }
+        if (max_components < 1) {
+            stop("max_components must be >= 1 when provided.")
+        }
+        max_components <- as.integer(max_components)
+    }
+    if (!is.character(unmatched_interaction_color) || length(unmatched_interaction_color) != 1 || !nzchar(unmatched_interaction_color)) {
+        stop("unmatched_interaction_color must be a single non-empty color string.")
+    }
+    if (!is.numeric(legend_width_ratio) || length(legend_width_ratio) != 1 || is.na(legend_width_ratio) ||
+        legend_width_ratio <= 0.05 || legend_width_ratio >= 0.80) {
+        stop("legend_width_ratio must be a single numeric value in (0.05, 0.80).")
+    }
+
+    requested_chrs <- NULL
+    if (!is.null(chromosomes)) {
+        if (!is.character(chromosomes)) {
+            stop("chromosomes must be a character vector when provided.")
+        }
+        requested_chrs <- unique(trimws(chromosomes))
+        requested_chrs <- requested_chrs[nzchar(requested_chrs)]
+        if (length(requested_chrs) == 0) {
+            stop("chromosomes must contain at least one non-empty chromosome name.")
+        }
+    }
+    region_df <- .normalizeCircosRegion(region)
+    dmrs <- .filterDMRsByScopeForCircos(dmrs, chromosomes = requested_chrs, region_df = region_df)
+    if (length(dmrs) == 0) {
+        stop("No DMRs remain after applying chromosome/region filters.")
+    }
+    present_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
+    unique_chrs <- if (is.null(requested_chrs)) {
+        .orderChromosomesNaturally(present_chrs)
+    } else {
+        requested_chrs[requested_chrs %in% present_chrs]
+    }
+    if (length(unique_chrs) == 0) {
+        unique_chrs <- .orderChromosomesNaturally(present_chrs)
+    }
+    if (!is.null(region_df)) {
+        region_df <- region_df[region_df$chr %in% unique_chrs, , drop = FALSE]
+        if (nrow(region_df) == 0) {
+            stop("No region entries overlap the selected chromosomes/DMRs.")
+        }
+    }
+
     if (!is.null(verbose)) {
         options("DMRsegal.verbose" = verbose)
     }
@@ -1113,9 +1424,22 @@ plotDMRsCircos <- function(dmrs,
     .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
 
     cytoband <- .getCytobandData(genome)
+    cytoband_subset <- .subsetCytobandForCircos(cytoband, unique_chrs, region_df = region_df)
+    sector_bounds <- .getCircosSectorBounds(dmrs, unique_chrs, region_df = region_df)
 
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
+    if (!is.null(arc_data) && length(arc_data$chr) > 0 && !is.null(sector_bounds)) {
+        arc_idx <- match(arc_data$chr, sector_bounds$chr)
+        keep_arc <- !is.na(arc_idx)
+        arc_data$chr <- arc_data$chr[keep_arc]
+        arc_data$start <- arc_data$start[keep_arc]
+        arc_data$end <- arc_data$end[keep_arc]
+        arc_data$delta_beta <- arc_data$delta_beta[keep_arc]
+        arc_idx <- arc_idx[keep_arc]
+        arc_data$start <- pmax(arc_data$start, sector_bounds$start[arc_idx])
+        arc_data$end <- pmin(arc_data$end, sector_bounds$end[arc_idx])
+    }
     .log_success("DMR arcs data prepared", level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
         .log_info("Saving DMR arcs data to debug/circos_arc_data.tsv", level = 1)
@@ -1130,6 +1454,17 @@ plotDMRsCircos <- function(dmrs,
     )
     heatmap_df <- heatmap_data$heatmap_df
     reduced_pheno <- heatmap_data$reduced_pheno
+    if (!is.null(heatmap_df) && nrow(heatmap_df) > 0 && !is.null(sector_bounds)) {
+        hidx <- match(heatmap_df$chr, sector_bounds$chr)
+        keep_h <- !is.na(hidx)
+        heatmap_df <- heatmap_df[keep_h, , drop = FALSE]
+        if (nrow(heatmap_df) > 0) {
+            hidx <- hidx[keep_h]
+            heatmap_df$start <- pmax(heatmap_df$start, sector_bounds$start[hidx])
+            heatmap_df$end <- pmin(heatmap_df$end, sector_bounds$end[hidx])
+            heatmap_df <- heatmap_df[heatmap_df$start <= heatmap_df$end, , drop = FALSE]
+        }
+    }
     .log_success("Heatmap data prepared", level = 2)
     .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
@@ -1140,40 +1475,81 @@ plotDMRsCircos <- function(dmrs,
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, beta_locs, min_similarity, flank_size, max_interactions, min_component_size
+        dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size
     )
+    if (!is.null(link_data) && nrow(link_data) > 0 && !is.null(sector_bounds)) {
+        lidx1 <- match(link_data$chr1, sector_bounds$chr)
+        lidx2 <- match(link_data$chr2, sector_bounds$chr)
+        keep_l <- !is.na(lidx1) & !is.na(lidx2)
+        link_data <- link_data[keep_l, , drop = FALSE]
+        if (nrow(link_data) > 0) {
+            lidx1 <- lidx1[keep_l]
+            lidx2 <- lidx2[keep_l]
+            link_data$start1 <- pmax(link_data$start1, sector_bounds$start[lidx1])
+            link_data$end1 <- pmin(link_data$end1, sector_bounds$end[lidx1])
+            link_data$start2 <- pmax(link_data$start2, sector_bounds$start[lidx2])
+            link_data$end2 <- pmin(link_data$end2, sector_bounds$end[lidx2])
+            keep_span <- link_data$start1 <= link_data$end1 & link_data$start2 <= link_data$end2
+            link_data <- link_data[keep_span, , drop = FALSE]
+        }
+    }
 
     .log_success("DMR interactions data prepared", level = 2)
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("DMRsegal.make_debug_dir", FALSE) && !is.null(link_data) && nrow(link_data) > 0) {
         .log_info("Saving DMR interactions data to debug/circos_link_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
-    circle_size <- grid::unit(1, "snpc")
     if (!is.null(output_file)) {
-        grDevices::cairo_pdf(output_file, width = 12, height = 8, fallback_resolution = 600)
+        grDevices::cairo_pdf(output_file, width = 14, height = 10, fallback_resolution = 300)
     }
     if (.Device == "null device") {
-        grDevices::cairo_pdf(width = 12, height = 8, fallback_resolution = 600)
+        grDevices::cairo_pdf(width = 14, height = 10, fallback_resolution = 300)
     }
     .log_step("Creating Circos plot...")
+    on.exit(try(circlize::circos.clear(), silent = TRUE), add = TRUE)
     graphics::plot.new()
-    grid::pushViewport(grid::viewport(
-        x = 0, y = 0.5, width = circle_size, height = circle_size,
-        just = c("left", "center")
+    circle_width_ratio <- 1 - legend_width_ratio
+    root_layout <- grid::viewport(layout = grid::grid.layout(
+        nrow = 1, ncol = 2,
+        widths = grid::unit.c(grid::unit(circle_width_ratio, "npc"), grid::unit(legend_width_ratio, "npc"))
     ))
-    circle_size <- grid::unit(1, "snpc") # snpc unit gives you a square region
+    grid::pushViewport(root_layout)
+    grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+    grid::pushViewport(grid::viewport(width = grid::unit(1, "snpc"), height = grid::unit(1, "snpc")))
     graphics::par(omi = gridBase::gridOMI(), new = TRUE)
-    unique_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
 
     legends <- c()
+    use_manual_init <- FALSE
 
-    if (!is.null(cytoband)) {
-        cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
+    if (!is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
         circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"))
+    } else if (!is.null(region_df) && !is.null(sector_bounds) && nrow(sector_bounds) > 0) {
+        use_manual_init <- TRUE
+        circlize::circos.initialize(
+            factors = sector_bounds$chr,
+            xlim = as.matrix(sector_bounds[, c("start", "end"), drop = FALSE])
+        )
+        circlize::circos.trackPlotRegion(
+            ylim = c(0, 1),
+            bg.border = NA,
+            track.height = 0.06,
+            panel.fun = function(x, y) {
+                circlize::circos.axis(h = "top", labels.cex = 0.45, major.tick.percentage = 0.3)
+                circlize::circos.text(
+                    x = circlize::CELL_META$xcenter,
+                    y = circlize::CELL_META$ylim[2] + circlize::convert_y(1.2, "mm"),
+                    labels = circlize::CELL_META$sector.index,
+                    cex = 0.6,
+                    facing = "inside",
+                    niceFacing = TRUE,
+                    adj = c(0.5, 0)
+                )
+            }
+        )
     } else {
-        circlize::circos.initializeWithIdeogram(species = genome, plotType = c("labels", "axis"))
+        circlize::circos.initializeWithIdeogram(species = genome, chromosome.index = unique_chrs, plotType = c("labels", "axis"))
     }
 
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
@@ -1272,10 +1648,9 @@ plotDMRsCircos <- function(dmrs,
         }
     }
 
-    if (!is.null(cytoband)) {
-        cytoband_subset <- cytoband[cytoband$V1 %in% unique_chrs, ]
+    if (!use_manual_init && !is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
         circlize::circos.genomicIdeogram(cytoband = cytoband_subset)
-    } else {
+    } else if (!use_manual_init) {
         circlize::circos.genomicIdeogram(species = genome)
     }
 
@@ -1312,7 +1687,7 @@ plotDMRsCircos <- function(dmrs,
                 dmr_chr <- arc_df[arc_df$chr == chr, ]
                 if (nrow(dmr_chr) > 0) {
                     for (i in seq_len(nrow(dmr_chr))) {
-                        if (dmr_chr$end[1] - dmr_chr$start[1] < degenerate_resolution) {
+                        if (dmr_chr$end[i] - dmr_chr$start[i] < degenerate_resolution) {
                             circlize::circos.lines(
                                 x = c((dmr_chr$start[i] + dmr_chr$end[i]) / 2, (dmr_chr$start[i] + dmr_chr$end[i]) / 2),
                                 y = c(0, 1),
@@ -1351,93 +1726,167 @@ plotDMRsCircos <- function(dmrs,
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
 
-        # Assign different hue based on component_id, and different shade based on similarity
-        link_data$component_id <- as.factor(link_data$component_id)
-        n_components <- length(levels(link_data$component_id))
-        hues <- seq(15, 375, length = n_components + 1)
-        component_colors <- grDevices::hcl(h = hues, l = 65, c = 100)[1:n_components]
-        names(component_colors) <- levels(link_data$component_id)
-        link_colors <- function(sim_vector) {
-            sapply(seq_along(sim_vector), function(i) {
-                comp_id <- link_data$component_id[i]
-                base_color <- grDevices::col2rgb(component_colors[as.character(comp_id)]) / 255
-                shade_factor <- 0.5 + 0.5 * sim_vector[i]
-                shaded_color <- grDevices::rgb(
-                    red = base_color[1] * shade_factor,
-                    green = base_color[2] * shade_factor,
-                    blue = base_color[3] * shade_factor
-                )
-                shaded_color
-            })
-        }
-        link_data$colors <- link_colors(link_data[, "sim"])
+        link_data$has_jaspar_match <- !is.na(link_data$has_jaspar_match) & link_data$has_jaspar_match
+        comp_data <- link_data[
+            !duplicated(link_data$component_id),
+            c("component_id", "size", "consensus_seq", "jaspar_names", "jaspar_corr", "has_jaspar_match", "component_best_rank"),
+            drop = FALSE
+        ]
 
-        # Create a legend for link colors, assigning to the consensus sequence of each component and the matches to Jaspar db
-        comp_data <- link_data[!duplicated(link_data$component_id), c("component_id", "size", "consensus_seq", "jaspar_names", "jaspar_corr")]
-        link_legend_data <- data.frame(
-            component_id = comp_data$component_id,
-            size = comp_data$size,
-            consensus_seq = comp_data$consensus_seq,
-            jaspar_names = comp_data$jaspar_names,
-            jaspar_corr = comp_data$jaspar_corr,
-            stringsAsFactors = FALSE
+        component_colors <- setNames(
+            rep(unmatched_interaction_color, nrow(comp_data)),
+            as.character(comp_data$component_id)
         )
-        link_legend_colors <- component_colors
-        link_legend_labels <- sapply(seq_len(nrow(link_legend_data)), function(i) {
-            label <- paste0("[n=", link_legend_data$size[i], "] ", link_legend_data$consensus_seq[i])
-            if (!is.na(link_legend_data$jaspar_names[i]) && link_legend_data$jaspar_names[i] != "") {
-                names <- strsplit(link_legend_data$jaspar_names[i], ",")[[1]]
-                cors <- strsplit(link_legend_data$jaspar_corr[i], ",")[[1]]
-                for (j in seq_along(names)) {
-                    label <- paste0(label, " | ", names[j], " (", round(as.numeric(cors[j]), 3), ")")
-                    if (j == 3) {
+        matched_components <- comp_data[comp_data$has_jaspar_match, , drop = FALSE]
+        if (nrow(matched_components) > 0) {
+            rank_vec <- matched_components$component_best_rank
+            rank_vec[!is.finite(rank_vec)] <- Inf
+            matched_components <- matched_components[
+                order(rank_vec, -matched_components$size, matched_components$component_id),
+                ,
+                drop = FALSE
+            ]
+            hues <- seq(15, 375, length.out = nrow(matched_components) + 1)
+            matched_cols <- grDevices::hcl(h = hues, l = 62, c = 95)[seq_len(nrow(matched_components))]
+            component_colors[as.character(matched_components$component_id)] <- matched_cols
+        }
+
+        link_data$colors <- vapply(seq_len(nrow(link_data)), function(i) {
+            comp_id <- as.character(link_data$component_id[i])
+            if (!isTRUE(link_data$has_jaspar_match[i])) {
+                return(grDevices::adjustcolor(unmatched_interaction_color, alpha.f = 0.85))
+            }
+            base_color <- component_colors[comp_id]
+            sim_val <- link_data$sim[i]
+            if (!is.finite(sim_val)) {
+                sim_val <- 0
+            }
+            sim_val <- pmax(0, pmin(1, sim_val))
+            shade_factor <- 0.45 + 0.55 * sim_val
+            base_rgb <- grDevices::col2rgb(base_color) / 255
+            grDevices::rgb(
+                red = base_rgb[1] * shade_factor,
+                green = base_rgb[2] * shade_factor,
+                blue = base_rgb[3] * shade_factor,
+                alpha = 0.85
+            )
+        }, character(1))
+
+        legend_components <- comp_data[comp_data$has_jaspar_match, , drop = FALSE]
+        if (nrow(legend_components) > 0) {
+            rank_vec <- legend_components$component_best_rank
+            rank_vec[!is.finite(rank_vec)] <- Inf
+            legend_components <- legend_components[order(rank_vec, legend_components$component_id), , drop = FALSE]
+            link_legend_colors <- component_colors[as.character(legend_components$component_id)]
+            link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
+                rank_prefix <- if (is.finite(legend_components$component_best_rank[i])) {
+                    paste0("[rank=", as.integer(legend_components$component_best_rank[i]), "] ")
+                } else {
+                    ""
+                }
+                label <- paste0(
+                    rank_prefix,
+                    "[n=", legend_components$size[i], "] ",
+                    legend_components$consensus_seq[i]
+                )
+                if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
+                    jas_names <- trimws(strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
+                    jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
+                        trimws(strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
+                    } else {
+                        rep("", length(jas_names))
+                    }
+                    n_show <- min(3L, length(jas_names))
+                    for (j in seq_len(n_show)) {
+                        corr_val <- suppressWarnings(as.numeric(jas_corr[j]))
+                        corr_txt <- if (is.finite(corr_val)) {
+                            paste0(" (", signif(corr_val, 3), ")")
+                        } else {
+                            ""
+                        }
+                        label <- paste0(label, " | ", jas_names[j], corr_txt)
+                    }
+                    if (length(jas_names) > n_show) {
                         label <- paste0(label, " ...")
-                        break
                     }
                 }
-            }
-            label
-        })
-        link_legend <- ComplexHeatmap::Legend(
-            labels = link_legend_labels,
-            legend_gp = grid::gpar(fill = link_legend_colors),
-            title = "DMR Interaction Components (n DMRs)\nwith Motif Consensus and Jaspar Matches",
-            title_position = "topcenter",
-            title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
-            labels_gp = grid::gpar(fontsize = 8)
-        )
-        legends <- c(legends, list(link_legend))
-
-        if (inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))) {
-            has_directionality <- TRUE
-        } else {
-            has_directionality <- FALSE
+                .wrapCircosLegendLabel(label)
+            }, character(1))
+            link_legend <- ComplexHeatmap::Legend(
+                labels = link_legend_labels,
+                legend_gp = grid::gpar(fill = link_legend_colors),
+                title = "DMR Interaction Components\n(JASPAR-annotated)",
+                title_position = "topcenter",
+                title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
+                labels_gp = grid::gpar(fontsize = 8)
+            )
+            legends <- c(legends, list(link_legend))
         }
+
+        has_directionality <- "rank" %in% colnames(S4Vectors::mcols(dmrs)) &&
+            any(is.finite(suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$rank))))
+        directional_flag <- if (has_directionality) 1 else 0
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
             point2 <- c(link_data$start2[i], link_data$end2[i])
-            if (point1[2] - point1[1] < degenerate_resolution) {
+            if (identical(link_geometry, "midpoint")) {
                 point1 <- mean(point1)
-            }
-            if (point2[2] - point2[1] < degenerate_resolution) {
                 point2 <- mean(point2)
+            } else {
+                if (point1[2] - point1[1] < degenerate_resolution) {
+                    point1 <- mean(point1)
+                }
+                if (point2[2] - point2[1] < degenerate_resolution) {
+                    point2 <- mean(point2)
+                }
             }
-            circlize::circos.link(
-                sector.index1 = link_data$chr1[i],
-                point1 = point1,
-                sector.index2 = link_data$chr2[i],
-                point2 = point2,
-                col = link_data$colors[i],
-                directional = has_directionality,
-                border = NA
-            )
+            point1 <- .clampPointToSectorBounds(point1, link_data$chr1[i], sector_bounds)
+            point2 <- .clampPointToSectorBounds(point2, link_data$chr2[i], sector_bounds)
+            if (has_directionality) {
+                circlize::circos.link(
+                    sector.index1 = link_data$chr1[i],
+                    point1 = point1,
+                    sector.index2 = link_data$chr2[i],
+                    point2 = point2,
+                    col = link_data$colors[i],
+                    directional = directional_flag,
+                    arr.type = "triangle",
+                    arr.length = 0.035,
+                    arr.width = 0.6,
+                    border = NA
+                )
+            } else {
+                circlize::circos.link(
+                    sector.index1 = link_data$chr1[i],
+                    point1 = point1,
+                    sector.index2 = link_data$chr2[i],
+                    point2 = point2,
+                    col = link_data$colors[i],
+                    directional = 0,
+                    border = NA
+                )
+            }
         }
         .log_success("Link track added", level = 2)
     }
     circlize::circos.clear()
+    grid::upViewport(2)
+    if (length(legends) > 0) {
+        grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+        legend_args <- c(legends, list(
+            max_height = grid::unit(0.98, "npc"),
+            column_gap = grid::unit(2, "mm")
+        ))
+        lgd_list <- do.call(ComplexHeatmap::packLegend, legend_args)
+        ComplexHeatmap::draw(
+            lgd_list,
+            x = grid::unit(0, "npc"),
+            y = grid::unit(1, "npc"),
+            just = c("left", "top")
+        )
+        grid::upViewport()
+    }
     grid::upViewport()
-    lgd_list <- do.call(ComplexHeatmap::packLegend, legends)
-    ComplexHeatmap::draw(lgd_list, x = circle_size, just = "left")
     .log_success("Circos plot created successfully")
     if (!is.null(output_file)) {
         grDevices::dev.off()
@@ -1445,6 +1894,137 @@ plotDMRsCircos <- function(dmrs,
 
 
     invisible(NULL)
+}
+
+.classifyDMRRegionForManhattan <- function(dmrs, promoter_col = "in_promoter_of", gene_body_col = "in_gene_body_of") {
+    mcols_df <- S4Vectors::mcols(dmrs)
+    has_promoter <- promoter_col %in% colnames(mcols_df)
+    has_gene_body <- gene_body_col %in% colnames(mcols_df)
+
+    promoter_mask <- if (has_promoter) .hasNonEmptyString(mcols_df[[promoter_col]]) else rep(FALSE, length(dmrs))
+    gene_body_mask <- if (has_gene_body) .hasNonEmptyString(mcols_df[[gene_body_col]]) else rep(FALSE, length(dmrs))
+
+    region_class <- rep("Intergenic", length(dmrs))
+    region_class[gene_body_mask] <- "Gene Body"
+    region_class[promoter_mask] <- "Promoter"
+    region_class[promoter_mask & gene_body_mask] <- "Promoter & Gene Body"
+
+    factor(region_class, levels = c("Promoter", "Promoter & Gene Body", "Gene Body", "Intergenic"))
+}
+
+#' Plot Manhattan-Style View of DMR Scores
+#'
+#' @description Creates a Manhattan-style genome-wide scatter plot of DMR scores.
+#' DMRs are colored by their dominant genomic region class inferred from DMR annotations.
+#'
+#' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
+#' @param score_col Character. Metadata column used for y-axis values (default: `"score"`).
+#' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg19"`).
+#' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
+#' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
+#' @param point_size Numeric. Point size (default: `1.1`).
+#' @param point_alpha Numeric. Point alpha in `[0, 1]` (default: `0.75`).
+#'
+#' @return A ggplot object.
+#'
+#' @examples
+#' \dontrun{
+#' dmrs <- readRDS("dmrs.rds")
+#' p <- plotDMRsManhattan(dmrs)
+#' print(p)
+#' }
+#' @export
+plotDMRsManhattan <- function(dmrs,
+                              score_col = "score",
+                              genome = "hg19",
+                              promoter_col = "in_promoter_of",
+                              gene_body_col = "in_gene_body_of",
+                              point_size = 1.1,
+                              point_alpha = 0.75) {
+    dmrs <- convertToGRanges(dmrs, genome = genome)
+    if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
+        stop("score_col '", score_col, "' not found in DMR metadata.")
+    }
+    if (!is.numeric(point_size) || length(point_size) != 1 || is.na(point_size) || point_size <= 0) {
+        stop("point_size must be a single positive numeric value.")
+    }
+    if (!is.numeric(point_alpha) || length(point_alpha) != 1 || is.na(point_alpha) || point_alpha < 0 || point_alpha > 1) {
+        stop("point_alpha must be a single numeric value in [0, 1].")
+    }
+
+    scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
+    keep <- is.finite(scores)
+    if (!any(keep)) {
+        stop("No finite score values found in score_col '", score_col, "'.")
+    }
+    dmrs <- dmrs[keep]
+    scores <- scores[keep]
+
+    region_class <- .classifyDMRRegionForManhattan(dmrs, promoter_col = promoter_col, gene_body_col = gene_body_col)
+    chr <- as.character(GenomicRanges::seqnames(dmrs))
+    chr_levels <- .orderChromosomesNaturally(chr)
+
+    dmr_df <- data.frame(
+        chr = chr,
+        start = GenomicRanges::start(dmrs),
+        end = GenomicRanges::end(dmrs),
+        score = scores,
+        region_class = region_class,
+        stringsAsFactors = FALSE
+    )
+    dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
+    dmr_df$midpoint <- floor((dmr_df$start + dmr_df$end) / 2)
+
+    chr_lengths <- tapply(dmr_df$end, dmr_df$chr, max, na.rm = TRUE)
+    chr_lengths <- as.numeric(chr_lengths)
+    names(chr_lengths) <- levels(dmr_df$chr)
+    chr_lengths[!is.finite(chr_lengths)] <- 0
+
+    chr_offsets <- c(0, cumsum(chr_lengths)[seq_len(max(1L, length(chr_lengths) - 1L))])
+    chr_offsets <- chr_offsets[seq_along(chr_lengths)]
+    names(chr_offsets) <- names(chr_lengths)
+
+    dmr_df$position <- dmr_df$midpoint + chr_offsets[as.character(dmr_df$chr)]
+    axis_df <- stats::aggregate(position ~ chr, data = dmr_df, FUN = function(x) mean(range(x)))
+    axis_df <- axis_df[match(chr_levels, as.character(axis_df$chr)), , drop = FALSE]
+    axis_df <- axis_df[is.finite(axis_df$position), , drop = FALSE]
+
+    chrom_boundaries <- cumsum(chr_lengths)
+    chrom_boundaries <- chrom_boundaries[is.finite(chrom_boundaries)]
+    chrom_boundaries <- chrom_boundaries[seq_len(max(0L, length(chrom_boundaries) - 1L))]
+
+    region_colors <- c(
+        "Promoter" = "#D73027",
+        "Promoter & Gene Body" = "#FC8D59",
+        "Gene Body" = "#3182BD",
+        "Intergenic" = "#9E9E9E"
+    )
+
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class)) +
+        ggplot2::geom_point(size = point_size, alpha = point_alpha, stroke = 0) +
+        ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
+        ggplot2::scale_x_continuous(
+            breaks = axis_df$position,
+            labels = as.character(axis_df$chr),
+            expand = ggplot2::expansion(mult = c(0.01, 0.01))
+        ) +
+        ggplot2::labs(
+            x = "Chromosome",
+            y = score_col,
+            title = paste0("DMR Manhattan Plot (", score_col, ")")
+        ) +
+        ggplot2::theme_minimal(base_size = 11) +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
+            axis.text.x = ggplot2::element_text(angle = 0, vjust = 0.5),
+            legend.title = ggplot2::element_text(face = "bold"),
+            legend.position = "top"
+        )
+    if (length(chrom_boundaries) > 0) {
+        p <- p + ggplot2::geom_vline(xintercept = chrom_boundaries, color = "#DADADA", linewidth = 0.3)
+    }
+    p
 }
 
 
@@ -1662,7 +2242,7 @@ plotDMRsCircos <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_similarity, flank_size, max_interactions, min_component_size) {
+.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size) {
     ret <- tryCatch(
         {
             computeDMRsInteraction(
@@ -1700,15 +2280,71 @@ plotDMRsCircos <- function(dmrs,
     if ("component_id" %in% colnames(link_data)) {
         link_data <- link_data[!is.na(link_data$component_id), , drop = FALSE]
     }
-    link_data <- link_data[order(link_data$sim, decreasing = TRUE), ]
-    if (nrow(link_data) > max_interactions) {
-        link_data <- do.call(rbind, lapply(split(link_data, link_data$component_id), function(x) x[seq_len(min(nrow(x), max_interactions)), ]))
-        .log_info("Limiting to top ", max_interactions, " interactions per component based on similarity", level = 2)
-    }
-    link_data <- merge(link_data, ret$components, by = "component_id", all.x = TRUE, suffixes = c("", "_comp"))
     if (nrow(link_data) == 0) {
-        .log_warn("No motif interactions with JASPAR matches remain after filtering. Skipping link track.")
+        .log_warn("No motif interactions remain after component filtering. Skipping link track.")
         return(NULL)
     }
+
+    if (!is.null(ret$components) && nrow(ret$components) > 0) {
+        link_data <- merge(
+            link_data,
+            ret$components,
+            by = "component_id",
+            all.x = TRUE,
+            suffixes = c("", "_comp"),
+            sort = FALSE
+        )
+    } else {
+        link_data$size <- NA_real_
+        link_data$consensus_seq <- NA_character_
+        link_data$jaspar_names <- NA_character_
+        link_data$jaspar_corr <- NA_character_
+    }
+
+    link_data$has_jaspar_match <- .hasNonEmptyString(link_data$jaspar_names)
+    if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
+        ranks <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$rank))
+        pair_rank <- pmin(ranks[link_data$index1], ranks[link_data$index2], na.rm = TRUE)
+        pair_rank[!is.finite(pair_rank)] <- NA_real_
+        link_data$interaction_rank <- pair_rank
+        comp_rank_df <- stats::aggregate(
+            interaction_rank ~ component_id,
+            data = link_data,
+            FUN = function(x) {
+                x <- x[is.finite(x)]
+                if (length(x) == 0) {
+                    NA_real_
+                } else {
+                    min(x)
+                }
+            }
+        )
+        colnames(comp_rank_df)[colnames(comp_rank_df) == "interaction_rank"] <- "component_best_rank"
+        link_data <- merge(link_data, comp_rank_df, by = "component_id", all.x = TRUE, sort = FALSE)
+    } else {
+        link_data$component_best_rank <- NA_real_
+    }
+
+    original_n <- nrow(link_data)
+    link_data <- .selectCircosInteractions(link_data, max_components)
+    if (!is.null(max_components) && nrow(link_data) < original_n) {
+        .log_info("Selected ", nrow(link_data), " interactions (max_components=", max_components, ").", level = 2)
+    }
+    if (nrow(link_data) > 0) {
+        matched_n <- sum(link_data$has_jaspar_match, na.rm = TRUE)
+        .log_info(
+            "Selected interactions: ",
+            matched_n, " JASPAR-matched + ",
+            nrow(link_data) - matched_n, " unmatched.",
+            level = 2
+        )
+    }
+    link_data <- .orderCircosInteractionRows(link_data)
+
+    if (nrow(link_data) == 0) {
+        .log_warn("No motif interactions remain after filtering. Skipping link track.")
+        return(NULL)
+    }
+    rownames(link_data) <- NULL
     link_data
 }

@@ -138,3 +138,47 @@ test_that("plotDMRsCircos validates inputs", {
         "not found in pheno"
     )
 })
+
+test_that("plotDMRsCircos supports chromosome and region filters", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
+
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    if (is.null(dmrs) || length(dmrs) == 0) {
+        skip("No DMRs available for testing")
+    }
+
+    dmrs_subset <- dmrs[seq_len(min(12, length(dmrs)))]
+    target_chr <- as.character(GenomicRanges::seqnames(dmrs_subset)[1])
+    target_start <- GenomicRanges::start(dmrs_subset)[1]
+    target_end <- GenomicRanges::end(dmrs_subset)[1]
+    target_region <- sprintf("%s:%d-%d", target_chr, target_start, target_end)
+
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            chromosomes = target_chr,
+            region = target_region,
+            max_components = 5
+        )
+    )
+
+    expect_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            region = "chr5-100-200"
+        ),
+        "chr:start-end"
+    )
+})

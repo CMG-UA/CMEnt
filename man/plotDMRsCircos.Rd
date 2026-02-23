@@ -17,8 +17,13 @@ plotDMRsCircos(
   max_num_samples_per_group = 5,
   max_dmrs_per_chr = 10,
   max_cpgs_per_dmr = 5,
-  min_component_size = 2,
-  max_interactions = 30,
+  min_component_size = 3,
+  max_components = 30,
+  chromosomes = NULL,
+  region = NULL,
+  link_geometry = c("midpoint", "range"),
+  unmatched_interaction_color = "#B3B3B3",
+  legend_width_ratio = 0.34,
   degenerate_resolution = 1e+06,
   output_file = NULL,
   verbose = NULL,
@@ -51,7 +56,20 @@ rownames matching beta column names (required for beta track).}
 
 \item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
 
-\item{max_interactions}{Integer. Maximum number of interactions to plot (default: 30).}
+\item{max_components}{Integer. Maximum number of interactions to plot (default: 30).}
+
+\item{chromosomes}{Character vector. Subset of chromosomes to display (default: NULL, show all available).}
+
+\item{region}{Genomic region to display. Can be NULL, a GRanges, a string in the form \code{chr:start-end},
+or a data.frame/list with columns \code{chr}, \code{start}, \code{end}.}
+
+\item{link_geometry}{Character. Geometry of interaction links: \code{"midpoint"} (compact, file-size friendly)
+or \code{"range"} (uses full DMR span where possible). Default: \code{"midpoint"}.}
+
+\item{unmatched_interaction_color}{Character. Color used for interaction components without JASPAR matches.
+These links are shown but omitted from the interaction legend (default: \code{"#B3B3B3"}).}
+
+\item{legend_width_ratio}{Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).}
 
 \item{degenerate_resolution}{Integer. Resolution in base pairs for showing lines instead of ribbons/lines instead of rectangles (default: 1e6).}
 

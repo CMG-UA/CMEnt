@@ -20,6 +20,7 @@ statistical significance and biological relevance of methylation changes.
 \item \code{\link{plotDMR}}: Visualize individual DMRs with structure, beta values, and motifs
 \item \code{\link{plotDMRs}}: Create multi-panel DMR plots
 \item \code{\link{plotDMRsCircos}}: Generate circos plots with DMR interactions
+\item \code{\link{plotDMRsManhattan}}: Generate genome-wide Manhattan-style plots for DMR scores
 }
 }
 
