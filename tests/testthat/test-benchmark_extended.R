@@ -12,7 +12,7 @@ test_that("Extended benchmark vignette components work", {
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
-    mvalues <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
+    mvalues <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
 
     expect_true(nrow(mvalues) > 0)
     expect_true(ncol(mvalues) == nrow(pheno))

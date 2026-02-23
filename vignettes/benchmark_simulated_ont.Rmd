@@ -182,7 +182,7 @@ if (!file.exists(seeds_tsv)) {
     rownames(beta_mat) <- cpg_ids
     colnames(beta_mat) <- sample_ids
 
-    mvalues <- log2((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
+    mvalues <- log((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
 
     fit_raw <- limma::lmFit(mvalues, design)
     valid_sigma <- is.finite(fit_raw$sigma) & (fit_raw$sigma > 0)

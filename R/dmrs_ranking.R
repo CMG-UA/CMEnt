@@ -182,7 +182,7 @@ rankDMRs <- function(
             site_indices <- supporting_sites[[i]]
             beta_mat <- beta_handler$getBeta(row_names = site_indices, col_names = beta_col_names)
             # Convert to M-values
-            beta_mat <- log2(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
+            beta_mat <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
             if (!is.null(covariates)) {
                 beta_mat <- .remove_confounder_effect(beta_mat, design)
             }
