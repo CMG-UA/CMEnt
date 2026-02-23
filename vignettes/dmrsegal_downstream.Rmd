@@ -18,7 +18,8 @@ knitr::opts_chunk$set(
     message = FALSE,
     fig.width = 12,
     fig.height = 8,
-    dpi = 300
+    dpi = 300,
+    fig.retina = 2
 )
 ```
 
@@ -70,7 +71,7 @@ cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 ```
 
 ## DMR Summary and Ranking
-
+The ranking of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, and rank of each DMR.
 ```{r}
 stopifnot(length(dmrs) > 0)
 
@@ -103,7 +104,7 @@ knitr::kable(head(summary_tbl, 5), caption = "Top 5 ranked DMRs (margin-sensitiv
 ```
 
 ## Motif Discovery
-
+Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function. The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
 ```{r}
 motif_dmrs <- extractDMRMotifs(
     dmrs = dmrs,
@@ -119,7 +120,13 @@ cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
 ```
 
 ## Motif-Based DMR Interactions
-
+Once motifs are extracted, the `computeDMRsInteraction` function identifies "interactions" between DMRs based on motif similarity. 
+The rationale is that DMRs with similar motifs may be co-regulated or functionally related, even if they are not in close genomic proximity.
+The function computes pairwise similarities between the PWMs of the extracted motifs,
+excluding the center CpG positions, corrects for microarray design biases,
+applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
+The resulting components are annotated with JASPAR motifs if available.
+The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
 ```{r}
 interaction_results <- computeDMRsInteraction(
     dmrs = motif_dmrs,
@@ -162,7 +169,7 @@ if (annotated_components > 0) {
         dplyr::arrange(dplyr::desc(size))
     if (nrow(components_tbl) > 0) {
         knitr::kable(
-            components_tbl, 
+            components_tbl,
             caption = "Motif interaction components with JASPAR annotation"
         )
     }
@@ -173,6 +180,8 @@ if (annotated_components > 0) {
 
 ### DMR Score Manhattan Plot
 
+A manhattan plot of the DMRs is drawn, showing their scores, produced by the SVM CV prediction strategy,
+and their annotation as promoter or gene body DMRs. The DMRs that belong to both promoter and gene body are omitted.
 ```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
 plotDMRsManhattan(
     dmrs = dmrs,
@@ -183,10 +192,13 @@ plotDMRsManhattan(
 ```
 
 ### Single DMR Plot
+Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the CpGs in the DMR, the seeds, and the motif-based interactions with other DMRs, 
+along with JASPAR annotations if existing.
+Here we select a DMR that has more than one merged DMR and has an extension beyond the seed region, in both sides.
 
-```{r single_dmr_plot, fig.height=12}
+```{r single_dmr_plot, fig.height=10}
 merged_counts <- suppressWarnings(as.numeric(as.character(mcols(dmrs)$merged_dmrs_num)))
-has_extension <- (mcols(dmrs)$start_seed != mcols(dmrs)$start_cpg) |
+has_extension <- (mcols(dmrs)$start_seed != mcols(dmrs)$start_cpg) &
     (mcols(dmrs)$end_seed != mcols(dmrs)$end_cpg)
 
 complex_candidates <- which(is.finite(merged_counts) & merged_counts > 1 & has_extension)
@@ -200,9 +212,9 @@ if (length(complex_candidates) == 0) {
 selected_dmr_idx <- complex_candidates[1]
 cat(
     sprintf(
-        "Selected DMR index %d (merged_dmrs_num=%s, seeds_num=%s, cpgs_num=%s)\n",
+        "Selected DMR index %d (rank=%s, seeds_num=%s, cpgs_num=%s)\n",
         selected_dmr_idx,
-        as.character(mcols(dmrs)$merged_dmrs_num[selected_dmr_idx]),
+        as.character(mcols(dmrs)$rank[selected_dmr_idx]),
         as.character(mcols(dmrs)$seeds_num[selected_dmr_idx]),
         as.character(mcols(dmrs)$cpgs_num[selected_dmr_idx])
     )
@@ -221,16 +233,44 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
-A circos plot consisting of the extracted information from DMRsegal is drawn from chromosome 16 to 22. 
+A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 16 to 22. 
 The information includes:
 
 - The DMRs and their scores (at most 40 DMRs per chromosome, ranked by score, are shown)
 - Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
-- The JASPAR annotation of the motif-based groups, if available, is shown in the legend.
+- The JASPAR annotation of the motif-based groups, if available, on the legend.
 ```{r circos_plot, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
 
+tryCatch(
+    {
+        plotDMRsCircos(
+            dmrs = circos_dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = genome,
+            array = array_type,
+            sample_group_col = "Sample_Group",
+            min_similarity = 0.7,
+            flank_size = 5,
+            max_num_samples_per_group = 5,
+            max_dmrs_per_chr = 40,
+            max_cpgs_per_dmr = 5,
+            max_components = 120,
+            chromosomes = paste0("chr", 16:22),
+            degenerate_resolution = 1e6,
+            verbose = 1
+        )
+    },
+    error = function(e) {
+        message("Circos plot generation failed: ", conditionMessage(e))
+        NULL
+    }
+)
+```
+It is also possible to plot the circos for a region, e.g, for chromosome 19 from 10 Mb to 60 Mb, with a degenerate resolution of 1 kb. Here we use range links so wider interactions are shown as ribbons:
+```{r circos_plot_region, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 tryCatch(
     {
         plotDMRsCircos(
@@ -246,9 +286,8 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            link_geometry = "midpoint",
-            chromosomes = paste0("chr", 16:22),
-            degenerate_resolution = 1e6,
+            region = GRanges("chr19", IRanges(10e6, 60e6)),
+            degenerate_resolution = 1e3,
             verbose = 1
         )
     },
@@ -258,6 +297,7 @@ tryCatch(
     }
 )
 ```
+
 
 ## Session Info
 

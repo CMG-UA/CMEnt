@@ -1,6 +1,6 @@
 # Avoid NSE warnings from R CMD check for ggplot2 aes()
 if (getRversion() >= "2.15.1") {
-    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position", "score", "region_class", "chr"))
+    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position", "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y", "label", "Group"))
 }
 
 #' Plot DMR Structure with seeds and Extended CpGs
@@ -77,12 +77,12 @@ if (getRversion() >= "2.15.1") {
     } else {
         end_cpg_ind <- max(downstream_sup_cpgs_inds)
     }
+    nsup_cpgs_inds <- setdiff(seq(start_cpg_ind, end_cpg_ind), c(seeds_inds, upstream_sup_cpgs_inds, downstream_sup_cpgs_inds))
+    nsup_cpgs <- beta_locs[nsup_cpgs_inds, , drop = FALSE]
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     dmr_start <- GenomicRanges::start(dmr)
     dmr_end <- GenomicRanges::end(dmr)
-
-    # Extract seed IDs from the comma-separated string
 
 
     # Get positions
@@ -93,9 +93,6 @@ if (getRversion() >= "2.15.1") {
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
 
-
-
-
     if (extend_by_dmr_size_ratio > 0) {
         dmr_size <- dmr_end - dmr_start
         ext <- round(dmr_size * extend_by_dmr_size_ratio)
@@ -105,8 +102,6 @@ if (getRversion() >= "2.15.1") {
     ext <- max(ext, min_extension_bp)
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
-    nsup_cpgs <- beta_locs[start_seed_ind:end_seed_ind, ]
-    nsup_cpgs <- nsup_cpgs[which(nsup_cpgs$start < dmr_end & nsup_cpgs$start > dmr_start & !seq(start_seed_ind, end_seed_ind) %in% seeds_inds), , drop = FALSE]
 
     downstream_nsup_cpgs <- beta_locs[which(beta_locs$start > dmr_end & beta_locs$start <= plot_end), , drop = FALSE]
     upstream_nsup_cpgs <- beta_locs[which(beta_locs$start < dmr_start & beta_locs$start >= plot_start), , drop = FALSE]
@@ -221,73 +216,9 @@ if (getRversion() >= "2.15.1") {
         data = dmr_line,
         ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
         color = "#E41A1C",
-        linewidth = 1.5,
-        alpha = 0.8
+        linewidth = 1,
+        alpha = 1
     )
-
-    # Plot seed stems
-    p <- p + ggplot2::geom_segment(
-        data = seeds_df,
-        ggplot2::aes(x = start, xend = start, y = 0, yend = y),
-        color = "#377EB8",
-        linewidth = 1.2,
-        arrow = ggplot2::arrow(length = ggplot2::unit(0.15, "cm"), type = "closed")
-    )
-
-    # Plot supported CpG stems
-    if (nrow(extended_sup_cpgs_df) > 0) {
-        p <- p + ggplot2::geom_segment(
-            data = extended_sup_cpgs_df,
-            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
-            color = "#377EB8",
-            linewidth = 0.8,
-            alpha = 0.8
-        )
-    }
-
-    # Plot non-supported CpG stems
-    if (nrow(extended_nsup_cpgs_df) > 0) {
-        p <- p + ggplot2::geom_segment(
-            data = extended_nsup_cpgs_df,
-            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
-            color = "gray50",
-            linewidth = 0.8,
-            alpha = 0.5
-        )
-    }
-
-    # Plot seed points
-    p <- p + ggplot2::geom_point(
-        data = seeds_df,
-        ggplot2::aes(x = start, y = y),
-        color = "#377EB8",
-        size = 3,
-        shape = 16
-    )
-
-    # Plot supporting CpG points
-    if (nrow(extended_sup_cpgs_df) > 0) {
-        p <- p + ggplot2::geom_point(
-            data = extended_sup_cpgs_df,
-            ggplot2::aes(x = start, y = y),
-            color = "#377EB8",
-            size = 2,
-            shape = 16,
-            alpha = 0.8
-        )
-    }
-
-    # Plot non-supporting CpG points
-    if (nrow(extended_nsup_cpgs_df) > 0) {
-        p <- p + ggplot2::geom_point(
-            data = extended_nsup_cpgs_df,
-            ggplot2::aes(x = start, y = y),
-            color = "gray70",
-            size = 2,
-            shape = 16,
-            alpha = 0.5
-        )
-    }
 
     # Add DMR region shading
     p <- p + ggplot2::annotate(
@@ -305,17 +236,8 @@ if (getRversion() >= "2.15.1") {
             data = dmr_upstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
             color = "#E41A1C",
-            linewidth = 1.5,
+            linewidth = 1,
             alpha = 0.8
-        ) + ggplot2::geom_text(
-            data = dmr_upstream_line,
-            ggplot2::aes(
-                x = (x + xend) / 2, y = yend,
-                label = "Upstream Extension"
-            ),
-            vjust = -0.5,
-            color = "#000000",
-            size = 3
         )
         p <- p + ggplot2::annotate(
             "polygon",
@@ -325,20 +247,15 @@ if (getRversion() >= "2.15.1") {
             fill = "#E41A1C"
         )
     }
+
     # if downstream extended CpGs exist add shading in the form of a trapezoid
     if (nrow(downstream_sup_cpgs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_downstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
             color = "#E41A1C",
-            linewidth = 1.5,
+            linewidth = 1,
             alpha = 0.8
-        ) + ggplot2::geom_text(
-            data = dmr_downstream_line,
-            ggplot2::aes(x = (x + xend) / 2, y = y, label = "Downstream Extension"),
-            vjust = -0.5,
-            color = "#000000",
-            size = 3
         )
         p <- p + ggplot2::annotate(
             "polygon",
@@ -347,6 +264,118 @@ if (getRversion() >= "2.15.1") {
             alpha = 0.1,
             fill = "#E41A1C"
         )
+    }
+
+
+    # Plot seed stems
+    p <- p + ggplot2::geom_segment(
+        data = seeds_df,
+        ggplot2::aes(x = start, xend = start, y = 0, yend = y),
+        color = "#377EB8",
+        linewidth = 0.8,
+        alpha = 1
+    )
+
+    # Plot seed points
+    p <- p + ggplot2::geom_point(
+        data = seeds_df,
+        ggplot2::aes(x = start, y = y),
+        color = "#377EB8",
+        size = 2,
+        shape = 16,
+        alpha = 1
+    )
+
+    # Plot supported CpG stems
+    if (nrow(extended_sup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = extended_sup_cpgs_df,
+            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
+            color = "#377EB8",
+            linewidth = 0.8,
+            alpha = 1
+        )
+    }
+
+    # Plot supporting CpG points
+    if (nrow(extended_sup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_point(
+            data = extended_sup_cpgs_df,
+            ggplot2::aes(x = start, y = y),
+            color = "#377EB8",
+            size = 2,
+            shape = 16,
+            alpha = 1
+        )
+    }
+
+    # Plot non-supported CpG stems
+    if (nrow(extended_nsup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = extended_nsup_cpgs_df,
+            ggplot2::aes(x = start, xend = start, y = 0, yend = y),
+            color = "gray50",
+            linewidth = 0.8,
+            alpha = 0.5
+        )
+    }
+
+    # Plot non-supporting CpG points
+    if (nrow(extended_nsup_cpgs_df) > 0) {
+        p <- p + ggplot2::geom_point(
+            data = extended_nsup_cpgs_df,
+            ggplot2::aes(x = start, y = y),
+            color = "gray50",
+            size = 2,
+            shape = 16,
+            alpha = 0.5
+        )
+    }
+
+
+    # Add labels for DMR extensions if they exist
+    extension_df <- list()
+    if (nrow(upstream_sup_cpgs) > 0) {
+        upstream_mid_x <- (dmr_upstream_line$x + dmr_upstream_line$xend) / 2
+        upstream_mid_y <- (dmr_upstream_line$y + dmr_upstream_line$yend) / 2
+        upstream_label_df <- data.frame(
+            label_x = upstream_mid_x + (dmr_upstream_line$xend - dmr_upstream_line$x) * 0.14,
+            label_y = pmin(1.11, upstream_mid_y + 0.28),
+            target_x = upstream_mid_x,
+            target_y = upstream_mid_y,
+            label = "Upstream Extension",
+            stringsAsFactors = FALSE
+        )
+        extension_df <- c(extension_df, list(upstream_label_df))
+    }
+    if (nrow(downstream_sup_cpgs) > 0) {
+        downstream_mid_x <- (dmr_downstream_line$x + dmr_downstream_line$xend) / 2
+        downstream_mid_y <- (dmr_downstream_line$y + dmr_downstream_line$yend) / 2
+        downstream_label_df <- data.frame(
+            label_x = downstream_mid_x - (dmr_downstream_line$xend - dmr_downstream_line$x) * 0.12,
+            label_y = pmin(1.11, downstream_mid_y + 0.28),
+            target_x = downstream_mid_x,
+            target_y = downstream_mid_y,
+            label = "Downstream Extension",
+            stringsAsFactors = FALSE
+        )
+        extension_df <- c(extension_df, list(downstream_label_df))
+    }
+    if (length(extension_df) > 0) {
+        p <- p + ggplot2::geom_segment(
+            data = do.call(rbind, extension_df),
+            ggplot2::aes(x = label_x, y = label_y - 0.02, xend = target_x, yend = target_y),
+            linewidth = 0.2,
+            color = "#555555"
+        ) +
+            ggplot2::geom_text(
+                data = do.call(rbind, extension_df),
+                ggplot2::aes(x = label_x, y = label_y, label = label),
+                vjust = 0,
+                family = "sans",
+                color = "#4A4A4A",
+                size = 2
+            )
     }
 
     # Create title if not provided
@@ -408,16 +437,17 @@ if (getRversion() >= "2.15.1") {
             panel.grid.major.y = ggplot2::element_blank()
         )
 
-    p <- p + ggplot2::theme(
-        axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5)
-    )
-
     # Add ticks for the seeds on the x-axis
     breaks <- c(plot_start, beta_locs[start_cpg_ind:end_cpg_ind, "start"], plot_end)
-    cpgs_labs <- paste0(beta_locs[start_cpg_ind:end_cpg_ind, "start"], "\n(", rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE]), ")")
+    cpg_positions <- beta_locs[start_cpg_ind:end_cpg_ind, "start"]
+    cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
+    cpgs_labs <- paste0(
+        format(cpg_positions, big.mark = ",", scientific = FALSE),
+        " (", cpg_ids, ")"
+    )
     breaks_labels <- c(
-        as.character(plot_start), cpgs_labs,
-        as.character(plot_end)
+        format(plot_start, big.mark = ",", scientific = FALSE), cpgs_labs,
+        format(plot_end, big.mark = ",", scientific = FALSE)
     )
     p <- p + ggplot2::scale_x_continuous(
         breaks = breaks,
@@ -456,41 +486,66 @@ if (getRversion() >= "2.15.1") {
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
     beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
     beta_melted$is_seed <- is_seed[match(beta_melted$CpG, cpg_ids)]
+    sample_order <- unique(as.character(beta_melted$Sample))
+    sample_label_colors <- rep("#222222", length(sample_order))
+    names(sample_label_colors) <- sample_order
     if (!is.null(pheno) && !is.null(sample_group_col)) {
         beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
         # Order samples by group
         sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
         beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
+        group_per_sample <- as.character(pheno[sample_order, sample_group_col])
+        unique_groups <- unique(group_per_sample)
+        group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Dark 3")
+        names(group_colors) <- unique_groups
+        sample_label_colors <- unname(group_colors[group_per_sample])
+        names(sample_label_colors) <- sample_order
+    } else {
+        beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
+    }
+    valid_beta <- beta_melted$Beta[is.finite(beta_melted$Beta)]
+    beta_limits <- range(valid_beta, na.rm = TRUE)
+    q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
+    if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
+        q <- sort(c(q[1], 0.5, q[2]))
+        coloring = ggplot2::scale_fill_gradientn(
+            colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
+            breaks = q,
+            limits = beta_limits,
+            name = "\u03b2-values"
+        )
+    } else if (beta_limits[2] <= 0.5) {
+        coloring = ggplot2::scale_fill_gradient(
+            low = "#2b83ba",
+            high = "#f7f7f7",
+            breaks = q,
+            limits = beta_limits,
+            name = "\u03b2-values"
+        )
+    } else {
+        coloring = ggplot2::scale_fill_gradient(
+            low = "#f7f7f7",
+            high = "#d7191c",
+            breaks = q,
+            limits = beta_limits,
+            name = "\u03b2-values"
+        )
     }
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
-        ggplot2::scale_fill_gradient(
-            low = "white", high = "red",
-            limits = c(min(beta_melted$Beta), max(beta_melted$Beta)),
-            name = "\u03b2-values"
-        ) +
+        coloring +
         ggplot2::labs(
             y = "Sample"
         ) +
         ggplot2::theme_minimal(base_size = 10) +
         ggplot2::theme(
-            axis.text.y = ggplot2::element_text(size = 7)
+            axis.text.y = ggplot2::element_text(size = 7, color = sample_label_colors[levels(beta_melted$Sample)]),
+            panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.y = ggplot2::element_blank()
         ) +
         ggplot2::theme(
-            axis.text.x = ggplot2::element_text(angle = 45, hjust = 0.5, vjust = 0.5)
+            axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7)
         )
-    # Add vertical lines for seeds
-    if (any(is_seed)) {
-        seed_positions <- unique(beta_melted$Position[beta_melted$is_seed])
-        heatmap_plot <- heatmap_plot +
-            ggplot2::geom_vline(
-                xintercept = seed_positions,
-                color = "yellow",
-                linetype = "dashed",
-                linewidth = 0.5,
-                alpha = 0.7
-            )
-    }
     heatmap_plot
 }
 
@@ -838,7 +893,6 @@ plotDMR <- function(dmrs,
                     output_file = NULL,
                     width = 8,
                     height = 12) {
-
     dmrs <- convertToGRanges(dmrs, genome)
     if (!is.null(array)) {
         if (length(array) > 1) {
@@ -931,6 +985,14 @@ plotDMR <- function(dmrs,
             sample_group_col = sample_group_col,
             total_shown_positions = total_shown_positions
         )
+        structure_plot <- structure_plot +
+            ggplot2::labs(x = NULL) +
+            ggplot2::theme(
+                axis.title.x = ggplot2::element_blank(),
+                axis.text.x = ggplot2::element_blank(),
+                axis.ticks.x = ggplot2::element_blank(),
+                plot.margin = ggplot2::margin(t = 5, r = 5, b = 1, l = 5)
+            )
         heatmap_plot <- heatmap_plot +
             ggplot2::scale_x_continuous(
                 breaks = breaks,
@@ -939,6 +1001,11 @@ plotDMR <- function(dmrs,
             ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)])) +
             ggplot2::labs(
                 x = sprintf("Genomic Position on %s (bp)", ret$chr)
+            ) +
+            ggplot2::theme(
+                axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
+                axis.title.x = ggplot2::element_text(margin = ggplot2::margin(t = 6)),
+                plot.margin = ggplot2::margin(t = 0, r = 5, b = 5, l = 5)
             )
 
         g1 <- ggplot2::ggplotGrob(structure_plot)
@@ -988,7 +1055,7 @@ plotDMR <- function(dmrs,
         combined <- gridExtra::arrangeGrob(
             grobs = grobs,
             ncol = 1,
-            heights = c(1.1, 1, 0.55)
+            heights = c(1, 1, 0.55)
         )
     } else if (length(grobs) == 2 && plot_motif && is.null(beta)) {
         combined <- gridExtra::arrangeGrob(
@@ -1164,6 +1231,26 @@ plotDMR <- function(dmrs,
     bounds
 }
 
+.refineSectorBoundsWithCytoband <- function(sector_bounds, cytoband_subset) {
+    if (is.null(sector_bounds) || nrow(sector_bounds) == 0 || is.null(cytoband_subset) || nrow(cytoband_subset) == 0) {
+        return(sector_bounds)
+    }
+    cb_start <- tapply(cytoband_subset$V2, cytoband_subset$V1, min, na.rm = TRUE)
+    cb_end <- tapply(cytoband_subset$V3, cytoband_subset$V1, max, na.rm = TRUE)
+    idx <- match(sector_bounds$chr, names(cb_start))
+    keep <- !is.na(idx)
+    if (!any(keep)) {
+        return(sector_bounds)
+    }
+    sector_bounds <- sector_bounds[keep, , drop = FALSE]
+    idx <- idx[keep]
+    sector_bounds$start <- pmax(sector_bounds$start, as.numeric(cb_start[idx]))
+    sector_bounds$end <- pmin(sector_bounds$end, as.numeric(cb_end[idx]))
+    sector_bounds <- sector_bounds[sector_bounds$start < sector_bounds$end, , drop = FALSE]
+    rownames(sector_bounds) <- NULL
+    sector_bounds
+}
+
 .clampPointToSectorBounds <- function(point, chr, sector_bounds) {
     if (is.null(sector_bounds) || length(point) == 0) {
         return(point)
@@ -1179,6 +1266,20 @@ plotDMR <- function(dmrs,
         point <- sort(point)
     }
     point
+}
+
+.inflatePointRangeForRibbon <- function(point, chr, sector_bounds, min_span = 1) {
+    if (length(point) != 2 || any(!is.finite(point))) {
+        return(point)
+    }
+    span <- point[2] - point[1]
+    if (span >= min_span) {
+        return(point)
+    }
+    mid <- mean(point)
+    half <- min_span / 2
+    inflated <- c(mid - half, mid + half)
+    .clampPointToSectorBounds(inflated, chr, sector_bounds)
 }
 
 .subsetCytobandForCircos <- function(cytoband, unique_chrs, region_df = NULL) {
@@ -1299,7 +1400,9 @@ plotDMR <- function(dmrs,
 #' @param unmatched_interaction_color Character. Color used for interaction components without JASPAR matches.
 #'   These links are shown but omitted from the interaction legend (default: `"#B3B3B3"`).
 #' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
-#' @param degenerate_resolution Integer. Resolution in base pairs for showing lines instead of ribbons/lines instead of rectangles (default: 1e6).
+#' @param degenerate_resolution Integer. Resolution in base pairs for simplifying narrow glyphs:
+#'   link ribbons are drawn as lines when both anchors are below this span, and DMR arcs
+#'   are drawn as lines instead of rectangles below this span (default: 1e6).
 #' @param ... Additional arguments (currently unused).
 #'
 #' @return NULL (creates plot in graphics device).
@@ -1426,6 +1529,10 @@ plotDMRsCircos <- function(dmrs,
     cytoband <- .getCytobandData(genome)
     cytoband_subset <- .subsetCytobandForCircos(cytoband, unique_chrs, region_df = region_df)
     sector_bounds <- .getCircosSectorBounds(dmrs, unique_chrs, region_df = region_df)
+    sector_bounds <- .refineSectorBoundsWithCytoband(sector_bounds, cytoband_subset)
+    if (is.null(sector_bounds) || nrow(sector_bounds) == 0) {
+        stop("Could not determine valid sector bounds for the selected chromosomes/region.")
+    }
 
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
@@ -1464,6 +1571,10 @@ plotDMRsCircos <- function(dmrs,
             heatmap_df$end <- pmin(heatmap_df$end, sector_bounds$end[hidx])
             heatmap_df <- heatmap_df[heatmap_df$start <= heatmap_df$end, , drop = FALSE]
         }
+    }
+    if (!is.null(heatmap_df) && nrow(heatmap_df) > 1) {
+        ord_heatmap <- order(match(heatmap_df$chr, unique_chrs), heatmap_df$start, heatmap_df$end)
+        heatmap_df <- heatmap_df[ord_heatmap, , drop = FALSE]
     }
     .log_success("Heatmap data prepared", level = 2)
     .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
@@ -1563,14 +1674,16 @@ plotDMRsCircos <- function(dmrs,
         if (length(valid_vals) == 0) {
             .log_warn("Heatmap beta values are all missing/non-finite. Skipping heatmap track.")
         } else {
-            q <- stats::quantile(valid_vals, probs = c(0.05, 0.5, 0.95), na.rm = TRUE, names = FALSE, type = 8)
-            if (length(unique(q)) < 3) {
-                q <- c(min(valid_vals), mean(range(valid_vals)), max(valid_vals))
+            q <- stats::quantile(valid_vals, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
+            vals_range <- range(valid_vals, na.rm = TRUE)
+            if (vals_range[1] <= 0.5 && vals_range[2] >= 0.5) {
+                q <- sort(c(q[1], 0.5, q[2]))
+                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7", "#d7191c"))
+            } else if (vals_range[2] < 0.5) {
+                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7"))
+            } else {
+                col_fun <- circlize::colorRamp2(q, c("#f7f7f7", "#d7191c"))
             }
-            if (length(unique(q)) < 3) {
-                q <- c(q[1] - 1e-6, q[2], q[3] + 1e-6)
-            }
-            col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7", "#d7191c"))
             heatmap_height <- 0.3
             heatmap_df_plot <- data.frame(
                 heatmap_df[, 1:3, drop = FALSE],
@@ -1765,8 +1878,7 @@ plotDMRsCircos <- function(dmrs,
             rank_vec <- matched_components$component_best_rank
             rank_vec[!is.finite(rank_vec)] <- Inf
             matched_components <- matched_components[
-                order(rank_vec, -matched_components$size, matched_components$component_id),
-                ,
+                order(rank_vec, -matched_components$size, matched_components$component_id), ,
                 drop = FALSE
             ]
             hues <- seq(15, 375, length.out = nrow(matched_components) + 1)
@@ -1855,11 +1967,26 @@ plotDMRsCircos <- function(dmrs,
                 point1 <- mean(point1)
                 point2 <- mean(point2)
             } else {
-                if (point1[2] - point1[1] < degenerate_resolution) {
+                span1 <- point1[2] - point1[1]
+                span2 <- point2[2] - point2[1]
+                if (span1 < degenerate_resolution && span2 < degenerate_resolution) {
+                    # If both anchors are tiny, a simple line is more legible.
                     point1 <- mean(point1)
-                }
-                if (point2[2] - point2[1] < degenerate_resolution) {
                     point2 <- mean(point2)
+                } else {
+                    # Keep ribbon geometry when at least one side has span.
+                    point1 <- .inflatePointRangeForRibbon(
+                        point1,
+                        chr = link_data$chr1[i],
+                        sector_bounds = sector_bounds,
+                        min_span = 1
+                    )
+                    point2 <- .inflatePointRangeForRibbon(
+                        point2,
+                        chr = link_data$chr2[i],
+                        sector_bounds = sector_bounds,
+                        min_span = 1
+                    )
                 }
             }
             point1 <- .clampPointToSectorBounds(point1, link_data$chr1[i], sector_bounds)
@@ -1924,8 +2051,8 @@ plotDMRsCircos <- function(dmrs,
         ComplexHeatmap::draw(
             lgd_list,
             x = grid::unit(0, "npc"),
-            y = grid::unit(1, "npc"),
-            just = c("left", "top")
+            y = grid::unit(0.5, "npc"),
+            just = c("left", "center")
         )
         grid::upViewport()
     }
@@ -2236,8 +2363,18 @@ plotDMRsManhattan <- function(dmrs,
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
     shown_locs$end <- as.numeric(shown_locs$end)
+    if (nrow(shown_locs) > 1) {
+        chr_levels <- .orderChromosomesNaturally(shown_locs$chr)
+        ord <- order(
+            factor(shown_locs$chr, levels = chr_levels),
+            shown_locs$start,
+            shown_locs$end,
+            rownames(shown_locs)
+        )
+        shown_locs <- shown_locs[ord, , drop = FALSE]
+    }
     beta_data <- beta_handler$getBeta(
-        row_names = dmrs_cpgs_inds,
+        row_names = rownames(shown_locs),
         col_names = rownames(pheno)
     )
     if (max_num_samples_per_group > 0) {
@@ -2268,6 +2405,9 @@ plotDMRsManhattan <- function(dmrs,
     }
     beta_data <- as.matrix(beta_data)
     storage.mode(beta_data) <- "numeric"
+    if (nrow(beta_data) > 0 && nrow(shown_locs) > 0 && !is.null(rownames(beta_data))) {
+        beta_data <- beta_data[match(rownames(shown_locs), rownames(beta_data)), , drop = FALSE]
+    }
     heatmap_df <- data.frame(
         shown_locs,
         beta_data,
