@@ -21,7 +21,6 @@ plotDMRsCircos(
   max_components = 30,
   chromosomes = NULL,
   region = NULL,
-  link_geometry = c("midpoint", "range"),
   unmatched_interaction_color = "#B3B3B3",
   legend_width_ratio = 0.34,
   degenerate_resolution = 1e+06,
@@ -63,7 +62,7 @@ rownames matching beta column names (required for beta track).}
 \item{region}{Genomic region to display. Can be NULL, a GRanges, a string in the form \code{chr:start-end},
 or a data.frame/list with columns \code{chr}, \code{start}, \code{end}.}
 
-\item{link_geometry}{Character. Geometry of interaction links: \code{"midpoint"} (compact, file-size friendly)
+\item{}{Character. Geometry of interaction links: \code{"midpoint"} (compact, file-size friendly)
 or \code{"range"} (uses full DMR span where possible). Default: \code{"midpoint"}.}
 
 \item{unmatched_interaction_color}{Character. Color used for interaction components without JASPAR matches.

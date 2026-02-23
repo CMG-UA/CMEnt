@@ -1455,8 +1455,6 @@ plotDMR <- function(dmrs,
 #' @param chromosomes Character vector. Subset of chromosomes to display (default: NULL, show all available).
 #' @param region Genomic region to display. Can be NULL, a GRanges, a string in the form `chr:start-end`,
 #'   or a data.frame/list with columns `chr`, `start`, `end`.
-#' @param link_geometry Character. Geometry of interaction links: `"midpoint"` (compact, file-size friendly)
-#'   or `"range"` (uses full DMR span where possible). Default: `"midpoint"`.
 #' @param unmatched_interaction_color Character. Color used for interaction components without JASPAR matches.
 #'   These links are shown but omitted from the interaction legend (default: `"#B3B3B3"`).
 #' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
@@ -1498,7 +1496,6 @@ plotDMRsCircos <- function(dmrs,
                            max_components = 30,
                            chromosomes = NULL,
                            region = NULL,
-                           link_geometry = c("midpoint", "range"),
                            unmatched_interaction_color = "#B3B3B3",
                            legend_width_ratio = 0.34,
                            degenerate_resolution = 1e6,
@@ -1506,7 +1503,6 @@ plotDMRsCircos <- function(dmrs,
                            verbose = NULL,
                            ...) {
     dmrs <- convertToGRanges(dmrs, genome)
-    link_geometry <- strex::match_arg(link_geometry, ignore_case = TRUE)
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
             stop("max_components must be NULL or a single numeric value.")
