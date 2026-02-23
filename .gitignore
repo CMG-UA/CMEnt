@@ -45,3 +45,4 @@ data/sim_bs_1000.rds
 figure-html
 simulated_ont/*
 reports/*
+simulated_ont
