@@ -218,7 +218,7 @@ plotDMR(
 
 ### Summary Circos Plot
 
-```{r circos_plot, fig.height=10, fig.width=14, dpi=150, fig.retina=1}
+```{r circos_plot, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
 
 tryCatch(

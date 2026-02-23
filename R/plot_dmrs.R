@@ -1331,7 +1331,7 @@ plotDMRsCircos <- function(dmrs,
                            max_num_samples_per_group = 5,
                            max_dmrs_per_chr = 10,
                            max_cpgs_per_dmr = 5,
-                           min_component_size = 3,
+                           min_component_size = 2,
                            max_components = 30,
                            chromosomes = NULL,
                            region = NULL,
@@ -1907,9 +1907,9 @@ plotDMRsCircos <- function(dmrs,
     region_class <- rep("Intergenic", length(dmrs))
     region_class[gene_body_mask] <- "Gene Body"
     region_class[promoter_mask] <- "Promoter"
-    region_class[promoter_mask & gene_body_mask] <- "Promoter & Gene Body"
+    region_class[promoter_mask & gene_body_mask] <- NA
 
-    factor(region_class, levels = c("Promoter", "Promoter & Gene Body", "Gene Body", "Intergenic"))
+    factor(region_class, levels = c("Promoter", "Gene Body", "Intergenic"))
 }
 
 #' Plot Manhattan-Style View of DMR Scores
@@ -1995,7 +1995,6 @@ plotDMRsManhattan <- function(dmrs,
 
     region_colors <- c(
         "Promoter" = "#D73027",
-        "Promoter & Gene Body" = "#FC8D59",
         "Gene Body" = "#3182BD",
         "Intergenic" = "#9E9E9E"
     )
