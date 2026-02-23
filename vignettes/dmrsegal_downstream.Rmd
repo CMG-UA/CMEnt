@@ -145,22 +145,26 @@ if (nrow(component_tbl) > 0) {
         )
     )
 }
-annotated_components <- sum(!is.na(component_tbl$jaspar_names) & nzchar(component_tbl$jaspar_names))
+annotated_components_m <- !is.na(component_tbl$jaspar_names) & nzchar(component_tbl$jaspar_names)
+annotated_components <- sum(annotated_components_m)
 cat(sprintf("Components with JASPAR annotation: %d / %d\n", annotated_components, nrow(component_tbl)))
 
 if (nrow(interaction_tbl) > 5) {
     knitr::kable(
-        head(interaction_tbl[order(-interaction_tbl$sim), ], 20),
+        head(interaction_tbl[order(-interaction_tbl$sim), ], 5),
         caption = "Top 5 motif-similarity DMR interactions"
     )
 }
 
-if (nrow(component_tbl) > 0) {
-    components_tbl <- component_tbl |>
+if (annotated_components > 0) {
+    components_tbl <- component_tbl[annotated_components_m, ] |>
         dplyr::select(component_id, size, consensus_seq, jaspar_names) |>
         dplyr::arrange(dplyr::desc(size))
     if (nrow(components_tbl) > 0) {
-        knitr::kable(head(components_tbl, 5), caption = "Motif interaction components")
+        knitr::kable(
+            components_tbl, 
+            caption = "Motif interaction components with JASPAR annotation"
+        )
     }
 }
 ```
@@ -217,6 +221,12 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
+A circos plot consisting of the extracted information from DMRsegal is drawn from chromosome 16 to 22. 
+The information includes:
+
+- The DMRs and their scores (at most 40 DMRs per chromosome, ranked by score, are shown)
+- Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
+- The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
 
 ```{r circos_plot, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
@@ -237,6 +247,7 @@ tryCatch(
             max_cpgs_per_dmr = 5,
             max_components = 120,
             link_geometry = "midpoint",
+            chromosomes = paste0("chr", 16:22),
             degenerate_resolution = 1e6,
             verbose = 1
         )

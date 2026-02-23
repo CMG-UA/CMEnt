@@ -1520,7 +1520,9 @@ plotDMRsCircos <- function(dmrs,
     graphics::par(omi = gridBase::gridOMI(), new = TRUE)
     circlize::circos.par(gap.after = c(rep(2, length(unique_chrs) - 1), 10))
 
-    legends <- c()
+    heatmap_legend <- NULL
+    arc_legend <- NULL
+    link_legend <- NULL
     use_manual_init <- FALSE
 
     if (!is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
@@ -1583,7 +1585,8 @@ plotDMRsCircos <- function(dmrs,
                 border = NA,
                 side = "outside",
                 border_lwd = 0,
-                line_lwd = 0,
+                line_col = "#6E6E6E",
+                line_lwd = 0.45,
                 heatmap_height = heatmap_height,
             )
             heatmap_track_index <- previous_track_index + 1
@@ -1638,12 +1641,11 @@ plotDMRsCircos <- function(dmrs,
                 title = "Samples \u03b2-values",
                 at = legend_at,
                 col_fun = col_fun,
-                title_position = "topcenter",
+                title_position = "topleft",
                 legend_height = grid::unit(4, "cm"),
                 labels_gp = grid::gpar(fontsize = 8),
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold")
             )
-            legends <- c(legends, list(heatmap_legend))
             .log_success("Heatmap track added", level = 2)
         }
     }
@@ -1658,68 +1660,89 @@ plotDMRsCircos <- function(dmrs,
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)
 
-        positive_delta <- grDevices::colorRampPalette(c("white", "#801414"))(100)
-        negative_delta <- grDevices::colorRampPalette(c("#055709", "white"))(100)
+        delta_beta <- as.numeric(arc_data$delta_beta)
+        valid_vals <- delta_beta[is.finite(delta_beta)]
+        if (length(valid_vals) == 0) {
+            .log_warn("DMR delta_beta values are all missing/non-finite. Skipping arc track.")
+            arc_data <- NULL
+        } else {
+            neg_min <- suppressWarnings(min(valid_vals[valid_vals < 0], na.rm = TRUE))
+            pos_max <- suppressWarnings(max(valid_vals[valid_vals > 0], na.rm = TRUE))
+            if (!is.finite(neg_min)) {
+                neg_min <- -max(1e-6, abs(pos_max) * 0.05)
+            }
+            if (!is.finite(pos_max)) {
+                pos_max <- max(1e-6, abs(neg_min) * 0.05)
+            }
+            if (neg_min >= 0) {
+                neg_min <- -max(1e-6, abs(pos_max) * 0.05)
+            }
+            if (pos_max <= 0) {
+                pos_max <- max(1e-6, abs(neg_min) * 0.05)
+            }
+            q <- c(neg_min, 0, pos_max)
+            col_fun <- circlize::colorRamp2(q, c("#055709", "white", "#801414"))
+        }
 
-        arc_colors <- ifelse(
-            arc_data$delta_beta > 0,
-            positive_delta[pmin(100, ceiling(abs(arc_data$delta_beta) * 100))],
-            negative_delta[pmin(100, ceiling(abs(arc_data$delta_beta) * 100))]
-        )
+        if (!is.null(arc_data)) {
+            arc_colors <- col_fun(arc_data$delta_beta)
 
-        arc_df <- data.frame(
-            chr = arc_data$chr,
-            start = arc_data$start,
-            end = arc_data$end,
-            delta_beta = arc_data$delta_beta,
-            color = arc_colors,
-            stringsAsFactors = FALSE
-        )
+            arc_df <- data.frame(
+                chr = arc_data$chr,
+                start = arc_data$start,
+                end = arc_data$end,
+                delta_beta = arc_data$delta_beta,
+                color = arc_colors,
+                stringsAsFactors = FALSE
+            )
 
-        circlize::circos.trackPlotRegion(
-            sectors = unique_chrs,
-            bg.border = NA,
-            bg.col = "#87cec4",
-            track.height = 0.05,
-            ylim = c(0, 1),
-            panel.fun = function(x, y) {
-                chr <- circlize::CELL_META$sector.index
-                dmr_chr <- arc_df[arc_df$chr == chr, ]
-                if (nrow(dmr_chr) > 0) {
-                    for (i in seq_len(nrow(dmr_chr))) {
-                        if (dmr_chr$end[i] - dmr_chr$start[i] < degenerate_resolution) {
-                            circlize::circos.lines(
-                                x = c((dmr_chr$start[i] + dmr_chr$end[i]) / 2, (dmr_chr$start[i] + dmr_chr$end[i]) / 2),
-                                y = c(0, 1),
-                                col = dmr_chr$color[i],
-                                border = NA
-                            )
-                        } else {
-                            circlize::circos.rect(
-                                xleft = dmr_chr$start[i],
-                                xright = dmr_chr$end[i],
-                                ybottom = 0,
-                                ytop = 1,
-                                col = dmr_chr$color[i],
-                                border = NA,
-                                density = NULL
-                            )
+            circlize::circos.trackPlotRegion(
+                sectors = unique_chrs,
+                bg.border = NA,
+                bg.col = "white",
+                track.height = 0.05,
+                ylim = c(0, 1),
+                panel.fun = function(x, y) {
+                    chr <- circlize::CELL_META$sector.index
+                    dmr_chr <- arc_df[arc_df$chr == chr, ]
+                    if (nrow(dmr_chr) > 0) {
+                        for (i in seq_len(nrow(dmr_chr))) {
+                            if (dmr_chr$end[i] - dmr_chr$start[i] < degenerate_resolution) {
+                                circlize::circos.lines(
+                                    x = c((dmr_chr$start[i] + dmr_chr$end[i]) / 2, (dmr_chr$start[i] + dmr_chr$end[i]) / 2),
+                                    y = c(0, 1),
+                                    col = dmr_chr$color[i],
+                                    border = NA
+                                )
+                            } else {
+                                circlize::circos.rect(
+                                    xleft = dmr_chr$start[i],
+                                    xright = dmr_chr$end[i],
+                                    ybottom = 0,
+                                    ytop = 1,
+                                    col = dmr_chr$color[i],
+                                    border = NA,
+                                    density = NULL
+                                )
+                            }
                         }
                     }
                 }
-            }
-        )
-        # Add legend for arc colors
-        arc_legend <- ComplexHeatmap::Legend(
-            title = "DMR \u0394\u03b2",
-            title_position = "topcenter",
-            at = c(-1, -0.5, 0, 0.5, 1),
-            labels = c("-1", "-0.5", "0", "0.5", "1"),
-            col_fun = circlize::colorRamp2(c(-1, 0, 1), c("#055709", "white", "#801414"))
-        )
-        legends <- c(legends, list(arc_legend))
+            )
+            # Add legend for arc colors
+            q <- signif(q, 2)
+            arc_legend <- ComplexHeatmap::Legend(
+                title = "DMR \u0394\u03b2",
+                at = q,
+                col_fun = col_fun,
+                title_position = "topleft",
+                legend_height = grid::unit(4, "cm"),
+                labels_gp = grid::gpar(fontsize = 8),
+                title_gp = grid::gpar(fontsize = 10, fontface = "bold")
+            )
 
-        .log_success("Arc track added", level = 2)
+            .log_success("Arc track added", level = 2)
+        }
     }
 
 
@@ -1816,11 +1839,10 @@ plotDMRsCircos <- function(dmrs,
                 labels = link_legend_labels,
                 legend_gp = grid::gpar(fill = link_legend_colors),
                 title = "DMR Interaction Components\n(JASPAR-annotated)",
-                title_position = "topcenter",
+                title_position = "topleft",
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
                 labels_gp = grid::gpar(fontsize = 8)
             )
-            legends <- c(legends, list(link_legend))
         }
 
         has_directionality <- "rank" %in% colnames(S4Vectors::mcols(dmrs)) &&
@@ -1851,8 +1873,8 @@ plotDMRsCircos <- function(dmrs,
                     col = link_data$colors[i],
                     directional = directional_flag,
                     arr.type = "triangle",
-                    arr.length = 0.035,
-                    arr.width = 0.6,
+                    arr.length = 0.3,
+                    arr.width = 0.05,
                     border = NA
                 )
             } else {
@@ -1871,13 +1893,34 @@ plotDMRsCircos <- function(dmrs,
     }
     circlize::circos.clear()
     grid::upViewport(2)
-    if (length(legends) > 0) {
+    top_legends <- Filter(Negate(is.null), list(heatmap_legend, arc_legend))
+    has_any_legend <- length(top_legends) > 0 || !is.null(link_legend)
+    if (has_any_legend) {
         grid::pushViewport(grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
-        legend_args <- c(legends, list(
-            max_height = grid::unit(0.98, "npc"),
-            column_gap = grid::unit(2, "mm")
-        ))
-        lgd_list <- do.call(ComplexHeatmap::packLegend, legend_args)
+        top_packed <- NULL
+        if (length(top_legends) > 0) {
+            top_args <- c(top_legends, list(
+                direction = "horizontal",
+                column_gap = grid::unit(6, "mm"),
+                row_gap = grid::unit(6, "mm"),
+                max_width = grid::unit(0.98, "npc")
+            ))
+            top_packed <- do.call(ComplexHeatmap::packLegend, top_args)
+        }
+        lgd_list <- top_packed
+        if (!is.null(link_legend)) {
+            if (is.null(top_packed)) {
+                lgd_list <- link_legend
+            } else {
+                lgd_list <- ComplexHeatmap::packLegend(
+                    top_packed,
+                    link_legend,
+                    direction = "vertical",
+                    row_gap = grid::unit(3, "mm"),
+                    max_height = grid::unit(0.98, "npc")
+                )
+            }
+        }
         ComplexHeatmap::draw(
             lgd_list,
             x = grid::unit(0, "npc"),
@@ -1961,6 +2004,10 @@ plotDMRsManhattan <- function(dmrs,
     scores <- scores[keep]
 
     region_class <- .classifyDMRRegionForManhattan(dmrs, promoter_col = promoter_col, gene_body_col = gene_body_col)
+    m <- !is.na(region_class)
+    dmrs <- dmrs[m]
+    scores <- scores[m]
+    region_class <- region_class[m]
     chr <- as.character(GenomicRanges::seqnames(dmrs))
     chr_levels <- .orderChromosomesNaturally(chr)
 
@@ -2016,7 +2063,7 @@ plotDMRsManhattan <- function(dmrs,
         ggplot2::theme(
             panel.grid.minor = ggplot2::element_blank(),
             panel.grid.major.x = ggplot2::element_blank(),
-            axis.text.x = ggplot2::element_text(angle = 0, vjust = 0.5),
+            axis.text.x = ggplot2::element_text(angle = 45, vjust = 0.5),
             legend.title = ggplot2::element_text(face = "bold"),
             legend.position = "top"
         )
@@ -2236,7 +2283,7 @@ plotDMRsManhattan <- function(dmrs,
         chr = as.character(GenomicRanges::seqnames(dmrs)),
         start = GenomicRanges::start(dmrs),
         end = GenomicRanges::end(dmrs),
-        delta_beta = abs(S4Vectors::mcols(dmrs)$delta_beta)
+        delta_beta = as.numeric(S4Vectors::mcols(dmrs)$delta_beta)
     )
 }
 
