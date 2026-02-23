@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal Capabilities Notebook on dmrsegaldata (Benchmark Results)"
+title: "DMRsegal Downstream Capabilities"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output:
   BiocStyle::html_document:
     code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal Capabilities Notebook on dmrsegaldata (Benchmark Results)}
+  %\VignetteIndexEntry{DMRsegal Downstream Capabilities}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -49,7 +49,7 @@ cat("
 
 ## Goal
 
-This notebook showcases the main DMRsegal capabilities on the `dmrsegaldata` benchmark dataset while reusing the precomputed benchmark DMR results.
+This notebook showcases additional DMRsegal capabilities beyond DMR discovery, including DMR ranking, motif extraction, motif-based DMR interactions, and visualizations. We use the example DMRs from `DMRsegaldata` as a benchmark to demonstrate these downstream analyses.
 
 ## Setup
 
@@ -62,11 +62,6 @@ library(DMRsegal)
 library(GenomicRanges)
 library(dplyr)
 library(ggplot2)
-
-output_dir <- "dmrsegaldata"
-if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-}
 
 genome <- "hg19"
 ```
@@ -81,10 +76,7 @@ dmps <- loadExampleInputData("dmps")
 
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
 
-benchmark_dmrs_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
-stopifnot(file.exists(benchmark_dmrs_file))
-dmrs <- readRDS(benchmark_dmrs_file)
-
+dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
 cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 ```
 
