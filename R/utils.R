@@ -2035,7 +2035,23 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             # get genes only within standard chromosomes
             std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::seqinfo(txdb))
             genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% std_chroms]
-            saveRDS(genes, genes_file)
+            tryCatch(
+                {
+                    saveRDS(genes, genes_file)
+                },
+                warning = function(w) {
+                    .log_warn(
+                        "Could not write annotation cache file '", genes_file,
+                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+                    )
+                },
+                error = function(e) {
+                    .log_warn(
+                        "Could not write annotation cache file '", genes_file,
+                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+                    )
+                }
+            )
         }
         promoters_file <- file.path(cache_dir, paste0("promoters_", genome, ".rds"))
         if (file.exists(promoters_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
@@ -2046,7 +2062,23 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
             promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
             promoters <- stack(promoters)
-            saveRDS(promoters, promoters_file)
+            tryCatch(
+                {
+                    saveRDS(promoters, promoters_file)
+                },
+                warning = function(w) {
+                    .log_warn(
+                        "Could not write annotation cache file '", promoters_file,
+                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+                    )
+                },
+                error = function(e) {
+                    .log_warn(
+                        "Could not write annotation cache file '", promoters_file,
+                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+                    )
+                }
+            )
         }
     })
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
