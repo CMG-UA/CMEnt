@@ -1446,7 +1446,7 @@ plotDMR <- function(dmrs,
 #' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
-#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).
+#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
 #' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
@@ -1487,7 +1487,7 @@ plotDMRsCircos <- function(dmrs,
                            array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
-                           min_similarity = 0.7,
+                           min_similarity = 0.8,
                            flank_size = 5,
                            max_num_samples_per_group = 5,
                            max_dmrs_per_chr = 10,

@@ -294,7 +294,7 @@ extractDMRMotifs <- function(
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
-#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)
+#' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)

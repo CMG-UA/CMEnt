@@ -24,7 +24,7 @@ computeDMRsInteraction(
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
 
-\item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7)}
+\item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

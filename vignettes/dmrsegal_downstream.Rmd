@@ -252,7 +252,7 @@ tryCatch(
             genome = genome,
             array = array_type,
             sample_group_col = "Sample_Group",
-            min_similarity = 0.7,
+            min_similarity = 0.8,
             flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 40,
