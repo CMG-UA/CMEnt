@@ -269,7 +269,7 @@ tryCatch(
     }
 )
 ```
-It is also possible to plot the circos for a region, e.g, for chromosome 19 from 10 Mb to 60 Mb, with a degenerate resolution of 1 kb. Here we use range links so wider interactions are shown as ribbons:
+It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr19:14700kb-16100kb and for chr20:61600kb-63000kb, which are regions that in the earlier plot were shown to interact:
 ```{r circos_plot_region, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 tryCatch(
     {
@@ -286,8 +286,8 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            region = GRanges("chr19", IRanges(10e6, 60e6)),
-            degenerate_resolution = 1e3,
+            region = "chr19:14700000-16100000, chr20:61600000-63000000",
+            degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
             verbose = 1
         )
     },

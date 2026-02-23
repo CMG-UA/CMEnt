@@ -1094,8 +1094,62 @@ plotDMR <- function(dmrs,
     x <- as.character(x)
     !is.na(x) & nzchar(trimws(x))
 }
+.parseCoordinateNum <- function(x) {
+    x <- trimws(as.character(x))
+    is_kb <- grepl("k", x, ignore.case = TRUE)
+    is_mb <- grepl("m", x, ignore.case = TRUE)
+    is_gb <- grepl("g", x, ignore.case = TRUE)
+    x <- sub("[k|m|g]*b?p?$", "", x, ignore.case = TRUE)
+    e <- try(x <- as.numeric(x), silent = TRUE)
+    if (inherits(e, "try-error") || !is.finite(x) || x < 1) {
+        stop("Coordinate must be a finite numeric value >= 1. Invalid coordinate: '", x, "'")
+    }
+    if (is_kb) {
+        x <- x * 1e3
+    } else if (is_mb) {
+        x <- x * 1e6
+    } else if (is_gb) {
+        x <- x * 1e9
+    }
+    if (round(x) != x) {
+        warning("Coordinate value '", x, "' is not an integer. Rounding to nearest integer.")
+    }
+    as.integer(round(x))
+}
+.parseRegionString <- function(region_str) {
+    clean <- trimws(unlist(strsplit(region_str, ",")))
+    matched <- list()
+    for (i in seq_along(clean)) {
+        chr <- strsplit(clean[i], ":", fixed = TRUE)[[1]]
+        if (length(chr) != 2) {
+            stop("Each region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000'). Invalid region: '", clean[i], "'")
+        }
+        start_end <- strsplit(chr[2], "-", fixed = TRUE)[[1]]
+        chr <- trimws(chr[[1]])
+        if (length(start_end) != 2) {
+            stop("Each region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000'). Invalid region: '", clean[i], "'")
+        }
+        e <- try(start <- .parseCoordinateNum(start_end[1]))
+        if (inherits(e, "try-error") || !is.finite(start) || start < 1) {
+            stop("Start position must be a valid genomic number in the format 'chr:start-end'. Invalid start: '", start_end[1], "' in region '", clean[i], "'")
+        }
+        e <- try(end <- .parseCoordinateNum(start_end[2]))
+        if (inherits(e, "try-error") || !is.finite(end) || end < 1) {
+            stop("End position must be a valid genomic number in the format 'chr:start-end'. Invalid end: '", start_end[2], "' in region '", clean[i], "'")
+        }
+        matched[[i]] <- c(chr, start, end)
+    }
+    matched <- do.call(rbind, matched)
+    df <- data.frame(
+        chr = matched[, 1],
+        start = as.numeric(matched[, 2]),
+        end = as.numeric(matched[, 3]),
+        stringsAsFactors = FALSE
+    )
+    df
+}
 
-.normalizeCircosRegion <- function(region) {
+.normalizeCircosRegion <- function(region, cytoband) {
     if (is.null(region)) {
         return(NULL)
     }
@@ -1111,19 +1165,8 @@ plotDMR <- function(dmrs,
             end = GenomicRanges::end(region),
             stringsAsFactors = FALSE
         )
-    } else if (is.character(region) && length(region) == 1) {
-        clean <- gsub(",", "", trimws(region))
-        m <- regexec("^([^:]+):(\\d+)-(\\d+)$", clean)
-        parsed <- regmatches(clean, m)[[1]]
-        if (length(parsed) != 4) {
-            stop("region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000').")
-        }
-        region_df <- data.frame(
-            chr = parsed[2],
-            start = as.numeric(parsed[3]),
-            end = as.numeric(parsed[4]),
-            stringsAsFactors = FALSE
-        )
+    } else if (is.character(region)) {
+        region_df <- .parseRegionString(region)
     } else if (is.data.frame(region)) {
         req_cols <- c("chr", "start", "end")
         if (!all(req_cols %in% colnames(region))) {
@@ -1161,6 +1204,23 @@ plotDMR <- function(dmrs,
     if (any(region_df$start > region_df$end)) {
         stop("region start must be <= end.")
     }
+    # If cytoband is provided, filter out regions that don't overlap any cytoband
+    if (!is.null(cytoband) && nrow(cytoband) > 0) {
+        cytoband_gr <- GenomicRanges::GRanges(
+            seqnames = cytoband$V1,
+            ranges = IRanges::IRanges(start = cytoband$V2, end = cytoband$V3)
+        )
+        region_gr <- GenomicRanges::GRanges(
+            seqnames = region_df$chr,
+            ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
+        )
+        region_gr <- intersect(region_gr, cytoband_gr, ignore.strand = TRUE)
+        if (length(region_gr) == 0) {
+            return(NULL)
+        }
+        region_df <- as.data.frame(region_gr)[, c("seqnames", "start", "end")]
+        colnames(region_df) <- c("chr", "start", "end")
+    }
     unique(region_df)
 }
 
@@ -1171,16 +1231,38 @@ plotDMR <- function(dmrs,
         ret <- ret[keep_chr]
     }
     if (!is.null(region_df) && nrow(region_df) > 0) {
-        region_gr <- GenomicRanges::GRanges(
-            seqnames = region_df$chr,
-            ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
-        )
-        overlaps <- GenomicRanges::findOverlaps(ret, region_gr, ignore.strand = TRUE)
-        keep_region <- seq_along(ret) %in% S4Vectors::queryHits(overlaps)
-        ret <- ret[keep_region]
+        ret <- lapply(seq_len(nrow(region_df)), function(i) {
+            chr <- region_df$chr[i]
+            reg_start <- region_df$start[i]
+            reg_end <- region_df$end[i]
+            chr_dmrs <- ret[as.character(GenomicRanges::seqnames(ret)) == chr]
+            if (length(chr_dmrs) == 0) {
+                return(NULL)
+            }
+            overlaps <- GenomicRanges::findOverlaps(
+                chr_dmrs,
+                GenomicRanges::GRanges(seqnames = chr, ranges = IRanges::IRanges(start = reg_start, end = reg_end)),
+                ignore.strand = TRUE
+            )
+            if (length(overlaps) == 0) {
+                return(NULL)
+            }
+            overlap <- chr_dmrs[S4Vectors::queryHits(overlaps)]
+            new_seqlevel <- sprintf("%s:%d-%d",
+                region_df$chr[i],
+                region_df$start[i],
+                region_df$end[i]
+            )
+            names(new_seqlevel) <- chr
+            overlap  <-  GenomeInfoDb::renameSeqlevels(overlap, new_seqlevel)
+            overlap
+        })
+        ret <- suppressWarnings(do.call(c, ret)) # we know the seqlevels differ
     }
     ret
 }
+
+
 
 .orderChromosomesNaturally <- function(chromosomes) {
     chromosomes <- unique(as.character(chromosomes))
@@ -1231,44 +1313,9 @@ plotDMR <- function(dmrs,
     bounds
 }
 
-.refineSectorBoundsWithCytoband <- function(sector_bounds, cytoband_subset) {
-    if (is.null(sector_bounds) || nrow(sector_bounds) == 0 || is.null(cytoband_subset) || nrow(cytoband_subset) == 0) {
-        return(sector_bounds)
-    }
-    cb_start <- tapply(cytoband_subset$V2, cytoband_subset$V1, min, na.rm = TRUE)
-    cb_end <- tapply(cytoband_subset$V3, cytoband_subset$V1, max, na.rm = TRUE)
-    idx <- match(sector_bounds$chr, names(cb_start))
-    keep <- !is.na(idx)
-    if (!any(keep)) {
-        return(sector_bounds)
-    }
-    sector_bounds <- sector_bounds[keep, , drop = FALSE]
-    idx <- idx[keep]
-    sector_bounds$start <- pmax(sector_bounds$start, as.numeric(cb_start[idx]))
-    sector_bounds$end <- pmin(sector_bounds$end, as.numeric(cb_end[idx]))
-    sector_bounds <- sector_bounds[sector_bounds$start < sector_bounds$end, , drop = FALSE]
-    rownames(sector_bounds) <- NULL
-    sector_bounds
-}
 
-.clampPointToSectorBounds <- function(point, chr, sector_bounds) {
-    if (is.null(sector_bounds) || length(point) == 0) {
-        return(point)
-    }
-    idx <- match(chr, sector_bounds$chr)
-    if (is.na(idx)) {
-        return(point)
-    }
-    lower <- sector_bounds$start[idx]
-    upper <- sector_bounds$end[idx]
-    point <- pmax(lower, pmin(upper, point))
-    if (length(point) == 2 && point[1] > point[2]) {
-        point <- sort(point)
-    }
-    point
-}
 
-.inflatePointRangeForRibbon <- function(point, chr, sector_bounds, min_span = 1) {
+.inflatePointRangeForRibbon <- function(point, chr, min_span = 1) {
     if (length(point) != 2 || any(!is.finite(point))) {
         return(point)
     }
@@ -1279,17 +1326,22 @@ plotDMR <- function(dmrs,
     mid <- mean(point)
     half <- min_span / 2
     inflated <- c(mid - half, mid + half)
-    .clampPointToSectorBounds(inflated, chr, sector_bounds)
+    inflated
 }
 
-.subsetCytobandForCircos <- function(cytoband, unique_chrs, region_df = NULL) {
+.subsetCytobandForCircos <- function(cytoband, unique_chrs = NULL, region_df = NULL) {
     if (is.null(cytoband) || nrow(cytoband) == 0) {
         return(NULL)
     }
-    cb <- cytoband[cytoband$V1 %in% unique_chrs, , drop = FALSE]
+    cb <- cytoband
+    if (!is.null(unique_chrs)) {
+        unique_chrs <- as.character(unique_chrs)
+        cb <- cb[cb$V1 %in% lapply(strsplit(unique_chrs, ":"), function(x) x[1]), , drop = FALSE]
+    }
     if (nrow(cb) == 0) {
         return(NULL)
     }
+    cb <- cb[order(match(cb$V1, unique_chrs), cb$V2, cb$V3), , drop = FALSE]
 
     if (!is.null(region_df) && nrow(region_df) > 0) {
         trimmed <- do.call(rbind, lapply(seq_len(nrow(region_df)), function(i) {
@@ -1304,6 +1356,11 @@ plotDMR <- function(dmrs,
             if (nrow(overlap) == 0) {
                 return(NULL)
             }
+            overlap$V1 <-  sprintf("%s:%d-%d",
+                region_df$chr[i],
+                reg_start,
+                reg_end
+            ) 
             overlap$V2 <- pmax(overlap$V2, reg_start)
             overlap$V3 <- pmin(overlap$V3, reg_end)
             overlap[overlap$V2 < overlap$V3, , drop = FALSE]
@@ -1313,7 +1370,10 @@ plotDMR <- function(dmrs,
         }
         cb <- unique(trimmed)
     }
-    cb <- cb[order(match(cb$V1, unique_chrs), cb$V2, cb$V3), , drop = FALSE]
+
+    if (nrow(cb) == 0) {
+        return(NULL)
+    }
     cb
 }
 
@@ -1475,22 +1535,20 @@ plotDMRsCircos <- function(dmrs,
             stop("chromosomes must contain at least one non-empty chromosome name.")
         }
     }
-    region_df <- .normalizeCircosRegion(region)
+    cytoband <- .getCytobandData(genome)
+
+    region_df <- .normalizeCircosRegion(region, cytoband)
+    # if region_df is provided, the following function will result in dmrs with modified seqnames in the form "chr:start-end" to represent the region-based sectors. 
     dmrs <- .filterDMRsByScopeForCircos(dmrs, chromosomes = requested_chrs, region_df = region_df)
     if (length(dmrs) == 0) {
         stop("No DMRs remain after applying chromosome/region filters.")
     }
     present_chrs <- unique(as.character(GenomicRanges::seqnames(dmrs)))
-    unique_chrs <- if (is.null(requested_chrs)) {
-        .orderChromosomesNaturally(present_chrs)
-    } else {
-        requested_chrs[requested_chrs %in% present_chrs]
-    }
-    if (length(unique_chrs) == 0) {
-        unique_chrs <- .orderChromosomesNaturally(present_chrs)
-    }
+    unique_chrs <- .orderChromosomesNaturally(present_chrs)
+
     if (!is.null(region_df)) {
-        region_df <- region_df[region_df$chr %in% unique_chrs, , drop = FALSE]
+        region_df <- region_df[
+            sprintf("%s:%d-%d", region_df$chr, region_df$start, region_df$end) %in% unique_chrs, , drop = FALSE]
         if (nrow(region_df) == 0) {
             stop("No region entries overlap the selected chromosomes/DMRs.")
         }
@@ -1517,7 +1575,12 @@ plotDMRsCircos <- function(dmrs,
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
     beta_locs <- beta_handler$getBetaLocs()
-
+    if (!is.null(region_df)) {
+        # Also pass the region_df to filter beta_locs to ensure only probes within the specified region are included, and to align with the modified chromosome naming in dmrs.
+        beta_locs <- as.data.frame(.filterDMRsByScopeForCircos(makeGRangesFromDataFrame(beta_locs), chromosomes = requested_chrs, region_df = region_df))
+        colnames(beta_locs)[colnames(beta_locs) == "seqnames"] <- "chr"
+        beta_locs <- beta_locs[-c(4,5)]
+    }
     .log_step("Preparing data for Circos plot...")
 
     .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
@@ -1526,27 +1589,11 @@ plotDMRsCircos <- function(dmrs,
 
     .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
 
-    cytoband <- .getCytobandData(genome)
+    # This as well modifies the chromosome names in the cytoband data to match those in dmrs if region_df is provided, ensuring proper alignment of ideogram sectors with the DMRs.
     cytoband_subset <- .subsetCytobandForCircos(cytoband, unique_chrs, region_df = region_df)
-    sector_bounds <- .getCircosSectorBounds(dmrs, unique_chrs, region_df = region_df)
-    sector_bounds <- .refineSectorBoundsWithCytoband(sector_bounds, cytoband_subset)
-    if (is.null(sector_bounds) || nrow(sector_bounds) == 0) {
-        stop("Could not determine valid sector bounds for the selected chromosomes/region.")
-    }
-
+    
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
-    if (!is.null(arc_data) && length(arc_data$chr) > 0 && !is.null(sector_bounds)) {
-        arc_idx <- match(arc_data$chr, sector_bounds$chr)
-        keep_arc <- !is.na(arc_idx)
-        arc_data$chr <- arc_data$chr[keep_arc]
-        arc_data$start <- arc_data$start[keep_arc]
-        arc_data$end <- arc_data$end[keep_arc]
-        arc_data$delta_beta <- arc_data$delta_beta[keep_arc]
-        arc_idx <- arc_idx[keep_arc]
-        arc_data$start <- pmax(arc_data$start, sector_bounds$start[arc_idx])
-        arc_data$end <- pmin(arc_data$end, sector_bounds$end[arc_idx])
-    }
     .log_success("DMR arcs data prepared", level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
         .log_info("Saving DMR arcs data to debug/circos_arc_data.tsv", level = 1)
@@ -1555,23 +1602,19 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Preparing heatmap data...", level = 2)
+    
     heatmap_data <- .prepareCircosHeatmapData(
         heatmap_dmrs, beta_handler, pheno, sample_group_col,
         max_cpgs_per_dmr, max_num_samples_per_group
     )
+
     heatmap_df <- heatmap_data$heatmap_df
-    reduced_pheno <- heatmap_data$reduced_pheno
-    if (!is.null(heatmap_df) && nrow(heatmap_df) > 0 && !is.null(sector_bounds)) {
-        hidx <- match(heatmap_df$chr, sector_bounds$chr)
-        keep_h <- !is.na(hidx)
-        heatmap_df <- heatmap_df[keep_h, , drop = FALSE]
-        if (nrow(heatmap_df) > 0) {
-            hidx <- hidx[keep_h]
-            heatmap_df$start <- pmax(heatmap_df$start, sector_bounds$start[hidx])
-            heatmap_df$end <- pmin(heatmap_df$end, sector_bounds$end[hidx])
-            heatmap_df <- heatmap_df[heatmap_df$start <= heatmap_df$end, , drop = FALSE]
-        }
+    if (!is.null(region_df)) {
+        heatmap_df <- as.data.frame(.filterDMRsByScopeForCircos(makeGRangesFromDataFrame(heatmap_df, keep.extra.columns = TRUE), chromosomes = requested_chrs, region_df = region_df))
+        colnames(heatmap_df)[colnames(heatmap_df) == "seqnames"] <- "chr"
+        heatmap_df <- heatmap_df[-c(4, 5)]
     }
+    reduced_pheno <- heatmap_data$reduced_pheno
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 1) {
         ord_heatmap <- order(match(heatmap_df$chr, unique_chrs), heatmap_df$start, heatmap_df$end)
         heatmap_df <- heatmap_df[ord_heatmap, , drop = FALSE]
@@ -1588,22 +1631,6 @@ plotDMRsCircos <- function(dmrs,
     link_data <- .prepareCircosLinkData(
         dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size
     )
-    if (!is.null(link_data) && nrow(link_data) > 0 && !is.null(sector_bounds)) {
-        lidx1 <- match(link_data$chr1, sector_bounds$chr)
-        lidx2 <- match(link_data$chr2, sector_bounds$chr)
-        keep_l <- !is.na(lidx1) & !is.na(lidx2)
-        link_data <- link_data[keep_l, , drop = FALSE]
-        if (nrow(link_data) > 0) {
-            lidx1 <- lidx1[keep_l]
-            lidx2 <- lidx2[keep_l]
-            link_data$start1 <- pmax(link_data$start1, sector_bounds$start[lidx1])
-            link_data$end1 <- pmin(link_data$end1, sector_bounds$end[lidx1])
-            link_data$start2 <- pmax(link_data$start2, sector_bounds$start[lidx2])
-            link_data$end2 <- pmin(link_data$end2, sector_bounds$end[lidx2])
-            keep_span <- link_data$start1 <= link_data$end1 & link_data$start2 <= link_data$end2
-            link_data <- link_data[keep_span, , drop = FALSE]
-        }
-    }
 
     .log_success("DMR interactions data prepared", level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE) && !is.null(link_data) && nrow(link_data) > 0) {
@@ -1635,36 +1662,11 @@ plotDMRsCircos <- function(dmrs,
     arc_legend <- NULL
     link_legend <- NULL
     use_manual_init <- FALSE
-
     if (!is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
-        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"))
-    } else if (!is.null(region_df) && !is.null(sector_bounds) && nrow(sector_bounds) > 0) {
-        use_manual_init <- TRUE
-        circlize::circos.initialize(
-            factors = sector_bounds$chr,
-            xlim = as.matrix(sector_bounds[, c("start", "end"), drop = FALSE])
-        )
-        circlize::circos.trackPlotRegion(
-            ylim = c(0, 1),
-            bg.border = NA,
-            track.height = 0.06,
-            panel.fun = function(x, y) {
-                circlize::circos.axis(h = "top", labels.cex = 0.45, major.tick.percentage = 0.3)
-                circlize::circos.text(
-                    x = circlize::CELL_META$xcenter,
-                    y = circlize::CELL_META$ylim[2] + circlize::convert_y(1.2, "mm"),
-                    labels = circlize::CELL_META$sector.index,
-                    cex = 0.6,
-                    facing = "inside",
-                    niceFacing = TRUE,
-                    adj = c(0.5, 0)
-                )
-            }
-        )
+        circlize::circos.initializeWithIdeogram(cytoband = cytoband_subset, plotType = c("labels", "axis"), tickLabelsStartFromZero  = FALSE)
     } else {
         circlize::circos.initializeWithIdeogram(species = genome, chromosome.index = unique_chrs, plotType = c("labels", "axis"))
     }
-
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
         heatmap_numeric <- as.matrix(heatmap_df[, -(1:3), drop = FALSE])
@@ -1963,34 +1965,15 @@ plotDMRsCircos <- function(dmrs,
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
             point2 <- c(link_data$start2[i], link_data$end2[i])
-            if (identical(link_geometry, "midpoint")) {
+            span1 <- point1[2] - point1[1]
+            if (span1 < degenerate_resolution) {
                 point1 <- mean(point1)
-                point2 <- mean(point2)
-            } else {
-                span1 <- point1[2] - point1[1]
-                span2 <- point2[2] - point2[1]
-                if (span1 < degenerate_resolution && span2 < degenerate_resolution) {
-                    # If both anchors are tiny, a simple line is more legible.
-                    point1 <- mean(point1)
-                    point2 <- mean(point2)
-                } else {
-                    # Keep ribbon geometry when at least one side has span.
-                    point1 <- .inflatePointRangeForRibbon(
-                        point1,
-                        chr = link_data$chr1[i],
-                        sector_bounds = sector_bounds,
-                        min_span = 1
-                    )
-                    point2 <- .inflatePointRangeForRibbon(
-                        point2,
-                        chr = link_data$chr2[i],
-                        sector_bounds = sector_bounds,
-                        min_span = 1
-                    )
-                }
             }
-            point1 <- .clampPointToSectorBounds(point1, link_data$chr1[i], sector_bounds)
-            point2 <- .clampPointToSectorBounds(point2, link_data$chr2[i], sector_bounds)
+            span2 <- point2[2] - point2[1]
+            if (span2 < degenerate_resolution) {
+                point2 <- mean(point2)
+            }
+
             if (has_directionality) {
                 circlize::circos.link(
                     sector.index1 = link_data$chr1[i],
