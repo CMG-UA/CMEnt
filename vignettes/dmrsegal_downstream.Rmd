@@ -286,7 +286,7 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            region = "chr19:14700000-16100000, chr20:61600000-63000000",
+            region = "chr19:14700kb-16100kb, chr20:61600kb-63000kb",
             degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
             verbose = 1
         )
