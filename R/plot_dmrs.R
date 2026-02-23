@@ -510,7 +510,7 @@ if (getRversion() >= "2.15.1") {
         q <- sort(c(q[1], 0.5, q[2]))
         coloring = ggplot2::scale_fill_gradientn(
             colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
-            breaks = q,
+            breaks = signif(q, digits = 2),
             limits = beta_limits,
             name = "\u03b2-values"
         )
@@ -518,7 +518,7 @@ if (getRversion() >= "2.15.1") {
         coloring = ggplot2::scale_fill_gradient(
             low = "#2b83ba",
             high = "#f7f7f7",
-            breaks = q,
+            breaks = signif(q, digits = 2),
             limits = beta_limits,
             name = "\u03b2-values"
         )
@@ -526,7 +526,7 @@ if (getRversion() >= "2.15.1") {
         coloring = ggplot2::scale_fill_gradient(
             low = "#f7f7f7",
             high = "#d7191c",
-            breaks = q,
+            breaks = signif(q, digits = 2),
             limits = beta_limits,
             name = "\u03b2-values"
         )
