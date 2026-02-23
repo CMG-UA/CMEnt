@@ -227,7 +227,7 @@ The information includes:
 - The DMRs and their scores (at most 40 DMRs per chromosome, ranked by score, are shown)
 - Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
-
+- The JASPAR annotation of the motif-based groups, if available, is shown in the legend.
 ```{r circos_plot, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
 
