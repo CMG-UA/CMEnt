@@ -326,7 +326,8 @@ if ("delta_beta" %in% colnames(seed_df) &&
     seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
     seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
 }
-cat(sprintf("DMRsegal **maximum possible** DMR-truth overlaps: %d\n", length(seed_truth_hits)))
+cat(sprintf("DMRsegal **maximum possible** DMR-truth overlapping seeds: %d\n", length(seed_truth_hits)))
+cat(sprintf("DMRsegal **maximum possible** truth DMRs with at least one overlapping seed: %d\n", sum(truth_has_seed)))
 knitr::kable(
     seed_truth_summary,
     digits = 2,
@@ -374,21 +375,10 @@ if (!file.exists(dmrsegal_file)) {
     cat(sprintf("Seed CpGs: %s\n", format(nrow(sig_seeds), big.mark = ",")))
     start_time <- Sys.time()
 
-    debug_max_seeds <- getOption("DMRsegal.debug_max_seeds", NA_integer_)
-    if (!is.na(debug_max_seeds) && is.numeric(debug_max_seeds) && nrow(sig_seeds) > debug_max_seeds) {
-        cat(sprintf("Applying debug seed cap: %s -> %s seeds\n",
-            format(nrow(sig_seeds), big.mark = ","),
-            format(as.integer(debug_max_seeds), big.mark = ",")
-        ))
-        sig_seeds <- sig_seeds[order(sig_seeds$pval), , drop = FALSE]
-        sig_seeds <- sig_seeds[seq_len(as.integer(debug_max_seeds)), , drop = FALSE]
-    }
     beta_handler <- DMRsegal::getBetaHandler(
         beta = sim_bs
     )
-    dmrs_segal <- tryCatch(
-        {
-            progressr::with_progress(
+    dmrs_segal <- progressr::with_progress(
                 DMRsegal::findDMRsFromSeeds(
                     beta = beta_handler,
                     seeds = sig_seeds,
@@ -396,7 +386,8 @@ if (!file.exists(dmrsegal_file)) {
                     seeds_id_col = "cpg_id",
                     sample_group_col = "Sample_Group",
                     casecontrol_col = "casecontrol",
-                    max_bridge_extension_gaps = 5L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
+                    max_bridge_seeds_gaps = 3L, # Allow bridging across up to 3 seed CpGs to form larger candidate regions during stage 1.
+                    max_bridge_extension_gaps = 10L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
                     min_seeds = 2,
                     min_cpgs = 3,
                     max_lookup_dist = 10000,
@@ -407,25 +398,6 @@ if (!file.exists(dmrsegal_file)) {
                     rank_dmrs = TRUE,
                 )
             )
-        },
-        error = function(e) {
-            if (grepl("time limit|reached elapsed time limit", e$message, ignore.case = TRUE)) {
-                stop(
-                    sprintf(
-                        paste0(
-                            "DMRsegal timed out after %.1f minutes. ",
-                            "Increase options(DMRsegal.max_runtime_minutes = ...), ",
-                            "reduce options(DMRsegal.debug_max_seeds = ...), ",
-                            "or inspect seed diagnostics in this chunk."
-                        ),
-                        as.numeric(max_runtime_minutes)
-                    ),
-                    call. = FALSE
-                )
-            }
-            stop(e)
-        }
-    )
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
     saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)
@@ -476,7 +448,6 @@ run_dmrcate_bsseq <- function(
     names(dmrs_by_chr) <- chr_vec
 
     for (chr_name in chr_vec) {
-        cat(sprintf("DMRcate: processing %s\n", chr_name))
 
         chr_idx <- which(all_seqnames == chr_name)
         if (length(chr_idx) == 0) {
@@ -627,7 +598,6 @@ run_dmrseq_bsseq <- function(
     names(dmrs_by_chr) <- chr_vec
 
     for (chr_name in chr_vec) {
-        cat(sprintf("dmrseq: processing %s\n", chr_name))
 
         chr_idx <- which(all_seqnames == chr_name)
         if (length(chr_idx) == 0) {
@@ -909,6 +879,83 @@ knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (rows over
 knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (rows overlap columns)")
 ```
 
+### DMRsegal Number of seeds within Ground Truth not overlapping DMRsegal DMRs
+Assessing stage 1 connection efficiency
+```{r}
+# Seeds within truth DMRs but not overlapping DMRsegal DMRs
+seed_gr <- sort(seed_gr)
+mcols(seed_gr)$index <- seq_along(seed_gr)
+seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+
+if (length(dmrs_segal) > 0) {
+    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_segal, ignore.strand = TRUE)
+    seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_segal, ignore.strand = TRUE, invert = TRUE)
+} else {
+    seeds_in_dmrs <- seed_gr[0]
+    seeds_in_truth_not_dmrs <- seeds_in_truth
+}
+cat(sprintf(
+    "- Seeds in truth DMRs: %d\n - Seeds in DMRsegal DMRs: %d\n - Seeds in truth DMRs but not in DMRsegal DMRs: %d\n",
+    length(seeds_in_truth),
+    length(seeds_in_dmrs),
+    length(seeds_in_truth_not_dmrs)
+))
+
+# Table of number of consecutive seeds within each truth DMR not overlapping DMRsegal DMRs
+if (length(seeds_in_truth_not_dmrs) > 0) {
+    # Consecutive runs are computed within each truth DMR using the original seed index.
+    ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
+    run_df <- do.call(rbind, lapply(split(queryHits(ov_truth), subjectHits(ov_truth)), function(qh) {
+        idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
+        db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
+
+        ord <- order(idx)
+        idx <- idx[ord]
+        db <- db[ord]
+
+        run_id <- cumsum(c(TRUE, diff(idx) != 1L))
+        data.frame(
+            run_length = as.integer(tabulate(run_id)),
+            mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
+        )
+    }))
+
+    ret <- as.data.frame(table(run_df$run_length))
+    colnames(ret) <- c("Consecutive_Seed_Length", "Count")
+    delta_summary <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
+    colnames(delta_summary) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
+    delta_summary <- merge(ret, delta_summary, by = "Consecutive_Seed_Length", all.x = TRUE)
+    knitr::kable(
+        ret,
+        caption = "Consecutive Seed Runs in Truth DMRs Not Overlapping DMRsegal DMRs"
+    )
+}
+
+
+```
+### DMRsegal Distribution of  number of DMRs within each truth DMR
+Assessing stage 2-4 extension efficiency
+```{r}
+if (length(dmrs_segal) > 0) {
+    dmrs_in_truth <- subsetByOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
+    dmrs_in_truth_counts <- table(factor(subjectHits(findOverlaps(dmrs_in_truth, truth_dmrs, ignore.strand = TRUE)), levels = seq_along(truth_dmrs)))
+    dmrs_in_truth_counts_df <- data.frame(
+        Truth_DMR_Index = seq_along(truth_dmrs),
+        DMRsegal_DMR_Count = as.integer(dmrs_in_truth_counts)
+    )
+    # Stem plot of number of DMRsegal DMRs within each truth DMR
+    ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count)) +
+        geom_segment(aes(xend = Truth_DMR_Index, yend = 0), color = "steelblue") +
+        geom_point(color = "steelblue", size = 2) +
+        theme_minimal() +
+        labs(
+            title = "Number of DMRsegal DMRs within Each Truth DMR",
+            x = "Truth DMR Index",
+            y = "Count of DMRsegal DMRs"
+        )
+}
+```
+
 ## Visualizations
 
 ### Ground-Truth Metrics
@@ -970,6 +1017,8 @@ ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
         y = "Width (bp, log scale)"
     )
 ```
+
+
 
 ## DMRsegal Ranking Quality vs Ground Truth
 
