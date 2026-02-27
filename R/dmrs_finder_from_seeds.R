@@ -771,7 +771,7 @@
         integer(0)
     }
     if (length(upstream_candidate) > 0) {
-        bridged_upstream_m <- chr_array[upstream_candidate, "connection_reason"] == "bridged"
+        bridged_upstream_m <- chr_array[upstream_candidate, "reason"] == "bridged"
         upstream_kept <- upstream_candidate[!bridged_upstream_m]
     } else {
         upstream_kept <- integer(0)
@@ -787,7 +787,7 @@
         integer(0)
     }
     if (length(downstream_candidate) > 0) {
-        bridged_downstream_m <- chr_array[downstream_candidate, "connection_reason"] == "bridged"
+        bridged_downstream_m <- chr_array[downstream_candidate, "reason"] == "bridged"
         downstream_kept <- downstream_candidate[!bridged_downstream_m]
     } else {
         downstream_kept <- integer(0)
