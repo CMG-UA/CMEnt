@@ -828,7 +828,7 @@ convertBetaToTabix <- function(beta_file,
 
                     if (length(common_cpgs) > 0) {
                         # Create BED format for this chunk with 6 mandatory columns
-                        bed_chunk <- sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE]
+                        bed_chunk <- as.data.frame(sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE])
                         bed_chunk$end <- bed_chunk$start + 1
                         bed_chunk$id <- rownames(bed_chunk)
                         bed_chunk$score <- 0

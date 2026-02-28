@@ -154,64 +154,77 @@
     .mergeGenomicWindows(windows)
 }
 
-#' @keywords internal
-#' @noRd
-.bridgeConnectivityGaps <- function(corr_ret, max_bridge_seeds_gaps = 0L, bridgeable_reasons = c("pval>max_pval", "na pval")) {
-    if (is.null(corr_ret) || nrow(corr_ret) == 0L || is.na(max_bridge_seeds_gaps) || max_bridge_seeds_gaps <= 0) {
-        attr(corr_ret, "bridged_edges") <- 0L
-        return(corr_ret)
+
+.chooseTestingOptions <- function(group, mat, mask, pval_mode, empirical_strategy) {
+    n_sites <- nrow(mat)
+    x_mat_full <- mat[1:(n_sites - 1), , drop = FALSE] # Sites i
+    y_mat_full <- mat[2:n_sites, , drop = FALSE] # Sites i+1
+    x_mat <- x_mat_full[mask, , drop = FALSE]
+    y_mat <- y_mat_full[mask, , drop = FALSE]
+    valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
+    n_valid <- rowSums(valid_pairs)
+
+    if (pval_mode == "auto") {
+        auto_diag <- .summarizeCorrelationAssumptions(
+            x_mat = x_mat,
+            y_mat = y_mat,
+            n_valid = n_valid
+        )
+        pval_mode <- if (auto_diag$use_parametric) "parametric" else "empirical"
+        .log_info(
+            "Auto-selected pval_mode='", pval_mode, "' for group '", group,
+            "' (q10_n_valid=", signif(auto_diag$q10_n_valid, 3),
+            ", median|pearson-spearman|=", signif(auto_diag$median_abs_delta_spearman, 3),
+            ", median|pearson-winsorized|=", signif(auto_diag$median_abs_delta_winsorized, 3),
+            ", median|skew|=", signif(auto_diag$median_abs_skew, 3),
+            ", median_excess_kurtosis=", signif(auto_diag$median_excess_kurtosis, 3),
+            ", pilot_pairs=", auto_diag$n_pairs_used,
+            ", reason=", auto_diag$reason, ").",
+            level = 2
+        )
     }
-    connected <- as.logical(corr_ret$connected)
-    reasons <- as.character(corr_ret$reason)
-    n <- length(connected)
-    if (n < 3L) {
-        attr(corr_ret, "bridged_edges") <- 0L
-        return(corr_ret)
+    if (pval_mode == "empirical" && empirical_strategy == "auto") {
+        if (ncol(x_mat) >= 6) {
+            .log_info(
+                "Group '", group, "' has ", ncol(x_mat), " samples. Using 'montecarlo' empirical strategy for faster computation with sufficient sample size.",
+                level = 2
+            )
+            empirical_strategy <- "montecarlo"
+        } else {
+            .log_info(
+                "Group '", group, "' has only ", ncol(x_mat), " samples. Using 'permutations' empirical strategy for more accurate p-value estimation with small sample size.",
+                level = 2
+            )
+            empirical_strategy <- "permutations"
+        }
     }
-    runs <- rle(connected)
-    run_ends <- cumsum(runs$lengths)
-    run_starts <- run_ends - runs$lengths + 1L
-    bridged <- 0L
-    for (r in which(!runs$values)) {
-        gap_start <- run_starts[r]
-        gap_end <- run_ends[r]
-        gap_len <- runs$lengths[r]
-        if (gap_len > max_bridge_seeds_gaps || gap_start == 1L || gap_end == n) {
-            next
-        }
-        if (!connected[gap_start - 1L] || !connected[gap_end + 1L]) {
-            next
-        }
-        run_reasons <- reasons[gap_start:gap_end]
-        reason_ok <- all(vapply(run_reasons, function(rr) {
-            if (is.na(rr) || rr == "") {
-                return(FALSE)
-            }
-            parts <- trimws(strsplit(rr, ";", fixed = TRUE)[[1]])
-            all(parts %in% bridgeable_reasons)
-        }, logical(1)))
-        if (!reason_ok) {
-            next
-        }
-        connected[gap_start:gap_end] <- TRUE
-        reasons[gap_start:gap_end] <- "bridged"
-        bridged <- bridged + gap_len
-    }
-    corr_ret$connected <- connected
-    corr_ret$reason <- reasons
-    attr(corr_ret, "bridged_edges") <- bridged
-    corr_ret
+    list(pval_mode = pval_mode, empirical_strategy = empirical_strategy)
 }
+
 
 #' @keywords internal
 #' @noRd
-.buildConnectivityArray <- function(
-    beta_handler, pheno, group_inds, col_names = NULL, max_pval = 0.05,
-    min_delta_beta = 0, covariates = NULL, max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000), entanglement = "strong",
-    aggfun = median, empirical_strategy = "auto",
-    pval_mode = "auto", ntries = 500, mid_p = TRUE, njobs = 1,
-    connectivity_windows = NULL, connectivity_array = NULL, gap = 1L, splits = NULL
+.buildConnectivityArraySinglePass <- function(
+    beta_handler,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    connectivity_array = NULL,
+    gap = 1L,
+    splits = NULL
 ) {
     beta_locs <- beta_handler$getBetaLocs()
     n_sites <- nrow(beta_locs)
@@ -230,11 +243,11 @@
         if (min_delta_beta > 0) {
             ret$delta_beta <- rep(NA_real_, n_sites)
         }
-        return(list(connectivity_array = ret, splits = NULL))
+        return(list(connectivity_array = ret, splits = NULL, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
     }
     beta_chr <- as.character(beta_locs[, "chr"])
     chr_ends <- as.integer(vapply(split(seq_len(n_sites), beta_chr), max, integer(1)))
-    window_mode <- !is.null(connectivity_windows) && nrow(connectivity_windows) > 0L
+    window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
 
     .make_template <- function(nrows, reason_default) {
@@ -308,7 +321,7 @@
     }
 
     .build_window_pair_ranges <- function() {
-        wins <- .mergeGenomicWindows(connectivity_windows)
+        wins <- .mergeGenomicWindows(expansion_windows)
         if (nrow(wins) == 0L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
@@ -420,6 +433,43 @@
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
+    if (any(pval_mode_per_group == "auto") || any(empirical_strategy_per_group[pval_mode_per_group == "empirical"] == "auto")) {
+        .log_info(
+            "Selecting p-value computation mode for each group using the first chunk as a pilot.",
+            level = 2
+        )
+        # select testing settings using the first chunk as a pilot
+        first_chunk <-  .get_chunk_beta(splits[1, 1], splits[1, 2] + 1)
+        sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
+        s <- nrow(sites_locs)
+        if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
+            dists <- sites_locs[2:s, "start"] - sites_locs[1:(s - 1), "start"]
+            exceeded_dist <- dists > max_lookup_dist | sites_locs[2:s, "chr"] != sites_locs[1:(s - 1), "chr"]
+        } else {
+            exceeded_dist <- rep(FALSE, n_sites - 1L)
+        }
+        nexdist_mask <- !exceeded_dist
+        groups_options <- lapply(
+            names(group_inds),
+            function(x) {
+                idx <- group_inds[[x]]
+                chunk_m <- .transformBeta(first_chunk[, idx, drop = FALSE], pheno = pheno[idx, , drop = FALSE], covariates = covariates)
+                .chooseTestingOptions(
+                    group = x,
+                    mat = chunk_m,
+                    mask = nexdist_mask,
+                    pval_mode = pval_mode_per_group[[x]],
+                    empirical_strategy = empirical_strategy_per_group[[x]]
+                )
+            }
+        )
+        empirical_strategy_per_group <- sapply(groups_options, function(opt) opt$empirical_strategy)
+        names(empirical_strategy_per_group) <- names(group_inds)
+        pval_mode_per_group <- sapply(groups_options, function(opt) opt$pval_mode)
+        names(pval_mode_per_group) <- names(group_inds)
+        rm(first_chunk, sites_locs, exceeded_dist, nexdist_mask, groups_options)
+    }
+
     gc()
     fun <- function(split_ind) {
         split <- splits[split_ind, ]
@@ -449,8 +499,8 @@
             sites_locs = locs,
             entanglement = entanglement,
             aggfun = aggfun,
-            pval_mode = pval_mode,
-            empirical_strategy = empirical_strategy,
+            pval_mode_per_group = pval_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
             ntries = ntries,
             mid_p = mid_p
         )
@@ -491,8 +541,8 @@
                 "max_lookup_dist",
                 "entanglement",
                 "aggfun",
-                "pval_mode",
-                "empirical_strategy",
+                "pval_mode_per_group",
+                "empirical_strategy_per_group",
                 "ntries",
                 "revisited_mask",
                 "mid_p",
@@ -577,8 +627,74 @@
         connectivity_array[, "contingently_connected"] <- connectivity_array[, "connected"]
     }
 
-    list(connectivity_array = connectivity_array, splits = splits)
+    list(
+        connectivity_array = connectivity_array, splits = splits,
+        pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group
+    )
 }
+
+.buildConnectivityArray <- function(
+    beta_handler,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    max_bridge_gaps = 0
+) {
+    connectivity_array <- NULL
+    splits <- NULL
+    for (gap in seq(0L, max_bridge_gaps)) {
+        if (gap == 0L) {
+            .log_info("Building initial connectivity array with no gap bridging.", level = 2)
+        } else {
+            .log_info("Building bridged connectivity array allowing up to ", gap, " gap(s) between connected seeds.", level = 2)
+        }
+        build_ret <- .buildConnectivityArraySinglePass(
+            beta_handler = beta_handler,
+            group_inds = group_inds,
+            col_names = col_names,
+            pheno = pheno,
+            covariates = covariates,
+            max_lookup_dist = max_lookup_dist,
+            max_pval = max_pval,
+            min_delta_beta = min_delta_beta,
+            entanglement = entanglement,
+            aggfun = aggfun,
+            pval_mode_per_group = pval_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            chunk_size = chunk_size,
+            ntries = ntries,
+            mid_p = mid_p,
+            njobs = njobs,
+            expansion_windows = expansion_windows,
+            connectivity_array = connectivity_array,
+            splits = splits,
+            gap = gap
+        )
+        connectivity_array <- build_ret$connectivity_array
+        splits <- build_ret$splits
+        pval_mode_per_group <- build_ret$pval_mode_per_group
+        empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
+        .log_info("Connectivity array built with gap allowance of ", gap, " (", sum(connectivity_array$connected), " connected CpGs).", level = 2)
+    }
+    connectivity_array
+}
+
+
+
+
 
 
 #' @keywords internal
@@ -773,22 +889,23 @@
     dmr
 }
 
+
+
 #' Vectorized connectivity testing for consecutive site pairs, given their beta values
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
 #' @keywords internal
 #' @noRd
 .testConnectivityBatch <- function(sites_beta, group_inds, pheno,
+                                   pval_mode_per_group,
+                                   empirical_strategy_per_group,
                                    max_pval, covariates = NULL,
                                    min_delta_beta = 0,
                                    max_lookup_dist = NULL, sites_locs = NULL,
                                    entanglement = "strong",
                                    aggfun = mean,
-                                   pval_mode = c("auto", "parametric", "empirical"),
-                                   empirical_strategy = c("auto", "montecarlo", "permutations"),
                                    ntries = 0, mid_p = FALSE) {
-    pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
-    empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
+
     n_sites <- nrow(sites_beta)
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
@@ -904,26 +1021,7 @@
         g_mask[na_r] <- FALSE
 
         ps <- rep(NA_real_, sn_pairs)
-        effective_pval_mode <- pval_mode
-        if (pval_mode == "auto") {
-            auto_diag <- .summarizeCorrelationAssumptions(
-                x_mat = x_mat,
-                y_mat = y_mat,
-                n_valid = n_valid
-            )
-            effective_pval_mode <- if (auto_diag$use_parametric) "parametric" else "empirical"
-            .log_info(
-                "Auto-selected pval_mode='", effective_pval_mode, "' for group '", g,
-                "' (q10_n_valid=", signif(auto_diag$q10_n_valid, 3),
-                ", median|pearson-spearman|=", signif(auto_diag$median_abs_delta_spearman, 3),
-                ", median|pearson-winsorized|=", signif(auto_diag$median_abs_delta_winsorized, 3),
-                ", median|skew|=", signif(auto_diag$median_abs_skew, 3),
-                ", median_excess_kurtosis=", signif(auto_diag$median_excess_kurtosis, 3),
-                ", pilot_pairs=", auto_diag$n_pairs_used,
-                ", reason=", auto_diag$reason, ").",
-                level = 4
-            )
-        }
+        effective_pval_mode <- pval_mode_per_group[g]
 
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
         if (effective_pval_mode == "parametric") {
@@ -944,15 +1042,7 @@
                 # Number of samples in this group
                 m <- ncol(y_mat)
                 # Empirical strategy: auto -> MonteCarlo when n_valid < 6  or permutations when n_valid >= 6
-                if (empirical_strategy == "auto") {
-                    do_permutations <- ncol(x_mat) >= 6
-                } else if (empirical_strategy == "montecarlo") {
-                    do_permutations <- FALSE
-                } else if (empirical_strategy == "permutations") {
-                    do_permutations <- TRUE
-                } else {
-                    stop("Unknown empirical_strategy: ", empirical_strategy)
-                }
+                do_permutations <- empirical_strategy_per_group[g] == "permutations"
                 skip_empirical <- FALSE
                 if (do_permutations) {
                     min_possible_pval <- 1 / (1 + factorial(m))
@@ -1180,6 +1270,11 @@ findDMRsFromSeeds <- function(
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
+
+    pval_mode_per_group <- rep(pval_mode, length.out = length(unique(pheno[[sample_group_col]])))
+    names(pval_mode_per_group) <- unique(pheno[[sample_group_col]])
+    empirical_strategy_per_group <- rep(empirical_strategy, length.out = length(unique(pheno[[sample_group_col]])))
+    names(empirical_strategy_per_group) <- unique(pheno[[sample_group_col]])
 
     # Clean up any zombie processes on exit
     if (Sys.info()[["sysname"]] != "Windows") {
@@ -1478,6 +1573,8 @@ findDMRsFromSeeds <- function(
     .log_step("Subsetting beta matrix for seeds...", level = 2)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
     seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
+    rownames(seeds_beta) <- seeds
+    seeds_handler <- getBetaHandler(seeds_beta, sorted_locs = seeds_locs, njobs = njobs, array = array, genome = genome)
     if (!is.null(output_prefix)) {
         seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
     }
@@ -1499,7 +1596,7 @@ findDMRsFromSeeds <- function(
     }
     .log_info("Checking for seeds with all NA beta values...", level = 3)
     all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
-    
+
     if (any(all.na.rows)) {
         stop(
             "Beta extraction failure: the following Seed rows have all NA beta values: ",
@@ -1528,8 +1625,6 @@ findDMRsFromSeeds <- function(
     .log_success("Input preparation complete.", level = 1)
     .log_step("Stage 1: Connecting seeds to form initial DMRs..", level = 1)
 
-    # Set up progress tracking for Seed connection
-    chromosomes <- unique(seeds_locs[, "chr"])
 
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "01_dmrs_from_connected_seeds.tsv"))) {
         .log_info("Loading debug DMRs from file...", level = 2)
@@ -1543,188 +1638,71 @@ findDMRsFromSeeds <- function(
             row.names = NULL
         )
     } else {
-        # Use progressr for cross-platform progress reporting
-        .log_info("Processing ", length(chromosomes), " chromosomes...", level = 2)
-        p_con <- NULL
-        if (verbose > 0) {
-            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
+        .log_step("Building seed connectivity array...", level = 2)
+        seeds_connectivity_array <- .buildConnectivityArray(
+            beta_handler = seeds_handler,
+            pheno = pheno_detection,
+            group_inds = group_inds,
+            pval_mode_per_group = pval_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            col_names = beta_col_names_detection,
+            max_pval = max_pval,
+            min_delta_beta = resolved_min_cpg_delta_beta,
+            covariates = covariates,
+            max_lookup_dist = max_lookup_dist,
+            chunk_size = chunk_size,
+            entanglement = entanglement,
+            aggfun = aggfun,
+            ntries = ntries,
+            mid_p = mid_p,
+            njobs = njobs,
+            expansion_windows = NULL,
+            max_bridge_gaps = max_bridge_seeds_gaps
+        )
+        .log_success("Seed connectivity array built.", level = 2)
+        # connected_seeds[i] encodes edge i -> i+1
+        connected_seeds <- seeds_connectivity_array$connected
 
-            if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-                p_con <- progressr::progressor(steps = length(chromosomes), message = "Connecting seeds to form DMRs..")
-            }
-        }
-        # Split by chromosome for parallel processing
-        seeds_list <- split(seeds, seeds_locs[, "chr"])
-        seeds_list <- seeds_list[as.character(chromosomes)]
+        # vector already includes chromosome-end sentinels as FALSE:
+        breakpoints <- which(!connected_seeds)
 
-        seeds_locs_list <- split(seeds_locs, seeds_locs[, "chr"])
-        seeds_locs_list <- seeds_locs_list[as.character(chromosomes)]
-        if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
-        storage.mode(seeds_beta) <- "double"
-        seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
-        seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
-    
-        fun <- function(chr, cseeds, cseeds_beta, cseeds_locs) {
-            op <- options(warn = 2)$warn
-            dmr_list <- vector("list", length = 128L)
-            dmr_n <- 0L
-            connection_corr_pval <- NA
-            dmr_seeds_inds <- integer(0)
-            .log_step("Testing Seed connectivity on chromosome ", chr, " ...", level = 3)
-            corr_ret <- .testConnectivityBatch(
-                sites_beta = cseeds_beta,
-                group_inds = group_inds,
-                pheno = pheno_detection,
-                max_lookup_dist = max_lookup_dist,
-                sites_locs = cseeds_locs,
-                max_pval = max_pval,
-                min_delta_beta = resolved_min_cpg_delta_beta,
-                aggfun = aggfun,
-                entanglement = entanglement,
-                pval_mode = pval_mode,
-                empirical_strategy = empirical_strategy,
-                ntries = ntries,
-                mid_p = mid_p
-            )
-            corr_ret <- .bridgeConnectivityGaps(
-                corr_ret = corr_ret,
-                max_bridge_seeds_gaps = max_bridge_seeds_gaps
-            )
-            bridged_edges <- attr(corr_ret, "bridged_edges")
-            if (!is.null(bridged_edges) && bridged_edges > 0L) {
-                .log_info("Bridged ", bridged_edges, " seed-connection gap edge(s) on chromosome ", chr, ".", level = 3)
-            }
-            stopifnot(nrow(corr_ret) == nrow(cseeds_beta) - 1)
-            if (getOption("DMRsegal.make_debug_dir", FALSE)) {
-                .log_info("Saving seed connectivity results to debug/seeds_connectivity_chr", chr, ".tsv", level = 3)
-                dir.create("debug", showWarnings = FALSE)
-                write.table(corr_ret,
-                    file = paste0("debug/seeds_connectivity_chr", chr, ".tsv"),
-                    sep = "\t",
-                    row.names = FALSE,
-                    col.names = TRUE,
-                    quote = FALSE
-                )
-            }
-            .log_success("Seed connectivity tested.", level = 3)
-            breakpoints <- c(which(!corr_ret$connected), nrow(cseeds_beta))
-            start_seed_ind <- 1
-            single_seeds <- 0
-            for (bp_ind in seq_along(breakpoints)) {
-                end_seed_ind <- breakpoints[bp_ind]
-                if (end_seed_ind - start_seed_ind + 1 < min_seeds) {
-                    .log_info("Skipping DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ") due to insufficient number of connected seeds (", end_seed_ind - start_seed_ind + 1, " < ", min_seeds, ").", level = 4)
-                    start_seed_ind <- breakpoints[bp_ind] + 1
-                    next
-                }
-                if (end_seed_ind > start_seed_ind) {
-                    .log_step("Registering ", bp_ind, "/", (length(breakpoints) - 1), " DMR from Seed ", start_seed_ind, " to Seed ", end_seed_ind, " (id: ", chr, ":", cseeds_locs[start_seed_ind, "start"], "-", cseeds_locs[end_seed_ind, "start"], ")", level = 3)
-                } else {
-                    single_seeds <- single_seeds + 1
-                }
-                dmr_seeds_inds <- seq.int(start_seed_ind, end_seed_ind)
-                bridged_inds <- which(corr_ret$reason[dmr_seeds_inds] == "bridged")
-                bridged_inds <- dmr_seeds_inds[bridged_inds]
-                dmr_seeds_inds <- setdiff(dmr_seeds_inds, bridged_inds)
-                if (end_seed_ind == start_seed_ind) {
-                    connection_corr_pval <- NA
-                } else {
-                    connection_corr_pval <- aggfun(corr_ret$pval[dmr_seeds_inds[-length(dmr_seeds_inds)]], na.rm = TRUE)
-                }
-                if (end_seed_ind < nrow(cseeds_beta)) {
-                    stop_reason <- corr_ret$reason[[end_seed_ind]]
-                } else {
-                    stop_reason <- "end of chromosome"
-                }
-                new_dmr <- list(
-                    chr = chr,
-                    start_seed = cseeds[[start_seed_ind]],
-                    end_seed = cseeds[[end_seed_ind]],
-                    start_seed_pos = cseeds_locs[start_seed_ind, "start"],
-                    end_seed_pos = cseeds_locs[end_seed_ind, "start"],
-                    seeds_num = length(dmr_seeds_inds),
-                    connection_corr_pval = connection_corr_pval,
-                    stop_connection_reason = stop_reason,
-                    seeds = paste(cseeds[dmr_seeds_inds], collapse = ",")
-                )
-                dmr_n <- dmr_n + 1L
-                if (dmr_n > length(dmr_list)) length(dmr_list) <- length(dmr_list) * 2L
-                dmr_list[[dmr_n]] <- new_dmr
-                start_seed_ind <- breakpoints[bp_ind] + 1
-                if (end_seed_ind > start_seed_ind) {
-                    .log_success("DMR registered.",
-                        level = 3
-                    )
-                } else {
-                    single_seeds <- single_seeds + 1
-                }
-            }
-            if (single_seeds > 0L) {
-                .log_info("Also registered ", single_seeds, " DMR(s) consisting of a single seed on chromosome ", chr, ".", level = 3)
-            }
-            if (verbose > 0 && !is.null(p_con)) p_con()
-            dmrs <- if (dmr_n > 0L) data.table::rbindlist(dmr_list[seq_len(dmr_n)], fill = TRUE) else data.frame()
-            if (nrow(dmrs)) {
-                rownames(dmrs) <- seq_len(nrow(dmrs))
-                dmrs[, "chr"] <- chr
-            }
-            options(warn = op)
-            dmrs
-        }
-        if (njobs == 1) {
-            ret <- lapply(seq_along(chromosomes), function(i) {
-                chr <- chromosomes[i]
-                cseeds <- seeds_list[[i]]
-                cseeds_beta <- seeds_beta_list[[i]]
-                cseeds_locs <- seeds_locs_list[[i]]
-                fun(
-                    chr = chr,
-                    cseeds = cseeds,
-                    cseeds_beta = cseeds_beta,
-                    cseeds_locs = cseeds_locs
-                )
-            })
-        } else {
-            .setupParallel()
-            ret <- future.apply::future_mapply(
-                chromosomes,
-                seeds_list,
-                seeds_beta_list,
-                seeds_locs_list,
-                SIMPLIFY = FALSE,
-                future.seed = TRUE,
-                future.stdout = NA,
-                future.globals = c(
-                    "group_inds",
-                    "case_mask",
-                    "max_lookup_dist",
-                    "max_pval",
-                    "resolved_min_cpg_delta_beta",
-                    "aggfun",
-                    "entanglement",
-                    "pval_mode",
-                    "empirical_strategy",
-                    "ntries",
-                    "mid_p",
-                    "max_bridge_seeds_gaps",
-                    "min_seeds",
-                    ".testConnectivityBatch",
-                    ".bridgeConnectivityGaps",
-                    ".log_step",
-                    ".log_success",
-                    ".log_info",
-                    "p_con",
-                    "verbose"
-                ),
-                FUN = fun
-            )
-            .finalizeParallel()
-        }
+        connected_seeds_segments_starts <- c(1L, head(breakpoints, -1L) + 1L)
+        connected_seeds_segments_ends <- breakpoints
+        connected_seeds_segments_lengths <- connected_seeds_segments_ends - connected_seeds_segments_starts + 1L
+        connected_seeds_segments_chrs <- as.character(seeds_locs[connected_seeds_segments_starts, "chr"])
+        connected_seeds_segments_starts_locs <- as.integer(seeds_locs[connected_seeds_segments_starts, "start"])
+        connected_seeds_segments_ends_locs <- as.integer(seeds_locs[connected_seeds_segments_ends, "start"])
+        stop_reasons <- seeds_connectivity_array$reason[connected_seeds_segments_ends]
+        mask <- rep(FALSE, length(seeds))
+        mask[connected_seeds_segments_starts] <- TRUE
+        seeds_connectivity_array$id <- cumsum(mask)
+        seeds_connectivity_array$cid <- seeds_connectivity_array$id
+        ids <- unique(seeds_connectivity_array$id)
+        seeds_connectivity_array$id[connected_seeds_segments_ends] <- NA
+        seeds_connectivity_array$seeds <- seeds
+        .log_info("Number of segments (potential DMRs before filtering): ", length(connected_seeds_segments_chrs), level = 2)
+        connected_seeds_connection_corr_pval <- aggregate(
+            pval ~ id, data = seeds_connectivity_array, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
+        )
+        dmrs_seeds <- aggregate(seeds ~ id, data = seeds_connectivity_array, function(x) paste(x, collapse = ","))
 
-        if (inherits(ret[[1]], "try-error")) {
-            stop(ret)
-        }
-        dmrs <- as.data.frame(do.call(rbind, ret))
+        dmrs <- data.frame(
+            chr = connected_seeds_segments_chrs,
+            start_seed = seeds[connected_seeds_segments_starts],
+            end_seed = seeds[connected_seeds_segments_ends],
+            start_seed_pos = connected_seeds_segments_starts_locs,
+            end_seed_pos = connected_seeds_segments_ends_locs,
+            seeds_num = connected_seeds_segments_lengths,
+            stop_connection_reason = stop_reasons,
+            id = ids,
+            stringsAsFactors = FALSE
+        )
+        dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+        dmrs <- merge(dmrs, connected_seeds_connection_corr_pval, by = "id", all.x = TRUE)
+        colnames(dmrs)[colnames(dmrs) == "pval"] <- "connection_corr_pval"
+        dmrs <- merge(dmrs, dmrs_seeds, by = "id", all.x = TRUE)
+
+
         if (nrow(dmrs) == 0) {
             .log_warn("No DMRs remain after filtering based on min_seeds.")
             if (!is.null(output_prefix)) {
@@ -1756,17 +1734,17 @@ findDMRsFromSeeds <- function(
         .log_info("Loading debug connectivity array from file...", level = 2)
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
     } else {
-        connectivity_windows <- NULL
+        expansion_windows <- NULL
         if (is.finite(expansion_window) && expansion_window > 0) {
-            connectivity_windows <- .buildConnectivityWindowsFromDMRs(
+            expansion_windows <- .buildConnectivityWindowsFromDMRs(
                 dmrs = dmrs,
                 expansion_window = expansion_window
             )
-            if (nrow(connectivity_windows) > 0L) {
+            if (nrow(expansion_windows) > 0L) {
                 .log_info(
-                    "Stage 2 connectivity restricted to ", nrow(connectivity_windows),
+                    "Stage 2 connectivity restricted to ", nrow(expansion_windows),
                     " seed-derived windows (total span: ",
-                    format(sum(connectivity_windows$end - connectivity_windows$start + 1), big.mark = ","),
+                    format(sum(expansion_windows$end - expansion_windows$start + 1), big.mark = ","),
                     " bp).",
                     level = 2
                 )
@@ -1777,40 +1755,26 @@ findDMRsFromSeeds <- function(
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
         .log_step("Building connectivity array..", level = 2)
-        connectivity_array <- NULL
-        splits <- NULL
-        for (gap in seq(0L, max_bridge_extension_gaps)) {
-            if (gap == 0L) {
-                .log_info("Building initial connectivity array with no gap bridging.", level = 2)
-            } else {
-                .log_info("Building bridged connectivity array allowing up to ", gap, " gap(s) between connected seeds.", level = 2)
-            }
-            build_ret <- .buildConnectivityArray(
-                beta_handler = beta_handler,
-                group_inds = group_inds,
-                col_names = beta_col_names_detection,
-                pheno = pheno_detection,
-                covariates = covariates,
-                max_lookup_dist = max_lookup_dist,
-                max_pval = max_pval,
-                min_delta_beta = resolved_min_cpg_delta_beta,
-                entanglement = entanglement,
-                aggfun = aggfun,
-                pval_mode = pval_mode,
-                empirical_strategy = empirical_strategy,
-                chunk_size = chunk_size,
-                ntries = ntries,
-                mid_p = mid_p,
-                njobs = njobs,
-                connectivity_windows = connectivity_windows,
-                connectivity_array = connectivity_array,
-                splits = splits,
-                gap = gap
-            )
-            connectivity_array <- build_ret$connectivity_array
-            splits <- build_ret$splits
-            .log_info("Connectivity array built with gap allowance of ", gap, " (", sum(connectivity_array$connected), " connected CpGs).", level = 2)
-        }
+        connectivity_array <- .buildConnectivityArray(
+            beta_handler = beta_handler,
+            pheno = pheno_detection,
+            group_inds = group_inds,
+            pval_mode_per_group = pval_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            col_names = beta_col_names_detection,
+            max_pval = max_pval,
+            min_delta_beta = resolved_min_cpg_delta_beta,
+            covariates = covariates,
+            max_lookup_dist = max_lookup_dist,
+            chunk_size = chunk_size,
+            entanglement = entanglement,
+            aggfun = aggfun,
+            ntries = ntries,
+            mid_p = mid_p,
+            njobs = njobs,
+            expansion_windows = expansion_windows,
+            max_bridge_gaps = max_bridge_extension_gaps
+        )
     }
     .log_success("Connectivity array built.", level = 2)
     .log_info("Number of underlying connected CpGs found: ", sum(connectivity_array$connected), level = 1)
@@ -1983,7 +1947,6 @@ findDMRsFromSeeds <- function(
         agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
         agg_df[i, "upstream_cpgs"] <- paste(agg_upstream_cpgs, collapse = ",")
         agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
-        
         agg_downsteam_cpgs <- unique(unlist(lapply(cols_vals$downstream_cpgs, .splitCsvValues), use.names = FALSE))
         agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
         agg_df[i, "downstream_cpgs"] <- paste(agg_downsteam_cpgs, collapse = ",")

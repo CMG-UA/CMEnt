@@ -35,7 +35,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     expect_true(inherits(dmrs, "GRanges"))
     expect_true(length(dmrs) > 0)
     expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    saveRDS(dmrs, file = "../../inst/extdata/example_output.rds")
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
@@ -140,7 +139,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 137)
+    expect_equal(length(dmrs_segal), 155)
     expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria
