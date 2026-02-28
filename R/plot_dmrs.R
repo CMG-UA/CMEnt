@@ -462,7 +462,7 @@ if (getRversion() >= "2.15.1") {
 
 
 # Create beta heatmap plot
-.plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, sample_group_col = "Sample_Group") {
+.plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, max_samples_per_group = 10, sample_group_col = "Sample_Group") {
     cpg_ids <- rownames(total_shown_positions)
     cpg_locs <- total_shown_positions[, c("chr", "start")]
 
@@ -475,6 +475,38 @@ if (getRversion() >= "2.15.1") {
     # Prepare data
     beta_data <- as.data.frame(beta_data)
     beta_data[, "CpG"] <- rownames(beta_data)
+
+    # if there are more than max_samples_per_group samples in any group, limit to max_samples_per_group samples per group for plotting
+    selected_samples <- NULL
+    if (!is.null(pheno) && !is.null(sample_group_col)) {
+        group_counts <- table(pheno[[sample_group_col]])
+        if (any(group_counts > max_samples_per_group)) {
+            .log_info("Limiting to ", max_samples_per_group, " samples per group for plotting. Original group counts:\n", paste(names(group_counts), group_counts, sep = ": ", collapse = "\n"))
+            set.seed(123) # for reproducibility
+            selected_samples <- unlist(lapply(names(group_counts), function(g) {
+                group_samples <- rownames(pheno)[pheno[[sample_group_col]] == g]
+                if (length(group_samples) > max_samples_per_group) {
+                    sample(group_samples, max_samples_per_group)
+                } else {                    group_samples
+                }            }))
+
+        }
+    } else {
+        # if no sample grouping information is provided, limit to max_samples_per_group samples total for plotting
+        if (ncol(beta_data) - 1 > max_samples_per_group) {
+            .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
+            set.seed(123) # for reproducibility
+            sample_cols <- setdiff(colnames(beta_data), "CpG")
+            selected_samples <- sample(sample_cols, max_samples_per_group)
+        }
+    }
+    if (!is.null(selected_samples)) {
+        beta_data <- beta_data[, c("CpG", selected_samples), drop = FALSE]
+        if (!is.null(pheno) && !is.null(sample_group_col)) {
+            pheno <- pheno[selected_samples, , drop = FALSE]
+        }
+    }
+
     beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
     colnames(beta_melted) <- c("CpG", "Sample", "Beta")
     beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
@@ -843,6 +875,7 @@ plotDMRs <- function(dmrs,
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
 #' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
+#' @param max_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 10).
 #' @param plot_motif Logical. Whether to plot the sequence logo motif (default: TRUE).
 #' @param motif_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
@@ -880,6 +913,7 @@ plotDMR <- function(dmrs,
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
                     max_cpgs = 100,
+                    max_samples_per_group = 10,
                     plot_motif = TRUE,
                     motif_flank_size = 5,
                     plot_title = TRUE,
@@ -975,6 +1009,7 @@ plotDMR <- function(dmrs,
             dmr_data = dmr_data,
             beta_data = beta_data,
             pheno = pheno,
+            max_samples_per_group = max_samples_per_group,
             sample_group_col = sample_group_col,
             total_shown_positions = total_shown_positions
         )
@@ -2163,10 +2198,16 @@ plotDMRsManhattan <- function(dmrs,
         "Gene Body" = "#3182BD",
         "Intergenic" = "#9E9E9E"
     )
+    region_shapes <- c(
+        "Promoter" = 16,
+        "Gene Body" = 17,
+        "Intergenic" = 15
+    )
 
-    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class)) +
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class, shape = region_class)) +
         ggplot2::geom_point(size = point_size, alpha = point_alpha, stroke = 0) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
+        ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(
             breaks = axis_df$position,
             labels = as.character(axis_df$chr),
