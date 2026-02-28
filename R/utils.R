@@ -2089,6 +2089,12 @@ convertToGRanges <- function(obj, genome) {
             obj[[1]] <- paste0("chr", obj[[1]])
             obj$chr_prefix_added <- TRUE
         }
+        # if the chromosome appears in the form of chr1:1230, save the original location in a separate column and parse the location into chr, start, end
+        if (any(grepl(":", obj[[1]]))) {
+            obj$original_location <- obj[[1]]
+            loc_split <- strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
+            obj[[1]] <- sapply(loc_split, function(x) x[1])
+        }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
@@ -2122,6 +2128,10 @@ convertToDataFrame <- function(gr) {
     }
     df <- as.data.frame(gr, stringsAsFactors = FALSE)
     colnames(df)[colnames(df) == "seqnames"] <- "chr"
+    if ("original_location" %in% colnames(df)) {
+        df <- df[, c("original_location", setdiff(colnames(df), c("chr", "original_location")))]
+        colnames(df)[colnames(df) == "original_location"] <- "chr"
+    }
     if (chr_prefix_added) {
         df$chr <- sub("^chr", "", df$chr)
     }
