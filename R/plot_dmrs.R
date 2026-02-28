@@ -1479,7 +1479,7 @@ plotDMRsCircos <- function(dmrs,
                            beta,
                            pheno,
                            genome = "hg19",
-                           array = c("450K", "27K", "EPIC", "EPICv2"),
+                           array = "450K",
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
                            min_similarity = 0.8,
@@ -1528,8 +1528,33 @@ plotDMRsCircos <- function(dmrs,
     }
     cytoband <- .getCytobandData(genome)
 
+    if (!is.null(verbose)) {
+        options("DMRsegal.verbose" = verbose)
+    }
+    verbose <- getOption("DMRsegal.verbose", default = 2)
+    beta_handler <- getBetaHandler(
+        beta = beta,
+        array = array,
+        genome = genome,
+        sorted_locs = sorted_locs
+    )
+
+    beta_locs <- beta_handler$getBetaLocs()
+
     region_df <- .normalizeCircosRegion(region, cytoband)
+
+
+    if (!is.null(region_df)) {
+        # Also pass the region_df to filter beta_locs to ensure only probes within the specified region are included, and to align with the modified chromosome naming in dmrs.
+        beta_locs <- convertToDataFrame(.filterDMRsByScopeForCircos(convertToGRanges(beta_locs, genome), chromosomes = requested_chrs, region_df = region_df))
+        beta_locs <- beta_locs[-c(4, 5)]
+    }
     # if region_df is provided, the following function will result in dmrs with modified seqnames in the form "chr:start-end" to represent the region-based sectors.
+    # In case the motifs had not been computed before, the sequences will not be found for the modified seqnames, so we extract the motifs beforehand
+    if (!"pwm" %in% colnames(mcols(dmrs))) {
+        .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
+        dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, flank_size = flank_size)
+    }
     dmrs <- .filterDMRsByScopeForCircos(dmrs, chromosomes = requested_chrs, region_df = region_df)
     if (length(dmrs) == 0) {
         stop("No DMRs remain after applying chromosome/region filters.")
@@ -1547,16 +1572,6 @@ plotDMRsCircos <- function(dmrs,
         }
     }
 
-    if (!is.null(verbose)) {
-        options("DMRsegal.verbose" = verbose)
-    }
-    verbose <- getOption("DMRsegal.verbose", default = 2)
-    beta_handler <- getBetaHandler(
-        beta = beta,
-        array = array,
-        genome = genome,
-        sorted_locs = sorted_locs
-    )
 
     if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
         pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
@@ -1567,12 +1582,7 @@ plotDMRsCircos <- function(dmrs,
     if (!(sample_group_col %in% colnames(pheno))) {
         stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
     }
-    beta_locs <- beta_handler$getBetaLocs()
-    if (!is.null(region_df)) {
-        # Also pass the region_df to filter beta_locs to ensure only probes within the specified region are included, and to align with the modified chromosome naming in dmrs.
-        beta_locs <- convertToDataFrame(.filterDMRsByScopeForCircos(convertToGRanges(beta_locs, genome), chromosomes = requested_chrs, region_df = region_df))
-        beta_locs <- beta_locs[-c(4, 5)]
-    }
+
     .log_step("Preparing data for Circos plot...")
 
     .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
@@ -1625,6 +1635,7 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
+    
     link_data <- .prepareCircosLinkData(
         dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size
     )
@@ -2422,8 +2433,8 @@ plotDMRsManhattan <- function(dmrs,
         }
     )
 
-    if (is.null(ret) || nrow(ret$interactions) == 0) {
-        .log_warn("No significant interactions found at similarity >=", min_similarity, ". Skipping link track.")
+    if ((is.null(ret) || nrow(ret$interactions) == 0)) {
+        .log_info("No significant interactions found at similarity >=", min_similarity, ". Skipping link track.", level = 2)
         return(NULL)
     }
 

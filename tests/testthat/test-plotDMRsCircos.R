@@ -11,18 +11,17 @@ test_that("plotDMRsCircos creates a circos plot", {
 
     dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))), drop = FALSE]
     options("DMRsegal.verbose" = 2)
-    testthat::expect_warning(
-         plotDMRsCircos(
-             dmrs = dmrs_subset,
-             beta = beta,
-             pheno = pheno,
-             array = array_type,
-             genome = "hg19",
-             sample_group_col = "Sample_Group",
-             min_similarity = 0.8
-         ),
-         "No significant interactions found"
-     )
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs_subset,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            min_similarity = 0.8
+        )
+    )
 })
 
 test_that("plotDMRsCircos works with interactions", {
@@ -66,7 +65,7 @@ test_that("plotDMRsCircos handles BetaHandler input", {
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
 
-    expect_warning(
+    expect_no_error(
         plotDMRsCircos(
             dmrs = dmrs_subset,
             beta = beta_handler,
@@ -74,8 +73,7 @@ test_that("plotDMRsCircos handles BetaHandler input", {
             array = array_type,
             genome = "hg19",
             sample_group_col = "Sample_Group"
-        ),
-        "No significant interactions found"
+        )
     )
 })
 
@@ -92,7 +90,7 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
     dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
     dmrs_df <- convertToDataFrame(dmrs_subset)
 
-    expect_warning(
+    expect_no_error(
         plotDMRsCircos(
             dmrs = dmrs_df,
             beta = beta,
@@ -100,8 +98,7 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
             array = array_type,
             genome = "hg19",
             sample_group_col = "Sample_Group"
-        ),
-        "No significant interactions found"
+        )
     )
 })
 
