@@ -1853,7 +1853,6 @@ findDMRsFromSeeds <- function(
         chr_dmrs <- dmrs[dmrs$chr == chr, ]
         chr_mask <- beta_locs[, "chr"] == chr
         first_row <- which(chr_mask)[1]
-        last_row <- which(chr_mask)[sum(chr_mask)]
         chr_start_base <- first_row - 1
         chr_locs <- as.data.frame(beta_locs[chr_mask, , drop = FALSE])
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
@@ -1956,7 +1955,6 @@ findDMRsFromSeeds <- function(
         keep.extra.columns = TRUE,
         ignore.strand = TRUE,
         seqnames.field = "chr",
-        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
         na.rm = TRUE
     )
 
@@ -2178,40 +2176,35 @@ findDMRsFromSeeds <- function(
 
     .log_success("DMR delta-beta information added.", level = 2)
 
-    annotated_dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
-        annotated_dmrs,
-        keep.extra.columns = TRUE,
-        seqnames.field = "chr",
-        seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
-        na.rm = TRUE
-    )
-
     if (annotate_with_genes) {
         .log_step("Annotating DMRs with gene information...", level = 1)
-        annotated_dmrs_granges <- annotateDMRsWithGenes(annotated_dmrs_granges, genome = genome)
+        annotated_dmrs <- annotateDMRsWithGenes(annotated_dmrs, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
-    
-    final_dmrs_granges <- annotated_dmrs_granges
+
     if (rank_dmrs) {
         .log_step("Ranking DMRs...", level = 1)
-        ranked_dmrs_granges <- rankDMRs(
-            final_dmrs_granges,
+        annotated_dmrs <- rankDMRs(
+            annotated_dmrs,
             beta = beta,
             pheno = pheno_all,
             genome = genome,
             array = array,
-            sorted_locs = all_cpgs,
+            sorted_locs = beta_handler$getGenomicLocs(),
             sample_group_col = sample_group_col,
             covariates = covariates
         )
         .log_success("DMR ranking completed.", level = 1)
-        final_dmrs_granges <- ranked_dmrs_granges
     }
 
+    if (is.data.frame(annotated_dmrs)) {
+        annotated_dmrs <- convertToGRanges(annotated_dmrs, genome = genome)
+    }
 
-    final_dmrs <- as.data.frame(final_dmrs_granges)
-    colnames(final_dmrs)[colnames(final_dmrs) == "seqnames"] <- "chr"
+    final_dmrs_granges <- annotated_dmrs
+
+    final_dmrs <- convertToDataFrame(final_dmrs_granges)
+
     .log_info("Final number of DMRs: ", nrow(final_dmrs), level = 1)
     .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(final_dmrs)), collapse = "\n\t"), level = 3)
     if (!is.null(output_prefix)) {

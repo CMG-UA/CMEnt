@@ -128,6 +128,7 @@ rankDMRs <- function(
     sample_group_col = "Sample_Group"
 ) {
     verbose <- getOption("DMRsegal.verbose", 1)
+    df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     beta_col_names <- beta_handler$getBetaColNames()
@@ -191,5 +192,10 @@ rankDMRs <- function(
     mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
-    dmrs[order(mcols(dmrs)$rank)]
+
+    dmrs <- dmrs[order(mcols(dmrs)$rank)]
+    if (df_provided) {
+        dmrs <- convertToDataFrame(dmrs)
+    }
+    dmrs
 }

@@ -1918,22 +1918,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         ".cache", "R", "DMRsegal", "annotations"
     ))
     dmrs_df_provided <- is.data.frame(dmrs)
-    if (dmrs_df_provided) {
-        dmrs <- GenomicRanges::makeGRangesFromDataFrame(dmrs,
-            keep.extra.columns = TRUE,
-            seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
-            na.rm = TRUE
-        )
-    } else {
-        if (!is(dmrs, "GRanges")) {
-            stop("dmrs must be a data.frame or GRanges object")
-        }
-        # if the genome info in the dmrs is different from the specified genome, update the locations with liftOver
-        dmrs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(dmrs))[[1]]
-        if (dmrs_genome != genome) {
-            dmrs <- .liftOverFromGenomeToGenome(dmrs, dmrs_genome, genome)
-        }
-    }
+    dmrs <- convertToGRanges(dmrs, genome)
 
     supported_organisms <- Organism.dplyr::supportedOrganisms()
     # find row matching the genome
@@ -2116,8 +2101,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
         }
     }
     if (dmrs_df_provided) {
-        dmrs <- as.data.frame(dmrs)
-        colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
+        dmrs <- convertToDataFrame(dmrs)
     }
     dmrs
 }
@@ -2125,6 +2109,11 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
 convertToGRanges <- function(obj, genome) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
+        # If the chr prefix is missing, add it (e.g. "1" -> "chr1")
+        if (!any(grepl("^chr", obj[[1]]))) {
+            obj[[1]] <- paste0("chr", obj[[1]])
+            obj$chr_prefix_added <- TRUE
+        }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
@@ -2146,6 +2135,22 @@ convertToGRanges <- function(obj, genome) {
         }
     }
     obj
+}
+
+convertToDataFrame <- function(gr) {
+    if (is.data.frame(gr)) {
+        return(gr)
+    }
+    chr_prefix_added <- FALSE
+    if ("chr_prefix_added" %in% names(mcols(gr))) {
+        chr_prefix_added <- TRUE
+    }
+    df <- as.data.frame(gr, stringsAsFactors = FALSE)
+    colnames(df)[colnames(df) == "seqnames"] <- "chr"
+    if (chr_prefix_added) {
+        df$chr <- sub("^chr", "", df$chr)
+    }
+    df
 }
 
 .already_logged_dir <- tempdir()
