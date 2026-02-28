@@ -1142,7 +1142,7 @@ plotDMR <- function(dmrs,
     df
 }
 
-.normalizeCircosRegion <- function(region, cytoband) {
+.normalizeCircosRegion <- function(region, cytoband = NULL) {
     if (is.null(region)) {
         return(NULL)
     }
@@ -2319,13 +2319,7 @@ plotDMRsManhattan <- function(dmrs,
     }
     # Order pheno by sample group
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    dmrs_cpgs_list <- .getSupportingSitesFromColumns(
-        dmrs,
-        max_sup_cpgs_per_dmr_side = max_sup_cpgs_per_dmr_side,
-        separate_by_section = FALSE,
-        use_absolute_indices = FALSE,
-        beta_locs = beta_handler$getBetaLocs()
-    )
+    dmrs_cpgs_list <- strsplit(dmrs$cpgs, split = ",")
     dmrs_cpgs_inds <- unique(unlist(dmrs_cpgs_list, use.names = FALSE))
     if (length(dmrs_cpgs_inds) == 0) {
         .log_warn("No supporting CpGs available for selected DMRs. Skipping heatmap track.")
@@ -2334,6 +2328,7 @@ plotDMRsManhattan <- function(dmrs,
 
 
     shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]
+    shown_locs <- as.data.frame(shown_locs)
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
     shown_locs$end <- as.numeric(shown_locs$end)

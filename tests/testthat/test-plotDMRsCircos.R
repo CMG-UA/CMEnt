@@ -11,16 +11,15 @@ test_that("plotDMRsCircos creates a circos plot", {
 
     dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))), drop = FALSE]
     options("DMRsegal.verbose" = 2)
-    expect_no_error(
-        plotDMRsCircos(
-            dmrs = dmrs_subset,
-            beta = beta,
-            pheno = pheno,
-            array = array_type,
-            genome = "hg19",
-            sample_group_col = "Sample_Group"
-        )
+    ret <- plotDMRsCircos(
+        dmrs = dmrs_subset,
+        beta = beta,
+        pheno = pheno,
+        array = array_type,
+        genome = "hg19",
+        sample_group_col = "Sample_Group"
     )
+    expect_true(is.null(ret))
 })
 
 test_that("plotDMRsCircos works with interactions", {
