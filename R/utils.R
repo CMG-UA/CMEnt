@@ -288,7 +288,7 @@
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    message(paste(lead, msg))
+    warning(paste(lead, msg))
     invisible()
 }
 

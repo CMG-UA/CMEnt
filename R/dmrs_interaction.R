@@ -213,9 +213,8 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1
     )
-    dmrs_seeds <- strsplit(mcols(dmrs)[, "seeds"], split = ",")
-    dmrs_cpgs <- unlist(strsplit(mcols(dmrs)[, "cpgs"], split = ","))
-    beta_locs_start <- as.data.frame(beta_locs[dmrs_cpgs, "start", drop = FALSE])
+    dmrs_seeds <- unlist(strsplit(mcols(dmrs)[, "seeds"], split = ","))
+    beta_locs_start <- as.data.frame(beta_locs[dmrs_seeds, "start", drop = FALSE])
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
@@ -322,10 +321,24 @@ computeDMRsInteraction <- function(
     find_components = TRUE, min_component_size = 2,
     query_components_with_jaspar = TRUE, plot.dir = NULL
 ) {
+    if (length(dmrs) == 0) {
+        .log_info("No DMRs provided for interaction analysis.", level = 2)
+        return(list(
+            interactions = data.frame(),
+            components = data.frame()
+        ))
+    }
     dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, flank_size = flank_size)
+    }
+    if (length(dmrs) == 1) {
+        .log_info("Only one DMR provided, skipping interaction analysis.", level = 2)
+        return(list(
+            interactions = data.frame(),
+            components = data.frame()
+        ))
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
     if (!is.null(plot.dir)) {
