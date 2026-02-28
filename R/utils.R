@@ -1152,35 +1152,64 @@ sortBetaFileByCoordinates <- function(beta_file,
     output_file
 }
 
-.remove_confounder_effect <- function(signal, covariate_matrix) {
-    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) return(signal)
-    xtx <- crossprod(covariate_matrix)
-    xtx_inv <- tryCatch(solve(xtx), error = function(e) NULL)
-    if (is.null(xtx_inv)) {
-        return(signal)
+.prepareCovariateModel <- function(pheno, covariates = NULL) {
+    if (is.null(covariates) || length(covariates) == 0L || is.null(pheno)) {
+        return(NULL)
     }
-    pseudo_solution <- xtx_inv %*% t(covariate_matrix)
-    effect <- t(pseudo_solution %*% t(signal))
-    signal - effect %*% t(covariate_matrix)
+    if (!all(covariates %in% colnames(pheno))) {
+        stop("Not all covariates are present in pheno.")
+    }
+    xc <- as.data.frame(pheno[, covariates, drop = FALSE])
+    xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
+    for (col in colnames(xc)) {
+        if (is.character(xc[[col]]) || is.factor(xc[[col]])) {
+            xc[[col]] <- as.numeric(as.factor(xc[[col]]))
+        }
+    }
+    xc <- as.matrix(xc)
+    storage.mode(xc) <- "double"
+    xtx_inv <- tryCatch(solve(crossprod(xc)), error = function(e) NULL)
+    pseudo_solution <- if (is.null(xtx_inv)) NULL else xtx_inv %*% t(xc)
+    list(
+        covariate_matrix = xc,
+        t_covariate_matrix = t(xc),
+        pseudo_solution = pseudo_solution,
+        is_singular = is.null(xtx_inv)
+    )
 }
 
-.transformBeta <- function(beta, pheno, covariates = NULL) {
+.remove_confounder_effect <- function(signal, covariate_matrix, pseudo_solution = NULL, t_covariate_matrix = NULL) {
+    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) return(signal)
+    if (is.null(pseudo_solution)) {
+        xtx <- crossprod(covariate_matrix)
+        xtx_inv <- tryCatch(solve(xtx), error = function(e) NULL)
+        if (is.null(xtx_inv)) {
+            return(signal)
+        }
+        pseudo_solution <- xtx_inv %*% t(covariate_matrix)
+    }
+    if (is.null(t_covariate_matrix)) {
+        t_covariate_matrix <- t(covariate_matrix)
+    }
+    effect <- t(pseudo_solution %*% t(signal))
+    signal - effect %*% t_covariate_matrix
+}
+
+.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
     m_values <- log2(beta / (1 - beta) + 1e-6)
-    if (!is.null(covariates) && length(covariates) > 0L && !is.null(pheno)) {
-        if (!all(covariates %in% colnames(pheno))) {
-            stop("Not all covariates are present in pheno.")
+    if (is.null(covariate_model)) {
+        covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    }
+    if (!is.null(covariate_model)) {
+        if (isTRUE(covariate_model$is_singular)) {
+            return(m_values)
         }
-        xc <- as.data.frame(pheno[, covariates, drop = FALSE])
-        xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
-        # convert any string columns to factors
-        for (col in colnames(xc)) {
-            if (is.character(xc[[col]])) {
-                xc[[col]] <- as.numeric(as.factor(xc[[col]]))
-            }
-        }
-        xc <- as.matrix(xc)
-        storage.mode(xc) <- "double"
-        m_values <- .remove_confounder_effect(m_values, xc)
+        m_values <- .remove_confounder_effect(
+            m_values,
+            covariate_matrix = covariate_model$covariate_matrix,
+            pseudo_solution = covariate_model$pseudo_solution,
+            t_covariate_matrix = covariate_model$t_covariate_matrix
+        )
     }
     m_values
 }

@@ -268,6 +268,31 @@ test_that("character row subsetting uses master index", {
 })
 
 
+test_that("master index range subsetting supports string1:string2 in memory backend", {
+    df <- data.frame(
+        id = sprintf("id%03d", 1:10),
+        value = seq_len(10),
+        stringsAsFactors = FALSE
+    )
+    reg <- getRegistry(
+        data = df,
+        indices = list(by_id = "id"),
+        master_index = "by_id",
+        memory_threshold_mb = Inf
+    )
+
+    string1 <- "id003"
+    string2 <- "id007"
+    out <- as.data.frame(reg[string1:string2, c("id", "value")])
+    expect_equal(out$id, sprintf("id%03d", 3:7))
+    expect_equal(out$value, 3:7)
+
+    out_rev <- as.data.frame(reg[string2:string1, c("id", "value")])
+    expect_equal(out_rev$id, sprintf("id%03d", 7:3))
+    expect_equal(out_rev$value, 7:3)
+})
+
+
 test_that("row names use master index values even if master column is not active", {
     df <- data.frame(
         id = c("id1", "id2", "id3", "id4"),
@@ -380,6 +405,12 @@ test_that("character row subsetting by master index works in sqlite backend", {
     out_factor <- as.data.frame(reg_view_factor)
     expect_equal(out_factor$id, c("id090", "id001", "id090"))
     expect_equal(out_factor$value, c(90, 1, 90))
+
+    string1 <- "id010"
+    string2 <- "id015"
+    out_range <- as.data.frame(reg[string1:string2, c("id", "value")])
+    expect_equal(out_range$id, sprintf("id%03d", 10:15))
+    expect_equal(out_range$value, 10:15)
 })
 
 

@@ -79,6 +79,24 @@ getRegistry <- function(data,
 }
 
 
+.registry_resolve_row_selector <- function(selector_expr, eval_env) {
+    if (is.call(selector_expr) &&
+        length(selector_expr) == 3L &&
+        identical(selector_expr[[1L]], as.name(":"))) {
+        lhs <- tryCatch(eval(selector_expr[[2L]], envir = eval_env), error = function(e) NULL)
+        rhs <- tryCatch(eval(selector_expr[[3L]], envir = eval_env), error = function(e) NULL)
+        if (is.character(lhs) && length(lhs) == 1L && !is.na(lhs) &&
+            is.character(rhs) && length(rhs) == 1L && !is.na(rhs)) {
+            return(structure(
+                list(start = as.character(lhs), end = as.character(rhs)),
+                class = "registry_master_range"
+            ))
+        }
+    }
+    eval(selector_expr, envir = eval_env)
+}
+
+
 #' @rdname getRegistry
 #' @param x A `Registry` object.
 #' @param i Row selector relative to the current active row bounds. Character
@@ -88,7 +106,7 @@ getRegistry <- function(data,
 #' @param ... Passed to `Registry$as.data.frame()`.
 #' @export
 `[.Registry` <- function(x, i, j, drop = FALSE) {
-    i_sel <- if (missing(i)) NULL else i
+    i_sel <- if (missing(i)) NULL else .registry_resolve_row_selector(substitute(i), parent.frame())
     j_sel <- if (missing(j)) NULL else j
     .registry_subset_view(x = x, i = i_sel, j = j_sel, drop = drop)
 }
@@ -99,7 +117,7 @@ getRegistry <- function(data,
 #'   length matching the selected rows.
 #' @export
 `[<-.Registry` <- function(x, i, j, value) {
-    i_sel <- if (missing(i)) NULL else i
+    i_sel <- if (missing(i)) NULL else .registry_resolve_row_selector(substitute(i), parent.frame())
     j_sel <- if (missing(j)) NULL else j
     if (is.null(j_sel)) {
         stop("Column selector `j` must be provided for `[<-.Registry`.")
@@ -108,7 +126,9 @@ getRegistry <- function(data,
     private <- x$.__enclos_env__$private
     target_rows <- private$.active_row_idx
     if (!is.null(i_sel)) {
-        if (is.character(i_sel) || is.factor(i_sel)) {
+        if (inherits(i_sel, "registry_master_range")) {
+            target_rows <- private$.subset_rows_by_master_index_range(i_sel$start, i_sel$end)
+        } else if (is.character(i_sel) || is.factor(i_sel)) {
             target_rows <- private$.subset_rows_by_master_index(as.character(i_sel))
         } else {
             target_rows <- private$.subset_absolute_indices(
@@ -259,7 +279,9 @@ getRegistry <- function(data,
     new_col_idx <- private$.active_col_idx
 
     if (!is.null(i)) {
-        if (is.character(i) || is.factor(i)) {
+        if (inherits(i, "registry_master_range")) {
+            new_row_idx <- private$.subset_rows_by_master_index_range(i$start, i$end)
+        } else if (is.character(i) || is.factor(i)) {
             new_row_idx <- private$.subset_rows_by_master_index(as.character(i))
         } else {
             new_row_idx <- private$.subset_absolute_indices(
@@ -1391,6 +1413,45 @@ Registry <- R6::R6Class("Registry", # nolint
             }
 
             private$.match_active_rowids_sqlite(index_col = idx_col, selector = selector_chr)
+        },
+
+        .subset_rows_by_master_index_range = function(start_value, end_value) {
+            if (is.null(private$.master_index)) {
+                stop(
+                    "Character row selectors require a configured `master_index`. ",
+                    "Set it in `getRegistry(master_index = ...)` or call `$setMasterIndex()`."
+                )
+            }
+
+            if (!is.character(start_value) || length(start_value) != 1L || is.na(start_value) ||
+                !is.character(end_value) || length(end_value) != 1L || is.na(end_value)) {
+                stop("Master index range selectors must be two non-missing character scalars.")
+            }
+
+            if (length(private$.active_row_idx) == 0L) {
+                return(integer(0))
+            }
+
+            active_names <- private$.active_row_names(prefix = "row")
+            start_pos <- match(start_value, active_names)
+            end_pos <- match(end_value, active_names)
+
+            if (is.na(start_pos) || is.na(end_pos)) {
+                missing_vals <- c()
+                if (is.na(start_pos)) missing_vals <- c(missing_vals, start_value)
+                if (is.na(end_pos)) missing_vals <- c(missing_vals, end_value)
+                stop(
+                    "Master index range selector value(s) not found in active rows: ",
+                    paste(missing_vals, collapse = ", ")
+                )
+            }
+
+            if (start_pos <= end_pos) {
+                rel <- seq.int(start_pos, end_pos)
+            } else {
+                rel <- seq.int(start_pos, end_pos, by = -1L)
+            }
+            private$.active_row_idx[rel]
         },
 
         .active_row_names = function(prefix = "row") {

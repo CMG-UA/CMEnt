@@ -1,18 +1,12 @@
 #' @keywords internal
 #' @noRd
-.performCrossPrediction <- function(beta_mat, groups, nfold = getOption("DMRsegal.ranking_nfold", 5)) {
-    set.seed(getOption("DMRsegal.random_seed", 42))
+.buildStratifiedFolds <- function(groups, nfold = getOption("DMRsegal.ranking_nfold", 5)) {
     groups <- as.factor(groups)
-    if (ncol(beta_mat) != length(groups)) {
-        stop(
-            "Mismatch between beta matrix columns (", ncol(beta_mat),
-            ") and group labels (", length(groups), ")."
-        )
-    }
     if (nlevels(groups) < 2) {
         stop("Ranking requires at least two classes in '__casecontrol__'.")
     }
-    group_folds <- split(seq_len(ncol(beta_mat)), groups)
+    set.seed(getOption("DMRsegal.random_seed", 42))
+    group_folds <- split(seq_along(groups), groups)
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
             gsize <- length(group_folds[[g]])
@@ -23,24 +17,62 @@
             ))
         }
     }
-    folds <- integer(ncol(beta_mat))
+    folds <- integer(length(groups))
     for (g in names(group_folds)) {
         idx <- group_folds[[g]]
         folds[idx] <- sample(rep(seq_len(nfold), length.out = length(idx)))
     }
+    folds
+}
+
+#' @keywords internal
+#' @noRd
+.performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("DMRsegal.ranking_nfold", 5)) {
+    groups <- as.factor(groups)
+    if (ncol(beta_mat) != length(groups)) {
+        stop(
+            "Mismatch between beta matrix columns (", ncol(beta_mat),
+            ") and group labels (", length(groups), ")."
+        )
+    }
+    if (nlevels(groups) < 2) {
+        stop("Ranking requires at least two classes in '__casecontrol__'.")
+    }
+    if (is.null(folds)) {
+        folds <- .buildStratifiedFolds(groups, nfold = nfold)
+    } else {
+        if (length(folds) != ncol(beta_mat)) {
+            stop(
+                "Mismatch between folds length (", length(folds),
+                ") and number of samples (", ncol(beta_mat), ")."
+            )
+        }
+        folds <- as.integer(folds)
+        if (anyNA(folds) || any(folds < 1L)) {
+            stop("Fold IDs must be positive integers without NA values.")
+        }
+        nfold <- max(folds)
+    }
+
+    beta_mat_t <- t(beta_mat)
     predictions <- vector("character", ncol(beta_mat))
     decision_values <- rep(NA_real_, ncol(beta_mat))
-    for (fold in 1:nfold) {
-        train_indices <- which(folds != fold)
+    groups_chr <- as.character(groups)
+
+    for (fold in seq_len(nfold)) {
         test_indices <- which(folds == fold)
+        if (length(test_indices) == 0L) {
+            next
+        }
+        train_indices <- which(folds != fold)
         train_groups <- as.factor(groups[train_indices])
         model <- e1071::svm(
-            t(beta_mat[, train_indices]),
+            beta_mat_t[train_indices, , drop = FALSE],
             train_groups,
             kernel = "radial",
             scale = TRUE
         )
-        fold_pred <- predict(model, t(beta_mat[, test_indices]), decision.values = TRUE)
+        fold_pred <- predict(model, beta_mat_t[test_indices, , drop = FALSE], decision.values = TRUE)
         fold_pred_chr <- as.character(fold_pred)
         predictions[test_indices] <- fold_pred_chr
 
@@ -56,12 +88,11 @@
         }
         decision_values[test_indices] <- fold_decision
     }
-    confusion_matrix <- table(Predicted = predictions, Actual = as.character(groups))
-    cv_accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+    cv_accuracy <- mean(predictions == groups_chr)
 
     # Margin-sensitive score (in (0, 1]) based on logistic loss of SVM decision values.
     # This breaks ties among perfect-accuracy DMRs by rewarding larger separating margins.
-    y <- ifelse(as.character(groups) == levels(groups)[1], 1, -1)
+    y <- ifelse(groups_chr == levels(groups)[1], 1, -1)
     finite_mask <- is.finite(decision_values)
     if (!any(finite_mask)) {
         margin_score <- cv_accuracy
@@ -149,7 +180,14 @@ rankDMRs <- function(
     if (length(class_values) < 2) {
         stop("Ranking requires at least two classes in '__casecontrol__'.")
     }
+    groups <- pheno[, "__casecontrol__"]
+    nfold <- getOption("DMRsegal.ranking_nfold", 5)
+    folds <- .buildStratifiedFolds(groups, nfold = nfold)
+    dmr_cpgs <- strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
+    covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+
     .setupParallel()
+    on.exit(.finalizeParallel(), add = TRUE)
     p_con <- NULL
     if (verbose > 0) {
         # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
@@ -162,17 +200,20 @@ rankDMRs <- function(
     cv_metrics <- future.apply::future_sapply(
         X = seq_along(dmrs),
         FUN = function(i) {
-            beta_mat <- beta_handler$getBeta(row_names = strsplit(mcols(dmrs)[i, "cpgs"], split = ",")[[1]], col_names = beta_col_names)
-            m_values <- .transformBeta(beta_mat, pheno = pheno, covariates = covariates)
-            cv_results <- .performCrossPrediction(m_values, pheno[, "__casecontrol__"])
+            beta_mat <- beta_handler$getBeta(row_names = dmr_cpgs[[i]], col_names = beta_col_names)
+            m_values <- .transformBeta(beta_mat, pheno = pheno, covariate_model = covariate_model)
+            cv_results <- .performCrossPrediction(m_values, groups = groups, folds = folds, nfold = nfold)
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         },
         future.seed = TRUE,
-        future.globals = c("supporting_sites", "beta_handler", "pheno", "beta_col_names", "p_con", ".performCrossPrediction", "covariates", ".transformBeta"),
+        future.globals = c(
+            "beta_handler", "pheno", "beta_col_names", "p_con",
+            ".performCrossPrediction", ".transformBeta",
+            "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
+        ),
         future.stdout = NA
     )
-    .finalizeParallel()
     mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
