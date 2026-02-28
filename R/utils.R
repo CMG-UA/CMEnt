@@ -437,7 +437,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             chunk_size = chunk_size
         )
     }
-    if(getOption("DMRsegal.use_tabix_cache", FALSE)) {
+    if (getOption("DMRsegal.use_tabix_cache", FALSE)) {
         locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
         saveRDS(sorted_locs, file = locations_file)
     }
@@ -2144,6 +2144,10 @@ convertToDataFrame <- function(gr) {
 #' @keywords internal
 #' @noRd
 .setupParallel <- function() {
+    if (!dir.exists(.already_logged_dir)) {
+        dir.create(.already_logged_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
     njobs <- getOption("DMRsegal.njobs")
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs

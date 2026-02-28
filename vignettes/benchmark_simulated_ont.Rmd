@@ -379,25 +379,25 @@ if (!file.exists(dmrsegal_file)) {
         beta = sim_bs
     )
     dmrs_segal <- progressr::with_progress(
-                DMRsegal::findDMRsFromSeeds(
-                    beta = beta_handler,
-                    seeds = sig_seeds,
-                    pheno = pheno,
-                    seeds_id_col = "cpg_id",
-                    sample_group_col = "Sample_Group",
-                    casecontrol_col = "casecontrol",
-                    max_bridge_seeds_gaps = 2L, # Allow bridging across up to 2 seed CpGs to form larger candidate regions during stage 1.
-                    max_bridge_extension_gaps = 10L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
-                    min_seeds = 2,
-                    min_cpgs = 3,
-                    max_lookup_dist = 10000,
-                    max_pval = 0.05,
-                    chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
-                    entanglement = "weak",
-                    annotate_with_genes = FALSE,
-                    rank_dmrs = TRUE,
-                )
-            )
+        DMRsegal::findDMRsFromSeeds(
+            beta = beta_handler,
+            seeds = sig_seeds,
+            pheno = pheno,
+            seeds_id_col = "cpg_id",
+            sample_group_col = "Sample_Group",
+            casecontrol_col = "casecontrol",
+            max_bridge_seeds_gaps = 2L, # Allow bridging across up to 2 seed CpGs to form larger candidate regions during stage 1.
+            max_bridge_extension_gaps = 10L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
+            min_seeds = 2,
+            min_cpgs = 3,
+            max_lookup_dist = 10000,
+            max_pval = 0.05,
+            chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
+            entanglement = "weak",
+            annotate_with_genes = FALSE,
+            rank_dmrs = TRUE,
+        )
+    )
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
     saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)

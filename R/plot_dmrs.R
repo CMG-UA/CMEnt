@@ -1635,7 +1635,7 @@ plotDMRsCircos <- function(dmrs,
     }
 
     .log_step("Computing motif-based DMR interactions...", level = 2)
-    
+
     link_data <- .prepareCircosLinkData(
         dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size
     )

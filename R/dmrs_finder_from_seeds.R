@@ -100,7 +100,7 @@
 #' @importFrom BSgenome getSeq
 #' @importFrom utils txtProgressBar setTxtProgressBar
 #' @importFrom rtracklayer import.chain
-#' @importFrom GenomeInfoDb Seqinfo
+#' @importFrom GenomeInfoDb Seqinfo seqnames
 #' @importFrom utils write.table read.table
 #' @importFrom tools file_ext file_path_sans_ext
 #' @importFrom GenomicFeatures genes promoters
@@ -205,26 +205,26 @@
 #' @keywords internal
 #' @noRd
 .buildConnectivityArraySinglePass <- function(
-  beta_handler,
-  pheno,
-  group_inds,
-  pval_mode_per_group,
-  empirical_strategy_per_group,
-  col_names = NULL,
-  max_pval = 0.05,
-  min_delta_beta = 0,
-  covariates = NULL,
-  max_lookup_dist = 1000,
-  chunk_size = getOption("DMRsegal.chunk_size", 1000),
-  entanglement = "strong",
-  aggfun = median,
-  ntries = 500,
-  mid_p = TRUE,
-  njobs = 1,
-  expansion_windows = NULL,
-  connectivity_array = NULL,
-  gap = 1L,
-  splits = NULL
+    beta_handler,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    connectivity_array = NULL,
+    gap = 1L,
+    splits = NULL
 ) {
     beta_locs <- beta_handler$getBetaLocs()
     n_sites <- nrow(beta_locs)
@@ -606,7 +606,7 @@
                 right_run <- i + 1L
 
                 if (left_run >= 1L && right_run <= length(run_values) &&
-                    run_values[left_run] && run_values[right_run]) {
+                        run_values[left_run] && run_values[right_run]) {
                     fill_indices <- c(
                         fill_indices,
                         run_starts[i]:run_ends[i]
@@ -630,24 +630,24 @@
 }
 
 .buildConnectivityArray <- function(
-  beta_handler,
-  pheno,
-  group_inds,
-  pval_mode_per_group,
-  empirical_strategy_per_group,
-  col_names = NULL,
-  max_pval = 0.05,
-  min_delta_beta = 0,
-  covariates = NULL,
-  max_lookup_dist = 1000,
-  chunk_size = getOption("DMRsegal.chunk_size", 1000),
-  entanglement = "strong",
-  aggfun = median,
-  ntries = 500,
-  mid_p = TRUE,
-  njobs = 1,
-  expansion_windows = NULL,
-  max_bridge_gaps = 0
+    beta_handler,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    max_bridge_gaps = 0
 ) {
     connectivity_array <- NULL
     splits <- NULL
@@ -1039,7 +1039,7 @@
                     min_possible_pval <- 1 / (1 + factorial(m))
                     if (min_possible_pval > max_pval_corrected) {
                         .log_warn(
-                            "Cannot compute sufficiently small empirical p-values for group '", g,
+                            "Cannot compute sufficient small empirical p-values for group '", g,
                             "' because minimum possible p-value (", min_possible_pval,
                             ") exceeds max_pval_corrected (", max_pval_corrected,
                             "). Marking currently eligible pairs as not connected for this group."
@@ -1219,44 +1219,44 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-  beta,
-  seeds,
-  pheno,
-  seeds_id_col = NULL,
-  sample_group_col = "Sample_Group",
-  casecontrol_col = NULL,
-  covariates = NULL,
-  min_cpg_delta_beta = 0.1,
-  adaptive_min_cpg_delta_beta = TRUE,
-  expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-  genome = "hg19",
-  max_pval = 0.05,
-  entanglement = c("strong", "weak"),
-  pval_mode = c("auto", "parametric", "empirical"),
-  empirical_strategy = c("auto", "montecarlo", "permutations"),
-  ntries = 200L,
-  mid_p = FALSE,
-  max_lookup_dist = 10000,
-  expansion_window = "auto",
-  max_bridge_seeds_gaps = 1L,
-  max_bridge_extension_gaps = 1L,
-  min_seeds = 2,
-  min_adj_seeds = 2,
-  min_cpgs = 50,
-  aggfun = c("median", "mean"),
-  ignored_sample_groups = NULL,
-  output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  chunk_size = getOption("DMRsegal.chunk_size", 10000),
-  beta_row_names_file = NULL,
-  annotate_with_genes = TRUE,
-  rank_dmrs = TRUE,
-  bed_provided = FALSE,
-  bed_chrom_col = "chrom",
-  bed_start_col = "start",
-  verbose = getOption("DMRsegal.verbose", 1),
-  .load_debug = FALSE
+    beta,
+    seeds,
+    pheno,
+    seeds_id_col = NULL,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = NULL,
+    covariates = NULL,
+    min_cpg_delta_beta = 0.1,
+    adaptive_min_cpg_delta_beta = TRUE,
+    expansion_step = 500,
+    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+    genome = "hg19",
+    max_pval = 0.05,
+    entanglement = c("strong", "weak"),
+    pval_mode = c("auto", "parametric", "empirical"),
+    empirical_strategy = c("auto", "montecarlo", "permutations"),
+    ntries = 200L,
+    mid_p = FALSE,
+    max_lookup_dist = 10000,
+    expansion_window = "auto",
+    max_bridge_seeds_gaps = 1L,
+    max_bridge_extension_gaps = 1L,
+    min_seeds = 2,
+    min_adj_seeds = 2,
+    min_cpgs = 50,
+    aggfun = c("median", "mean"),
+    ignored_sample_groups = NULL,
+    output_prefix = NULL,
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    chunk_size = getOption("DMRsegal.chunk_size", 10000),
+    beta_row_names_file = NULL,
+    annotate_with_genes = TRUE,
+    rank_dmrs = TRUE,
+    bed_provided = FALSE,
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    verbose = getOption("DMRsegal.verbose", 1),
+    .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)

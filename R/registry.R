@@ -81,8 +81,8 @@ getRegistry <- function(data,
 
 .registry_resolve_row_selector <- function(selector_expr, eval_env) {
     if (is.call(selector_expr) &&
-        length(selector_expr) == 3L &&
-        identical(selector_expr[[1L]], as.name(":"))) {
+            length(selector_expr) == 3L &&
+            identical(selector_expr[[1L]], as.name(":"))) {
         lhs <- tryCatch(eval(selector_expr[[2L]], envir = eval_env), error = function(e) NULL)
         rhs <- tryCatch(eval(selector_expr[[3L]], envir = eval_env), error = function(e) NULL)
 
@@ -250,21 +250,23 @@ getRegistry <- function(data,
         private$.active_col_idx <- c(private$.active_col_idx, length(private$.base_col_names))
     }
 
-        if (length(target_rows) > 0L) {
-            tmp_assign <- .registry_new_temp_table("tmp_registry_assign")
-            tmp_assign_q <- .registry_quote_ident(conn, tmp_assign)
-            on.exit({
+    if (length(target_rows) > 0L) {
+        tmp_assign <- .registry_new_temp_table("tmp_registry_assign")
+        tmp_assign_q <- .registry_quote_ident(conn, tmp_assign)
+        on.exit(
+            {
                 if (DBI::dbExistsTable(conn, tmp_assign)) {
-                DBI::dbExecute(conn, paste0("DROP TABLE ", tmp_assign_q))
-            }
-        }, add = TRUE)
+                    DBI::dbExecute(conn, paste0("DROP TABLE ", tmp_assign_q))
+                }
+            }, add = TRUE
+        )
 
-            template <- data.frame(
-                .registry_rowid = integer(0),
-                .value = value[0],
-                stringsAsFactors = FALSE,
-                check.names = FALSE
-            )
+        template <- data.frame(
+            .registry_rowid = integer(0),
+            .value = value[0],
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
         DBI::dbWriteTable(conn, tmp_assign, template, temporary = TRUE, row.names = FALSE)
         for (start in seq.int(1L, length(target_rows), by = private$.query_chunk_size)) {
             end <- min(start + private$.query_chunk_size - 1L, length(target_rows))
@@ -1475,7 +1477,7 @@ Registry <- R6::R6Class("Registry", # nolint
             }
 
             if (!is.character(start_value) || length(start_value) != 1L || is.na(start_value) ||
-                !is.character(end_value) || length(end_value) != 1L || is.na(end_value)) {
+                    !is.character(end_value) || length(end_value) != 1L || is.na(end_value)) {
                 stop("Master index range selectors must be two non-missing character scalars.")
             }
 
