@@ -402,7 +402,7 @@
 #' @return Returns a Registry object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE) { # nolint
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col="#chrom", start_col="start") { # nolint
     cache_dir <- .getTabixCacheDir(output_dir)
     if (is.null(hash)) {
         hash <- .getFileHash(input_tabix)
@@ -410,27 +410,29 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     cache_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
 
     if (file.exists(cache_file) && getOption("DMRsegal.use_tabix_cache", FALSE)) {
-        return (readRDS(cache_file))
+        return(readRDS(cache_file))
     }
+    renaming <- c("chr", "start")
+    names(renaming) <- c(chrom_col, start_col)
     if (!use_id_as_rownames) {
-    sorted_locs <- getRegistry(
-        input_tabix,
-        select = c("#chrom", "start", "end"),
-        rename = c("#chrom" = "chr"),
-        derive = list(
-            index = list(
-                cols = c("chr", "start"),
-                fun = function(chr, start) paste0(chr, ":", start)
-            )
-        ),
-        indices = "index",
-        chunk_size = chunk_size
-    )
+        sorted_locs <- getRegistry(
+            input_tabix,
+            select = c(chrom_col, start_col),
+            rename = renaming,
+            derive = list(
+                index = list(
+                    cols = c("chr", "start"),
+                    fun = function(chr, start) paste0(chr, ":", start)
+                )
+            ),
+            indices = "index",
+            chunk_size = chunk_size
+        )
     } else {
         sorted_locs <- getRegistry(
             input_tabix,
-            select = c("#chrom", "start", "end", "id"),
-            rename = c("#chrom" = "chr"),
+            select = c(chrom_col, start_col, "end", "id"),
+            rename = renaming,
             indices = "id",
             chunk_size = chunk_size
         )
@@ -465,7 +467,6 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'   a default cache directory at `~/.cache/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
-#' @param chr_levels Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.
 #'
 #' @return A list with two elements:
 #' \itemize{
@@ -543,8 +544,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
-                                         chr_levels = NULL) {
+                                         start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -606,14 +606,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
         bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
         colnames(bed_data) <- bed_header
-        # Add chr in front of chromosome values if missing
-        if (all(!grepl("^chr", bed_data[[chrom_col]]))) {
-            bed_data[[chrom_col]] <- paste0("chr", bed_data[[chrom_col]])
-        }
-        if (is.null(chr_levels)) {
-            chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
-        }
-        bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = chr_levels))
+        bed_data$chr <- bed_data[[chrom_col]]
         bed_data$start <- as.integer(bed_data[[start_col]])
         bed_data$end <- bed_data$start + 1
         bed_data$score <- "."

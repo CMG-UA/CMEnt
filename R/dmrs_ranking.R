@@ -140,12 +140,6 @@ rankDMRs <- function(
         )
     }
     pheno <- pheno[beta_col_names, , drop = FALSE]
-    supporting_sites <- .getSupportingSitesFromColumns(
-        dmrs,
-        use_absolute_indices = FALSE,
-        separate_by_section = FALSE,
-        beta_locs = beta_handler$getBetaLocs()
-    )
     if (! "__casecontrol__" %in% colnames(pheno)) {
         pheno[, "__casecontrol__"] <- pheno[, sample_group_col] != pheno[1, sample_group_col]
     }
@@ -179,8 +173,7 @@ rankDMRs <- function(
     cv_metrics <- future.apply::future_sapply(
         X = seq_along(dmrs),
         FUN = function(i) {
-            site_indices <- supporting_sites[[i]]
-            beta_mat <- beta_handler$getBeta(row_names = site_indices, col_names = beta_col_names)
+            beta_mat <- beta_handler$getBeta(row_names = strsplit(mcols(dmrs)[i, "cpgs"], split = ",")[[1]], col_names = beta_col_names)
             # Convert to M-values
             beta_mat <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
             if (!is.null(covariates)) {

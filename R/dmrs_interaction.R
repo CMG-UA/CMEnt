@@ -203,10 +203,8 @@ extractDMRMotifs <- function(
             ignore_case = TRUE
         )
     }
-    use_abs <- FALSE
     if (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1 && file.exists(beta_locs))) {
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome, locations_file = beta_locs)
-        use_abs <- TRUE
     }
     array_based <- !is.null(array)
     if (array_based) {
@@ -215,25 +213,16 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1
     )
-    dmrs_cpgs_inds <- .getSupportingSitesFromColumns(
-        dmrs,
-        separate_by_section = FALSE,
-        use_absolute_indices = use_abs,
-        beta_locs = beta_locs
-    )
-    start_inds <- idToGenomicLocsIndex(mcols(dmrs)$start_cpg, beta_locs)
-    end_inds <- idToGenomicLocsIndex(mcols(dmrs)$end_cpg, beta_locs)
-    beta_locs_start <- beta_locs[, "start"]
+    dmrs_seeds <- strsplit(mcols(dmrs)[, "seeds"], split = ",")
+    dmrs_cpgs <- unlist(strsplit(mcols(dmrs)[, "cpgs"], split = ","))
+    beta_locs_start <- as.data.frame(beta_locs[dmrs_cpgs, "start", drop = FALSE])
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
-        if (is.na(start_inds[i]) || is.na(end_inds[i])) {
-            next
-        }
-        absolute_cpg_inds <- dmrs_cpgs_inds[[i]]
+        start_locs <- beta_locs_start[dmrs_seeds[[i]], ]
         sequence <- sequences[[i]]
-        start_loc_base <- beta_locs_start[start_inds[[i]]]
-        seq_cpg_inds <- beta_locs_start[absolute_cpg_inds] - start_loc_base + 1 + flank_size
+        start_loc_base <- start_locs[[1]]
+        seq_cpg_inds <- beta_locs_start[dmrs_seeds[[i]], ] - start_loc_base + 1 + flank_size
         cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)

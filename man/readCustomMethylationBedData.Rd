@@ -32,7 +32,7 @@ present in both the pheno rownames and BED file header will be processed}
 (default: "start")}
 
 \item{output_dir}{Character. Directory for caching processed files. If NULL, uses
-a default cache directory at \verb{~/.cache/R/DMRsegal/bed_cache/} (default: NULL)}
+a default cache directory at \verb{~/.cache/R/DMRsegal/tabix_cache/} (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
 efficiency (default: 50000)}

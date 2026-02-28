@@ -24,7 +24,6 @@ test_that("findDMRsFromSeeds works with BSseq input", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(10000, by = 50, length.out = n_loci), width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
     sample_names <- c(paste0("Control", seq_len(n_controls)), paste0("Case", seq_len(n_cases)))
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -37,11 +36,10 @@ test_that("findDMRsFromSeeds works with BSseq input", {
     )
     rownames(pheno) <- sample_names
     seeds <- data.frame(
-        cpg_id = paste0("cg", dmr_region_idx),
+        cpg_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
         pval = rep(0.001, length(dmr_region_idx))
     )
-    expect_error({
-        dmrs <- findDMRsFromSeeds(
+    dmrs <- findDMRsFromSeeds(
             beta = bsseq_obj,
             seeds = seeds,
             pheno = pheno,
@@ -51,5 +49,5 @@ test_that("findDMRsFromSeeds works with BSseq input", {
             njobs = 1,
             annotate_with_genes = FALSE
         )
-    }, NA)
+    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
 })

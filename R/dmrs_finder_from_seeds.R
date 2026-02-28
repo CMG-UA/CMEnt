@@ -1148,7 +1148,6 @@
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
-#' @param chr_levels Character vector. Custom chromosome levels to use. Default is NULL.
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".
@@ -1192,7 +1191,6 @@ findDMRsFromSeeds <- function(
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
     bed_start_col = "start",
-    chr_levels = NULL,
     verbose = getOption("DMRsegal.verbose", 1),
     .load_debug = FALSE
 ) {
@@ -1272,9 +1270,6 @@ findDMRsFromSeeds <- function(
     if (array_based) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
-    if (is.null(chr_levels)) {
-        chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
-    }
     all_cpgs  <- NULL
     beta_locs_rownames <- NULL
     if (inherits(beta, "BetaHandler")) {
@@ -1298,50 +1293,13 @@ findDMRsFromSeeds <- function(
                     pheno = pheno,
                     genome = genome,
                     chrom_col = bed_chrom_col,
-                    start_col = bed_start_col,
-                    chr_levels = chr_levels
+                    start_col = bed_start_col
                 )
                 beta <- ret$tabix_file
-                beta_locs <- readRDS(ret$locations_file)
+                beta_locs <- ret$locations
                 beta_locs_rownames <- rownames(beta_locs)
                 all_cpgs <- beta_locs_rownames
                 .log_success("Conversion to tabix-indexed beta file completed.")
-                # Converting seeds ids to beta_locs indices, based on their position
-                .log_step("Converting Seed IDs to bed positions...", level = 2)
-                converted_seed_ids <- c()
-                chroms_and_pos <- strsplit(seed_ids, ":")
-                chroms <- sapply(chroms_and_pos, function(x) x[1])
-                positions <- as.numeric(sapply(chroms_and_pos, function(x) x[2]))
-                # Convert chroms to UCSC style if needed
-                if (!all(chroms %in% chr_levels)) {
-                    if (all(paste0("chr", chroms) %in% chr_levels)) {
-                        chroms <- paste0("chr", chroms)
-                    } else if (all(sub("^chr", "", chroms) %in% chr_levels)) {
-                        chroms <- sub("^chr", "", chroms)
-                    } else {
-                        stop("Seed IDs chromosomes in the seeds file/dataframe (using seeds_id_col: ", seeds_id_col, ") do not match the chromosome style of the provided bed beta file.")
-                    }
-                }
-                chroms <- as.integer(factor(chroms, levels = chr_levels))
-                seeds_tsv <- seeds_tsv[order(chroms, positions), ]
-                converted_seed_ids <- match(
-                    paste0(chroms, ":", positions),
-                    beta_locs_rownames
-                )
-                if (all(is.na(converted_seed_ids))) {
-                    stop("None of the Seed IDs could be converted to bed positions based on the provided bed beta file.")
-                }
-                if (any(is.na(converted_seed_ids))) {
-                    .log_warn(sum(is.na(converted_seed_ids)), "out of", length(converted_seed_ids), " Seed IDs could not be matched to the provided bed beta file. They will be ignored.", level = 2)
-                    seeds_tsv <- seeds_tsv[!is.na(converted_seed_ids), ]
-                    converted_seed_ids <- converted_seed_ids[!is.na(converted_seed_ids)]
-                }
-                .log_success("Seed IDs successfully converted to bed indices.", level = 2)
-                seeds_tsv[, seeds_id_col] <- converted_seed_ids
-                seeds_tsv <- seeds_tsv[!is.na(seeds_tsv[, seeds_id_col]), ]
-                if (nrow(seeds_tsv) == 0) {
-                    stop("No valid seeds found after converting IDs to bed indices.")
-                }
             }
         }
         beta_handler <- getBetaHandler(
@@ -1502,35 +1460,33 @@ findDMRsFromSeeds <- function(
     }
 
     # Filter seeds not present in array annotation first (prevents NA logical indices later)
-    if (!bed_provided) {
-        seeds <- unique(seeds_tsv[, seeds_id_col])
-        missing_in_annotation <- setdiff(seeds, all_cpgs)
-        if (length(missing_in_annotation) > 0) {
-            .log_warn(
-                "Dropping ", length(missing_in_annotation), " seed(s) not found in the array annotation: ",
-                paste(head(missing_in_annotation, 10), collapse = ","),
-                if (length(missing_in_annotation) > 10) " ..." else ""
-            )
-            seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_annotation), , drop = FALSE]
-            seeds <- setdiff(seeds, missing_in_annotation)
-        }
-        missing_in_beta <- setdiff(seeds, beta_row_names)
-        if (length(missing_in_beta) > 0) {
-            .log_warn(
-                "Dropping ", length(missing_in_beta), " seed(s) not found in the beta file: ",
-                paste(head(missing_in_beta, 10), collapse = ","),
-                if (length(missing_in_beta) > 10) " ..." else ""
-            )
-            seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_beta), , drop = FALSE]
-            seeds <- setdiff(seeds, missing_in_beta)
-        }
-        if (length(seeds) == 0) {
-            stop("No seeds remain after filtering against array annotation.")
-        }
-        seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
-    } else {
-        seeds <- seeds_tsv[, seeds_id_col]
+
+    seeds <- unique(seeds_tsv[, seeds_id_col])
+    missing_in_annotation <- setdiff(seeds, all_cpgs)
+    if (length(missing_in_annotation) > 0) {
+        .log_warn(
+            "Dropping ", length(missing_in_annotation), " seed(s) not found in the array annotation: ",
+            paste(head(missing_in_annotation, 10), collapse = ","),
+            if (length(missing_in_annotation) > 10) " ..." else ""
+        )
+        seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_annotation), , drop = FALSE]
+        seeds <- setdiff(seeds, missing_in_annotation)
     }
+    missing_in_beta <- setdiff(seeds, beta_row_names)
+    if (length(missing_in_beta) > 0) {
+        .log_warn(
+            "Dropping ", length(missing_in_beta), " seed(s) not found in the beta file: ",
+            paste(head(missing_in_beta, 10), collapse = ","),
+            if (length(missing_in_beta) > 10) " ..." else ""
+        )
+        seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_beta), , drop = FALSE]
+        seeds <- setdiff(seeds, missing_in_beta)
+    }
+    if (length(seeds) == 0) {
+        stop("No seeds remain after filtering against array annotation and beta file.")
+    }
+    seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
+
 
     .log_step("Validating beta file sorting by position...", level = 2)
 
@@ -1995,10 +1951,6 @@ findDMRsFromSeeds <- function(
     }
     .log_step("Stage 3: Merging overlapping extended DMRs..", level = 1)
 
-    if (bed_provided) {
-        # Change seqnames from factor to character
-        extended_dmrs[, "chr"] <- chr_levels[as.integer(extended_dmrs[, "chr"])]
-    }
     extended_dmrs_ranges <- GenomicRanges::makeGRangesFromDataFrame(
         extended_dmrs,
         keep.extra.columns = TRUE,
@@ -2249,7 +2201,7 @@ findDMRsFromSeeds <- function(
             pheno = pheno_all,
             genome = genome,
             array = array,
-            sorted_locs = sorted_locs,
+            sorted_locs = all_cpgs,
             sample_group_col = sample_group_col,
             covariates = covariates
         )

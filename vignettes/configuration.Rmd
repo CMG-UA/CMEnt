@@ -262,7 +262,7 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `connectivity_window_bp`
+### `expansion_window`
 **Type:** Numeric  
 **Default:** `1e6`  
 **Description:** Stage 2 connectivity is computed only around seed-derived Stage 1 neighborhoods, using this total window width in base pairs.
@@ -628,21 +628,6 @@ dmrs_ranked <- rankDMRs(
 )
 ```
 
-### `chr_levels`
-**Type:** Character vector  
-**Default:** `NULL`  
-**Description:** Custom chromosome levels to use. If `NULL`, uses default chromosome ordering.
-
-**Example:**
-```{r}
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno,
-    chr_levels = c("chr1", "chr2", "chr3")
-)
-```
-
 ## Advanced Parameters
 
 ### `.load_debug`
@@ -699,14 +684,6 @@ options("DMRsegal.random_seed" = 123)
 options("DMRsegal.beta_in_mem_threshold_mb" = 200)
 ```
 
-### Option: `DMRsegal.subset_beta_as_bigmem_mb`
-**Type:** Integer  
-**Default:** `200`  
-**Description:** Maximum size (in Megabytes) of beta files to subset into memory during processing. If the beta file exceeds this size, it will be loaded into `bigmemory::big.matrix` structures. By definitiion, this value should be less than `DMRsegal.beta_in_mem_threshold_mb` to activate the big memory subsetting.
-
-```{r}
-options("DMRsegal.subset_beta_as_bigmem_mb" = 100)
-```
 
 ### Option: `DMRsegal.chunk_size`
 **Type:** Integer  
@@ -730,7 +707,7 @@ options("DMRsegal.use_bed_cache" = TRUE)
 
 ### Option: `DMRsegal.bed_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/bed_cache`  
+**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
 **Description:** Directory for BED file cache.
 
 ```{r}

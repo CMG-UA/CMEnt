@@ -1,0 +1,401 @@
+---
+title: "Registry (SQLite) vs data.frame: Large-Input Benchmarks"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output:
+    BiocStyle::html_document:
+        code_folding: hide
+vignette: >
+  %\VignetteIndexEntry{Registry (SQLite) vs data.frame: Large-Input Benchmarks}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 11,
+    fig.height = 6,
+    dpi = 180
+)
+```
+
+## Goal
+
+This vignette benchmarks SQL-backed `Registry` operations against equivalent
+`data.frame` operations on large synthetic inputs.
+
+Benchmarked operation families:
+
+- input loading from gzipped TSV
+- row/column subsetting
+- row subsetting via `master_index` (character selector in `[` row position)
+- indexed lookup via `queryOnIndex` (single and composite index)
+- column extraction (`$`) and two-column `paste(...)`
+- materialization (`as.data.frame`) of active views
+
+## Setup
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(R.utils)
+
+if (requireNamespace("DMRsegal", quietly = TRUE)) {
+    suppressPackageStartupMessages(library(DMRsegal))
+}
+if (!exists("getRegistry", mode = "function")) {
+    if (!requireNamespace("devtools", quietly = TRUE)) {
+        stop("Could not load getRegistry(). Install DMRsegal or install 'devtools'.")
+    }
+    devtools::load_all(".", quiet = TRUE)
+}
+stopifnot(exists("getRegistry", mode = "function"))
+
+set.seed(42)
+
+bench_n_rows <- as.integer(Sys.getenv("DMRSEGAL_REGISTRY_BENCH_N_ROWS", "250000"))
+bench_n_beta_cols <- as.integer(Sys.getenv("DMRSEGAL_REGISTRY_BENCH_N_BETA_COLS", "8"))
+bench_iters <- as.integer(Sys.getenv("DMRSEGAL_REGISTRY_BENCH_ITERS", "3"))
+bench_ingest_iters <- as.integer(Sys.getenv("DMRSEGAL_REGISTRY_BENCH_INGEST_ITERS", "3"))
+
+stopifnot(bench_n_rows > 0L, bench_n_beta_cols > 0L, bench_iters > 0L, bench_ingest_iters > 0L)
+```
+
+## Generate Large Synthetic Input
+
+```{r}
+n <- bench_n_rows
+p <- bench_n_beta_cols
+
+ids <- sprintf("cg%08d", seq_len(n))
+chr_levels <- paste0("chr", c(1:22, "X", "Y"))
+
+df <- data.frame(
+    id = ids,
+    chr = sample(chr_levels, n, replace = TRUE),
+    start = sample.int(200000000, n, replace = TRUE),
+    width = sample.int(600, n, replace = TRUE),
+    strand = sample(c("+", "-"), n, replace = TRUE),
+    group = sample(sprintf("g%02d", 1:40), n, replace = TRUE),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+)
+df$end <- df$start + df$width
+
+beta_mat <- matrix(runif(n * p), nrow = n, ncol = p)
+colnames(beta_mat) <- sprintf("beta_%02d", seq_len(p))
+df <- cbind(df, as.data.frame(beta_mat, stringsAsFactors = FALSE, check.names = FALSE))
+
+rownames(df) <- df$id
+ncol(df)
+nrow(df)
+```
+
+## Benchmark Utilities
+
+```{r}
+run_benchmark <- function(label, fun, iterations = 3L) {
+    elapsed <- numeric(iterations)
+    for (k in seq_len(iterations)) {
+        gc(verbose = FALSE)
+        elapsed[[k]] <- system.time({
+            out <- fun()
+            invisible(out)
+        })[["elapsed"]]
+    }
+    data.frame(
+        operation = label,
+        iteration = seq_len(iterations),
+        elapsed_sec = elapsed,
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+}
+
+summarize_benchmark <- function(res) {
+    ops <- unique(res$operation)
+    out <- lapply(ops, function(op) {
+        vals <- res$elapsed_sec[res$operation == op]
+        data.frame(
+            operation = op,
+            median_sec = median(vals),
+            min_sec = min(vals),
+            max_sec = max(vals),
+            stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+    })
+    out <- do.call(rbind, out)
+    out[order(out$median_sec), , drop = FALSE]
+}
+
+make_key <- function(dat, cols) {
+    do.call(paste, c(dat[, cols, drop = FALSE], sep = "\r"))
+}
+```
+
+## Prepare Equivalent Query Objects
+
+```{r}
+subset_rows <- seq_len(min(30000L, n))
+subset_cols <- c("id", "chr", "start", "group", "beta_01", "beta_02")
+subset_cols <- subset_cols[subset_cols %in% colnames(df)]
+
+query_ids <- sample(df$id, size = min(80000L, n), replace = TRUE)
+query_ids <- c(query_ids, sprintf("missing_%06d", seq_len(2000L)))
+
+query_chr_start <- df[
+    sample.int(n, size = min(50000L, n), replace = TRUE),
+    c("chr", "start"),
+    drop = FALSE
+]
+query_chr_start <- rbind(
+    query_chr_start,
+    data.frame(chr = rep("chrNA", 1000L), start = rep(-1L, 1000L), stringsAsFactors = FALSE)
+)
+
+id_to_row <- setNames(seq_len(nrow(df)), df$id)
+df_chr_start_key <- make_key(df, c("chr", "start"))
+chr_start_to_rows <- split(seq_len(nrow(df)), df_chr_start_key)
+
+df_subset_master <- function(ids_in, cols_out = NULL) {
+    idx <- unname(id_to_row[ids_in])
+    idx <- idx[!is.na(idx)]
+    if (length(idx) == 0L) {
+        return(df[0, cols_out, drop = FALSE])
+    }
+    if (is.null(cols_out)) {
+        return(df[idx, , drop = FALSE])
+    }
+    df[idx, cols_out, drop = FALSE]
+}
+
+df_query_chr_start <- function(lookup_df, cols_out) {
+    keys <- make_key(lookup_df, c("chr", "start"))
+    idx <- unlist(chr_start_to_rows[keys], use.names = FALSE)
+    if (length(idx) == 0L) {
+        return(df[0, cols_out, drop = FALSE])
+    }
+    df[idx, cols_out, drop = FALSE]
+}
+```
+
+## Create SQL-Backed Registry
+
+```{r}
+sqlite_main <- tempfile(pattern = "registry_bench_main_", fileext = ".sqlite")
+idx_defs <- list(
+    id = "id",
+    chr_start = c("chr", "start")
+)
+
+registry_sql <- getRegistry(
+    data = df,
+    indices = idx_defs,
+    master_index = "id",
+    memory_threshold_mb = 0,
+    sqlite_path = sqlite_main,
+    chunk_size = 50000L,
+    query_chunk_size = 50000L
+)
+
+stopifnot(registry_sql$backend() == "sqlite")
+registry_sql
+```
+
+## Correctness Spot Checks
+
+```{r}
+reg_q1 <- registry_sql$queryOnIndex("id", query_ids, columns = subset_cols)
+df_q1 <- df_subset_master(query_ids, cols_out = subset_cols)
+stopifnot(identical(reg_q1$id, df_q1$id))
+
+comp_cols <- c("id", "chr", "start")
+reg_q2 <- registry_sql$queryOnIndex("chr_start", query_chr_start, columns = comp_cols)
+df_q2 <- df_query_chr_start(query_chr_start, cols_out = comp_cols)
+stopifnot(identical(reg_q2$id, df_q2$id))
+```
+
+## Ingestion Benchmark (gzipped TSV)
+
+```{r}
+tsv_plain <- tempfile(pattern = "registry_bench_", fileext = ".tsv")
+tsv_gz <- paste0(tsv_plain, ".gz")
+utils::write.table(
+    df,
+    file = tsv_plain,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE,
+    col.names = TRUE
+)
+R.utils::gzip(tsv_plain, destname = tsv_gz, overwrite = TRUE, remove = FALSE)
+
+ingest_cols <- c("id", "chr", "start", "group", "beta_01", "beta_02")
+ingest_cols <- ingest_cols[ingest_cols %in% colnames(df)]
+
+bench_ingest <- rbind(
+    run_benchmark(
+        "ingest_gz:data.frame_fread",
+        function() data.table::fread(tsv_gz, select = ingest_cols, data.table = FALSE),
+        iterations = bench_ingest_iters
+    ),
+    run_benchmark(
+        "ingest_gz:registry_sql",
+        function() {
+            tmp_sql <- tempfile(pattern = "registry_bench_ingest_", fileext = ".sqlite")
+            tmp_reg <- getRegistry(
+                data = tsv_gz,
+                select = ingest_cols,
+                indices = list(id = "id", chr_start = c("chr", "start")),
+                master_index = "id",
+                memory_threshold_mb = 0,
+                sqlite_path = tmp_sql,
+                chunk_size = 50000L,
+                query_chunk_size = 50000L
+            )
+            tmp_reg$close()
+            unlink(tmp_sql, force = TRUE)
+            invisible(TRUE)
+        },
+        iterations = bench_ingest_iters
+    )
+)
+
+summarize_benchmark(bench_ingest)
+```
+
+## Query and Subsetting Benchmarks
+
+```{r}
+bench_results <- do.call(rbind, list(
+    run_benchmark(
+        "subset_range:data.frame",
+        function() df[subset_rows, subset_cols, drop = FALSE],
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "subset_range:registry_sql",
+        function() as.data.frame(registry_sql[subset_rows, subset_cols]),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "subset_master_index:data.frame",
+        function() df_subset_master(query_ids, cols_out = subset_cols),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "subset_master_index:registry_sql",
+        function() as.data.frame(registry_sql[query_ids, subset_cols]),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "queryOnIndex_id:data.frame",
+        function() df_subset_master(query_ids, cols_out = subset_cols),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "queryOnIndex_id:registry_sql",
+        function() registry_sql$queryOnIndex("id", query_ids, columns = subset_cols),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "queryOnIndex_chr_start:data.frame",
+        function() df_query_chr_start(query_chr_start, cols_out = comp_cols),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "queryOnIndex_chr_start:registry_sql",
+        function() registry_sql$queryOnIndex("chr_start", query_chr_start, columns = comp_cols),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "column_extract:data.frame",
+        function() df$start,
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "column_extract:registry_sql",
+        function() registry_sql$start,
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "paste_two_cols:data.frame",
+        function() paste(df[subset_rows, "chr"], ":", df[subset_rows, "start"]),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "paste_two_cols:registry_sql",
+        function() paste(registry_sql[subset_rows, "chr"], ":", registry_sql[subset_rows, "start"]),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "materialize_active_view:data.frame",
+        function() {
+            idx <- sample.int(n, min(40000L, n))
+            df[idx, subset_cols, drop = FALSE]
+        },
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "materialize_active_view:registry_sql",
+        function() {
+            idx <- sample.int(n, min(40000L, n))
+            as.data.frame(registry_sql[idx, subset_cols])
+        },
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "nrow:data.frame",
+        function() nrow(df),
+        iterations = bench_iters
+    ),
+    run_benchmark(
+        "nrow:registry_sql",
+        function() nrow(registry_sql),
+        iterations = bench_iters
+    )
+))
+
+bench_summary <- summarize_benchmark(bench_results)
+bench_summary
+```
+
+## Visual Summary
+
+```{r}
+plot_df <- bench_summary
+plot_df$backend <- ifelse(grepl(":registry_sql$", plot_df$operation), "Registry (SQLite)", "data.frame")
+plot_df$operation <- sub(":(registry_sql|data.frame)$", "", plot_df$operation)
+
+ggplot(plot_df, aes(x = reorder(operation, median_sec), y = median_sec, fill = backend)) +
+    geom_col(position = "dodge") +
+    coord_flip() +
+    labs(
+        title = "Median elapsed time per operation",
+        x = "Operation",
+        y = "Elapsed time (seconds)"
+    ) +
+    theme_minimal(base_size = 12)
+```
+
+## Notes
+
+- `Registry` timings here are explicitly for the SQL backend (`memory_threshold_mb = 0`).
+- `data.frame` is in-memory and will usually be faster for pure vectorized extraction,
+  while `Registry` is designed to stay scalable for indexed retrieval and large lookup sets.
+- To increase workload, set environment variables before rendering:
+  - `DMRSEGAL_REGISTRY_BENCH_N_ROWS`
+  - `DMRSEGAL_REGISTRY_BENCH_N_BETA_COLS`
+  - `DMRSEGAL_REGISTRY_BENCH_ITERS`
+  - `DMRSEGAL_REGISTRY_BENCH_INGEST_ITERS`
+
+## Cleanup
+
+```{r}
+registry_sql$close()
+unlink(c(sqlite_main, tsv_plain, tsv_gz), force = TRUE)
+```

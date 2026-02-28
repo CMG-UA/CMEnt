@@ -24,7 +24,7 @@ findDMRsFromSeeds(
   ntries = 200L,
   mid_p = FALSE,
   max_lookup_dist = 10000,
-  connectivity_window_bp = "auto",
+  expansion_window = "auto",
   max_bridge_seeds_gaps = 1L,
   max_bridge_extension_gaps = 1L,
   min_seeds = 2,
@@ -65,7 +65,7 @@ findDMRsFromSeeds(
 
 \item{adaptive_min_cpg_delta_beta}{Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.}
 
-\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
+\item{expansion_step}{Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
@@ -83,7 +83,7 @@ findDMRsFromSeeds(
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).}
 
-\item{connectivity_window_bp}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.}
+\item{expansion_window}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.}
 
 \item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
 

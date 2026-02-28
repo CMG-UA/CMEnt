@@ -35,6 +35,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     expect_true(inherits(dmrs, "GRanges"))
     expect_true(length(dmrs) > 0)
     expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+    saveRDS(dmrs, file = "../../inst/extdata/example_output.rds")
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
@@ -87,6 +88,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
     )
+    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
 })
 
 test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {

@@ -202,7 +202,7 @@ if (!file.exists(seeds_tsv)) {
     ctrl_idx <- which(!pheno$casecontrol)
     delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
         rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
-    seed_score <- -log10(pval_vec + .Machine$double.xmin) * abs(delta_beta)
+    seed_score <- -log10(pval_vec + .Machine$double.xmin)
 
     target_seed_n <- sum(qval_vec < 0.1, na.rm = TRUE)
     if (target_seed_n < 10) {
@@ -386,7 +386,7 @@ if (!file.exists(dmrsegal_file)) {
                     seeds_id_col = "cpg_id",
                     sample_group_col = "Sample_Group",
                     casecontrol_col = "casecontrol",
-                    max_bridge_seeds_gaps = 3L, # Allow bridging across up to 3 seed CpGs to form larger candidate regions during stage 1.
+                    max_bridge_seeds_gaps = 2L, # Allow bridging across up to 2 seed CpGs to form larger candidate regions during stage 1.
                     max_bridge_extension_gaps = 10L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
                     min_seeds = 2,
                     min_cpgs = 3,

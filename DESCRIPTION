@@ -59,7 +59,6 @@ Imports:
     progressr,
     minfi,
     bedr,
-    bigmemory,
     AnnotationDbi,
     GenomicFeatures,
     GenomeInfoDb,
@@ -75,6 +74,8 @@ Imports:
     readr,
     reshape2,
     R.utils,
+    DBI,
+    RSQLite,
     TFBSTools,
     lsa,
     jsonlite,
@@ -117,6 +118,7 @@ Collate:
     'dmrs_interaction.R'
     'dmrs_ranking.R'
     'find_dmrs_from_seeds.R'
+    'registry.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'
     'zzz.R'

@@ -41,7 +41,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param array Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
         #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
         #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
-        #' @param sorted_locs Sorted genomic locations data frame. If NULL, will be retrieved automatically
+        #' @param sorted_locs Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically
+        #' @param chrom_col Chromosome column name in tabix file
+        #' @param start_col Start position column name in tabix file
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
@@ -49,6 +51,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               genome = "hg19",
                               beta_row_names_file = NULL,
                               sorted_locs = NULL,
+                              chrom_col = "#chrom",
+                              start_col = "start",
                               njobs = 1) {
             # Validate inputs
             if (is.null(beta)) {
@@ -72,11 +76,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(sorted_locs)) {
                 if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)) {
                     sorted_locs <- readRDS(sorted_locs)
-                    private$.self_contained <- TRUE
                 }
+                private$.self_contained <- TRUE
             } else if (is_file(beta) && file_is_tabix(beta)) {
                 .log_info("Loading genomic locations from tabix beta file...", level = 2)
-                sorted_locs <- genomicLocsFromTabix(input_tabix = beta)
+                sorted_locs <- genomicLocsFromTabix(input_tabix = beta, chrom_col = chrom_col, start_col = start_col)
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_info("Extracting genomic locations from BSseq object...", level = 2)
@@ -130,7 +134,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (is_file(self$beta)) {
                 if (file_is_tabix(self$beta)) {
                     .log_step("Beta file appears to be tabix-indexed. Using as tabix file...", level = 1)
-                    private$.tabix_file <- self$beta        
+                    private$.tabix_file <- self$beta
                 } else {
                     private$.beta_file <- self$beta
                 }
@@ -197,6 +201,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         .log_success("Beta file converted to tabix format for improved performance")
                         private$.tabix_file <- converted_tabix
                         self$sorted_locs <- genomicLocsFromTabix(input_tabix = private$.tabix_file, use_id_as_rownames = TRUE)
+                        private$.beta_row_names <- rownames(self$sorted_locs)
                         private$.self_contained <- TRUE
                         private$.beta_file <- NULL
                     } else {
@@ -248,11 +253,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (!is.null(private$.bsseq_object)) {
                     .log_info("Reading from BSseq object...", level = 3)
                     gr <- granges(private$.bsseq_object)
-                    if (!is.null(names(gr)) && length(names(gr)) > 0) {
-                        private$.beta_row_names <- names(gr)
-                    } else {
-                        private$.beta_row_names <- paste0(seqnames(gr), ":", start(gr))
-                    }
+                    private$.beta_row_names <- paste0(seqnames(gr), ":", start(gr))
                 } else if (!is.null(private$.beta_file_in_memory)) {
                     .log_info("Reading from beta matrix...", level = 3)
                     private$.beta_row_names <- rownames(private$.beta_file_in_memory)
@@ -269,14 +270,18 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     names(private$.beta_row_names) <- NULL
                 } else {
                     .log_info("Reading from tabix file...", level = 3)
-                    private$.beta_row_names <- unlist(data.table::fread(
-                        file = private$.tabix_file,
-                        select = 4,
-                        sep = "\t",
-                        header = TRUE,
-                        showProgress = TRUE,
-                        nThread = self$njobs
-                    ))
+                    private$.beta_row_names <- do.call(
+                        paste,
+                        c(data.table::fread(
+                            file = private$.tabix_file,
+                            select = c(1, 2),
+                            sep = "\t",
+                            header = TRUE,
+                            showProgress = TRUE,
+                            nThread = self$njobs
+                        ), sep = ":"
+                        )
+                    )
                     names(private$.beta_row_names) <- NULL
                 }
                 if (!private$.self_contained) {
@@ -289,6 +294,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         self$beta_row_names_file
                     )
                 }
+            }
+            if (length(private$.beta_row_names) == 0) {
+                stop("No row names could be read from the beta input!")
             }
             .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
             private$.beta_row_names
@@ -504,9 +512,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (!is.null(chr)) {
                     .log_step("Subsetting by chromosome from beta file..", level = 3)
                     sorted_locs <- self$getGenomicLocs()
-                    if (is.numeric(chr)) {
-                        chr <- paste0("chr", chr)
-                    }
                     row_names_chr <- rownames(sorted_locs)[sorted_locs$chr %in% chr]
                     row_names_chr <- intersect(row_names_chr, self$getBetaRowNames())
                     row_names <- row_names_chr
@@ -542,7 +547,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     regions <- data.frame(
                         chr = as.character(locs[, "chr"]),
                         start = as.integer(locs[, "start"]),
-                        end = as.integer(locs[, "end"])
+                        end = as.integer(locs[, "start"]) + 1
                     )
                 }
                 beta_subset <- bedr::tabix(regions, private$.tabix_file,
@@ -591,7 +596,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param genome Reference genome version, eg. hg19. Only human and mouse genomes are supported. **Ignored** if sorted_locs or a BSseq object have been provided.
 #' @param beta_row_names_file Path to row names file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.
-#' @param njobs Number of parallel jobs
+#' @param chrom_col Chromosome column name in tabix file
+#' @param start_col Start position column name in tabix file
+#' @param njobs Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.
 #' @return A new BetaHandler object
 #'
 #' @examples
@@ -614,6 +621,8 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            genome = c("hg19", "hg38", "mm10", "mm39"),
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
+                           chrom_col = "#chrom",
+                           start_col = "start",
                            njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
@@ -624,6 +633,8 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         genome = genome,
         beta_row_names_file = beta_row_names_file,
         njobs = njobs,
-        sorted_locs = sorted_locs
+        sorted_locs = sorted_locs,
+        chrom_col = chrom_col,
+        start_col = start_col
     ))
 }
