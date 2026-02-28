@@ -437,7 +437,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             chunk_size = chunk_size
         )
     }
-    if(getOption("DMRsegal.use_tabix_cache", FALSE)){
+    if(getOption("DMRsegal.use_tabix_cache", FALSE)) {
         locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
         saveRDS(sorted_locs, file = locations_file)
     }
@@ -1300,6 +1300,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         "_locations.rds"
     ))
     if (getOption("DMRsegal.use_annotation_cache", TRUE) && file.exists(cache_file)) {
+        .log_info("Using cached annotation file: ", basename(cache_file), level = 3)
         locs <- readRDS(cache_file)
         return(locs)
     }
@@ -1402,7 +1403,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             )
         }
     )
-    
+    locs
 }
 
 

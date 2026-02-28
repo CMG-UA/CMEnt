@@ -238,18 +238,19 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
     pheno <- data.frame(dummy = seq_len(12))
     pheno[["__casecontrol__"]] <- c(rep(0, 6), rep(1, 6))
     group_inds <- list(g1 = 1:6, g2 = 7:12)
-
-    ret_strong <- DMRsegal:::.testConnectivityBatch(
-        sites_beta = sites_beta,
-        group_inds = group_inds,
-        pheno = pheno,
-        max_pval = 1e-5,
-        entanglement = "strong",
-        aggfun = median,
-        pval_mode = c(g1 = "empirical", g2 = "empirical"),
-        empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
-        ntries = 50,
-        mid_p = FALSE
+    expect_warning(
+        ret_strong <- DMRsegal:::.testConnectivityBatch(
+            sites_beta = sites_beta,
+            group_inds = group_inds,
+            pheno = pheno,
+            max_pval = 1e-5,
+            entanglement = "strong",
+            aggfun = median,
+            pval_mode = c(g1 = "empirical", g2 = "empirical"),
+            empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
+            ntries = 50,
+            mid_p = FALSE
+        ), "sufficient small empirical p-value"
     )
     expect_true(all(!ret_strong$connected))
     expect_true(all(ret_strong$reason == "pval>max_pval"))

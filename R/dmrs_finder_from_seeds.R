@@ -205,26 +205,26 @@
 #' @keywords internal
 #' @noRd
 .buildConnectivityArraySinglePass <- function(
-    beta_handler,
-    pheno,
-    group_inds,
-    pval_mode_per_group,
-    empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = 0.05,
-    min_delta_beta = 0,
-    covariates = NULL,
-    max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
-    entanglement = "strong",
-    aggfun = median,
-    ntries = 500,
-    mid_p = TRUE,
-    njobs = 1,
-    expansion_windows = NULL,
-    connectivity_array = NULL,
-    gap = 1L,
-    splits = NULL
+  beta_handler,
+  pheno,
+  group_inds,
+  pval_mode_per_group,
+  empirical_strategy_per_group,
+  col_names = NULL,
+  max_pval = 0.05,
+  min_delta_beta = 0,
+  covariates = NULL,
+  max_lookup_dist = 1000,
+  chunk_size = getOption("DMRsegal.chunk_size", 1000),
+  entanglement = "strong",
+  aggfun = median,
+  ntries = 500,
+  mid_p = TRUE,
+  njobs = 1,
+  expansion_windows = NULL,
+  connectivity_array = NULL,
+  gap = 1L,
+  splits = NULL
 ) {
     beta_locs <- beta_handler$getBetaLocs()
     n_sites <- nrow(beta_locs)
@@ -269,9 +269,9 @@
     }
     .get_chunk_beta <- function(site_start, site_end, mask = NULL) {
         if (!is.null(mask)) {
-            site_indices <- rownames(beta_locs[site_start:site_end,][mask,])
+            site_indices <- rownames(beta_locs[site_start:site_end, ][mask, ])
         } else {
-            site_indices <- rownames(beta_locs[site_start:site_end,])
+            site_indices <- rownames(beta_locs[site_start:site_end, ])
         }
         beta_handler$getBeta(
             row_names = site_indices,
@@ -381,7 +381,6 @@
     if (is.null(splits)) {
         pair_ranges <- if (window_mode) .build_window_pair_ranges() else .build_all_pair_ranges()
         splits <- .chunk_pair_ranges(pair_ranges)
-
     }
     if (nrow(splits) == 0L) {
         connectivity_array <- .make_template(n_sites, default_reason)
@@ -439,7 +438,7 @@
             level = 2
         )
         # select testing settings using the first chunk as a pilot
-        first_chunk <-  .get_chunk_beta(splits[1, 1], splits[1, 2] + 1)
+        first_chunk <- .get_chunk_beta(splits[1, 1], splits[1, 2] + 1)
         sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
         s <- nrow(sites_locs)
         if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
@@ -507,7 +506,7 @@
 
         if (!is.null(revisited_mask)) {
             # global site indices in this chunk are site_start:site_end
-            sel_sites_rel <- which(mask_seg)  # indices relative to site_start
+            sel_sites_rel <- which(mask_seg) # indices relative to site_start
             if (length(sel_sites_rel) >= 2L) {
                 # pair indices correspond to the first site of each consecutive selected pair
                 recomputed_pairs <- site_start + sel_sites_rel[-length(sel_sites_rel)] - 1L
@@ -594,23 +593,20 @@
         runs <- rle(connected)
 
         run_lengths <- runs$lengths
-        run_values  <- runs$values
+        run_values <- runs$values
 
         run_starts <- cumsum(c(1L, head(run_lengths, -1)))
-        run_ends   <- cumsum(run_lengths)
+        run_ends <- cumsum(run_lengths)
 
         fill_indices <- integer(0)
 
         for (i in seq_along(run_values)) {
-
             if (!run_values[i] && run_lengths[i] <= gap) {
-
-                left_run  <- i - 1L
+                left_run <- i - 1L
                 right_run <- i + 1L
 
                 if (left_run >= 1L && right_run <= length(run_values) &&
-                        run_values[left_run] && run_values[right_run]) {
-
+                    run_values[left_run] && run_values[right_run]) {
                     fill_indices <- c(
                         fill_indices,
                         run_starts[i]:run_ends[i]
@@ -621,7 +617,7 @@
 
         if (length(fill_indices) > 0) {
             connectivity_array[fill_indices, "connected"] <- TRUE
-            connectivity_array[fill_indices, "reason"]    <- "bridged"
+            connectivity_array[fill_indices, "reason"] <- "bridged"
         }
     } else if (!is.null(revisited_mask)) {
         connectivity_array[, "contingently_connected"] <- connectivity_array[, "connected"]
@@ -634,24 +630,24 @@
 }
 
 .buildConnectivityArray <- function(
-    beta_handler,
-    pheno,
-    group_inds,
-    pval_mode_per_group,
-    empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = 0.05,
-    min_delta_beta = 0,
-    covariates = NULL,
-    max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
-    entanglement = "strong",
-    aggfun = median,
-    ntries = 500,
-    mid_p = TRUE,
-    njobs = 1,
-    expansion_windows = NULL,
-    max_bridge_gaps = 0
+  beta_handler,
+  pheno,
+  group_inds,
+  pval_mode_per_group,
+  empirical_strategy_per_group,
+  col_names = NULL,
+  max_pval = 0.05,
+  min_delta_beta = 0,
+  covariates = NULL,
+  max_lookup_dist = 1000,
+  chunk_size = getOption("DMRsegal.chunk_size", 1000),
+  entanglement = "strong",
+  aggfun = median,
+  ntries = 500,
+  mid_p = TRUE,
+  njobs = 1,
+  expansion_windows = NULL,
+  max_bridge_gaps = 0
 ) {
     connectivity_array <- NULL
     splits <- NULL
@@ -691,10 +687,6 @@
     }
     connectivity_array
 }
-
-
-
-
 
 
 #' @keywords internal
@@ -905,7 +897,6 @@
                                    entanglement = "strong",
                                    aggfun = mean,
                                    ntries = 0, mid_p = FALSE) {
-
     n_sites <- nrow(sites_beta)
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
@@ -1183,7 +1174,6 @@
 }
 
 
-
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
 #'
 #' This function identifies DMRs from a given set of seeds and a beta value file.
@@ -1229,44 +1219,44 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-    beta,
-    seeds,
-    pheno,
-    seeds_id_col = NULL,
-    sample_group_col = "Sample_Group",
-    casecontrol_col = NULL,
-    covariates = NULL,
-    min_cpg_delta_beta = 0.1,
-    adaptive_min_cpg_delta_beta = TRUE,
-    expansion_step = 500,
-    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-    genome = "hg19",
-    max_pval = 0.05,
-    entanglement = c("strong", "weak"),
-    pval_mode = c("auto", "parametric", "empirical"),
-    empirical_strategy = c("auto", "montecarlo", "permutations"),
-    ntries = 200L,
-    mid_p = FALSE,
-    max_lookup_dist = 10000,
-    expansion_window = "auto",
-    max_bridge_seeds_gaps = 1L,
-    max_bridge_extension_gaps = 1L,
-    min_seeds = 2,
-    min_adj_seeds = 2,
-    min_cpgs = 50,
-    aggfun = c("median", "mean"),
-    ignored_sample_groups = NULL,
-    output_prefix = NULL,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    chunk_size = getOption("DMRsegal.chunk_size", 10000),
-    beta_row_names_file = NULL,
-    annotate_with_genes = TRUE,
-    rank_dmrs = TRUE,
-    bed_provided = FALSE,
-    bed_chrom_col = "chrom",
-    bed_start_col = "start",
-    verbose = getOption("DMRsegal.verbose", 1),
-    .load_debug = FALSE
+  beta,
+  seeds,
+  pheno,
+  seeds_id_col = NULL,
+  sample_group_col = "Sample_Group",
+  casecontrol_col = NULL,
+  covariates = NULL,
+  min_cpg_delta_beta = 0.1,
+  adaptive_min_cpg_delta_beta = TRUE,
+  expansion_step = 500,
+  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+  genome = "hg19",
+  max_pval = 0.05,
+  entanglement = c("strong", "weak"),
+  pval_mode = c("auto", "parametric", "empirical"),
+  empirical_strategy = c("auto", "montecarlo", "permutations"),
+  ntries = 200L,
+  mid_p = FALSE,
+  max_lookup_dist = 10000,
+  expansion_window = "auto",
+  max_bridge_seeds_gaps = 1L,
+  max_bridge_extension_gaps = 1L,
+  min_seeds = 2,
+  min_adj_seeds = 2,
+  min_cpgs = 50,
+  aggfun = c("median", "mean"),
+  ignored_sample_groups = NULL,
+  output_prefix = NULL,
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  chunk_size = getOption("DMRsegal.chunk_size", 10000),
+  beta_row_names_file = NULL,
+  annotate_with_genes = TRUE,
+  rank_dmrs = TRUE,
+  bed_provided = FALSE,
+  bed_chrom_col = "chrom",
+  bed_start_col = "start",
+  verbose = getOption("DMRsegal.verbose", 1),
+  .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
@@ -1349,7 +1339,7 @@ findDMRsFromSeeds <- function(
     if (array_based) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
-    all_cpgs  <- NULL
+    all_cpgs <- NULL
     beta_locs_rownames <- NULL
     if (inherits(beta, "BetaHandler")) {
         beta_handler <- beta
@@ -1682,7 +1672,8 @@ findDMRsFromSeeds <- function(
         seeds_connectivity_array$seeds <- seeds
         .log_info("Number of segments (potential DMRs before filtering): ", length(connected_seeds_segments_chrs), level = 2)
         connected_seeds_connection_corr_pval <- aggregate(
-            pval ~ id, data = seeds_connectivity_array, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
+            pval ~ id,
+            data = seeds_connectivity_array, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
         )
         dmrs_seeds <- aggregate(seeds ~ id, data = seeds_connectivity_array, function(x) paste(x, collapse = ","))
 
@@ -2060,7 +2051,7 @@ findDMRsFromSeeds <- function(
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
-    dmrs_seeds<- strsplit(annotated_dmrs$seeds, ",")
+    dmrs_seeds <- strsplit(annotated_dmrs$seeds, ",")
     .log_step("Adding DMR delta-beta information..", level = 2)
 
     dmr_seeds_list <- lapply(dmrs_seeds, as.character)
