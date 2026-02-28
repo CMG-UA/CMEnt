@@ -164,7 +164,7 @@ test_that("computeDMRsInteraction does not collapse into a giant component at st
         min_component_size = 2,
         query_components_with_jaspar = FALSE
     ))
-
+    expect_true("components" %in% names(result))
     if (nrow(result$components) > 0) {
         expect_true(max(result$components$size) < (0.9 * length(dmrs)))
     }

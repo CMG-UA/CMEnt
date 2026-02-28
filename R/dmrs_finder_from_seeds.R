@@ -2018,8 +2018,7 @@ findDMRsFromSeeds <- function(
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 1)
-    merged_dmrs <- as.data.frame(merged_dmrs_ranges)
-    colnames(merged_dmrs)[colnames(merged_dmrs) == "seqnames"] <- "chr"
+    merged_dmrs <- convertToDataFrame(merged_dmrs_ranges)
     .log_info("Summary of merged DMRs:\n\t", paste(capture.output(summary(merged_dmrs)), collapse = "\n\t"), level = 3)
 
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
@@ -2056,8 +2055,7 @@ findDMRsFromSeeds <- function(
     } else {
         filtered_dmrs_ranges <- merged_dmrs_ranges
     }
-    filtered_dmrs <- as.data.frame(filtered_dmrs_ranges)
-    colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
+    filtered_dmrs <- convertToDataFrame(filtered_dmrs_ranges)
 
     array_based <- !is.null(array)
 

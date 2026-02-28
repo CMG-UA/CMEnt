@@ -236,8 +236,7 @@ extractDMRMotifs <- function(
     mcols(dmrs)$pwm <- pwms
     mcols(dmrs)$consensus_seq <- consensus_seq
     if (input_is_df) {
-        dmrs <- as.data.frame(dmrs)
-        colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
+        dmrs <- convertToDataFrame(dmrs)
     }
     invisible(dmrs)
 }

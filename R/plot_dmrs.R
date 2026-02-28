@@ -44,41 +44,33 @@ if (getRversion() >= "2.15.1") {
     dmr_data <- S4Vectors::mcols(dmr)
 
     # Get genomic locations if not provided
-    use_abs <- FALSE
     if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
-        use_abs <- TRUE
     }
 
     # Extract DMR information
+    downstream_sup_cpgs <- strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
+    downstream_sup_cpgs_locs <- beta_locs[downstream_sup_cpgs, , drop = FALSE]
+    upstream_sup_cpgs <- strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
+    upstream_sup_cpgs_locs <- beta_locs[upstream_sup_cpgs, , drop = FALSE]
+    seeds <- strsplit(dmr$seeds, split = ",")[[1]]
+    cpgs <- strsplit(dmr$cpgs, split = ",")[[1]]
+    if (length(upstream_sup_cpgs) == 0) {
+        start_cpg <- seeds[[1]]
+    } else {
+        start_cpg <- upstream_sup_cpgs[[1]]
+    }
+    if (length(downstream_sup_cpgs) == 0) {
+        end_cpg <- seeds[[length(seeds)]]
+    } else {
+        end_cpg <- downstream_sup_cpgs[[length(downstream_sup_cpgs)]]
+    }
+    dmr_locs <- beta_locs[start_cpg:end_cpg, , drop = FALSE]
 
-    supporting_sites <- .getSupportingSitesFromColumns(
-        dmr,
-        max_sup_cpgs_per_dmr_side = NULL,
-        separate_by_section = TRUE,
-        use_absolute_indices = use_abs,
-        beta_locs = beta_locs
-    )
-    upstream_sup_cpgs_inds <- supporting_sites[[1]]$upstream
-    downstream_sup_cpgs_inds <- supporting_sites[[1]]$downstream
-    upstream_sup_cpgs <- beta_locs[upstream_sup_cpgs_inds, , drop = FALSE]
-    downstream_sup_cpgs <- beta_locs[downstream_sup_cpgs_inds, , drop = FALSE]
-    seeds_inds <- supporting_sites[[1]]$seeds
-    start_seed_ind <- min(seeds_inds)
-    end_seed_ind <- max(seeds_inds)
-    if (length(upstream_sup_cpgs_inds) == 0) {
-        start_cpg_ind <- start_seed_ind
-    } else {
-        start_cpg_ind <- min(upstream_sup_cpgs_inds)
-    }
-    if (length(downstream_sup_cpgs_inds) == 0) {
-        end_cpg_ind <- end_seed_ind
-    } else {
-        end_cpg_ind <- max(downstream_sup_cpgs_inds)
-    }
-    nsup_cpgs_inds <- setdiff(seq(start_cpg_ind, end_cpg_ind), c(seeds_inds, upstream_sup_cpgs_inds, downstream_sup_cpgs_inds))
-    nsup_cpgs <- beta_locs[nsup_cpgs_inds, , drop = FALSE]
+    rownames(beta_locs)
+    nsup_cpgs <- setdiff(rownames(dmr_locs), cpgs)
+    nsup_cpgs_locs <- dmr_locs[nsup_cpgs, , drop = FALSE]
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     dmr_start <- GenomicRanges::start(dmr)
@@ -87,9 +79,9 @@ if (getRversion() >= "2.15.1") {
 
     # Get positions
 
-    start_cpg_pos <- beta_locs[start_cpg_ind, "start"]
-    end_cpg_pos <- beta_locs[end_cpg_ind, "start"]
-    seed_positions <- beta_locs[seeds_inds, "start"]
+    start_cpg_pos <- dmr_locs[start_cpg, "start"]
+    end_cpg_pos <- dmr_locs[end_cpg, "start"]
+    seed_positions <- dmr_locs[seeds, "start"]
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
 
@@ -103,12 +95,12 @@ if (getRversion() >= "2.15.1") {
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
 
-    downstream_nsup_cpgs <- beta_locs[which(beta_locs$start > dmr_end & beta_locs$start <= plot_end), , drop = FALSE]
-    upstream_nsup_cpgs <- beta_locs[which(beta_locs$start < dmr_start & beta_locs$start >= plot_start), , drop = FALSE]
-    extended_nsup_cpgs <- rbind(
-        nsup_cpgs,
-        upstream_nsup_cpgs,
-        downstream_nsup_cpgs
+    downstream_nsup_cpgs_locs <- dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE]
+    upstream_nsup_cpgs_locs <- dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE]
+    extended_nsup_cpgs_locs <- rbind(
+        nsup_cpgs_locs,
+        upstream_nsup_cpgs_locs,
+        downstream_nsup_cpgs_locs
     )
 
 
@@ -171,13 +163,13 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    extended_sup_cpgs <- rbind(
-        upstream_sup_cpgs,
-        downstream_sup_cpgs
+    extended_sup_cpgs_locs <- rbind(
+        upstream_sup_cpgs_locs,
+        downstream_sup_cpgs_locs
     )
-    if (nrow(extended_sup_cpgs) > 0) {
+    if (nrow(extended_sup_cpgs_locs) > 0) {
         extended_sup_cpgs_df <- data.frame(
-            start = extended_sup_cpgs$start,
+            start = extended_sup_cpgs_locs$start,
             y = 0.5,
             type = "Extended_CpG",
             stringsAsFactors = FALSE
@@ -191,9 +183,9 @@ if (getRversion() >= "2.15.1") {
         )
     }
     # 4. Non-supporting CpGs in extended region
-    if (nrow(extended_nsup_cpgs) > 0) {
+    if (nrow(extended_nsup_cpgs_locs) > 0) {
         extended_nsup_cpgs_df <- data.frame(
-            start = extended_nsup_cpgs$start,
+            start = extended_nsup_cpgs_locs$start,
             y = 0.5,
             type = "Extended_CpG",
             stringsAsFactors = FALSE
@@ -231,7 +223,7 @@ if (getRversion() >= "2.15.1") {
         fill = "#E41A1C"
     )
     # if upstream extended CpGs exist add shading in the form of a trapezoid
-    if (nrow(upstream_sup_cpgs) > 0) {
+    if (nrow(upstream_sup_cpgs_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_upstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -241,7 +233,7 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_cpgs$start), start_seed_pos, start_seed_pos, min(upstream_sup_cpgs$start)),
+            x = c(min(upstream_sup_cpgs_locs$start), start_seed_pos, start_seed_pos, min(upstream_sup_cpgs_locs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -249,7 +241,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     # if downstream extended CpGs exist add shading in the form of a trapezoid
-    if (nrow(downstream_sup_cpgs) > 0) {
+    if (nrow(downstream_sup_cpgs_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_downstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -259,7 +251,7 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_seed_pos, max(downstream_sup_cpgs$start), max(downstream_sup_cpgs$start), end_seed_pos),
+            x = c(end_seed_pos, max(downstream_sup_cpgs_locs$start), max(downstream_sup_cpgs_locs$start), end_seed_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -335,7 +327,7 @@ if (getRversion() >= "2.15.1") {
 
     # Add labels for DMR extensions if they exist
     extension_df <- list()
-    if (nrow(upstream_sup_cpgs) > 0) {
+    if (nrow(upstream_sup_cpgs_locs) > 0) {
         upstream_mid_x <- (dmr_upstream_line$x + dmr_upstream_line$xend) / 2
         upstream_mid_y <- (dmr_upstream_line$y + dmr_upstream_line$yend) / 2
         upstream_label_df <- data.frame(
@@ -348,7 +340,7 @@ if (getRversion() >= "2.15.1") {
         )
         extension_df <- c(extension_df, list(upstream_label_df))
     }
-    if (nrow(downstream_sup_cpgs) > 0) {
+    if (nrow(downstream_sup_cpgs_locs) > 0) {
         downstream_mid_x <- (dmr_downstream_line$x + dmr_downstream_line$xend) / 2
         downstream_mid_y <- (dmr_downstream_line$y + dmr_downstream_line$yend) / 2
         downstream_label_df <- data.frame(
@@ -409,7 +401,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     # Styling
-    if (nrow(extended_nsup_cpgs) > 0 || nrow(extended_sup_cpgs) > 0) {
+    if (nrow(extended_nsup_cpgs_locs) > 0 || nrow(extended_sup_cpgs_locs) > 0) {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(0.5, 1),
@@ -460,7 +452,7 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        total_shown_positions <- rbind(extended_nsup_cpgs, extended_sup_cpgs, beta_locs[seeds_inds, , drop = FALSE])
+        total_shown_positions <- rbind(extended_nsup_cpgs_locs, extended_sup_cpgs_locs, as.data.frame(dmr_locs[seeds, , drop = FALSE]))
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
@@ -1577,8 +1569,7 @@ plotDMRsCircos <- function(dmrs,
     beta_locs <- beta_handler$getBetaLocs()
     if (!is.null(region_df)) {
         # Also pass the region_df to filter beta_locs to ensure only probes within the specified region are included, and to align with the modified chromosome naming in dmrs.
-        beta_locs <- as.data.frame(.filterDMRsByScopeForCircos(makeGRangesFromDataFrame(beta_locs), chromosomes = requested_chrs, region_df = region_df))
-        colnames(beta_locs)[colnames(beta_locs) == "seqnames"] <- "chr"
+        beta_locs <- convertToDataFrame(.filterDMRsByScopeForCircos(convertToGRanges(beta_locs, genome), chromosomes = requested_chrs, region_df = region_df))
         beta_locs <- beta_locs[-c(4, 5)]
     }
     .log_step("Preparing data for Circos plot...")
@@ -1610,8 +1601,7 @@ plotDMRsCircos <- function(dmrs,
 
     heatmap_df <- heatmap_data$heatmap_df
     if (!is.null(region_df)) {
-        heatmap_df <- as.data.frame(.filterDMRsByScopeForCircos(makeGRangesFromDataFrame(heatmap_df, keep.extra.columns = TRUE), chromosomes = requested_chrs, region_df = region_df))
-        colnames(heatmap_df)[colnames(heatmap_df) == "seqnames"] <- "chr"
+        heatmap_df <- convertToDataFrame(.filterDMRsByScopeForCircos(convertToGRanges(heatmap_df, genome), chromosomes = requested_chrs, region_df = region_df))
         heatmap_df <- heatmap_df[-c(4, 5)]
     }
     reduced_pheno <- heatmap_data$reduced_pheno

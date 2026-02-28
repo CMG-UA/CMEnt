@@ -1391,8 +1391,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
-    locs <- as.data.frame(locs)
-    colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
+    locs <- convertToDataFrame(locs)
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
