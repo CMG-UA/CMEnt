@@ -580,6 +580,7 @@
     list(connectivity_array = connectivity_array, splits = splits)
 }
 
+
 #' @keywords internal
 #' @noRd
 .expandDMR <- function(dmr,
@@ -850,24 +851,7 @@
 
         # Get data for this group - subset columns
         group_beta <- sites_beta[, idx, drop = FALSE]
-        group_m <- log(group_beta / (1 - group_beta + 1e-6) + 1e-6) # M-values transformation
-
-        if (!is.null(covariates) && length(covariates) > 0L && !is.null(pheno)) {
-            if (!all(covariates %in% colnames(pheno))) {
-                stop("Not all covariates are present in pheno.")
-            }
-            xc <- as.data.frame(pheno[idx, covariates, drop = FALSE])
-            xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
-            # convert any string columns to factors
-            for (col in colnames(xc)) {
-                if (is.character(xc[[col]])) {
-                    xc[[col]] <- as.numeric(as.factor(xc[[col]]))
-                }
-            }
-            xc <- as.matrix(xc)
-            storage.mode(xc) <- "double"
-            group_m <- .remove_confounder_effect(group_m, xc)
-        }
+        group_m <- .transformBeta(group_beta, pheno = pheno[idx, ], covariates = covariates)
 
         # Extract consecutive pairs matrices
         x_mat_full <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i

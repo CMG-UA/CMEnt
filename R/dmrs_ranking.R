@@ -158,34 +158,18 @@ rankDMRs <- function(
             p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
         }
     }
-    design <- NULL
-    if (!is.null(covariates)) {
-        design <- as.data.frame(pheno[, covariates, drop = FALSE])
-        design <- data.frame(`(Intercept)` = 1, design, check.names = FALSE)
-        # convert any string columns to factors
-        for (col in colnames(design)) {
-            if (is.character(design[[col]])) {
-                design[[col]] <- as.numeric(as.factor(design[[col]]))
-            }
-        }
-        design <- as.matrix(design)
-        storage.mode(design) <- "double"
-    }
+
     cv_metrics <- future.apply::future_sapply(
         X = seq_along(dmrs),
         FUN = function(i) {
             beta_mat <- beta_handler$getBeta(row_names = strsplit(mcols(dmrs)[i, "cpgs"], split = ",")[[1]], col_names = beta_col_names)
-            # Convert to M-values
-            beta_mat <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
-            if (!is.null(covariates)) {
-                beta_mat <- .remove_confounder_effect(beta_mat, design)
-            }
-            cv_results <- .performCrossPrediction(beta_mat, pheno[, "__casecontrol__"])
+            m_values <- .transformBeta(beta_mat, pheno = pheno, covariates = covariates)
+            cv_results <- .performCrossPrediction(m_values, pheno[, "__casecontrol__"])
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         },
         future.seed = TRUE,
-        future.globals = c("supporting_sites", "beta_handler", "pheno", "p_con", ".performCrossPrediction", "covariates", "design"),
+        future.globals = c("supporting_sites", "beta_handler", "pheno", "beta_col_names", "p_con", ".performCrossPrediction", "covariates", ".transformBeta"),
         future.stdout = NA
     )
     .finalizeParallel()

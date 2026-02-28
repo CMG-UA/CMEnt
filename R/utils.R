@@ -1164,6 +1164,27 @@ sortBetaFileByCoordinates <- function(beta_file,
     signal - effect %*% t(covariate_matrix)
 }
 
+.transformBeta <- function(beta, pheno, covariates = NULL) {
+    m_values <- log2(beta / (1 - beta) + 1e-6)
+    if (!is.null(covariates) && length(covariates) > 0L && !is.null(pheno)) {
+        if (!all(covariates %in% colnames(pheno))) {
+            stop("Not all covariates are present in pheno.")
+        }
+        xc <- as.data.frame(pheno[, covariates, drop = FALSE])
+        xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
+        # convert any string columns to factors
+        for (col in colnames(xc)) {
+            if (is.character(xc[[col]])) {
+                xc[[col]] <- as.numeric(as.factor(xc[[col]]))
+            }
+        }
+        xc <- as.matrix(xc)
+        storage.mode(xc) <- "double"
+        m_values <- .remove_confounder_effect(m_values, xc)
+    }
+    m_values
+}
+
 
 #' Remap DMRs Between Different Methylation Arrays
 #'

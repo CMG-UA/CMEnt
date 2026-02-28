@@ -3,11 +3,11 @@ devtools::load_all()
 cases <- c("example_output", "example_outputChr5And11")
 files_to_make <- file.path("inst/extdata", paste0(cases, ".rds"))
 names(files_to_make) <- cases
-# files_to_make <- files_to_make[!file.exists(files_to_make)]
-# if (length(files_to_make) == 0) {
-#     cat("All example output files already exist. Skipping generation.\n")
-#     quit(save = "no")
-# }
+files_to_make <- files_to_make[!file.exists(files_to_make)]
+if (length(files_to_make) == 0) {
+    cat("All example output files already exist. Skipping generation.\n")
+    quit(save = "no")
+}
 progressr::handlers("cli")
 options("DMRsegal.verbose" = 1)
 options("DMRsegal.njobs" = 8)
