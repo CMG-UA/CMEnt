@@ -51,9 +51,9 @@ if (getRversion() >= "2.15.1") {
 
     # Extract DMR information
     downstream_sup_cpgs <- strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
-    downstream_sup_cpgs_locs <- beta_locs[downstream_sup_cpgs, , drop = FALSE]
+    downstream_sup_cpgs_locs <- as.data.frame(beta_locs[downstream_sup_cpgs, , drop = FALSE])
     upstream_sup_cpgs <- strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
-    upstream_sup_cpgs_locs <- beta_locs[upstream_sup_cpgs, , drop = FALSE]
+    upstream_sup_cpgs_locs <- as.data.frame(beta_locs[upstream_sup_cpgs, , drop = FALSE])
     seeds <- strsplit(dmr$seeds, split = ",")[[1]]
     cpgs <- strsplit(dmr$cpgs, split = ",")[[1]]
     if (length(upstream_sup_cpgs) == 0) {
@@ -66,11 +66,12 @@ if (getRversion() >= "2.15.1") {
     } else {
         end_cpg <- downstream_sup_cpgs[[length(downstream_sup_cpgs)]]
     }
-    dmr_locs <- beta_locs[start_cpg:end_cpg, , drop = FALSE]
+    beta_locs_rownames <- rownames(beta_locs)
 
-    rownames(beta_locs)
+    dmr_locs <- beta_locs[match(start_cpg, beta_locs_rownames):match(end_cpg, beta_locs_rownames), , drop = FALSE]
+
     nsup_cpgs <- setdiff(rownames(dmr_locs), cpgs)
-    nsup_cpgs_locs <- dmr_locs[nsup_cpgs, , drop = FALSE]
+    nsup_cpgs_locs <- as.data.frame(dmr_locs[nsup_cpgs, , drop = FALSE])
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     dmr_start <- GenomicRanges::start(dmr)
@@ -79,9 +80,9 @@ if (getRversion() >= "2.15.1") {
 
     # Get positions
 
-    start_cpg_pos <- dmr_locs[start_cpg, "start"]
-    end_cpg_pos <- dmr_locs[end_cpg, "start"]
-    seed_positions <- dmr_locs[seeds, "start"]
+    start_cpg_pos <- as.integer(dmr_locs[start_cpg, "start"])
+    end_cpg_pos <- as.integer(dmr_locs[end_cpg, "start"])
+    seed_positions <- as.integer(dmr_locs[seeds, "start"])
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
 
@@ -95,8 +96,8 @@ if (getRversion() >= "2.15.1") {
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
 
-    downstream_nsup_cpgs_locs <- dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE]
-    upstream_nsup_cpgs_locs <- dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE]
+    downstream_nsup_cpgs_locs <- as.data.frame(dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE])
+    upstream_nsup_cpgs_locs <- as.data.frame(dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE])
     extended_nsup_cpgs_locs <- rbind(
         nsup_cpgs_locs,
         upstream_nsup_cpgs_locs,

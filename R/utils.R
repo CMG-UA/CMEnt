@@ -1355,6 +1355,12 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         locs <- readRDS(locations_file)
         return(locs)
     }
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    array_based <- !is.null(array)
+    if (!array_based) {
+        stop("Provided array is NULL but locations file was not provided.")
+    }
+    array <- strex::match_arg(array, ignore_case = TRUE)
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
         path.expand("~"),
         ".cache", "R", "DMRsegal", "annotations"
@@ -1362,12 +1368,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
-    array_based <- !is.null(array)
-    if (!array_based) {
-        stop("Provided array is NULL but locations file was not provided.")
-    }
-    array <- strex::match_arg(array, ignore_case = TRUE)
+
     array <- tolower(array)
     genome <- tolower(genome)
     cache_file <- file.path(cache_dir, paste0(
@@ -1458,6 +1459,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         ,
         "end"
     ] == locs[, "start"], "start"] + 1
+    locs$name <- rownames(locs)
+    locs <- getRegistry(locs, "name")
     tryCatch(
         {
             saveRDS(locs, cache_file)
@@ -1475,8 +1478,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             )
         }
     )
-    locs$name <- rownames(locs)
-    getRegistry(locs, "name")
+    
 }
 
 

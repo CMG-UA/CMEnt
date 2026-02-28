@@ -290,6 +290,12 @@ test_that("master index range subsetting supports string1:string2 in memory back
     out_rev <- as.data.frame(reg[string2:string1, c("id", "value")])
     expect_equal(out_rev$id, sprintf("id%03d", 7:3))
     expect_equal(out_rev$value, 7:3)
+
+    string_na <- NA_character_
+    expect_error(
+        reg[string_na:string2, c("id", "value")],
+        "Master index range selectors must be two non-missing character scalars"
+    )
 })
 
 

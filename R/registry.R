@@ -85,12 +85,30 @@ getRegistry <- function(data,
         identical(selector_expr[[1L]], as.name(":"))) {
         lhs <- tryCatch(eval(selector_expr[[2L]], envir = eval_env), error = function(e) NULL)
         rhs <- tryCatch(eval(selector_expr[[3L]], envir = eval_env), error = function(e) NULL)
-        if (is.character(lhs) && length(lhs) == 1L && !is.na(lhs) &&
-            is.character(rhs) && length(rhs) == 1L && !is.na(rhs)) {
+
+        lhs_chr <- if (is.factor(lhs)) as.character(lhs) else lhs
+        rhs_chr <- if (is.factor(rhs)) as.character(rhs) else rhs
+
+        lhs_is_chr <- is.character(lhs_chr)
+        rhs_is_chr <- is.character(rhs_chr)
+        if (lhs_is_chr || rhs_is_chr) {
+            if (!(lhs_is_chr && rhs_is_chr)) {
+                stop("Master-index range selectors cannot mix character and numeric boundaries.")
+            }
+            if (length(lhs_chr) != 1L || length(rhs_chr) != 1L) {
+                stop("Master-index range selectors require scalar character boundaries.")
+            }
             return(structure(
-                list(start = as.character(lhs), end = as.character(rhs)),
+                list(start = lhs_chr[[1L]], end = rhs_chr[[1L]]),
                 class = "registry_master_range"
             ))
+        }
+
+        if (is.numeric(lhs) && is.numeric(rhs) && length(lhs) == 1L && length(rhs) == 1L) {
+            if (anyNA(c(lhs, rhs)) || !all(is.finite(c(lhs, rhs)))) {
+                stop("Numeric range selector cannot contain NA/NaN/Inf values.")
+            }
+            return(seq.int(lhs[[1L]], rhs[[1L]]))
         }
     }
     eval(selector_expr, envir = eval_env)
@@ -509,6 +527,14 @@ row.names.Registry <- function(x, do.NULL = TRUE, prefix = "row") { # nolint
 }
 
 
+.registry_encode_single_key <- function(x) {
+    vals <- as.character(x)
+    is_na <- is.na(vals)
+    vals[is_na] <- ""
+    paste0(ifelse(is_na, "N", "V"), vals)
+}
+
+
 .registry_make_composite_key <- function(df, cols) {
     if (length(cols) == 0) {
         return(rep.int("", nrow(df)))
@@ -521,6 +547,14 @@ row.names.Registry <- function(x, do.NULL = TRUE, prefix = "row") { # nolint
         paste0(ifelse(is_na, "N", "V"), nchar(vals), ":", vals, ";")
     })
     Reduce(paste0, parts)
+}
+
+
+.registry_make_index_keys <- function(df, cols) {
+    if (length(cols) == 1L) {
+        return(.registry_encode_single_key(df[[cols[[1L]]]]))
+    }
+    .registry_make_composite_key(df, cols)
 }
 
 
@@ -1372,15 +1406,11 @@ Registry <- R6::R6Class("Registry", # nolint
             selector_chr <- as.character(selector)
 
             if (private$.backend == "memory") {
+                idx_cache <- private$.get_memory_index_map(private$.master_index, idx_cols)
+                selector_keys <- .registry_encode_single_key(selector_chr)
                 seq_bounds <- .registry_seq_bounds(private$.active_row_idx)
+
                 if (!is.null(seq_bounds)) {
-                    idx_cache <- private$.get_memory_index_map(private$.master_index, idx_cols)
-                    selector_df <- data.frame(
-                        setNames(list(selector_chr), idx_col),
-                        stringsAsFactors = FALSE,
-                        check.names = FALSE
-                    )
-                    selector_keys <- .registry_make_composite_key(selector_df, idx_cols)
                     lo <- as.integer(seq_bounds[[1L]])
                     hi <- as.integer(seq_bounds[[2L]])
                     if (identical(idx_cache$mode, "unique_single")) {
@@ -1402,10 +1432,31 @@ Registry <- R6::R6Class("Registry", # nolint
                     return(as.integer(selected_row_ids))
                 }
 
-                active_data <- private$.fetch_rows_with_columns(private$.active_row_idx, idx_col)
-                active_keys <- as.character(active_data[[idx_col]])
-                pos_by_key <- split(seq_along(active_keys), active_keys)
-                selected_rel_pos <- unlist(lapply(selector_chr, function(key) pos_by_key[[key]]), use.names = FALSE)
+                active_pos_by_rowid <- split(seq_along(private$.active_row_idx), private$.active_row_idx)
+                if (identical(idx_cache$mode, "unique_single")) {
+                    selected_row_ids <- unname(idx_cache$map[selector_keys])
+                    selected_row_ids <- selected_row_ids[!is.na(selected_row_ids)]
+                    if (length(selected_row_ids) == 0L) {
+                        return(integer(0))
+                    }
+                    selected_rel_pos <- unlist(lapply(selected_row_ids, function(row_id) {
+                        active_pos_by_rowid[[as.character(row_id)]]
+                    }), use.names = FALSE)
+                } else {
+                    selected_rel_pos <- unlist(lapply(selector_keys, function(key) {
+                        rows <- idx_cache$map[[key]]
+                        if (is.null(rows) || length(rows) == 0L) {
+                            return(integer(0))
+                        }
+                        rel <- unlist(lapply(rows, function(row_id) {
+                            active_pos_by_rowid[[as.character(row_id)]]
+                        }), use.names = FALSE)
+                        if (length(rel) > 1L) {
+                            rel <- sort.int(rel, method = "quick")
+                        }
+                        rel
+                    }), use.names = FALSE)
+                }
                 if (length(selected_rel_pos) == 0L) {
                     return(integer(0))
                 }
@@ -1470,7 +1521,11 @@ Registry <- R6::R6Class("Registry", # nolint
                 stop("Internal error: `master_index` does not resolve to a single column.")
             }
             idx_col <- idx_cols[[1]]
-            out <- private$.fetch_rows_with_columns(private$.active_row_idx, idx_col)[[idx_col]]
+            if (identical(private$.backend, "memory")) {
+                out <- private$.data_in_memory[[idx_col]][private$.active_row_idx]
+            } else {
+                out <- private$.fetch_rows_with_columns(private$.active_row_idx, idx_col)[[idx_col]]
+            }
             as.character(out)
         },
 
@@ -1495,7 +1550,11 @@ Registry <- R6::R6Class("Registry", # nolint
                 if (length(row_ids) != nrow(df)) {
                     return(df)
                 }
-                vals <- private$.fetch_rows_with_columns(as.integer(row_ids), idx_col)[[idx_col]]
+                if (identical(private$.backend, "memory")) {
+                    vals <- private$.data_in_memory[[idx_col]][as.integer(row_ids)]
+                } else {
+                    vals <- private$.fetch_rows_with_columns(as.integer(row_ids), idx_col)[[idx_col]]
+                }
             }
 
             if (is.null(vals) || length(vals) != nrow(df)) {
@@ -1699,7 +1758,7 @@ Registry <- R6::R6Class("Registry", # nolint
             }
             row_ids <- private$.data_in_memory$.registry_rowid
             source_df <- private$.data_in_memory[, index_cols, drop = FALSE]
-            keys <- .registry_make_composite_key(source_df, index_cols)
+            keys <- .registry_make_index_keys(source_df, index_cols)
 
             if (length(index_cols) == 1L && anyDuplicated(keys) == 0L) {
                 cache <- list(
@@ -1854,10 +1913,10 @@ Registry <- R6::R6Class("Registry", # nolint
                 return(private$.empty_result_df(out_cols))
             }
 
-            query_keys <- .registry_make_composite_key(lookup_df, index_cols)
+            query_keys <- .registry_make_index_keys(lookup_df, index_cols)
+            idx_cache <- private$.get_memory_index_map(index_name, index_cols)
             seq_bounds <- .registry_seq_bounds(private$.active_row_idx)
             if (!is.null(seq_bounds)) {
-                idx_cache <- private$.get_memory_index_map(index_name, index_cols)
                 lo <- as.integer(seq_bounds[[1L]])
                 hi <- as.integer(seq_bounds[[2L]])
                 if (identical(idx_cache$mode, "unique_single")) {
@@ -1880,12 +1939,34 @@ Registry <- R6::R6Class("Registry", # nolint
                 return(private$.apply_master_row_names(out, row_ids = matched_row_ids))
             }
 
+            if (identical(idx_cache$mode, "unique_single")) {
+                matched_row_ids <- unname(idx_cache$map[query_keys])
+                matched_row_ids <- matched_row_ids[!is.na(matched_row_ids)]
+                if (length(matched_row_ids) == 0L) {
+                    return(private$.empty_result_df(out_cols))
+                }
+                active_pos_by_rowid <- split(seq_along(private$.active_row_idx), private$.active_row_idx)
+                matched_positions <- unlist(lapply(matched_row_ids, function(row_id) {
+                    active_pos_by_rowid[[as.character(row_id)]]
+                }), use.names = FALSE)
+                if (length(matched_positions) == 0L) {
+                    return(private$.empty_result_df(out_cols))
+                }
+                matched_row_ids <- private$.active_row_idx[matched_positions]
+                if (length(out_cols) == 0L) {
+                    out <- data.frame(row.names = seq_along(matched_positions))
+                    return(private$.apply_master_row_names(out, row_ids = matched_row_ids))
+                }
+                out <- private$.fetch_rows_with_columns(matched_row_ids, out_cols)
+                return(private$.apply_master_row_names(out, row_ids = matched_row_ids))
+            }
+
             needed_cols <- unique(c(index_cols, out_cols))
             active_data <- private$.fetch_rows_with_columns(private$.active_row_idx, needed_cols)
             if (nrow(active_data) == 0) {
                 return(private$.empty_result_df(out_cols))
             }
-            active_keys <- .registry_make_composite_key(active_data, index_cols)
+            active_keys <- .registry_make_index_keys(active_data, index_cols)
             pos_by_key <- split(seq_along(active_keys), active_keys)
             matched_positions <- unlist(lapply(query_keys, function(k) pos_by_key[[k]]), use.names = FALSE)
             if (length(matched_positions) == 0L) {
