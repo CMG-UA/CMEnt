@@ -72,13 +72,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(sorted_locs)) {
                 if (is.character(sorted_locs) && length(sorted_locs) == 1 && file.exists(sorted_locs)) {
                     sorted_locs <- readRDS(sorted_locs)
-                    try(sorted_locs <- bigmemory::attach.big.matrix(sorted_locs), silent = TRUE)
+                    private$.self_contained <- TRUE
                 }
             } else if (is_file(beta) && file_is_tabix(beta)) {
                 .log_info("Loading genomic locations from tabix beta file...", level = 2)
-                sorted_locs <- bigmemory::attach(readRDS(genomicLocsFromTabixToDescriptor(
-                    input_tabix = beta
-                )))
+                sorted_locs <- genomicLocsFromTabix(input_tabix = beta)
+                private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_info("Extracting genomic locations from BSseq object...", level = 2)
                 gr <- granges(beta)
@@ -87,14 +86,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     start = start(gr),
                     end = end(gr)
                 )
-                if (!is.null(names(gr)) && length(names(gr)) > 0) {
-                    rownames(sorted_locs) <- names(gr)
-                } else {
-                    rownames(sorted_locs) <- paste0(sorted_locs$chr, ":", sorted_locs$start)
-                }
+                sorted_locs$name <- paste0(sorted_locs$chr, ":", sorted_locs$start)
+                sorted_locs <- getRegistry(sorted_locs, "name")
+                private$.self_contained <- TRUE
             }
             self$sorted_locs <- sorted_locs
-            private$.sorted_locs_is_bigmatrix <- bigmemory::is.big.matrix(sorted_locs)
 
             # Initialize private fields
             private$.beta_col_names <- NULL
@@ -113,6 +109,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (private$.loaded) {
                 return(invisible(self))
             }
+            .log_info("Loading beta data...", level = 2)
             if (!is.character(self$beta) && length(self$beta) > 0) {
                 if (is_bsseq(self$beta)) {
                     .log_step("Processing BSseq object...", level = 1)
@@ -121,9 +118,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     private$.loaded <- TRUE
                     return(invisible(self))
                 }
+                .log_info("Beta provided as in-memory object. Using as is...", level = 2)
                 private$.beta_file_in_memory <- self$beta
                 self$beta <- NULL
                 private$.loaded <- TRUE
+                .log_info("Beta data loading complete.", level = 2)
                 return(invisible(self))
             }
 
@@ -131,7 +130,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (is_file(self$beta)) {
                 if (file_is_tabix(self$beta)) {
                     .log_step("Beta file appears to be tabix-indexed. Using as tabix file...", level = 1)
-                    private$.tabix_file <- self$beta
+                    private$.tabix_file <- self$beta        
                 } else {
                     private$.beta_file <- self$beta
                 }
@@ -197,6 +196,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     if (!is.null(converted_tabix)) {
                         .log_success("Beta file converted to tabix format for improved performance")
                         private$.tabix_file <- converted_tabix
+                        self$sorted_locs <- genomicLocsFromTabix(input_tabix = private$.tabix_file, use_id_as_rownames = TRUE)
+                        private$.self_contained <- TRUE
                         private$.beta_file <- NULL
                     } else {
                         .log_info("Continuing with standard beta file (tabix conversion not available)")
@@ -205,6 +206,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     private$.beta_file <- NULL
                 }
             }
+            .log_info("Beta data loading complete.", level = 2)
             private$.loaded <- TRUE
             invisible(self)
         },
@@ -264,6 +266,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         showProgress = TRUE,
                         nThread = self$njobs
                     ))
+                    names(private$.beta_row_names) <- NULL
                 } else {
                     .log_info("Reading from tabix file...", level = 3)
                     private$.beta_row_names <- unlist(data.table::fread(
@@ -274,12 +277,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         showProgress = TRUE,
                         nThread = self$njobs
                     ))
+                    names(private$.beta_row_names) <- NULL
                 }
-                if (!private$.sorted_locs_is_bigmatrix) {
+                if (!private$.self_contained) {
                     sorted_locs <- self$getGenomicLocs()
                     private$.beta_row_names <- private$.beta_row_names[private$.beta_row_names %in% rownames(sorted_locs)]
-                } else {
-                    private$.beta_row_names <- as.integer(private$.beta_row_names)
                 }
                 if (!is.null(self$beta_row_names_file)) {
                     writeLines(
@@ -328,7 +330,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     # expected first column: cpg ID
                     file_beta_col_names <- file_beta_col_names[-1]
                 } else {
-                    # expected first columns: #chr start end id score strand
+                    # expected first columns: #chrom start end id score strand
                     file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
                 }
 
@@ -352,16 +354,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.validated <- TRUE
                 return(invisible(self))
             }
-
+            .log_info("Loading genomic locations for validation...", level = 2)
             sorted_locs <- self$getGenomicLocs()
+            .log_info("Getting beta row names for validation...", level = 2)
             beta_row_names <- self$getBetaRowNames()
-            if (private$.sorted_locs_is_bigmatrix) {
-                if (is.null(private$.tabix_file)) {
-                    stop("When using big.matrix for sorted_locs, beta must be provided as tabix file.")
-                }
-            }
             if (is.null(private$.beta_file_in_memory)) {
-                if (!private$.sorted_locs_is_bigmatrix) {
+                if (!private$.self_contained) {
                     .log_step("Validating beta file sorting by position...", level = 2)
 
                     # Validate that file is sorted
@@ -384,14 +382,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     ), ,
                     drop = FALSE
                 ]
-                rownames(private$.beta_file_in_memory) <- beta_row_names[
-                    orderByLoc(beta_row_names,
-                        genome = self$genome,
-                        genomic_locs = sorted_locs
-                    )
-                ]
             }
-
+            .log_info("Beta file validated.", level = 2)
             private$.validated <- TRUE
             invisible(self)
         },
@@ -403,7 +395,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(private$.beta_locs)
             }
             sorted_locs <- self$getGenomicLocs()
-            if (private$.sorted_locs_is_bigmatrix) {
+            if (private$.self_contained) {
                 private$.beta_locs <- sorted_locs
                 return(sorted_locs)
             }
@@ -421,10 +413,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
         #' @param allow_missing Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)
-        #' @param check_mem Logical. If TRUE, checks memory usage and may return a big.matrix if size exceeds threshold (default: TRUE)
         #' @param chr Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)
-        #' @return Matrix of beta values, or big.matrix if estimated size exceeds mem_thres
-        getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, check_mem = FALSE, chr = NULL) {
+        #' @return Matrix of beta values
+        getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
             if (!is.null(row_names) && !is.null(chr)) {
                 stop("Cannot specify both row_names and chr for subsetting.")
             }
@@ -488,8 +479,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                 } else if (!is.null(chr)) {
                     .log_step("Subsetting by chromosome from in-memory beta data..", level = 3)
+                    .log_info("Getting genomic locations for chromosome subsetting...", level = 4)
                     all_locs <- self$getBetaLocs()
+                    .log_info("Performing chromosome subsetting...", level = 4)
                     chr_rows <- rownames(all_locs)[all_locs$chr %in% chr]
+                    .log_info("Found ", length(chr_rows), " CpGs on specified chromosome(s)", level = 4)
                     chr_rows <- intersect(chr_rows, rownames(private$.beta_file_in_memory))
                     beta_subset <- private$.beta_file_in_memory[chr_rows, , drop = FALSE]
                 } else {
@@ -503,38 +497,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     level = 3
                 )
                 return(beta_subset)
-            }
-            if (check_mem) {
-                if (!is.null(private$.beta_file)) {
-                    first_row <- data.table::fread(private$.beta_file, nrows = 1, data.table = FALSE)
-                } else {
-                    locs <- self$getBetaLocs()[1, , drop = FALSE]
-                    region_first <- data.frame(
-                        chr = as.character(locs[1, "chr"]),
-                        start = as.integer(locs[1, "start"]),
-                        end = as.integer(locs[1, "end"])
-                    )
-                    first_row <- bedr::tabix(region_first, private$.tabix_file,
-                        check.valid = FALSE,
-                        check.sort = FALSE, check.chr = FALSE, verbose = FALSE
-                    )
-                    first_row <- first_row[1, 7:ncol(first_row), drop = FALSE]
-                    first_row <- as.numeric(unname(first_row))
-                }
-                n_rows <- if (is.null(row_names)) length(self$getBetaRowNames()) else length(row_names)
-                first_row_size_mb <- as.numeric(object.size(first_row)) / (1024^2)
-                estimated_size_mb <- first_row_size_mb * n_rows
-                mem_thres <- getOption("DMRsegal.subset_beta_as_bigmem_mb", 500)
-                if (estimated_size_mb > mem_thres) {
-                    .log_step("Estimated size (", round(estimated_size_mb, 1),
-                        " MB) exceeds threshold. Loading to big.matrix...",
-                        level = 3
-                    )
-                    self$beta_chunk_size <- max(2, ceiling(mem_thres * 1024^2 / as.numeric(object.size(first_row))))
-                    ret <- private$.loadToBigMatrix(row_names, col_names, allow_missing, self$beta_chunk_size)
-                    .log_success("Loaded to big.matrix: ", nrow(ret), " CpGs x ", ncol(ret), " samples", level = 3)
-                    return(ret)
-                }
             }
 
             if (!is.null(private$.beta_file)) {
@@ -614,69 +576,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .tabix_file = NULL,
         .beta_file_in_memory = NULL,
         .bsseq_object = NULL,
-        .sorted_locs_is_bigmatrix = FALSE,
-        .loadToBigMatrix = function(row_names = NULL, col_names = NULL, allow_missing, chunk_size) {
-            beta_row_names <- self$getBetaRowNames()
-            if (is.null(row_names)) {
-                row_names <- beta_row_names
-            }
-            beta_col_names <- self$getBetaColNames()
-            if (is.null(col_names)) {
-                col_names <- beta_col_names
-            }
-            temp_file <- tempfile(fileext = ".bmat")
-            beta_big <- bigmemory::big.matrix(
-                nrow = length(row_names), ncol = length(col_names), type = "double",
-                backingfile = basename(temp_file), backingpath = dirname(temp_file),
-                descriptorfile = paste0(basename(temp_file), ".desc")
-            )
-            options(bigmemory.allow.dimnames = TRUE)
-            if (!is.null(private$.beta_file)) {
-                chunks <- split(seq_along(row_names), ceiling(seq_along(row_names) / chunk_size))
-                for (chunk_idx in seq_along(chunks)) {
-                    chunk_rows <- row_names[chunks[[chunk_idx]]]
-                    chunk_data <- .subsetBetaFile(
-                        private$.beta_file,
-                        sites = chunk_rows,
-                        beta_row_names = beta_row_names,
-                        beta_col_names = beta_col_names
-                    )
-                    if (!is.null(col_names)) {
-                        chunk_data <- chunk_data[, col_names, drop = FALSE]
-                    }
-                    beta_big[chunks[[chunk_idx]], ] <- as.matrix(chunk_data)
-                }
-            } else {
-                if (is.null(row_names)) {
-                    locs <- self$getBetaLocs()
-                } else {
-                    locs <- self$getBetaLocs()[row_names, , drop = FALSE]
-                }
-                chunks <- split(seq_len(nrow(locs)), ceiling(seq_len(nrow(locs)) / chunk_size))
-                for (i in seq_along(chunks)) {
-                    chunk_locs <- locs[chunks[[i]], , drop = FALSE]
-                    regions_chunk <- data.frame(
-                        chr = as.character(chunk_locs[, "chr"]),
-                        start = as.integer(chunk_locs[, "start"]),
-                        end = as.integer(chunk_locs[, "end"])
-                    )
-                    chunk <- bedr::tabix(regions_chunk, private$.tabix_file,
-                        check.valid = FALSE,
-                        check.sort = FALSE, check.chr = FALSE, verbose = FALSE
-                    )
-                    if (!is.null(chunk) && nrow(chunk) > 0) {
-                        chunk <- as.data.frame(sapply(chunk[, 7:ncol(chunk), drop = FALSE], as.numeric))
-                        if (!is.null(col_names)) {
-                            chunk <- chunk[, col_names, drop = FALSE]
-                        }
-                        beta_big[chunks[[i]], ] <- as.matrix(chunk)
-                    }
-                }
-            }
-            rownames(beta_big) <- row_names
-            colnames(beta_big) <- col_names
-            beta_big
-        }
+        .self_contained = FALSE
     )
 )
 

@@ -15,7 +15,7 @@
 #' significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
 #'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file, or a BSseq object. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix. If a BSseq object is provided, genomic locations and methylation values will be extracted using bsseq methods.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file, or a BSseq object. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a Registry object. If a BSseq object is provided, genomic locations and methylation values will be extracted using bsseq methods.
 #' @param seeds Character. Path to the seeds TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is 1.
@@ -254,25 +254,15 @@
         }
         ret
     }
-
     .get_chunk_beta <- function(site_start, site_end, mask = NULL) {
         if (!is.null(mask)) {
-            site_indices <- if (!bigmemory::is.big.matrix(beta_locs)) {
-                rownames(beta_locs)[site_start:site_end][mask]
-            } else {
-                (site_start:site_end)[mask]
-            }
+            site_indices <- rownames(beta_locs[site_start:site_end,][mask,])
         } else {
-            site_indices <- if (!bigmemory::is.big.matrix(beta_locs)) {
-                rownames(beta_locs)[site_start:site_end]
-            } else {
-                site_start:site_end
-            }
+            site_indices <- rownames(beta_locs[site_start:site_end,])
         }
         beta_handler$getBeta(
             row_names = site_indices,
-            col_names = col_names,
-            check_mem = TRUE
+            col_names = col_names
         )
     }
 
@@ -602,13 +592,9 @@
     .log_step("Expanding DMR..", level = 4)
     dmr_start <- dmr["start_seed"]
     dmr_end <- dmr["end_seed"]
-    if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
-        dmr_start_ind <- as.integer(dmr_start) - chr_start_base
-        dmr_end_ind <- as.integer(dmr_end) - chr_start_base
-    } else {
-        dmr_start_ind <- which(rownames(chr_locs) == dmr_start)
-        dmr_end_ind <- which(rownames(chr_locs) == dmr_end)
-    }
+
+    dmr_start_ind <- which(rownames(chr_locs) == dmr_start)
+    dmr_end_ind <- which(rownames(chr_locs) == dmr_end)
     if (length(dmr_start_ind) == 0) {
         stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
     }
@@ -739,29 +725,17 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 4)
-    if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
-        dmr["start_cpg"] <- ustream_exp + chr_start_base
-        dmr["end_cpg"] <- dstream_exp + chr_start_base
-        dmr["start_cpg_ind"] <- ustream_exp + chr_start_base
-        dmr["end_cpg_ind"] <- dstream_exp + chr_start_base
-        dmr["start"] <- chr_locs[ustream_exp, "start"]
-        dmr["end"] <- chr_locs[dstream_exp, "start"]
-    } else {
-        dmr["start_cpg"] <- rownames(chr_locs)[ustream_exp]
-        dmr["end_cpg"] <- rownames(chr_locs)[dstream_exp]
-        dmr["start_cpg_ind"] <- ustream_exp + chr_start_base
-        dmr["end_cpg_ind"] <- dstream_exp + chr_start_base
-        dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
-        dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
-    }
+    chr_locs_rownames <- rownames(chr_locs)
+    dmr["start_cpg"] <- chr_locs_rownames[ustream_exp]
+    dmr["end_cpg"] <- chr_locs_rownames[dstream_exp]
+    dmr["start"] <- chr_locs[dmr["start_cpg"], "start"]
+    dmr["end"] <- chr_locs[dmr["end_cpg"], "start"]
+
     to_cpg_ids <- function(local_inds) {
         if (length(local_inds) == 0) {
             return(character(0))
         }
-        if (!is.data.frame(chr_locs) && bigmemory::is.sub.big.matrix(chr_locs)) {
-            return(as.character(local_inds + chr_start_base))
-        }
-        rownames(chr_locs)[local_inds]
+        chr_locs_rownames[local_inds]
     }
 
     dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
@@ -776,7 +750,6 @@
     } else {
         upstream_kept <- integer(0)
     }
-    dmr["upstream_cpgs_inds"] <- paste(upstream_kept + chr_start_base, collapse = ",")
     dmr["upstream_cpgs"] <- paste(to_cpg_ids(upstream_kept), collapse = ",")
     dmr["upstream_cpg_expansion"] <- length(upstream_kept)
 
@@ -792,7 +765,6 @@
     } else {
         downstream_kept <- integer(0)
     }
-    dmr["downstream_cpgs_inds"] <- paste(downstream_kept + chr_start_base, collapse = ",")
     dmr["downstream_cpgs"] <- paste(to_cpg_ids(downstream_kept), collapse = ",")
     dmr["downstream_cpg_expansion"] <- length(downstream_kept)
 
@@ -1142,7 +1114,7 @@
 #'
 #' This function identifies DMRs from a given set of seeds and a beta value file.
 #'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a Registry object.
 #' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
@@ -1303,8 +1275,12 @@ findDMRsFromSeeds <- function(
     if (is.null(chr_levels)) {
         chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
     }
+    all_cpgs  <- NULL
+    beta_locs_rownames <- NULL
     if (inherits(beta, "BetaHandler")) {
         beta_handler <- beta
+        all_cpgs <- rownames(beta_handler$getGenomicLocs())
+        beta_locs_rownames <- beta_handler$getBetaRowNames()
     } else {
         beta_locs <- NULL
         if (is.character(beta) && length(beta) == 1 && file.exists(beta)) {
@@ -1327,7 +1303,8 @@ findDMRsFromSeeds <- function(
                 )
                 beta <- ret$tabix_file
                 beta_locs <- readRDS(ret$locations_file)
-                try(beta_locs <- bigmemory::attach.big.matrix(beta_locs), silent = TRUE)
+                beta_locs_rownames <- rownames(beta_locs)
+                all_cpgs <- beta_locs_rownames
                 .log_success("Conversion to tabix-indexed beta file completed.")
                 # Converting seeds ids to beta_locs indices, based on their position
                 .log_step("Converting Seed IDs to bed positions...", level = 2)
@@ -1349,7 +1326,7 @@ findDMRsFromSeeds <- function(
                 seeds_tsv <- seeds_tsv[order(chroms, positions), ]
                 converted_seed_ids <- match(
                     paste0(chroms, ":", positions),
-                    rownames(beta_locs)
+                    beta_locs_rownames
                 )
                 if (all(is.na(converted_seed_ids))) {
                     stop("None of the Seed IDs could be converted to bed positions based on the provided bed beta file.")
@@ -1375,6 +1352,10 @@ findDMRsFromSeeds <- function(
             array = array,
             genome = genome
         )
+    }
+    if (is.null(all_cpgs)) {
+        all_cpgs <- rownames(beta_handler$getGenomicLocs())
+        beta_locs_rownames <- beta_handler$getBetaRowNames()
     }
 
     if (!is.function(aggfun)) {
@@ -1523,7 +1504,7 @@ findDMRsFromSeeds <- function(
     # Filter seeds not present in array annotation first (prevents NA logical indices later)
     if (!bed_provided) {
         seeds <- unique(seeds_tsv[, seeds_id_col])
-        missing_in_annotation <- setdiff(seeds, rownames(beta_handler$getGenomicLocs()))
+        missing_in_annotation <- setdiff(seeds, all_cpgs)
         if (length(missing_in_annotation) > 0) {
             .log_warn(
                 "Dropping ", length(missing_in_annotation), " seed(s) not found in the array annotation: ",
@@ -1547,10 +1528,8 @@ findDMRsFromSeeds <- function(
             stop("No seeds remain after filtering against array annotation.")
         }
         seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
-        seeds_inds <- match(seeds, rownames(beta_locs))
     } else {
         seeds <- seeds_tsv[, seeds_id_col]
-        seeds_inds <- seeds
     }
 
     .log_step("Validating beta file sorting by position...", level = 2)
@@ -1558,7 +1537,7 @@ findDMRsFromSeeds <- function(
 
     .log_step("Subsetting beta matrix for seeds...", level = 2)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
-    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection, check_mem = TRUE)
+    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
     if (!is.null(output_prefix)) {
         seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
     }
@@ -1579,22 +1558,8 @@ findDMRsFromSeeds <- function(
         )
     }
     .log_info("Checking for seeds with all NA beta values...", level = 3)
-    if (bigmemory::is.big.matrix(seeds_beta)) {
-        beta_chunk_size <- beta_handler$getBetaChunkSize()
-        all.na.rows <- rep(FALSE, nrow(seeds_beta))
-        for (start_row in seq(1, nrow(seeds_beta), by = beta_chunk_size)) {
-            end_row <- min(start_row + beta_chunk_size - 1, nrow(seeds_beta))
-            chunk <- bigmemory::sub.big.matrix(seeds_beta, firstRow = start_row, lastRow = end_row)
-            chunk <- as.matrix(chunk)
-            na_rows_chunk <- matrixStats::rowAlls(is.na(as.matrix(chunk)))
-            if (any(na_rows_chunk)) {
-                all.na.rows[start_row:end_row][na_rows_chunk] <- TRUE
-                break
-            }
-        }
-    } else {
-        all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
-    }
+    all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
+    
     if (any(all.na.rows)) {
         stop(
             "Beta extraction failure: the following Seed rows have all NA beta values: ",
@@ -1654,23 +1619,12 @@ findDMRsFromSeeds <- function(
 
         seeds_locs_list <- split(seeds_locs, seeds_locs[, "chr"])
         seeds_locs_list <- seeds_locs_list[as.character(chromosomes)]
-        seeds_inds_list <- split(seeds_inds, seeds_locs[, "chr"])
-        seeds_inds_list <- seeds_inds_list[as.character(chromosomes)]
-        if (bigmemory::is.big.matrix(seeds_beta)) {
-            seeds_beta_list <- lapply(seeds_locs_list, function(loc_df) {
-                bigmemory::sub.big.matrix(
-                    seeds_beta,
-                    firstRow = min(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE),
-                    lastRow = max(match(rownames(seeds_beta), rownames(loc_df)), na.rm = TRUE)
-                )
-            })
-        } else {
-            if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
-            storage.mode(seeds_beta) <- "double"
-            seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
-            seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
-        }
-        fun <- function(chr, cseeds, cseeds_inds, cseeds_beta, cseeds_locs) {
+        if (!is.matrix(seeds_beta)) seeds_beta <- as.matrix(seeds_beta)
+        storage.mode(seeds_beta) <- "double"
+        seeds_beta_list <- lapply(split(seeds_beta, seeds_locs[, "chr"]), matrix, ncol = ncol(seeds_beta))
+        seeds_beta_list <- seeds_beta_list[as.character(chromosomes)]
+    
+        fun <- function(chr, cseeds, cseeds_beta, cseeds_locs) {
             op <- options(warn = 2)$warn
             dmr_list <- vector("list", length = 128L)
             dmr_n <- 0L
@@ -1751,7 +1705,6 @@ findDMRsFromSeeds <- function(
                     seeds_num = length(dmr_seeds_inds),
                     connection_corr_pval = connection_corr_pval,
                     stop_connection_reason = stop_reason,
-                    seeds_inds = paste(cseeds_inds[dmr_seeds_inds], collapse = ","),
                     seeds = paste(cseeds[dmr_seeds_inds], collapse = ",")
                 )
                 dmr_n <- dmr_n + 1L
@@ -1782,13 +1735,11 @@ findDMRsFromSeeds <- function(
             ret <- lapply(seq_along(chromosomes), function(i) {
                 chr <- chromosomes[i]
                 cseeds <- seeds_list[[i]]
-                cseeds_inds <- seeds_inds_list[[i]]
                 cseeds_beta <- seeds_beta_list[[i]]
                 cseeds_locs <- seeds_locs_list[[i]]
                 fun(
                     chr = chr,
                     cseeds = cseeds,
-                    cseeds_inds = cseeds_inds,
                     cseeds_beta = cseeds_beta,
                     cseeds_locs = cseeds_locs
                 )
@@ -1798,7 +1749,6 @@ findDMRsFromSeeds <- function(
             ret <- future.apply::future_mapply(
                 chromosomes,
                 seeds_list,
-                seeds_inds_list,
                 seeds_beta_list,
                 seeds_locs_list,
                 SIMPLIFY = FALSE,
@@ -1949,15 +1899,7 @@ findDMRsFromSeeds <- function(
         first_row <- which(chr_mask)[1]
         last_row <- which(chr_mask)[sum(chr_mask)]
         chr_start_base <- first_row - 1
-        if (bigmemory::is.big.matrix(beta_locs)) {
-            chr_locs <- bigmemory::sub.big.matrix(
-                beta_locs,
-                firstRow = first_row,
-                lastRow = last_row
-            )
-        } else {
-            chr_locs <- beta_locs[chr_mask, , drop = FALSE]
-        }
+        chr_locs <- as.data.frame(beta_locs[chr_mask, , drop = FALSE])
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
         .setupParallel()
         chr_ret <- future.apply::future_apply(
@@ -2035,13 +1977,6 @@ findDMRsFromSeeds <- function(
         extended_dmrs <- extended_dmrs[!end_less_than_start, ]
         .log_warn("Remaining: ", nrow(extended_dmrs))
     }
-    if (!bed_provided) {
-        extended_dmrs$start_cpg_ind <- match(extended_dmrs$start_cpg, rownames(beta_locs))
-        extended_dmrs$end_cpg_ind <- match(extended_dmrs$end_cpg, rownames(beta_locs))
-    } else {
-        extended_dmrs$start_cpg_ind <- as.integer(extended_dmrs$start_cpg)
-        extended_dmrs$end_cpg_ind <- as.integer(extended_dmrs$end_cpg)
-    }
 
 
     .log_success("Post-processing complete.", level = 2)
@@ -2098,8 +2033,6 @@ findDMRsFromSeeds <- function(
     for (i in multiple_hits) {
         inds <- sh[qh == i]
         cols_vals <- orig_mcols[inds, ]
-        agg_df[i, "start_cpg_ind"] <- min(as.integer(cols_vals$start_cpg_ind))
-        agg_df[i, "end_cpg_ind"] <- max(as.integer(cols_vals$end_cpg_ind))
         agg_df[i, "start_seed"] <- cols_vals$start_seed[[1]]
         agg_df[i, "end_seed"] <- cols_vals$end_seed[[length(inds)]]
         agg_df[i, "start_seed_pos"] <- cols_vals$start_seed_pos[[1]]
@@ -2107,42 +2040,30 @@ findDMRsFromSeeds <- function(
         agg_seeds <- unique(unlist(lapply(cols_vals$seeds, .splitCsvValues), use.names = FALSE))
         agg_df[i, "seeds"] <- paste(agg_seeds, collapse = ",")
         agg_df[i, "seeds_num"] <- length(agg_seeds)
-        agg_seeds_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$seeds_inds, .splitCsvValues), use.names = FALSE)))
-        agg_seeds_inds <- sort(unique(agg_seeds_inds[!is.na(agg_seeds_inds)]))
-        agg_df[i, "seeds_inds"] <- paste(agg_seeds_inds, collapse = ",")
         agg_df[i, "connection_corr_pval"] <- aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE)
         agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
         agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
         agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
+
         agg_upstream_cpgs <- unique(unlist(lapply(cols_vals$upstream_cpgs, .splitCsvValues), use.names = FALSE))
         agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
         agg_df[i, "upstream_cpgs"] <- paste(agg_upstream_cpgs, collapse = ",")
-        agg_upstream_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$upstream_cpgs_inds, .splitCsvValues), use.names = FALSE)))
-        agg_upstream_inds <- sort(unique(agg_upstream_inds[!is.na(agg_upstream_inds)]))
-        agg_df[i, "upstream_cpgs_inds"] <- paste(agg_upstream_inds, collapse = ",")
         agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
-        agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
+        
         agg_downsteam_cpgs <- unique(unlist(lapply(cols_vals$downstream_cpgs, .splitCsvValues), use.names = FALSE))
+        agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
         agg_df[i, "downstream_cpgs"] <- paste(agg_downsteam_cpgs, collapse = ",")
-        agg_downstream_inds <- suppressWarnings(as.integer(unlist(lapply(cols_vals$downstream_cpgs_inds, .splitCsvValues), use.names = FALSE)))
-        agg_downstream_inds <- sort(unique(agg_downstream_inds[!is.na(agg_downstream_inds)]))
-        agg_df[i, "downstream_cpgs_inds"] <- paste(agg_downstream_inds, collapse = ",")
         agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
         agg_df[i, "merged_dmrs_num"] <- length(inds)
     }
-    agg_df[, "cpgs"] <- apply(agg_df[, c("seeds", "upstream_cpgs", "downstream_cpgs")], 1, function(x) {
+    agg_df[, "cpgs"] <- apply(agg_df[, c("upstream_cpgs", "seeds", "downstream_cpgs")], 1, function(x) {
         vals <- unique(unlist(lapply(x, .splitCsvValues), use.names = FALSE))
         paste(vals, collapse = ",")
     })
     agg_df[, "supporting_cpgs_num"] <- vapply(agg_df$cpgs, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
-    agg_df[, "cpgs_num"] <- agg_df[, "end_cpg_ind"] - agg_df[, "start_cpg_ind"] + 1
-    agg_df[, "cpgs_inds"] <- apply(agg_df[, c("seeds_inds", "upstream_cpgs_inds", "downstream_cpgs_inds")], 1, function(x) {
-        vals <- suppressWarnings(as.integer(unlist(lapply(x, .splitCsvValues), use.names = FALSE)))
-        vals <- sort(unique(vals[!is.na(vals)]))
-        paste(vals, collapse = ",")
-    })
+    agg_df[, "cpgs_num"] <- match(agg_df$end_cpg, all_cpgs) - match(agg_df$start_cpg, all_cpgs) + 1
     agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
@@ -2189,7 +2110,6 @@ findDMRsFromSeeds <- function(
     colnames(filtered_dmrs)[colnames(filtered_dmrs) == "seqnames"] <- "chr"
 
     array_based <- !is.null(array)
-    underlying_cpgs_num <- filtered_dmrs$end_cpg_ind - filtered_dmrs$start_cpg_ind + 1
 
     if (array_based && min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
@@ -2197,7 +2117,7 @@ findDMRsFromSeeds <- function(
 
         underlying_cpgs_num[underlying_cpgs_num == 0] <- 1
 
-        filtered_dmrs$seeds_num_adj <- ceiling(underlying_cpgs_num / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
+        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
 
         .log_success("CpG content calculated.", level = 2)
         adj_filtered_dmrs <- filtered_dmrs[
@@ -2233,9 +2153,7 @@ findDMRsFromSeeds <- function(
 
     annotated_dmrs <- filtered_dmrs
 
-    all_selected_cpgs <- unique(unlist(lapply(seq_len(nrow(annotated_dmrs)), function(i) {
-        seq(annotated_dmrs$start_cpg_ind[i], annotated_dmrs$end_cpg_ind[i])
-    })))
+    all_selected_cpgs <- unique(unlist(strsplit(annotated_dmrs$cpgs, ","), use.names = FALSE))
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
     .log_step("Calculating per-CpG beta statistics..", level = 2)
     beta_stats <- .calculateBetaStats(
@@ -2247,10 +2165,10 @@ findDMRsFromSeeds <- function(
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
-    dmrs_seeds_inds <- strsplit(annotated_dmrs$seeds_inds, ",")
+    dmrs_seeds<- strsplit(annotated_dmrs$seeds, ",")
     .log_step("Adding DMR delta-beta information..", level = 2)
 
-    dmr_seeds_list <- lapply(dmrs_seeds_inds, as.character)
+    dmr_seeds_list <- lapply(dmrs_seeds, as.character)
     dmr_seeds_indices <- unlist(dmr_seeds_list, use.names = FALSE)
     dmr_seeds_groups <- rep(seq_along(dmr_seeds_list), lengths(dmr_seeds_list))
 
@@ -2278,16 +2196,11 @@ findDMRsFromSeeds <- function(
     annotated_dmrs$controls_beta_min <- seeds_agg$controls_beta_min
     annotated_dmrs$controls_beta_max <- seeds_agg$controls_beta_max
 
-    dmr_cpgs_list <- lapply(seq_len(nrow(annotated_dmrs)), function(i) {
-        as.character(c(
-            seq.int(annotated_dmrs$start_cpg_ind[i], as.integer(dmrs_seeds_inds[[i]][1])),
-            seq.int(as.integer(dmrs_seeds_inds[[i]][length(dmrs_seeds_inds[[i]])]), annotated_dmrs$end_cpg_ind[i])
-        ))
-    })
-    dmr_cpgs_indices <- unlist(dmr_cpgs_list, use.names = FALSE)
+    dmr_cpgs_list <- strsplit(annotated_dmrs$cpgs, ",")
+    dmr_cpgs <- unlist(dmr_cpgs_list, use.names = FALSE)
     dmr_cpgs_groups <- rep(seq_along(dmr_cpgs_list), lengths(dmr_cpgs_list))
 
-    beta_stats_cpgs <- beta_stats[dmr_cpgs_indices, , drop = FALSE]
+    beta_stats_cpgs <- beta_stats[dmr_cpgs, , drop = FALSE]
     beta_stats_cpgs$dmr_id <- dmr_cpgs_groups
 
     cpgs_agg <- data.table::as.data.table(beta_stats_cpgs)[, .(
@@ -2313,63 +2226,6 @@ findDMRsFromSeeds <- function(
 
     .log_success("DMR delta-beta information added.", level = 2)
 
-
-    if (bed_provided) {
-        annotated_dmrs$chr <- chr_levels[annotated_dmrs$chr]
-        start_seeds <- as.integer(annotated_dmrs$start_seed)
-        end_seeds <- as.integer(annotated_dmrs$end_seed)
-        annotated_dmrs$start_seed <- paste0(chr_levels[beta_locs[start_seeds, "chr"]], ":", beta_locs[start_seeds, "start"])
-        annotated_dmrs$end_seed <- paste0(chr_levels[beta_locs[end_seeds, "chr"]], ":", beta_locs[end_seeds, "start"])
-        start_cpgs <- as.integer(annotated_dmrs$start_cpg)
-        end_cpgs <- as.integer(annotated_dmrs$end_cpg)
-        annotated_dmrs$start_cpg <- paste0(chr_levels[beta_locs[start_cpgs, "chr"]], ":", beta_locs[start_cpgs, "start"])
-        annotated_dmrs$end_cpg <- paste0(chr_levels[beta_locs[end_cpgs, "chr"]], ":", beta_locs[end_cpgs, "start"])
-        annotated_dmrs$upstream_cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
-            cpgs <- annotated_dmrs$upstream_cpgs[i]
-            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
-            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
-            if (length(cpg_inds) == 0) {
-                return("")
-            }
-            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
-        })
-        annotated_dmrs$downstream_cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
-            cpgs <- annotated_dmrs$downstream_cpgs[i]
-            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
-            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
-            if (length(cpg_inds) == 0) {
-                return("")
-            }
-            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
-        })
-        annotated_dmrs$cpgs <- sapply(seq_len(nrow(annotated_dmrs)), function(i) {
-            cpgs <- annotated_dmrs$cpgs[i]
-            cpg_inds <- suppressWarnings(as.integer(.splitCsvValues(cpgs)))
-            cpg_inds <- cpg_inds[!is.na(cpg_inds)]
-            if (length(cpg_inds) == 0) {
-                return("")
-            }
-            paste0(chr_levels[beta_locs[cpg_inds, "chr"]], ":", beta_locs[cpg_inds, "start"], collapse = ",")
-        })
-        annotated_dmrs$tmp_id <- seq_len(nrow(annotated_dmrs))
-        annotated_dmrs$seeds_unlisted <- sapply(annotated_dmrs$seeds, function(seed_ids) {
-            as.integer(unlist(strsplit(seed_ids, ",")))
-        })
-        # explode on seeds column to annotate
-        seeds_exploded <- annotated_dmrs[, "tmp_id", drop = FALSE]
-        seeds_exploded <- seeds_exploded[rep(seq_len(nrow(seeds_exploded)), times = sapply(annotated_dmrs$seeds_unlisted, length)), , drop = FALSE]
-        seeds_exploded$seeds_unlisted <- as.integer(unlist(annotated_dmrs$seeds_unlisted))
-        seeds_exploded$chr <- chr_levels[beta_locs[seeds_exploded$seeds_unlisted, "chr"]]
-        seeds_exploded$pos <- beta_locs[seeds_exploded$seeds_unlisted, "start"]
-        seeds_exploded$annotated_seed <- paste0(seeds_exploded$chr, ":", seeds_exploded$pos)
-        seeds_annotated_list <- split(seeds_exploded$annotated_seed, seeds_exploded$tmp_id)
-        annotated_dmrs$seeds <- sapply(seeds_annotated_list, function(x) {
-            paste(x, collapse = ",")
-        })
-        annotated_dmrs$seeds_unlisted <- NULL
-        annotated_dmrs$tmp_id <- NULL
-        annotated_dmrs$id <- paste0(annotated_dmrs$chr, ":", beta_locs[start_cpgs, "start"], "-", beta_locs[end_cpgs, "start"])
-    }
     annotated_dmrs_granges <- GenomicRanges::makeGRangesFromDataFrame(
         annotated_dmrs,
         keep.extra.columns = TRUE,
@@ -2383,27 +2239,7 @@ findDMRsFromSeeds <- function(
         annotated_dmrs_granges <- annotateDMRsWithGenes(annotated_dmrs_granges, genome = genome)
         .log_success("DMR annotation completed.", level = 1)
     }
-
-    if (!bed_provided) {
-        .log_step("Converting DMR start/end CpG indices to be relative to all CpGs...", level = 2)
-        sorted_locs <- beta_handler$getGenomicLocs()
-        start_cpg_inds <- mcols(annotated_dmrs_granges)$start_cpg_ind
-        end_cpg_inds <- mcols(annotated_dmrs_granges)$end_cpg_ind
-
-        mcols(annotated_dmrs_granges)$start_cpg_ind_abs <- match(rownames(beta_locs)[start_cpg_inds], rownames(sorted_locs))
-        mcols(annotated_dmrs_granges)$end_cpg_ind_abs <- match(rownames(beta_locs)[end_cpg_inds], rownames(sorted_locs))
-        all_seeds_inds <- as.numeric(unlist(strsplit(as.character(mcols(annotated_dmrs_granges)$seeds_inds), ","), use.names = FALSE))
-        all_seeds_abs <- match(rownames(beta_locs)[all_seeds_inds], rownames(sorted_locs))
-        seeds_lengths <- lengths(strsplit(as.character(mcols(annotated_dmrs_granges)$seeds_inds), ","))
-        seeds_groups <- rep(seq_along(seeds_lengths), seeds_lengths)
-        mcols(annotated_dmrs_granges)$seeds_inds_abs <- vapply(split(all_seeds_abs, seeds_groups), function(x) paste(x, collapse = ","), character(1), USE.NAMES = FALSE)
-
-        .log_success("DMR CpG indices conversion completed.", level = 2)
-    } else {
-        mcols(annotated_dmrs_granges)$start_cpg_ind_abs <- mcols(annotated_dmrs_granges)$start_cpg_ind
-        mcols(annotated_dmrs_granges)$end_cpg_ind_abs <- mcols(annotated_dmrs_granges)$end_cpg_ind
-        mcols(annotated_dmrs_granges)$seeds_inds_abs <- mcols(annotated_dmrs_granges)$seeds_inds
-    }
+    
     final_dmrs_granges <- annotated_dmrs_granges
     if (rank_dmrs) {
         .log_step("Ranking DMRs...", level = 1)

@@ -52,7 +52,7 @@ findDMRsFromSeedsCLI <- function(args) {
         genome = args$genome,
         max_pval = args$max_pval,
         max_lookup_dist = args$max_lookup_dist,
-        connectivity_window_bp = args$connectivity_window_bp,
+        expansion_window_bp = args$expansion_window_bp,
         max_bridge_seeds_gaps = args$max_bridge_seeds_gaps,
         max_bridge_extension_gaps = args$max_bridge_extension_gaps,
         min_seeds = args$min_seeds,

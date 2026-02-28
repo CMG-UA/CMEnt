@@ -372,14 +372,14 @@
 }
 
 
-.getBEDCacheDir <- function(output_dir) {
+.getTabixCacheDir <- function(output_dir) {
     if (is.null(output_dir)) {
         use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
         if (!is.null(use_cache) && !isFALSE(use_cache)) {
             if (is.character(use_cache)) {
                 cache_dir <- use_cache
             } else {
-                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
+                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "tabix_cache")
             }
         } else {
             cache_dir <- tempdir()
@@ -391,69 +391,55 @@
 }
 
 
-#' Create Genomic Location bigmemory::big.matrix Descriptor from Tabix BED File
+#' Create Genomic Location Registry from Tabix BED File
 #'
-#' @description This function creates a bigmemory::big.matrix descriptor from a Tabix-indexed BED file.
-#' It reads the genomic locations (chromosome, start, end) from the BED file in chunks and stores them in a bigmemory-backed matrix for efficient access.
-#' This is useful for handling large BED files without loading the entire dataset into memory.
+#' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
-#' @return Character. Path to the RDS file containing the bigmemory::big.matrix descriptor. Loadable with bigmemory::attach.big.matrix(readRDS()).
+#' @return Returns a Registry object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000) { # nolint
-    cache_dir <- .getBEDCacheDir(output_dir)
-    options(bigmemory.allow.dimnames = TRUE)
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE) { # nolint
+    cache_dir <- .getTabixCacheDir(output_dir)
     if (is.null(hash)) {
         hash <- .getFileHash(input_tabix)
     }
-    backing_file <- paste0("bed_locations_", hash)
-    descriptor_file <- paste0("bed_locations_", hash, ".desc")
-    backing_path_full <- file.path(cache_dir, backing_file)
-    descriptor_path_full <- file.path(cache_dir, descriptor_file)
+    cache_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
 
-    if (file.exists(backing_path_full)) {
-        file.remove(backing_path_full)
+    if (file.exists(cache_file) && getOption("DMRsegal.use_tabix_cache", FALSE)) {
+        return (readRDS(cache_file))
     }
-    if (file.exists(descriptor_path_full)) {
-        file.remove(descriptor_path_full)
-    }
-    if (is.null(num_rows)) {
-        # Quickly read number of rows in BED file
-        tmp_con <- gzfile(input_tabix, "r")
-        num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
-        close(tmp_con)
-    }
-    sorted_locs <- bigmemory::big.matrix(
-        nrow = num_rows, ncol = 3,
-        type = "integer",
-        backingfile = backing_file,
-        backingpath = cache_dir,
-        descriptorfile = descriptor_file,
-        dimnames = list(NULL, c("chr", "start", "end"))
+    if (!use_id_as_rownames) {
+    sorted_locs <- getRegistry(
+        input_tabix,
+        select = c("#chrom", "start", "end"),
+        rename = c("#chrom" = "chr"),
+        derive = list(
+            index = list(
+                cols = c("chr", "start"),
+                fun = function(chr, start) paste0(chr, ":", start)
+            )
+        ),
+        indices = "index",
+        chunk_size = chunk_size
     )
-
-
-    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), "r")
-    bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
-    count <- 0
-    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
-        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
-        colnames(bed_data) <- bed_header
-        loc_data <- bed_data[, c("#chrom", "start", "end"), drop = FALSE]
-        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
-
-        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
-        count <- count + nrow(loc_data)
+    } else {
+        sorted_locs <- getRegistry(
+            input_tabix,
+            select = c("#chrom", "start", "end", "id"),
+            rename = c("#chrom" = "chr"),
+            indices = "id",
+            chunk_size = chunk_size
+        )
     }
-    close(con)
-    rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
-    locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
-    saveRDS(bigmemory::describe(sorted_locs), file = locations_file)
-    locations_file
+    if(getOption("DMRsegal.use_tabix_cache", FALSE)){
+        locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
+        saveRDS(sorted_locs, file = locations_file)
+    }
+    sorted_locs
 }
 
 
@@ -476,7 +462,7 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#'   a default cache directory at `~/.cache/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
 #' @param chr_levels Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.
@@ -496,7 +482,6 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #'   \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
 #'   \item Converts chromosomes to integer factors for efficient sorting
 #'   \item Creates a tabix-indexed compressed file for fast random access
-#'   \item Builds a bigmemory-backed matrix of genomic locations for efficient lookups
 #'   \item Caches all processed files based on input file hash for reuse
 #' }
 #'
@@ -504,8 +489,6 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' \itemize{
 #'   \item `bed_beta_<hash>.bed.gz`: Tabix-indexed BED file with methylation values
 #'   \item `bed_beta_<hash>.bed.gz.tbi`: Tabix index file
-#'   \item `bed_locations_<hash>`: bigmemory backing file for genomic locations
-#'   \item `bed_locations_<hash>.desc`: bigmemory descriptor file
 #'   \item `bed_locations_<hash>.rds`: Serialized descriptor for loading locations
 #' }
 #'
@@ -516,7 +499,7 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' @section Memory Management:
 #' The function uses chunk-based processing to handle large BED files without
 #' loading the entire dataset into memory. The genomic locations are stored in
-#' a bigmemory-backed matrix that can exceed available RAM by using disk-backed
+#' a Registry object that can exceed available RAM by using disk-backed
 #' storage.
 #'
 #' @examples
@@ -576,7 +559,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         stop("tabix/bgzip not found in PATH. Cannot process BED file.")
     }
 
-    cache_dir <- .getBEDCacheDir(output_dir)
+    cache_dir <- .getTabixCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -661,7 +644,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         chunk_size = chunk_size,
         njobs = 1
     )
-    locations_file <- genomicLocsFromTabixToDescriptor(
+    locations <- genomicLocsFromTabix(
         tabix_file_path,
         num_rows = num_rows,
         hash = hash,
@@ -672,7 +655,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 
     list(
         tabix_file = tabix_file_path,
-        locations_file = locations_file
+        locations = locations
     )
 }
 
@@ -816,7 +799,7 @@ convertBetaToTabix <- function(beta_file,
                 withr::defer(unlink(temp_bed))
 
                 # Write header to temp BED file with 6 mandatory BED columns
-                bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
+                bed_header <- c("#chrom", "start", "end", "id", "score", "strand", col_names[-1])
                 writeLines(paste(bed_header, collapse = "\t"), temp_bed)
 
                 # Process file in chunks to avoid memory issues
@@ -1327,7 +1310,6 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
-        try(locs <- bigmemory::attach.big.matrix(locs), silent = TRUE)
         return(locs)
     }
     cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
@@ -1418,7 +1400,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     }
     locs <- as.data.frame(locs)
     colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
-    locs <- locs[orderByLoc(rownames(locs), genomic_locs = as.data.frame(locs)), ]
+    ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
+    locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
     if (!"start" %in% colnames(locs)) {
         locs[, "start"] <- locs[, "start"]
@@ -1450,7 +1433,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             )
         }
     )
-    locs
+    locs$name <- rownames(locs)
+    getRegistry(locs, "name")
 }
 
 
@@ -1485,7 +1469,7 @@ orderByLoc <- function(x,
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
-    stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
+    order(match(x, rownames(genomic_locs)), method = "radix")
 }
 
 #' @keywords internal
@@ -1530,122 +1514,6 @@ orderByLoc <- function(x,
     }
     step <- ceiling(length(indices) / max_sup_cpgs_per_dmr_side)
     indices[seq.int(1L, length(indices), by = step)]
-}
-
-
-#' @keywords internal
-#' @noRd
-.getSupportingSitesFromColumns <- function(dmrs,
-                                           max_sup_cpgs_per_dmr_side = NULL,
-                                           separate_by_section = TRUE,
-                                           use_absolute_indices = TRUE,
-                                           beta_locs = NULL) {
-    md <- if (inherits(dmrs, "GRanges")) {
-        as.data.frame(S4Vectors::mcols(dmrs), stringsAsFactors = FALSE)
-    } else if (is.data.frame(dmrs)) {
-        dmrs
-    } else {
-        stop("dmrs must be a GRanges or data.frame object")
-    }
-    n_dmrs <- nrow(md)
-    if (n_dmrs == 0) {
-        return(list())
-    }
-
-    get_col <- function(col_name) {
-        if (col_name %in% colnames(md)) {
-            md[[col_name]]
-        } else {
-            rep(NA_character_, n_dmrs)
-        }
-    }
-
-    if (use_absolute_indices) {
-        start_col <- "start_cpg_ind_abs"
-        end_col <- "end_cpg_ind_abs"
-        seed_inds_col <- "seeds_inds_abs"
-        upstream_inds_col <- "upstream_cpgs_inds_abs"
-        downstream_inds_col <- "downstream_cpgs_inds_abs"
-    } else {
-        start_col <- "start_cpg_ind"
-        end_col <- "end_cpg_ind"
-        seed_inds_col <- "seeds_inds"
-        upstream_inds_col <- "upstream_cpgs_inds"
-        downstream_inds_col <- "downstream_cpgs_inds"
-    }
-
-    starts <- suppressWarnings(as.integer(get_col(start_col)))
-    ends <- suppressWarnings(as.integer(get_col(end_col)))
-
-    seeds_inds <- lapply(get_col(seed_inds_col), .splitCsvIndices)
-    upstream_inds <- lapply(get_col(upstream_inds_col), .splitCsvIndices)
-    downstream_inds <- lapply(get_col(downstream_inds_col), .splitCsvIndices)
-
-    seeds_ids <- get_col("seeds")
-    upstream_ids <- get_col("upstream_cpgs")
-    downstream_ids <- get_col("downstream_cpgs")
-
-    map_ids_to_indices <- function(ids) {
-        if (is.null(beta_locs)) {
-            return(integer(0))
-        }
-        ids <- .splitCsvValues(ids)
-        if (length(ids) == 0) {
-            return(integer(0))
-        }
-        inds <- suppressWarnings(as.integer(idToGenomicLocsIndex(ids, beta_locs)))
-        inds[!is.na(inds)]
-    }
-
-    dmrs_cpgs <- vector("list", n_dmrs)
-    for (i in seq_len(n_dmrs)) {
-        seed_idx <- seeds_inds[[i]]
-        if (length(seed_idx) == 0) {
-            seed_idx <- map_ids_to_indices(seeds_ids[[i]])
-        }
-        if (length(seed_idx) == 0 && !is.na(starts[[i]]) && !is.na(ends[[i]]) && starts[[i]] <= ends[[i]]) {
-            seed_idx <- seq.int(starts[[i]], ends[[i]])
-        }
-
-        upstream_idx <- upstream_inds[[i]]
-        if (length(upstream_idx) == 0) {
-            upstream_idx <- map_ids_to_indices(upstream_ids[[i]])
-        }
-        downstream_idx <- downstream_inds[[i]]
-        if (length(downstream_idx) == 0) {
-            downstream_idx <- map_ids_to_indices(downstream_ids[[i]])
-        }
-
-        if (length(seed_idx) > 0) {
-            start_seed <- seed_idx[[1]]
-            end_seed <- seed_idx[[length(seed_idx)]]
-            if (length(upstream_idx) == 0 && !is.na(starts[[i]]) && starts[[i]] < start_seed) {
-                upstream_idx <- seq.int(starts[[i]], start_seed - 1L)
-            }
-            if (length(downstream_idx) == 0 && !is.na(ends[[i]]) && end_seed < ends[[i]]) {
-                downstream_idx <- seq.int(end_seed + 1L, ends[[i]])
-            }
-        }
-
-        upstream_idx <- as.integer(upstream_idx[!is.na(upstream_idx)])
-        seed_idx <- as.integer(seed_idx[!is.na(seed_idx)])
-        downstream_idx <- as.integer(downstream_idx[!is.na(downstream_idx)])
-
-        upstream_idx <- .downsampleFlankIndices(upstream_idx, max_sup_cpgs_per_dmr_side)
-        downstream_idx <- .downsampleFlankIndices(downstream_idx, max_sup_cpgs_per_dmr_side)
-
-        if (separate_by_section) {
-            dmrs_cpgs[[i]] <- list(
-                upstream = upstream_idx,
-                seeds = seed_idx,
-                downstream = downstream_idx
-            )
-        } else {
-            dmrs_cpgs[[i]] <- as.integer(unique(c(upstream_idx, seed_idx, downstream_idx)))
-        }
-    }
-
-    dmrs_cpgs
 }
 
 
@@ -2261,27 +2129,6 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
     dmrs
 }
 
-idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
-    if (bigmemory::is.big.matrix(genomic_locs)) {
-        numeric_mask <- !is.na(as.numeric(cpg_ids))
-        counts <- sum(numeric_mask)
-        if (counts != length(cpg_ids) && counts != 0) {
-            stop("When using big.matrix for genomic_locs, cpg_ids must be all numeric or all 'chr:pos' IDs. Mixed types are not allowed. Provided cpg_ids have ", counts, " numeric IDs and ", length(cpg_ids) - counts, " non-numeric IDs.")
-        }
-        is_numeric <- counts == length(cpg_ids)
-
-        if (is_numeric) {
-            indices <- as.numeric(cpg_ids)
-        } else {
-            indices <- match(cpg_ids, rownames(genomic_locs))
-        }
-    } else {
-        indices <- match(cpg_ids, rownames(genomic_locs))
-    }
-    indices
-}
-
-
 convertToGRanges <- function(obj, genome) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
@@ -2400,20 +2247,14 @@ convertToGRanges <- function(obj, genome) {
     if (sum(case_mask, na.rm = TRUE) == 0L || sum(ctrl_mask, na.rm = TRUE) == 0L) {
         return(base_threshold)
     }
-    if (bigmemory::is.big.matrix(seeds_beta)) {
-        max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
-        max_rows <- max(1L, max_rows)
-        end_row <- min(nrow(seeds_beta), max_rows)
-        beta_mat <- as.matrix(bigmemory::sub.big.matrix(seeds_beta, firstRow = 1L, lastRow = end_row))
-    } else {
-        beta_mat <- as.matrix(seeds_beta)
-        max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
-        max_rows <- max(1L, max_rows)
-        if (nrow(beta_mat) > max_rows) {
-            sel <- unique(as.integer(round(seq(1, nrow(beta_mat), length.out = max_rows))))
-            beta_mat <- beta_mat[sel, , drop = FALSE]
-        }
+    beta_mat <- as.matrix(seeds_beta)
+    max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
+    max_rows <- max(1L, max_rows)
+    if (nrow(beta_mat) > max_rows) {
+        sel <- unique(as.integer(round(seq(1, nrow(beta_mat), length.out = max_rows))))
+        beta_mat <- beta_mat[sel, , drop = FALSE]
     }
+
     if (identical(aggfun, mean)) {
         cases <- matrixStats::rowMeans2(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
         ctrls <- matrixStats::rowMeans2(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
