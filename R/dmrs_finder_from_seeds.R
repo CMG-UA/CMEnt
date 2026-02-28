@@ -32,7 +32,7 @@
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
-#' @param connectivity_window_bp Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
+#' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
@@ -141,11 +141,11 @@
 
 #' @keywords internal
 #' @noRd
-.buildConnectivityWindowsFromDMRs <- function(dmrs, connectivity_window_bp) {
-    if (is.null(dmrs) || nrow(dmrs) == 0L || !is.finite(connectivity_window_bp) || connectivity_window_bp <= 0) {
+.buildConnectivityWindowsFromDMRs <- function(dmrs, expansion_window) {
+    if (is.null(dmrs) || nrow(dmrs) == 0L || !is.finite(expansion_window) || expansion_window <= 0) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
-    flank <- as.numeric(connectivity_window_bp) / 2
+    flank <- as.numeric(expansion_window) / 2
     windows <- data.frame(
         chr = as.character(dmrs$chr),
         start = pmax(1, as.numeric(dmrs$start_seed_pos) - flank),
@@ -1132,7 +1132,7 @@
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
-#' @param connectivity_window_bp Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
+#' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
@@ -1175,7 +1175,7 @@ findDMRsFromSeeds <- function(
     ntries = 200L,
     mid_p = FALSE,
     max_lookup_dist = 10000,
-    connectivity_window_bp = "auto",
+    expansion_window = "auto",
     max_bridge_seeds_gaps = 1L,
     max_bridge_extension_gaps = 1L,
     min_seeds = 2,
@@ -1382,11 +1382,11 @@ findDMRsFromSeeds <- function(
     if (!is.logical(adaptive_min_cpg_delta_beta) || length(adaptive_min_cpg_delta_beta) != 1 || is.na(adaptive_min_cpg_delta_beta)) {
         stop("adaptive_min_cpg_delta_beta must be TRUE or FALSE.")
     }
-    if (connectivity_window_bp == "auto") {
-        connectivity_window_bp <- if (array_based) -1 else 10000
+    if (expansion_window == "auto") {
+        expansion_window <- if (array_based) -1 else 10000
     }
-    if (!is.numeric(connectivity_window_bp) || length(connectivity_window_bp) != 1 || is.na(connectivity_window_bp)) {
-        stop("connectivity_window_bp must be a numeric scalar.")
+    if (!is.numeric(expansion_window) || length(expansion_window) != 1 || is.na(expansion_window)) {
+        stop("expansion_window must be a numeric scalar.")
     }
     if (!is.numeric(max_bridge_seeds_gaps) || length(max_bridge_seeds_gaps) != 1 || is.na(max_bridge_seeds_gaps) || max_bridge_seeds_gaps < 0) {
         stop("max_bridge_seeds_gaps must be a non-negative integer.")
@@ -1817,10 +1817,10 @@ findDMRsFromSeeds <- function(
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
     } else {
         connectivity_windows <- NULL
-        if (is.finite(connectivity_window_bp) && connectivity_window_bp > 0) {
+        if (is.finite(expansion_window) && expansion_window > 0) {
             connectivity_windows <- .buildConnectivityWindowsFromDMRs(
                 dmrs = dmrs,
-                connectivity_window_bp = connectivity_window_bp
+                expansion_window = expansion_window
             )
             if (nrow(connectivity_windows) > 0L) {
                 .log_info(
@@ -1834,7 +1834,7 @@ findDMRsFromSeeds <- function(
                 .log_info("No connectivity windows were generated; Stage 2 will return disconnected CpGs outside chromosome termini.", level = 2)
             }
         } else {
-            .log_info("Stage 2 connectivity computed genome-wide (connectivity_window_bp <= 0).", level = 2)
+            .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
         .log_step("Building connectivity array..", level = 2)
         connectivity_array <- NULL

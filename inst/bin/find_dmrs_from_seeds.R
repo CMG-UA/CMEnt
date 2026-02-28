@@ -25,7 +25,7 @@ option_list <- list(
     make_option("--beta_row_names_file", default = NULL),
     make_option("--max_pval", default = 0.05, type = "double", help = "The maximum p-value to consider positional entanglement, defaults to 0.05"),
     make_option(
-        "--expansion_window_bp", default = "auto",
+        "--expansion_window", default = "auto",
         help = "Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets."
     ),
     make_option("--max_bridge_seeds_gaps", default = 1, type = "integer", help = "Maximum number of consecutive failed seed edges to bridge during Stage 1 when p-value-driven and flanked by connected edges (default: 1)."),

@@ -246,8 +246,8 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
         max_pval = 1e-5,
         entanglement = "strong",
         aggfun = median,
-        pval_mode = "empirical",
-        empirical_strategy = "permutations",
+        pval_mode = c(g1 = "empirical", g2 = "empirical"),
+        empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
         ntries = 50,
         mid_p = FALSE
     )
@@ -262,8 +262,8 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
         max_pval = 1e-5,
         entanglement = "weak",
         aggfun = median,
-        pval_mode = "empirical",
-        empirical_strategy = "permutations",
+        pval_mode = c(g1 = "empirical", g2 = "empirical"),
+        empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
         ntries = 50,
         mid_p = FALSE
     )
