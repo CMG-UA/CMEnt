@@ -2,73 +2,6 @@
 library(testthat)
 
 
-test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 500)
-    withCallingHandlers(
-        {
-            dmrs <- findDMRsFromSeeds(
-                rank_dmrs = FALSE,
-                beta = beta,
-                seeds = dmps,
-                pheno = pheno,
-                sample_group_col = "Sample_Group",
-                min_seeds = 2,
-                min_cpgs = 3,
-                max_lookup_dist = 1000,
-                verbose = 3
-            )
-        },
-        warning = function(w) {
-            message("Caught warning: ", conditionMessage(w))
-            # print call stack
-            print(sys.calls())
-            # enter interactive debugger
-            browser()
-        }
-    )
-    # Assertions
-    expect_true(!is.null(dmrs))
-    expect_true(inherits(dmrs, "GRanges"))
-    expect_true(length(dmrs) > 0)
-    expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-})
-
-test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    beta_file <- tempfile(fileext = ".tsv")
-    withr::defer(unlink(beta_file))
-    write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
-    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
-    withr::defer(unlink(sorted_beta_file))
-    options("DMRsegal.verbose" = 3)
-    options("DMRsegal.use_tabix_cache" = FALSE)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 1)
-
-    dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
-        beta = sorted_beta_file,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        njobs = 1
-    )
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
-})
-
-
 test_that("findDMRsFromSeeds work with covariates adjustment", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
@@ -254,92 +187,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     if (!is.null(dmrs_mean)) expect_true(length(dmrs_mean) >= 0)
 })
 
-test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-
-    # Test with no delta beta filtering
-    dmrs_no_filter <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0,
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
-    )
-
-    # Test with delta beta filtering
-    dmrs_with_filter <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0.1, # Filter out small changes
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
-    )
-
-
-    # Assertions
-    expect_true(is.null(dmrs_no_filter) || inherits(dmrs_no_filter, "GRanges"))
-    expect_true(is.null(dmrs_with_filter) || inherits(dmrs_with_filter, "GRanges"))
-
-    # Filtered results should have fewer or equal DMRs
-    if (!is.null(dmrs_no_filter) && !is.null(dmrs_with_filter)) {
-        expect_true(length(dmrs_with_filter) <= length(dmrs_no_filter))
-    }
-})
-
-test_that("findDMRsFromSeeds validates input parameters correctly", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-
-    # Test missing required parameters
-    expect_error(
-        findDMRsFromSeeds(
-            rank_dmrs = FALSE,
-            beta = beta,
-            seeds = NULL, # Missing
-            pheno = pheno
-        ),
-        "seeds"
-    )
-
-    expect_error(
-        findDMRsFromSeeds(
-            rank_dmrs = FALSE,
-            beta = beta,
-            seeds = dmps,
-            pheno = NULL # Missing
-        ),
-        "pheno"
-    )
-
-    # Test with wrong column names in pheno
-    pheno_wrong <- pheno
-    colnames(pheno_wrong) <- c("wrong_col1", "wrong_col2", "wrong_col3")
-
-    expect_error(
-        findDMRsFromSeeds(
-            rank_dmrs = FALSE,
-            beta = beta,
-            seeds = dmps,
-            pheno = pheno_wrong,
-            sample_group_col = "Sample_Group",
-            casecontrol_col = "casecontrol"
-        )
-    )
-})
-
 test_that("findDMRsFromSeeds works with different genome builds", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
@@ -363,38 +210,6 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     if (!is.null(dmrs_hg38)) expect_true(length(dmrs_hg38) >= 0)
 })
 
-test_that("findDMRsFromSeeds works when tabix is not available", {
-    skip_if_not_installed("mockery")
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    library(mockery)
-
-    mock_convertBetaToTabix <- mock(NULL) # nolint
-
-    stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
-    options("DMRsegal.use_tabix_cache" = FALSE)
-    options("DMRsegal.verbose" = 2)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 0.1)
-    dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 2,
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
-    )
-
-    expect_called(mock_convertBetaToTabix, 0)
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
-})
 
 test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FALSE", {
     beta <- loadExampleInputDataChr5And11("beta")

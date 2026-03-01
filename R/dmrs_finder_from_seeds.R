@@ -338,7 +338,7 @@
         }
         pair_ranges <- vector("list", length(unique(beta_chr)))
         pair_n <- 0L
-        beta_start <- as.integer(round(as.numeric(beta_locs[, "start"])))
+        beta_start <- as.integer(beta_locs[, "start"])
         for (chr in intersect(unique(wins$chr), unique(beta_chr))) {
             chr_inds <- which(beta_chr == chr)
             if (length(chr_inds) < 2L) {
@@ -1432,6 +1432,11 @@ findDMRsFromSeeds <- function(
     }
     if (expansion_window == "auto") {
         expansion_window <- if (array_based) -1 else 10000
+        if (array_based) {
+            .log_info("Setting expansion_window to -1 for array-based dataset, meaning genome-wide connectivity will be computed during expansion.", level = 2)
+        } else {
+            .log_info("Setting expansion_window to 10000 for sequencing-based dataset, meaning connectivity during expansion will only be computed within 10 kb windows around seed-derived DMRs.", level = 2)
+        }
     }
     if (!is.numeric(expansion_window) || length(expansion_window) != 1 || is.na(expansion_window)) {
         stop("expansion_window must be a numeric scalar.")
@@ -1658,7 +1663,7 @@ findDMRsFromSeeds <- function(
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = beta_col_names_detection,
             max_pval = max_pval,
-            min_delta_beta = resolved_min_cpg_delta_beta,
+            min_delta_beta = 0, # delta-beta filtering is applied later during the extension
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             chunk_size = chunk_size,

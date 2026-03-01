@@ -18,7 +18,7 @@ is_bsseq <- function(obj) {
 #' @importFrom GenomicRanges granges
 #' @importFrom GenomeInfoDb seqnames
 #' @importFrom IRanges start end
-#' @importFrom bsseq getMeth sampleNames
+#' @importFrom bsseq sampleNames
 #' @keywords internal
 BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
@@ -523,17 +523,59 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (!is.null(private$.bsseq_object)) {
                 .log_step("Extracting beta values from BSseq object..", level = 4)
+                all_row_names <- self$getBetaRowNames()
                 if (!is.null(chr)) {
-                    regions <- chr
+                    all_locs <- self$getBetaLocs()
+                    chr_rows <- rownames(all_locs)[all_locs$chr %in% chr]
+                    selected_row_names <- intersect(chr_rows, all_row_names)
+                    row_idx <- match(selected_row_names, all_row_names)
+                } else if (!is.null(row_names)) {
+                    if (is.numeric(row_names)) {
+                        row_idx <- row_names
+                        selected_row_names <- all_row_names[row_idx]
+                    } else {
+                        if (allow_missing) {
+                            selected_row_names <- intersect(row_names, all_row_names)
+                        } else {
+                            missing_rows <- setdiff(row_names, all_row_names)
+                            if (length(missing_rows) > 0) {
+                                stop(
+                                    "Requested CpG sites not found in BSseq object: ",
+                                    paste(missing_rows, collapse = ", ")
+                                )
+                            }
+                            selected_row_names <- row_names
+                        }
+                        row_idx <- match(selected_row_names, all_row_names)
+                    }
                 } else {
-                    regions <- private$.regionsFromRowNames(row_names)
+                    selected_row_names <- all_row_names
+                    row_idx <- seq_along(all_row_names)
                 }
-                beta_mat <- getMeth(private$.bsseq_object, regions=regions, what="perBase", type = "raw")
-                # the result is a list of delayedMatrix, with each list element corresponding to a region. We need to rbind them together
-                beta_subset <- do.call(rbind, lapply(beta_mat, as.matrix))
-                if (!is.null(col_names)) {
-                    beta_subset <- beta_subset[, col_names, drop = FALSE]
+
+                all_col_names <- self$getBetaColNames()
+                if (is.null(col_names)) {
+                    selected_col_names <- all_col_names
+                    col_idx <- seq_along(all_col_names)
+                } else {
+                    missing_cols <- setdiff(col_names, all_col_names)
+                    if (length(missing_cols) > 0) {
+                        stop(
+                            "Requested samples not found in BSseq object: ",
+                            paste(missing_cols, collapse = ", ")
+                        )
+                    }
+                    selected_col_names <- col_names
+                    col_idx <- match(selected_col_names, all_col_names)
                 }
+
+                m_assay <- SummarizedExperiment::assay(private$.bsseq_object, "M", withDimnames = FALSE)
+                cov_assay <- SummarizedExperiment::assay(private$.bsseq_object, "Cov", withDimnames = FALSE)
+                beta_subset <- as.matrix(
+                    m_assay[row_idx, col_idx, drop = FALSE] / cov_assay[row_idx, col_idx, drop = FALSE]
+                )
+                rownames(beta_subset) <- selected_row_names
+                colnames(beta_subset) <- selected_col_names
             }
 
             .log_success("Beta values subsetted: ", nrow(beta_subset),
