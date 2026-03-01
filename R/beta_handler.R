@@ -428,43 +428,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 stop("Cannot specify both row_names and chr for subsetting.")
             }
             self$validate()
-            if (!is.null(private$.bsseq_object)) {
-                .log_step("Extracting beta values from BSseq object..", level = 3)
-                beta_mat <- getMeth(private$.bsseq_object, type = "raw")
-                if (all(is.numeric(row_names))) {
-                    return(beta_mat[row_names, , drop = FALSE])
-                }
-                all_row_names <- self$getBetaRowNames()
-                rownames(beta_mat) <- all_row_names
-                if (!is.null(row_names)) {
-                    if (allow_missing) {
-                        row_names <- intersect(row_names, all_row_names)
-                    } else {
-                        missing_rows <- setdiff(row_names, all_row_names)
-                        if (length(missing_rows) > 0) {
-                            stop(
-                                "Requested CpG sites not found in BSseq object: ",
-                                paste(missing_rows, collapse = ", ")
-                            )
-                        }
-                    }
-                    beta_mat <- beta_mat[row_names, , drop = FALSE]
-                } else if (!is.null(chr)) {
-                    .log_step("Subsetting by chromosome from BSseq object..", level = 3)
-                    all_locs <- self$getBetaLocs()
-                    chr_rows <- rownames(all_locs)[all_locs$chr %in% chr]
-                    chr_rows <- intersect(chr_rows, rownames(beta_mat))
-                    beta_mat <- beta_mat[chr_rows, , drop = FALSE]
-                }
-                if (!is.null(col_names)) {
-                    beta_mat <- beta_mat[, col_names, drop = FALSE]
-                }
-                .log_success("Beta values extracted: ", nrow(beta_mat),
-                    " CpGs x ", ncol(beta_mat), " samples",
-                    level = 3
-                )
-                return(beta_mat)
-            }
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (!is.null(row_names)) {
@@ -534,23 +497,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
-            } else {
+            }
+            if (!is.null(private$.tabix_file)) {
                 .log_step("Subsetting from tabix file..", level = 3)
                 if (!is.null(chr)) {
                     regions <- chr
                 } else {
-                    if (is.null(row_names)) {
-                        locs <- self$getBetaLocs()
-                    } else {
-                        locs <- self$getBetaLocs()[row_names, , drop = FALSE]
-                    }
-                    regions <- data.frame(
-                        chr = as.character(locs[, "chr"]),
-                        start = as.integer(locs[, "start"]),
-                        end = as.integer(locs[, "start"]) + 1,
-                        name = rownames(locs)
-                    )
-
+                    regions <- private$.regionsFromRowNames(row_names)
                 }
                 beta_subset <- bedr::tabix(regions, private$.tabix_file,
                     check.valid = FALSE,
@@ -564,6 +517,20 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 rownames(beta_subset) <- beta_subset$name
                 beta_subset <- beta_subset[, 7:(ncol(beta_subset) - 1), drop = FALSE]
                 beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
+                if (!is.null(col_names)) {
+                    beta_subset <- beta_subset[, col_names, drop = FALSE]
+                }
+            }
+            if (!is.null(private$.bsseq_object)) {
+                .log_step("Extracting beta values from BSseq object..", level = 4)
+                if (!is.null(chr)) {
+                    regions <- chr
+                } else {
+                    regions <- private$.regionsFromRowNames(row_names)
+                }
+                beta_mat <- getMeth(private$.bsseq_object, regions=regions, what="perBase", type = "raw")
+                # the result is a list of delayedMatrix, with each list element corresponding to a region. We need to rbind them together
+                beta_subset <- do.call(rbind, lapply(beta_mat, as.matrix))
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
@@ -586,7 +553,20 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .tabix_file = NULL,
         .beta_file_in_memory = NULL,
         .bsseq_object = NULL,
-        .self_contained = FALSE
+        .self_contained = FALSE,
+        .regionsFromRowNames = function(row_names) {
+            if (is.null(row_names)) {
+                locs <- self$getBetaLocs()
+            } else {
+                locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+            }
+            regions <- data.frame(
+                chr = as.character(locs[, "chr"]),
+                start = as.integer(locs[, "start"]),
+                end = as.integer(locs[, "start"]) + 1,
+                name = rownames(locs)
+            )
+        }
     )
 )
 

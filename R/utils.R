@@ -2143,6 +2143,38 @@ convertToDataFrame <- function(gr) {
 .already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
 #' @keywords internal
 #' @noRd
+.cleanupParallelState <- function() {
+    # Reset plan first so current backend gets torn down by future.
+    tryCatch(
+        future::plan(future::sequential),
+        error = function(e) invisible(NULL)
+    )
+
+    # Optional deep cleanup for stale multisession clusters.
+    # Disabled by default because stopping dead clusters may block.
+    if (isTRUE(getOption("DMRsegal.force_cluster_cleanup", FALSE))) {
+        reg <- tryCatch(
+            getFromNamespace("clusterRegistry", "future"),
+            error = function(e) NULL
+        )
+        if (is.list(reg) && is.function(reg$stopCluster)) {
+            timeout_sec <- getOption("DMRsegal.cluster_cleanup_timeout_sec", 2)
+            # Keep cleanup bounded so we don't stall before any progress is shown.
+            setTimeLimit(elapsed = timeout_sec, transient = TRUE)
+            on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
+            tryCatch(
+                reg$stopCluster(),
+                error = function(e) invisible(NULL)
+            )
+        }
+    }
+
+    gc(verbose = FALSE)
+    invisible()
+}
+
+#' @keywords internal
+#' @noRd
 .setupParallel <- function() {
     if (!dir.exists(.already_logged_dir)) {
         dir.create(.already_logged_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2166,7 +2198,7 @@ convertToDataFrame <- function(gr) {
             }
             future::plan(future::multisession, workers = njobs)
         }
-        withr::defer(future::plan(future::sequential))
+        withr::defer(future::plan(future::sequential), envir = parent.frame())
     } else {
         if (!file.exists(.already_logged_file)) {
             .log_info("Using sequential processing (njobs=1)", level = 2)

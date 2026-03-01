@@ -53,6 +53,7 @@ library(GenomicRanges)
 library(progressr)
 
 progressr::handlers("cli")
+options(progressr.enable = TRUE)
 output_dir <- "dmrsegaldata"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 ```
@@ -166,11 +167,16 @@ names(dmps_gr) <- rownames(dmps)
 
 ## Method 1: DMRsegal
 
-```{r DMRsegal}
+```{r DMRsegal, message=TRUE}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
-    options("DMRsegal.verbose" = 1)
-    options("DMRsegal.njobs" = 8)
+    dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.njobs" = dmrsegal_njobs)
+    cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
+    cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
+    cat("Starting DMRsegal::findDMRsFromSeeds()...\n")
+    flush.console()
     start_time <- Sys.time()
     dmrs_dmrsegal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
         beta = beta_handler,
@@ -187,13 +193,18 @@ if (!file.exists(dmrsegal_file)) {
         max_pval = 0.05,
         pval_mode = "parametric",
         entanglement = "weak",
-        rank_dmrs = TRUE
+        rank_dmrs = TRUE,
+        chunk_size = 50000L,
+        njobs = dmrsegal_njobs,
+        verbose = 3
     ))
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
     saveRDS(list(dmrs = dmrs_dmrsegal, time = time_dmrsegal), dmrsegal_file)
     rm(beta_handler)
 } else {
+    cat(sprintf("Using cached DMRsegal result: %s\n", dmrsegal_file))
+    flush.console()
     ret <- readRDS(dmrsegal_file)
     dmrs_dmrsegal <- ret$dmrs
     time_dmrsegal <- ret$time

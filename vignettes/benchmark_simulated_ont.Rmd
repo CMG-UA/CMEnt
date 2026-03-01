@@ -58,6 +58,7 @@ library(SummarizedExperiment)
 library(S4Vectors)
 
 progressr::handlers("cli")
+options(progressr.enable = TRUE)
 output_dir <- "simulated_ont"
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 ```
@@ -365,14 +366,20 @@ if (!is.null(rank_col) && length(seed_gr) > 0) {
 
 ## Method 1: DMRsegal
 
-```{r dmrsegal}
+```{r dmrsegal, message=TRUE}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
 if (!file.exists(dmrsegal_file)) {
-    options("DMRsegal.njobs" = 16)
+    dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    options("DMRsegal.njobs" = dmrsegal_njobs)
+    options("DMRsegal.verbose" = 3)
+    cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
+    cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
     cat(sprintf("CpGs in beta matrix: %s\n", format(nrow(sim_bs), big.mark = ",")))
     cat(sprintf("Samples in beta matrix: %d\n", ncol(sim_bs)))
     cat(sprintf("Seed CpGs: %s\n", format(nrow(sig_seeds), big.mark = ",")))
+    cat("Starting DMRsegal::findDMRsFromSeeds()...\n")
+    flush.console()
     start_time <- Sys.time()
 
     beta_handler <- DMRsegal::getBetaHandler(
@@ -392,16 +399,20 @@ if (!file.exists(dmrsegal_file)) {
             min_cpgs = 3,
             max_lookup_dist = 10000,
             max_pval = 0.05,
-            chunk_size = 1e6, # Override default chunk size for large BSseq matrices.
+            chunk_size = 1e6L,
             entanglement = "weak",
             annotate_with_genes = FALSE,
             rank_dmrs = TRUE,
+            njobs = dmrsegal_njobs,
+            verbose = 3
         )
     )
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
     saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)
 } else {
+    cat(sprintf("Using cached DMRsegal result: %s\n", dmrsegal_file))
+    flush.console()
     ret <- readRDS(dmrsegal_file)
     dmrs_segal <- ret$dmrs
     time_dmrsegal <- ret$time

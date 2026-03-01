@@ -206,6 +206,7 @@
 #' @noRd
 .buildConnectivityArraySinglePass <- function(
     beta_handler,
+    beta_locs = NULL,
     pheno,
     group_inds,
     pval_mode_per_group,
@@ -226,7 +227,9 @@
     gap = 1L,
     splits = NULL
 ) {
-    beta_locs <- beta_handler$getBetaLocs()
+    if (is.null(beta_locs)) {
+        beta_locs <- beta_handler$getBetaLocs()
+    }
     n_sites <- nrow(beta_locs)
     if (n_sites < 2L) {
         ret <- data.frame(
@@ -283,6 +286,14 @@
         if (is.null(pair_ranges_df) || nrow(pair_ranges_df) == 0L) {
             return(matrix(numeric(0), ncol = 2))
         }
+        chunk_size_eff <- as.integer(chunk_size)
+        total_pairs <- sum(pair_ranges_df$end_pair - pair_ranges_df$start_pair + 1L)
+        if (njobs > 1L && is.finite(total_pairs) && total_pairs > 0L) {
+            # Keep at least one chunk per worker even when chunk_size is set very large.
+            max_chunk_size_for_parallel <- as.integer(ceiling(total_pairs / njobs))
+            chunk_size_eff <- min(chunk_size_eff, max_chunk_size_for_parallel)
+        }
+        chunk_size_eff <- max(1L, chunk_size_eff)
         out <- vector("list", nrow(pair_ranges_df) * 2L)
         out_n <- 0L
         for (i in seq_len(nrow(pair_ranges_df))) {
@@ -291,8 +302,8 @@
             if (pe < ps) {
                 next
             }
-            for (chunk_ps in seq(ps, pe, by = chunk_size)) {
-                chunk_pe <- min(chunk_ps + chunk_size - 1L, pe)
+            for (chunk_ps in seq(ps, pe, by = chunk_size_eff)) {
+                chunk_pe <- min(chunk_ps + chunk_size_eff - 1L, pe)
                 out_n <- out_n + 1L
                 out[[out_n]] <- c(chunk_ps, chunk_pe)
             }
@@ -631,6 +642,7 @@
 
 .buildConnectivityArray <- function(
     beta_handler,
+    beta_locs = NULL,
     pheno,
     group_inds,
     pval_mode_per_group,
@@ -659,6 +671,7 @@
         }
         build_ret <- .buildConnectivityArraySinglePass(
             beta_handler = beta_handler,
+            beta_locs = beta_locs,
             group_inds = group_inds,
             col_names = col_names,
             pheno = pheno,
@@ -1278,8 +1291,16 @@ findDMRsFromSeeds <- function(
     options(future.globals.maxSize = Inf)
 
     # Set up future plan for parallel processing
-
     options("DMRsegal.njobs" = njobs)
+    .log_info("Resetting parallel state from previous runs...", level = 2)
+    .cleanupParallelState()
+    withr::defer(.cleanupParallelState(), envir = environment())
+    .log_info(
+        "Parallel config: requested njobs=", njobs,
+        ", available cores=", future::availableCores(),
+        ", multicore-capable cores=", future::availableCores("multicore"),
+        level = 2
+    )
 
 
     .log_step("Preparing inputs...")
@@ -1564,7 +1585,6 @@ findDMRsFromSeeds <- function(
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
     seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
     rownames(seeds_beta) <- seeds
-    seeds_handler <- getBetaHandler(seeds_beta, sorted_locs = seeds_locs, njobs = njobs, array = array, genome = genome)
     if (!is.null(output_prefix)) {
         seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
     }
@@ -1630,7 +1650,8 @@ findDMRsFromSeeds <- function(
     } else {
         .log_step("Building seed connectivity array...", level = 2)
         seeds_connectivity_array <- .buildConnectivityArray(
-            beta_handler = seeds_handler,
+            beta_handler = beta_handler,
+            beta_locs = seeds_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
             pval_mode_per_group = pval_mode_per_group,
@@ -1671,11 +1692,25 @@ findDMRsFromSeeds <- function(
         seeds_connectivity_array$id[connected_seeds_segments_ends] <- NA
         seeds_connectivity_array$seeds <- seeds
         .log_info("Number of segments (potential DMRs before filtering): ", length(connected_seeds_segments_chrs), level = 2)
-        connected_seeds_connection_corr_pval <- aggregate(
-            pval ~ id,
-            data = seeds_connectivity_array, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
-        )
-        dmrs_seeds <- aggregate(seeds ~ id, data = seeds_connectivity_array, function(x) paste(x, collapse = ","))
+        valid_id_mask <- !is.na(seeds_connectivity_array$id)
+        if (any(valid_id_mask)) {
+            agg_data <- seeds_connectivity_array[valid_id_mask, , drop = FALSE]
+            connected_seeds_connection_corr_pval <- aggregate(
+                pval ~ id,
+                data = agg_data, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
+            )
+            dmrs_seeds <- aggregate(seeds ~ id, data = agg_data, function(x) paste(x, collapse = ","))
+        } else {
+            connected_seeds_connection_corr_pval <- data.frame(
+                id = ids,
+                pval = rep(NA_real_, length(ids))
+            )
+            dmrs_seeds <- data.frame(
+                id = ids,
+                seeds = as.character(seeds[connected_seeds_segments_starts]),
+                stringsAsFactors = FALSE
+            )
+        }
 
         dmrs <- data.frame(
             chr = connected_seeds_segments_chrs,
