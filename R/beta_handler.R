@@ -417,6 +417,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$load()
             self$beta_chunk_size
         },
+
+        #' @description Check if the beta data is array-based (i.e. does not have row names in 'chr:pos' format)
+        #' @return Logical indicating if the beta data is array-based
+        isArrayBased = function() {
+            self$load()
+            first_loc <- self$getBetaLocs()[1, , drop = FALSE]
+            !grepl(rownames(first_loc), pattern = "^chr[A-Za-z0-9]+:\\d+$", ignore.case = TRUE)
+        },
         #' @description Extract beta values for specific CpG sites and samples
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)

@@ -1356,8 +1356,7 @@ findDMRsFromSeeds <- function(
             stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
         }
     }
-    array_based <- !is.null(array)
-    if (array_based) {
+    if (!is.null(array)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
     all_cpgs <- NULL
@@ -1401,6 +1400,8 @@ findDMRsFromSeeds <- function(
             genome = genome
         )
     }
+    array_based <- beta_handler$isArrayBased()
+
     if (is.null(all_cpgs)) {
         all_cpgs <- rownames(beta_handler$getGenomicLocs())
         beta_locs_rownames <- beta_handler$getBetaRowNames()
@@ -1582,11 +1583,7 @@ findDMRsFromSeeds <- function(
     }
     seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
 
-
-    .log_step("Validating beta file sorting by position...", level = 2)
-
-
-    .log_step("Subsetting beta matrix for seeds...", level = 2)
+    .log_info("Subsetting beta matrix for seeds...", level = 2)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
     seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
     rownames(seeds_beta) <- seeds
@@ -1595,7 +1592,7 @@ findDMRsFromSeeds <- function(
     }
 
     if (!is.null(output_prefix)) {
-        .log_step("Saving seeds beta to file: ", seeds_beta_output_file, " ...", level = 2)
+        .log_info("Saving seeds beta to file: ", seeds_beta_output_file, " ...", level = 2)
         gz <- gzfile(seeds_beta_output_file, "w")
         write.table(seeds_beta, gz, sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
         close(gz)
@@ -1785,7 +1782,7 @@ findDMRsFromSeeds <- function(
         } else {
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
-        .log_step("Building connectivity array..", level = 2)
+        .log_step("Building expansion connectivity array..", level = 2)
         connectivity_array <- .buildConnectivityArray(
             beta_handler = beta_handler,
             pheno = pheno_detection,

@@ -71,7 +71,7 @@ cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 ```
 
 ## DMR Summary and Ranking
-The ranking of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, and rank of each DMR.
+The ranking of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, rank, and block ID of each DMR.
 ```{r}
 stopifnot(length(dmrs) > 0)
 
@@ -97,7 +97,8 @@ summary_tbl <- data.frame(
     delta_beta = round(mcols(dmrs)$delta_beta, 4),
     score = round(mcols(dmrs)$score, 4),
     cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
-    rank = mcols(dmrs)$rank
+    rank = mcols(dmrs)$rank,
+    block_id = mcols(dmrs)$block_id
 )
 summary_tbl <- summary_tbl[order(summary_tbl$rank), ]
 knitr::kable(head(summary_tbl, 5), caption = "Top 5 ranked DMRs (margin-sensitive score + raw CV accuracy)")
@@ -135,7 +136,7 @@ interaction_results <- computeDMRsInteraction(
     min_similarity = 0.8,
     flank_size = 5,
     min_component_size = 2,
-    query_components_with_jaspar = TRUE
+    query_components_with_jaspar = FALSE
 )
 
 interaction_tbl <- interaction_results$interactions
@@ -181,7 +182,7 @@ if (annotated_components > 0) {
 ### DMR Score Manhattan Plot
 
 A manhattan plot of the DMRs is drawn, showing their scores, produced by the SVM CV prediction strategy,
-and their annotation as promoter or gene body DMRs. The DMRs that belong to both promoter and gene body are omitted.
+their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the ranking block extension. The DMRs that belong to both promoter and gene body are omitted.
 ```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
 plotDMRsManhattan(
     dmrs = dmrs,
@@ -189,6 +190,42 @@ plotDMRsManhattan(
     promoter_col = "in_promoter_of",
     gene_body_col = "in_gene_body_of"
 )
+```
+
+### DMR Block Formation Diagnostics
+To inspect how block IDs are formed, we plot one chromosome-level diagnostic view.
+We pick the chromosome of the widest called block and overlay the raw scores, smoothed curve,
+PELT segments, candidate A-B-C spans, split points from the distance rule, and final accepted blocks.
+```{r block_formation_diagnostics, fig.height=7, fig.width=14, dpi=150}
+block_ids <- as.character(mcols(dmrs)$block_id)
+midpoints <- floor((start(dmrs) + end(dmrs)) / 2)
+block_df <- data.frame(
+    chr = as.character(seqnames(dmrs)),
+    midpoint = midpoints,
+    block_id = block_ids,
+    stringsAsFactors = FALSE
+)
+block_df <- block_df[!is.na(block_df$block_id) & nzchar(block_df$block_id), , drop = FALSE]
+if (nrow(block_df) > 0) {
+    block_span <- aggregate(midpoint ~ block_id + chr, data = block_df, FUN = function(x) max(x) - min(x))
+    target_chr <- as.character(block_span$chr[which.max(block_span$midpoint)])
+    cat(sprintf("Diagnostics chromosome selected: %s\n", target_chr))
+    tryCatch(
+        {
+            plotDMRBlockFormation(
+                dmrs = dmrs,
+                chromosome = target_chr,
+                score_col = "score"
+            )
+        },
+        error = function(e) {
+            message("Block formation diagnostics failed: ", conditionMessage(e))
+            NULL
+        }
+    )
+} else {
+    cat("No block IDs available for diagnostics.\n")
+}
 ```
 
 ### Single DMR Plot
@@ -220,15 +257,23 @@ cat(
     )
 )
 
-plotDMR(
-    dmrs = dmrs,
-    dmr_index = selected_dmr_idx,
-    beta = beta_handler,
-    pheno = pheno,
-    sample_group_col = "Sample_Group",
-    genome = genome,
-    array = array_type,
-    motif_flank_size = 5
+tryCatch(
+    {
+        plotDMR(
+            dmrs = dmrs,
+            dmr_index = selected_dmr_idx,
+            beta = beta_handler,
+            pheno = pheno,
+            sample_group_col = "Sample_Group",
+            genome = genome,
+            array = array_type,
+            motif_flank_size = 5
+        )
+    },
+    error = function(e) {
+        message("Single DMR plot generation failed: ", conditionMessage(e))
+        NULL
+    }
 )
 ```
 
@@ -240,7 +285,7 @@ The information includes:
 - Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
-```{r circos_plot, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+```{r circos_plot, eval=FALSE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
 
 tryCatch(
@@ -270,7 +315,7 @@ tryCatch(
 )
 ```
 It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr19:14700kb-16100kb and for chr20:61600kb-63000kb, which are regions that in the earlier plot were shown to interact:
-```{r circos_plot_region, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+```{r circos_plot_region, eval=FALSE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 tryCatch(
     {
         plotDMRsCircos(

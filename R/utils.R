@@ -298,7 +298,11 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
-    dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
+    if (level %in% names(.DMRsegal_log_env$last_step_time) && !is.null(.DMRsegal_log_env$last_step_time[[level]])) {
+        dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
+    } else {
+        dur <- ""
+    }
     msg <- paste0(paste0(..., collapse = ""), dur)
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))

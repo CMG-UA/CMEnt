@@ -1,6 +1,12 @@
 # Avoid NSE warnings from R CMD check for ggplot2 aes()
 if (getRversion() >= "2.15.1") {
-    utils::globalVariables(c("Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position", "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y", "label", "Group"))
+    utils::globalVariables(c(
+        "Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position",
+        "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y",
+        "label", "Group", "block_id", "xmin", "xmax", "ymin", "ymax", "midpoint",
+        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope",
+        "segment_label", "x_pos", "y_pos"
+    ))
 }
 
 #' Plot DMR Structure with seeds and Extended CpGs
@@ -1951,7 +1957,7 @@ plotDMRsCircos <- function(dmrs,
                 alpha = 0.85
             )
         }, character(1))
-
+        link_legend_labels <- NULL
         legend_components <- comp_data[comp_data$has_jaspar_match, , drop = FALSE]
         if (nrow(legend_components) > 0) {
             rank_vec <- legend_components$component_best_rank
@@ -1992,10 +1998,24 @@ plotDMRsCircos <- function(dmrs,
                 }
                 .wrapCircosLegendLabel(label)
             }, character(1))
+
+        }
+
+        # If there are no-JASPAR links showing, we include a legend entry for them as well.
+        if (any(!link_data$has_jaspar_match)) {
+            if (is.null(link_legend_labels)) {
+                link_legend_labels <- c("DMR Interactions without JASPAR Matches")
+                link_legend_colors <- unmatched_interaction_color
+            } else if (any(!comp_data$has_jaspar_match)) {
+                link_legend_labels <- c(link_legend_labels, "DMR Interactions without JASPAR Matches")
+                link_legend_colors <- c(link_legend_colors, unmatched_interaction_color)
+            }
+        }
+        if (!is.null(link_legend_labels)) {
             link_legend <- ComplexHeatmap::Legend(
                 labels = link_legend_labels,
                 legend_gp = grid::gpar(fill = link_legend_colors),
-                title = "DMR Interaction Components\n(JASPAR-annotated)",
+                title = "DMR Interactions",
                 title_position = "topleft",
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold"),
                 labels_gp = grid::gpar(fontsize = 8)
@@ -2108,6 +2128,267 @@ plotDMRsCircos <- function(dmrs,
     factor(region_class, levels = c("Promoter", "Gene Body", "Intergenic"))
 }
 
+.buildManhattanBlockRects <- function(dmr_df, block_col = "block_id") {
+    if (!(block_col %in% colnames(dmr_df))) {
+        return(data.frame())
+    }
+    block_vals <- as.character(dmr_df[[block_col]])
+    keep <- !is.na(block_vals) & nzchar(block_vals)
+    if (!any(keep)) {
+        return(data.frame())
+    }
+    block_df <- dmr_df[keep, c("position", "score", block_col), drop = FALSE]
+    colnames(block_df)[3] <- "block_id"
+    by_block <- split(block_df, block_df$block_id)
+    if (length(by_block) == 0) {
+        return(data.frame())
+    }
+
+    y_rng <- range(dmr_df$score, na.rm = TRUE)
+    y_span <- diff(y_rng)
+    y_pad <- max(1e-6, y_span * 0.03)
+    x_unique <- sort(unique(dmr_df$position))
+    if (length(x_unique) >= 2L) {
+        x_pad <- max(1, min(diff(x_unique), na.rm = TRUE) * 0.35)
+    } else {
+        x_pad <- 1
+    }
+
+    rects <- do.call(rbind, lapply(names(by_block), function(id) {
+        d <- by_block[[id]]
+        xmin <- min(d$position, na.rm = TRUE)
+        xmax <- max(d$position, na.rm = TRUE)
+        if (xmin == xmax) {
+            xmin <- xmin - x_pad
+            xmax <- xmax + x_pad
+        }
+        data.frame(
+            block_id = id,
+            xmin = xmin,
+            xmax = xmax,
+            ymin = min(d$score, na.rm = TRUE) - y_pad,
+            ymax = max(d$score, na.rm = TRUE) + y_pad,
+            stringsAsFactors = FALSE
+        )
+    }))
+    rects <- rects[order(rects$xmin, rects$xmax), , drop = FALSE]
+    rects$fill <- colorspace::qualitative_hcl(max(3L, nrow(rects)), palette = "Set 2")[seq_len(nrow(rects))]
+    rownames(rects) <- NULL
+    rects
+}
+
+#' Plot Intermediate DMR Block Formation Diagnostics
+#'
+#' @description Visualizes how DMR blocks are formed on a single chromosome by
+#' layering raw scores, smoothed scores, piecewise-linear segments, slope-based
+#' candidate blocks, distance-based split boundaries, and final accepted blocks.
+#'
+#' @param dmrs GRanges object or data frame. DMR results from `findDMRsFromSeeds`
+#' or `rankDMRs`.
+#' @param chromosome Character. Chromosome to inspect (e.g., `"chr7"` or `"7"`).
+#' @param score_col Character. Metadata column used for y-axis values
+#' (default: `"score"`).
+#' @param genome Character. Genome version passed to `convertToGRanges`
+#' (default: `"hg19"`).
+#' @param k_neighbors Integer. Number of nearest neighbors used in adaptive Gaussian
+#' smoothing (default: `5`).
+#' @param min_segment_size Integer. Minimum size of linear segments in PELT
+#' segmentation (default: `2`).
+#' @param block_gap_mode Character. Gap rule for block splitting:
+#' `"adaptive"` (default), `"fixed"`, or `"none"`.
+#' @param block_gap_fixed_bp Numeric. Maximum allowed midpoint gap (bp) when
+#' `block_gap_mode = "fixed"`. Ignored otherwise.
+#' @param block_gap_quantile Numeric in `(0, 1)`. Gap quantile used for adaptive
+#' thresholding (default: `0.95`).
+#' @param block_gap_multiplier Numeric > 0. Multiplier for adaptive gap threshold
+#' (default: `1.5`).
+#' @param block_gap_min_bp Numeric >= 0. Lower clamp for adaptive gap threshold (bp).
+#' Default is `250000`.
+#' @param block_gap_max_bp Numeric >= `block_gap_min_bp`. Upper clamp for adaptive
+#' gap threshold (bp). Default is `5000000`.
+#' @param point_alpha Numeric. Alpha for raw score points in `[0, 1]`
+#' (default: `0.7`).
+#' @param point_size Numeric. Point size for raw scores (default: `1.0`).
+#'
+#' @return A ggplot object.
+#'
+#' @examples
+#' \dontrun{
+#' dmrs <- readRDS("dmrs.rds")
+#' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
+#' print(p)
+#' }
+#' @export
+plotDMRBlockFormation <- function(dmrs,
+                                  chromosome,
+                                  score_col = "score",
+                                  genome = "hg19",
+                                  k_neighbors = 5L,
+                                  min_segment_size = 2L,
+                                  block_gap_mode = "adaptive",
+                                  block_gap_fixed_bp = NULL,
+                                  block_gap_quantile = 0.95,
+                                  block_gap_multiplier = 1.5,
+                                  block_gap_min_bp = 250000,
+                                  block_gap_max_bp = 5000000,
+                                  point_alpha = 0.7,
+                                  point_size = 1.0) {
+    dmrs <- convertToGRanges(dmrs, genome = genome)
+    if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
+        stop("score_col '", score_col, "' not found in DMR metadata.")
+    }
+    if (!is.numeric(point_alpha) || length(point_alpha) != 1 || is.na(point_alpha) || point_alpha < 0 || point_alpha > 1) {
+        stop("point_alpha must be a single numeric value in [0, 1].")
+    }
+    if (!is.numeric(point_size) || length(point_size) != 1 || is.na(point_size) || point_size <= 0) {
+        stop("point_size must be a single positive numeric value.")
+    }
+
+    chromosome <- as.character(chromosome)[1]
+    if (!grepl("^chr", chromosome)) {
+        chromosome <- paste0("chr", chromosome)
+    }
+    chr_values <- as.character(GenomicRanges::seqnames(dmrs))
+    if (!(chromosome %in% chr_values)) {
+        stop(
+            "Chromosome '", chromosome, "' not found. Available chromosomes include: ",
+            paste(head(unique(chr_values), 8), collapse = ","),
+            if (length(unique(chr_values)) > 8) " ..." else ""
+        )
+    }
+    score_values <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
+    keep <- chr_values == chromosome & is.finite(score_values)
+    if (sum(keep) < 3L) {
+        stop("At least 3 finite DMR scores are required on ", chromosome, " to build diagnostics.")
+    }
+
+    chr_dmrs <- dmrs[keep]
+    if (!(score_col %in% colnames(S4Vectors::mcols(chr_dmrs)))) {
+        stop("score_col '", score_col, "' not found after chromosome filtering.")
+    }
+
+    details_result <- .assignDMRBlocksFromScores(
+        dmrs = chr_dmrs,
+        score_col = score_col,
+        k_neighbors = k_neighbors,
+        min_segment_size = min_segment_size,
+        block_gap_mode = block_gap_mode,
+        block_gap_fixed_bp = block_gap_fixed_bp,
+        block_gap_quantile = block_gap_quantile,
+        block_gap_multiplier = block_gap_multiplier,
+        block_gap_min_bp = block_gap_min_bp,
+        block_gap_max_bp = block_gap_max_bp,
+        return_details = TRUE
+    )
+
+    details <- details_result$details[[chromosome]]
+    if (is.null(details)) {
+        stop("No block-formation details were produced for chromosome ", chromosome, ".")
+    }
+
+    dmr_df <- details$dmr_df
+    seg_df <- details$segments_df
+    candidate_df <- details$candidates_df
+    split_df <- details$split_events_df
+    blocks_df <- details$blocks_df
+
+    y_rng <- range(c(dmr_df$score_raw, dmr_df$score_smoothed), na.rm = TRUE)
+    y_span <- diff(y_rng)
+    y_pad <- max(y_span * 0.12, 1e-4)
+    y_top <- y_rng[2] + y_pad
+
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = midpoint, y = score_raw)) +
+        ggplot2::geom_point(color = "#4D4D4D", alpha = point_alpha, size = point_size) +
+        ggplot2::geom_line(ggplot2::aes(y = score_smoothed), color = "#1F78B4", linewidth = 0.6)
+
+    if (nrow(candidate_df) > 0) {
+        p <- p + ggplot2::geom_rect(
+            data = candidate_df,
+            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE,
+            fill = "#FDB863",
+            alpha = 0.08,
+            color = NA
+        )
+    }
+
+    if (nrow(blocks_df) > 0) {
+        p <- p + ggplot2::geom_rect(
+            data = blocks_df,
+            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = -Inf, ymax = Inf),
+            inherit.aes = FALSE,
+            fill = "#B2DF8A",
+            color = "#33A02C",
+            linewidth = 0.35,
+            alpha = 0.14
+        )
+    }
+
+    if (nrow(seg_df) > 1) {
+        p <- p + ggplot2::geom_vline(
+            data = seg_df[-nrow(seg_df), , drop = FALSE],
+            ggplot2::aes(xintercept = end_bp),
+            inherit.aes = FALSE,
+            color = "#6A3D9A",
+            linetype = "dotted",
+            linewidth = 0.25,
+            alpha = 0.8
+        )
+    }
+
+    if (nrow(split_df) > 0) {
+        p <- p + ggplot2::geom_vline(
+            data = split_df,
+            ggplot2::aes(xintercept = right_bp),
+            inherit.aes = FALSE,
+            color = "#E31A1C",
+            linetype = "dashed",
+            linewidth = 0.35,
+            alpha = 0.9
+        )
+    }
+
+    if (nrow(seg_df) > 0) {
+        seg_label_df <- seg_df
+        seg_label_df$x_pos <- (seg_label_df$start_bp + seg_label_df$end_bp) / 2
+        seg_label_df$y_pos <- y_top
+        seg_label_df$segment_label <- paste0("s", seg_label_df$segment_id, ": ", formatC(seg_label_df$slope, format = "e", digits = 2))
+        p <- p + ggplot2::geom_text(
+            data = seg_label_df,
+            ggplot2::aes(x = x_pos, y = y_pos, label = segment_label),
+            inherit.aes = FALSE,
+            color = "#6A3D9A",
+            size = 2.4,
+            vjust = 0
+        )
+    }
+
+    subtitle <- paste0(
+        "gap_mode=", block_gap_mode,
+        ", gap_threshold=", format(round(details$gap_threshold_bp), big.mark = ",", scientific = FALSE), " bp",
+        ", slope_d=", signif(details$slope_threshold, digits = 3),
+        ", candidates=", nrow(candidate_df),
+        ", blocks=", nrow(blocks_df)
+    )
+
+    p <- p +
+        ggplot2::labs(
+            title = paste0("DMR Block Formation Diagnostics (", chromosome, ")"),
+            subtitle = subtitle,
+            x = "Genomic Midpoint (bp)",
+            y = score_col
+        ) +
+        ggplot2::theme_minimal(base_size = 11) +
+        ggplot2::theme(
+            panel.grid.minor = ggplot2::element_blank(),
+            plot.title = ggplot2::element_text(face = "bold"),
+            plot.subtitle = ggplot2::element_text(size = 9)
+        ) +
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.03, 0.15)))
+
+    p
+}
+
 #' Plot Manhattan-Style View of DMR Scores
 #'
 #' @description Creates a Manhattan-style genome-wide scatter plot of DMR scores.
@@ -2120,6 +2401,10 @@ plotDMRsCircos <- function(dmrs,
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
 #' @param point_size Numeric. Point size (default: `1.1`).
 #' @param point_alpha Numeric. Point alpha in `[0, 1]` (default: `0.75`).
+#' @param block_col Character. Metadata column containing block IDs (default: `"block_id"`).
+#' @param show_blocks Logical. If TRUE, draw translucent rectangles for identified blocks (default: `TRUE`).
+#' @param block_alpha Numeric. Alpha for block rectangles in `[0, 1]` (default: `0.12`).
+#' @param block_linewidth Numeric. Line width for block rectangle borders (default: `0.25`).
 #'
 #' @return A ggplot object.
 #'
@@ -2136,7 +2421,11 @@ plotDMRsManhattan <- function(dmrs,
                               promoter_col = "in_promoter_of",
                               gene_body_col = "in_gene_body_of",
                               point_size = 1.1,
-                              point_alpha = 0.75) {
+                              point_alpha = 0.75,
+                              block_col = "block_id",
+                              show_blocks = TRUE,
+                              block_alpha = 0.12,
+                              block_linewidth = 0.25) {
     dmrs <- convertToGRanges(dmrs, genome = genome)
     if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("score_col '", score_col, "' not found in DMR metadata.")
@@ -2146,6 +2435,15 @@ plotDMRsManhattan <- function(dmrs,
     }
     if (!is.numeric(point_alpha) || length(point_alpha) != 1 || is.na(point_alpha) || point_alpha < 0 || point_alpha > 1) {
         stop("point_alpha must be a single numeric value in [0, 1].")
+    }
+    if (!is.logical(show_blocks) || length(show_blocks) != 1 || is.na(show_blocks)) {
+        stop("show_blocks must be TRUE or FALSE.")
+    }
+    if (!is.numeric(block_alpha) || length(block_alpha) != 1 || is.na(block_alpha) || block_alpha < 0 || block_alpha > 1) {
+        stop("block_alpha must be a single numeric value in [0, 1].")
+    }
+    if (!is.numeric(block_linewidth) || length(block_linewidth) != 1 || is.na(block_linewidth) || block_linewidth < 0) {
+        stop("block_linewidth must be a single non-negative numeric value.")
     }
 
     scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
@@ -2172,6 +2470,11 @@ plotDMRsManhattan <- function(dmrs,
         region_class = region_class,
         stringsAsFactors = FALSE
     )
+    if (block_col %in% colnames(S4Vectors::mcols(dmrs))) {
+        dmr_df$block_id <- as.character(S4Vectors::mcols(dmrs)[[block_col]])
+    } else {
+        dmr_df$block_id <- NA_character_
+    }
     dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
     dmr_df$midpoint <- floor((dmr_df$start + dmr_df$end) / 2)
 
@@ -2204,7 +2507,28 @@ plotDMRsManhattan <- function(dmrs,
         "Intergenic" = 15
     )
 
-    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class, shape = region_class)) +
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class, shape = region_class))
+    block_rects <- data.frame()
+    if (show_blocks) {
+        block_rects <- .buildManhattanBlockRects(dmr_df, block_col = "block_id")
+        if (nrow(block_rects) > 0) {
+            p <- p + ggplot2::geom_rect(
+                data = block_rects,
+                ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                inherit.aes = FALSE,
+                fill = block_rects$fill,
+                color = block_rects$fill,
+                linewidth = block_linewidth,
+                alpha = block_alpha,
+                show.legend = FALSE
+            )
+        }
+    }
+    subtitle <- NULL
+    if (nrow(block_rects) > 0) {
+        subtitle <- paste0("Identified blocks: ", nrow(block_rects))
+    }
+    p <- p +
         ggplot2::geom_point(size = point_size, alpha = point_alpha, stroke = 0) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
@@ -2216,7 +2540,8 @@ plotDMRsManhattan <- function(dmrs,
         ggplot2::labs(
             x = "Chromosome",
             y = score_col,
-            title = paste0("DMR Manhattan Plot (", score_col, ")")
+            title = paste0("DMR Manhattan Plot (", score_col, ")"),
+            subtitle = subtitle
         ) +
         ggplot2::theme_minimal(base_size = 11) +
         ggplot2::theme(

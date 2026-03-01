@@ -12,7 +12,13 @@ rankDMRs(
   genome = "hg19",
   array = "450K",
   sorted_locs = NULL,
-  sample_group_col = "Sample_Group"
+  sample_group_col = "Sample_Group",
+  block_gap_mode = c("adaptive", "fixed", "none"),
+  block_gap_fixed_bp = NULL,
+  block_gap_quantile = 0.95,
+  block_gap_multiplier = 1.5,
+  block_gap_min_bp = 250000,
+  block_gap_max_bp = 5000000
 )
 }
 \arguments{
@@ -29,12 +35,34 @@ rankDMRs(
 \item{sorted_locs}{Data frame. Optional pre-computed sorted genomic locations. Default is NULL}
 
 \item{sample_group_col}{Character. Column name in pheno containing sample group information. Default is "Sample_Group"}
+
+\item{block_gap_mode}{Character. Distance rule for block construction:
+\code{"adaptive"} (default), \code{"fixed"}, or \code{"none"}.}
+
+\item{block_gap_fixed_bp}{Numeric. Maximum allowed midpoint gap (bp) when
+\code{block_gap_mode = "fixed"}. Ignored otherwise.}
+
+\item{block_gap_quantile}{Numeric in \code{(0, 1)}. Quantile of chromosome DMR midpoint
+gaps used in adaptive thresholding. Default is \code{0.95}.}
+
+\item{block_gap_multiplier}{Numeric > 0. Multiplier applied to the adaptive
+gap quantile. Default is \code{1.5}.}
+
+\item{block_gap_min_bp}{Numeric >= 0. Lower clamp for adaptive gap threshold (bp).
+Default is \code{250000}.}
+
+\item{block_gap_max_bp}{Numeric >= \code{block_gap_min_bp}. Upper clamp for adaptive
+gap threshold (bp). Default is \code{5000000}.}
 }
 \value{
 GRanges object with DMRs ordered by score and additional metadata columns:
 \itemize{
 \item score: Margin-sensitive cross-validated classification score for the DMR
 \item cv_accuracy: Raw cross-validated classification accuracy for the DMR
+\item score_smoothed: Gaussian-kNN smoothed score trajectory per chromosome
+\item segment_id: Piecewise-linear segment index estimated with PELT
+\item segment_slope: Estimated slope of the segment that each DMR belongs to
+\item block_id: Localized DMR block label (NA for DMRs not assigned to a block)
 }
 }
 \description{
@@ -53,7 +81,8 @@ SVM is trained on the beta values of CpG sites within each DMR.
 The \code{score} combines classification correctness and margin confidence,
 making it more sensitive than plain cross-validated accuracy when many DMRs
 classify perfectly. The \code{cv_accuracy} column stores the raw cross-validated
-accuracy for reference.
+accuracy for reference. Blocks are detected from smoothed score profiles and
+split at large midpoint gaps using the selected \code{block_gap_mode}.
 }
 \examples{
 # Load example data
