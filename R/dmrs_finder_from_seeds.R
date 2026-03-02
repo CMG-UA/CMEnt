@@ -523,7 +523,7 @@
         list(pair_start = pair_start, pair_end = pair_end, result = x)
     }
     if (njobs == 1) {
-        ret <- lapply(seq_len(nrow(splits)), fun)
+        ret <- lapply(seq_len(nrow(splits)), fun, beta_handler)
     } else {
         .setupParallel()
         ret <- future.apply::future_lapply(
@@ -1810,12 +1810,9 @@ findDMRsFromSeeds <- function(
     .log_info("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
     if (verbose > 0) {
         p_ext <- NULL
-        if (verbose > 0) {
-            # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_ext will not be used
-
-            if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-                p_ext <- progressr::progressor(steps = n_dmrs, message = "Expanding DMRs to proximal CpGs..")
-            }
+        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_ext will not be used
+        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
+            p_ext <- progressr::progressor(steps = n_dmrs, message = "Expanding DMRs to proximal CpGs..")
         }
     }
     ret <- list()
@@ -1827,40 +1824,45 @@ findDMRsFromSeeds <- function(
         chr_start_base <- first_row - 1
         chr_locs <- as.data.frame(beta_locs[chr_mask, , drop = FALSE])
         chr_array <- connectivity_array[chr_mask, , drop = FALSE]
-        .setupParallel()
-        chr_ret <- future.apply::future_apply(
-            X = chr_dmrs,
-            MARGIN = 1,
-            FUN = function(dmr) {
-                op <- options(warn = 2)$warn
-                x <- .expandDMR(
-                    dmr = dmr,
-                    chr_array = chr_array,
-                    expansion_step = expansion_step,
-                    min_cpgs = min_cpgs,
-                    min_cpg_delta_beta = min_cpg_delta_beta,
-                    chr_locs = chr_locs,
-                    chr_start_base = chr_start_base
-                )
-                options(warn = op)
-                if (verbose > 0 && !is.null(p_ext)) p_ext()
-                x
-            },
-            simplify = FALSE,
-            future.seed = TRUE,
-            future.globals = c(
-                ".expandDMR",
-                "chr_array",
-                "expansion_step",
-                "min_cpgs",
-                "min_cpg_delta_beta",
-                "chr_locs",
-                "chr_start_base",
-                "verbose",
-                "p_ext"
+        fun <- function(dmr) {
+            op <- options(warn = 2)$warn
+            x <- .expandDMR(
+                dmr = dmr,
+                chr_array = chr_array,
+                expansion_step = expansion_step,
+                min_cpgs = min_cpgs,
+                min_cpg_delta_beta = min_cpg_delta_beta,
+                chr_locs = chr_locs,
+                chr_start_base = chr_start_base
             )
-        )
-        .finalizeParallel()
+            options(warn = op)
+            if (verbose > 0 && !is.null(p_ext)) p_ext()
+            x
+        }
+        if (njobs == 1) {
+            ret <- apply(chr_dmrs, 1, fun, simplify = FALSE)
+        } else {
+            .setupParallel()
+            chr_ret <- future.apply::future_apply(
+                X = chr_dmrs,
+                MARGIN = 1,
+                FUN = fun,
+                simplify = FALSE,
+                future.seed = TRUE,
+                future.globals = c(
+                    ".expandDMR",
+                    "chr_array",
+                    "expansion_step",
+                    "min_cpgs",
+                    "min_cpg_delta_beta",
+                    "chr_locs",
+                    "chr_start_base",
+                    "verbose",
+                    "p_ext"
+                )
+            )
+            .finalizeParallel()
+        }
         .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
     }

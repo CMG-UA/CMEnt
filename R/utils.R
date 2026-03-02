@@ -397,70 +397,72 @@
 
 createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select = NULL,
                          chunk_size = 100000, sep = "\t") {
-  stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
-  stopifnot(is.character(output_h5file), length(output_h5file) == 1)
+    stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
+    stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
-  if (file.exists(output_h5file)) file.remove(output_h5file)
-  dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
-  rhdf5::h5createFile(output_h5file)
+    if (file.exists(output_h5file)) file.remove(output_h5file)
+    dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
+    rhdf5::h5createFile(output_h5file)
 
-  row_offset <- 0L
-  initialized <- FALSE
-  p <- NULL
+    row_offset <- 0L
+    initialized <- FALSE
+    p <- NULL
 
-  cb <- readr::DataFrameCallback$new(function(df, pos) {
-    if (!is.null(select)) {
-        df <- df[, select, drop = FALSE]
-    }
-    if (!initialized) {
-      p <<- ncol(df)
-      rhdf5::h5createDataset(
-        file = output_h5file,
-        dataset = dataset_name,
-        dims = c(0, p),
-        maxdims = c(rhdf5::H5Sunlimited(), p),
-        chunk = c(min(chunk_size, max(1L, nrow(df))), p),
-        storage.mode = "character",
-        level = 7
-      )
-      rhdf5::h5write(names(df), output_h5file, paste0(dataset_name, "_colnames"))
-      initialized <<- TRUE
-    }
+    cb <- readr::DataFrameCallback$new(function(df, pos) {
+        if (!is.null(select)) {
+            df <- df[, select, drop = FALSE]
+        }
+        if (!initialized) {
+            p <<- ncol(df)
+            rhdf5::h5createDataset(
+                file = output_h5file,
+                dataset = dataset_name,
+                dims = c(0, p),
+                maxdims = c(rhdf5::H5Sunlimited(), p),
+                chunk = c(min(chunk_size, max(1L, nrow(df))), p),
+                storage.mode = "character",
+                level = 7
+            )
+            rhdf5::h5write(names(df), output_h5file, paste0(dataset_name, "_colnames"))
+            initialized <<- TRUE
+        }
 
-    n_new <- nrow(df)
-    if (n_new == 0L) return(invisible(NULL))
+        n_new <- nrow(df)
+        if (n_new == 0L) {
+            return(invisible(NULL))
+        }
 
-    # Convert whole chunk to character matrix
-    # (keeps NA as NA_character_)
-    mat <- as.matrix(data.frame(lapply(df, as.character), check.names = FALSE))
+        # Convert whole chunk to character matrix
+        # (keeps NA as NA_character_)
+        mat <- as.matrix(data.frame(lapply(df, as.character), check.names = FALSE))
 
-    new_total <- row_offset + n_new
+        new_total <- row_offset + n_new
 
-    # Extend then write
-    rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+        # Extend then write
+        rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
 
-    idx_rows <- (row_offset + 1L):new_total
-    rhdf5::h5write(
-      mat,
-      file = output_h5file,
-      name = dataset_name,
-      index = list(idx_rows, 1:p)
+        idx_rows <- (row_offset + 1L):new_total
+        rhdf5::h5write(
+            mat,
+            file = output_h5file,
+            name = dataset_name,
+            index = list(idx_rows, 1:p)
+        )
+
+        row_offset <<- new_total
+        invisible(NULL)
+    })
+
+    readr::read_tsv_chunked(
+        file = input_file,
+        callback = cb,
+        chunk_size = chunk_size,
+        show_col_types = FALSE,
+        progress = FALSE
     )
 
-    row_offset <<- new_total
-    invisible(NULL)
-  })
-
-  readr::read_tsv_chunked(
-    file = input_file,
-    callback = cb,
-    chunk_size = chunk_size,
-    show_col_types = FALSE,
-    progress = FALSE
-  )
-
-  rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
-  invisible(output_h5file)
+    rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
+    invisible(output_h5file)
 }
 
 .postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
@@ -485,7 +487,7 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
             df[[new_col]] <- do.call(col_info$fun, df[col_info$cols])
         }
     }
-    if (!is.null(indices)){
+    if (!is.null(indices)) {
         missing_indices <- setdiff(indices, colnames(df))
         if (length(missing_indices) > 0) {
             stop(
@@ -497,7 +499,7 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
         if (length(indices) == 1) {
             rownames(df) <- df[[indices]]
         } else {
-            rownames(df) <- do.call(paste, c(df[, indices], sep = ":" ))
+            rownames(df) <- do.call(paste, c(df[, indices], sep = ":"))
         }
     }
     df
@@ -512,7 +514,7 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     if (!file.exists(h5_file)) {
         createH5file(
             input_file = obj,
-            output_h5file =  h5_file,
+            output_h5file = h5_file,
             dataset_name = "data",
             select = select,
             chunk_size = chunk_size
@@ -523,7 +525,6 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     colnames(x) <- rhdf5::h5read(h5_file, "data_colnames")
     .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
 }
-
 
 
 #' Create Genomic Location Registry from Tabix BED File
@@ -537,7 +538,7 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col="#chrom", start_col="start") { # nolint
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col = "#chrom", start_col = "start") { # nolint
     cache_dir <- .getTabixCacheDir(output_dir)
     if (is.null(hash)) {
         hash <- .getFileHash(input_tabix)
@@ -1313,7 +1314,9 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 .remove_confounder_effect <- function(signal, covariate_matrix, pseudo_solution = NULL, t_covariate_matrix = NULL) {
-    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) return(signal)
+    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) {
+        return(signal)
+    }
     if (is.null(pseudo_solution)) {
         xtx <- crossprod(covariate_matrix)
         xtx_inv <- tryCatch(solve(xtx), error = function(e) NULL)
@@ -1684,7 +1687,6 @@ orderByLoc <- function(x,
         }
     }
     pkg_name
-
 }
 
 #' Extract DNA Sequences for DMRs
@@ -1742,7 +1744,6 @@ orderByLoc <- function(x,
 #' @export
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
                             batch_size = 100, njobs = 1) {
-
     if (!use_online) {
         pkg_name <- .getBSGenomePackage(genome)
         use_bsgenome <- !is.null(pkg_name)
