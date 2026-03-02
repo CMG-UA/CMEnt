@@ -205,30 +205,40 @@
 #' @keywords internal
 #' @noRd
 .buildConnectivityArraySinglePass <- function(
-    beta_handler,
-    beta_locs = NULL,
-    pheno,
-    group_inds,
-    pval_mode_per_group,
-    empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = 0.05,
-    min_delta_beta = 0,
-    covariates = NULL,
-    max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
-    entanglement = "strong",
-    aggfun = median,
-    ntries = 500,
-    mid_p = TRUE,
-    njobs = 1,
-    expansion_windows = NULL,
-    connectivity_array = NULL,
-    gap = 1L,
-    splits = NULL
+  beta_handler,
+  beta_locs = NULL,
+  pheno,
+  group_inds,
+  pval_mode_per_group,
+  empirical_strategy_per_group,
+  col_names = NULL,
+  max_pval = 0.05,
+  min_delta_beta = 0,
+  covariates = NULL,
+  max_lookup_dist = 1000,
+  chunk_size = getOption("DMRsegal.chunk_size", 1000),
+  entanglement = "strong",
+  aggfun = median,
+  ntries = 500,
+  mid_p = TRUE,
+  njobs = 1,
+  expansion_windows = NULL,
+  connectivity_array = NULL,
+  ugap = 0L,
+  dgap = 0L,
+  recheck = NULL,
+  splits = NULL
 ) {
     if (is.null(beta_locs)) {
         beta_locs <- beta_handler$getBetaLocs()
+    }
+    if (ugap > 0L || dgap > 0L) {
+        if (is.null(connectivity_array) || is.null(splits)) {
+            stop("ugap and dgap parameters require providing the current connectivity_array and splits data frames.")
+        }
+        if (ugap > 0L && dgap > 0L) {
+            stop("The bridging is either upstream or downstream, but not both at the same time.")
+        }
     }
     n_sites <- nrow(beta_locs)
     if (n_sites < 2L) {
@@ -393,7 +403,7 @@
         connectivity_array <- .makeOutputTemplate(n_sites, default_reason)
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
-        revisited_mask <- NULL
+        checked_inds <- NULL
     } else {
         # If connectivity array is provided, we assume it has already been filled for all sites up to the chromosome ends.
         # Instead, we re-assess the disconnected sites on the edges of the connected regions,
@@ -403,24 +413,55 @@
         runs <- rle(connected)
         run_ends <- cumsum(runs$lengths)
         run_starts <- run_ends - runs$lengths + 1L
-        m <- connectivity_array[run_ends, "reason"] != "end-of-input"
-        run_ends <- run_ends[m]
-        run_starts <- run_starts[m]
-        values <- runs$values[m]
-        lengths <- runs$lengths[m]
-        run_mask <- lengths > gap & values == 1
+        values <- runs$values
+        run_mask <- values == 1
+        if (!is.null(recheck)) {
+            recheck_inds <- which(recheck)
+            run_mask <- run_mask & run_starts %in% recheck_inds
+        }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
-        revisited_mask <- rep(FALSE, n_sites)
-        # The following indices will be re-checked
-        checked_inds <- sort(c(run_starts - gap, run_starts, run_ends, run_ends + gap))
-        checked_inds <- checked_inds[checked_inds > 0 & checked_inds <= n_sites]
-        revisited_mask[checked_inds] <- TRUE
-        splits <- splits[apply(splits, 1, function(r) any(revisited_mask[r[1]:r[2]])), , drop = FALSE]
-        .log_info(
-            "Re-assessing connectivity for ", sum(revisited_mask), " sites at the edges of existing connected regions to see if we can bridge small gaps.",
-            level = 3
-        )
+        run_mask <- run_mask[run_mask]
+ 
+        if (ugap > 0L) {
+            run_mask <- run_mask & run_starts - ugap > 0
+            for (i in seq_len(ugap)) {
+                run_mask <- run_mask & connectivity_array[run_starts - i, "reason"] != "end-of-input"
+            }
+        }
+        if (dgap > 0L) {
+            run_mask <- run_mask & run_ends + dgap <= n_sites
+            for (i in seq_len(dgap)) {
+                run_mask <- run_mask & connectivity_array[run_ends + i, "reason"] != "end-of-input"
+            }
+        }
+        if (!any(run_mask)) {
+            # No runs to bridge, return the existing connectivity array and splits
+            return(list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
+        }
+        run_ends <- run_ends[run_mask]
+        run_starts <- run_starts[run_mask]
+        if (ugap > 0L) {
+            # The following indices will be re-checked
+            checked_inds <- data.frame(before = run_starts - ugap, after = run_starts)
+            updating_inds <- run_starts - ugap
+            .log_info(
+                "Re-assessing connectivity for ", length(checked_inds), " sites at the upstream edges of existing connected regions to see if we can bridge small gaps.",
+                level = 3
+            )
+        } else if (dgap > 0L) {
+            checked_inds <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
+            updating_inds <- run_ends + 1
+            .log_info(
+                "Re-assessing connectivity for ", length(checked_inds), " sites at the downstream edges of existing connected regions to see if we can bridge small gaps.",
+                level = 3
+            )
+        }
+        # The order matters, so we form the inds by first making a matrix and then flattening it
+        checked_inds <- as.vector(t(as.matrix(checked_inds)))
+
+
+        splits <- splits[apply(splits, 1, function(r) any(checked_inds >= r[1] & checked_inds <= r[2])), , drop = FALSE]
     }
     .log_info(
         "Connectivity computation mode: ",
@@ -480,20 +521,31 @@
         site_start <- pair_start
         site_end <- pair_end + 1L
         inds <- site_start:site_end
-        if (!is.null(revisited_mask)) {
-            mask_seg <- revisited_mask[site_start:site_end]
-            sel_sites <- site_start + which(mask_seg) - 1L
-            if (length(sel_sites) >= 2L) {
-                # pair indices correspond to the first site of each consecutive selected pair
-                recomputed_pairs <- sel_sites[-length(sel_sites)]
-            } else {
-                recomputed_pairs <- integer(0)
+        if (!is.null(checked_inds)) {
+            inds <- checked_inds[checked_inds >= site_start & checked_inds <= site_end]
+            # make sure that the first element is included in the updated_inds, else drop the first site
+            if (!inds[1] %in% updating_inds) {
+                inds <- inds[-1]
             }
-            inds <- sel_sites
+            if (length(inds) == 0L) {
+                return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
+            }
+            # make sure that the last element is not included in the updated_inds, else drop the last site
+            if (inds[length(inds)] %in% updating_inds) {
+                inds <- inds[-length(inds)]
+            }
+            # The result must not be odd
+            if (length(inds) %% 2 == 1L) {
+                stop("The number of checked indices in the chunk must be even, as they represent pairs. Found ", length(inds), " checked indices in chunk ", split_ind, ".")
+            }
+            if (length(inds) == 0L) {
+                return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
+            }
         }
-        locs <- beta_handler$getBetaLocs()[inds, , drop = FALSE]
+        loc_ids <- rownames(beta_locs)[inds]
+        locs <- beta_locs[inds, , drop = FALSE]
         chunk_beta <- beta_handler$getBeta(
-            row_names = rownames(locs),
+            row_names = loc_ids,
             col_names = col_names
         )
         x <- .testConnectivityBatch(
@@ -510,12 +562,15 @@
             pval_mode_per_group = pval_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             ntries = ntries,
-            mid_p = mid_p
+            mid_p = mid_p,
+            check_non_overlapping = !is.null(checked_inds)
         )
         rm(chunk_beta)
-        if (!is.null(revisited_mask)) {
+        if (!is.null(checked_inds) && length(checked_inds) > 0L) {
             # attach to result so outer loop can map back exactly
-            attr(x, "recomputed_pairs") <- recomputed_pairs
+            # keep only mod 2 = 1
+            inds <- inds[seq_along(inds) %% 2 == 1]
+            attr(x, "recomputed_pairs") <- inds
         }
         if (verbose > 0) {
             p_ext()
@@ -543,8 +598,9 @@
                 "pval_mode_per_group",
                 "empirical_strategy_per_group",
                 "ntries",
-                "revisited_mask",
                 "mid_p",
+                "updating_inds",
+                "checked_inds",
                 "verbose",
                 "p_ext",
                 ".testConnectivityBatch"
@@ -554,6 +610,8 @@
         )
         .finalizeParallel()
     }
+    bridge_mask <- rep(FALSE, n_sites)
+    recheck <- rep(FALSE, n_sites)
     for (item in ret) {
         idx <- item$pair_start:item$pair_end
         x <- item$result
@@ -567,7 +625,7 @@
                 }
             }
         }
-        if (is.null(revisited_mask)) {
+        if (is.null(checked_inds)) {
             # First pass: full overwrite
             for (col in names(x)) {
                 connectivity_array[idx, col] <- x[[col]]
@@ -582,78 +640,49 @@
             }
             update_m <- x[["connected"]]
             if (any(update_m) && length(masked_idx) >= 1L) {
+                recheck[masked_idx[update_m]] <- TRUE
                 for (col in names(x)) {
                     connectivity_array[masked_idx[update_m], col] <- x[[col]][update_m]
                 }
-            }
-        }
-    }
-    if (!is.null(connectivity_array) && gap > 0L) {
-        connected <- connectivity_array[, "connected"]
-        runs <- rle(connected)
-
-        run_lengths <- runs$lengths
-        run_values <- runs$values
-
-        run_starts <- cumsum(c(1L, head(run_lengths, -1)))
-        run_ends <- cumsum(run_lengths)
-
-        fill_indices <- integer(0)
-
-        for (i in seq_along(run_values)) {
-            if (!run_values[i] && run_lengths[i] <= gap) {
-                left_run <- i - 1L
-                right_run <- i + 1L
-
-                if (left_run >= 1L && right_run <= length(run_values) &&
-                        run_values[left_run] && run_values[right_run]) {
-                    fill_indices <- c(
-                        fill_indices,
-                        run_starts[i]:run_ends[i]
-                    )
+                gap <- if (ugap > 0L) ugap else dgap
+                for (i in 0:(gap - 1L)) {
+                    bridge_mask[masked_idx[update_m] + i] <- TRUE
                 }
             }
         }
-
-        if (length(fill_indices) > 0) {
-            connectivity_array[fill_indices, "connected"] <- TRUE
-            connectivity_array[fill_indices, "reason"] <- "bridged"
-        }
-        # Keep chromosome termini as hard boundaries even after bridging.
-        connectivity_array[chr_ends, "connected"] <- FALSE
-        connectivity_array[chr_ends, "reason"] <- "end-of-input"
-    } else if (!is.null(revisited_mask)) {
-        connectivity_array[, "contingently_connected"] <- connectivity_array[, "connected"]
     }
+    connectivity_array[bridge_mask, "connected"] <- TRUE
+    connectivity_array[bridge_mask, "reason"] <- "bridged"
 
     list(
         connectivity_array = connectivity_array,
         splits = splits,
         pval_mode_per_group = pval_mode_per_group,
-        empirical_strategy_per_group = empirical_strategy_per_group
+        empirical_strategy_per_group = empirical_strategy_per_group,
+        recheck = recheck
     )
 }
 
 .buildConnectivityArray <- function(
-    beta_handler,
-    beta_locs = NULL,
-    pheno,
-    group_inds,
-    pval_mode_per_group,
-    empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = 0.05,
-    min_delta_beta = 0,
-    covariates = NULL,
-    max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
-    entanglement = "strong",
-    aggfun = median,
-    ntries = 500,
-    mid_p = TRUE,
-    njobs = 1,
-    expansion_windows = NULL,
-    max_bridge_gaps = 0
+  beta_handler,
+  beta_locs = NULL,
+  pheno,
+  group_inds,
+  pval_mode_per_group,
+  empirical_strategy_per_group,
+  col_names = NULL,
+  max_pval = 0.05,
+  min_delta_beta = 0,
+  covariates = NULL,
+  max_lookup_dist = 1000,
+  chunk_size = getOption("DMRsegal.chunk_size", 1000),
+  entanglement = "strong",
+  aggfun = median,
+  ntries = 500,
+  mid_p = TRUE,
+  njobs = 1,
+  expansion_windows = NULL,
+  max_bridge_gaps = 0
 ) {
     connectivity_array <- NULL
     splits <- NULL
@@ -663,7 +692,7 @@
         } else {
             .log_info("Building bridged connectivity array allowing up to ", gap, " gap(s) between connected seeds.", level = 2)
         }
-        build_ret <- .buildConnectivityArraySinglePass(
+        build_args <- list(
             beta_handler = beta_handler,
             beta_locs = beta_locs,
             group_inds = group_inds,
@@ -683,10 +712,53 @@
             njobs = njobs,
             expansion_windows = expansion_windows,
             connectivity_array = connectivity_array,
-            splits = splits,
-            gap = gap
+            splits = splits
         )
-        connectivity_array <- build_ret$connectivity_array
+        .buildConnectivityArraySinglePassWithGaps <- function(build_args, gap) {
+            build_args$ugap <- gap
+            build_args$dgap <- 0
+            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            build_args$connectivity_array <- build_ret$connectivity_array
+            urecheck <- build_ret$recheck
+            build_args$ugap <- 0
+            build_args$dgap <- gap
+            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            drecheck <- build_ret$recheck
+            list(recheck = urecheck | drecheck, connectivity_array = build_ret$connectivity_array)
+        }
+        .buildConnectivityArraySinglePassWithGapsRecursive <- function(build_args, gap) {
+            build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, gap)
+            recheck <- build_ret$recheck
+            if (any(build_ret$recheck)) {
+                build_args$recheck <- build_ret$recheck
+                build_args$connectivity_array <- build_ret$connectivity_array
+                if (gap > 1) {
+                    for (g in 1:gap) {
+                        g_recheck <- rep(FALSE, nrow(build_args$connectivity_array))
+                        while (TRUE) {
+                            build_ret <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, g)
+                            if (!any(build_ret$recheck)) {
+                                break
+                            }
+                            build_args$recheck <- build_ret$recheck
+                            g_recheck <- g_recheck | build_ret$recheck
+                            build_args$connectivity_array <- build_ret$connectivity_array
+                        }
+                        build_args$recheck <- g_recheck
+                    }
+                } else {
+                    build_ret <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, gap)
+                }
+            }
+            build_ret
+        }
+        if (gap > 0L) {
+            connectivity_array <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, gap)$connectivity_array
+        } else {
+            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            connectivity_array <- build_ret$connectivity_array
+        }
+
         splits <- build_ret$splits
         pval_mode_per_group <- build_ret$pval_mode_per_group
         empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
@@ -889,7 +961,6 @@
 }
 
 
-
 #' Vectorized connectivity testing for consecutive site pairs, given their beta values
 #'
 #' @return Data frame with columns: connected, pval, delta_beta, reason, first_failing_group, stop_reason
@@ -903,7 +974,8 @@
                                    max_lookup_dist = NULL, sites_locs = NULL,
                                    entanglement = "strong",
                                    aggfun = mean,
-                                   ntries = 0, mid_p = FALSE) {
+                                   ntries = 0, mid_p = FALSE,
+                                   check_non_overlapping = FALSE) {
     n_sites <- nrow(sites_beta)
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
@@ -920,8 +992,15 @@
         }
         return(ret)
     }
-
-    n_pairs <- n_sites - 1
+    if (check_non_overlapping) {
+        n_pairs <- n_sites / 2
+        start_pair_inds <- seq(1, n_sites - 1, by = 2)
+        end_pair_inds <- seq(2, n_sites, by = 2)
+    } else {
+        n_pairs <- n_sites - 1
+        start_pair_inds <- seq_len(n_sites - 1)
+        end_pair_inds <- seq_len(n_sites - 1) + 1L
+    }
     n_groups <- length(group_inds)
     if (strict_mode) {
         # null hypothesis: all groups must be significant -> bonferroni correction
@@ -940,7 +1019,7 @@
 
     # Check distance condition if provided (vectorized)
     if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
-        dists <- as.numeric(sites_locs[2:n_sites, "start"]) - as.numeric(sites_locs[1:(n_sites - 1), "start"])
+        dists <- as.numeric(sites_locs[end_pair_inds, "start"]) - as.numeric(sites_locs[start_pair_inds, "start"])
         exceeded_dist <- dists > max_lookup_dist
         connected[exceeded_dist] <- FALSE
         reasons[exceeded_dist] <- "exceeded max distance"
@@ -968,9 +1047,9 @@
         group_beta <- sites_beta[, idx, drop = FALSE]
         group_m <- .transformBeta(group_beta, pheno = pheno[idx, ], covariates = covariates)
 
-        # Extract consecutive pairs matrices
-        x_mat_full <- group_m[1:(n_sites - 1), , drop = FALSE] # Sites i
-        y_mat_full <- group_m[2:n_sites, , drop = FALSE] # Sites i+1
+        # Extract pairs matrices
+        x_mat_full <- group_m[start_pair_inds, , drop = FALSE] # Sites i
+        y_mat_full <- group_m[end_pair_inds, , drop = FALSE] # Sites i+1
 
         # Apply distance mask
         x_mat <- x_mat_full[nexdist_mask, , drop = FALSE]
@@ -1155,7 +1234,7 @@
     # Vectorized delta beta check if needed
     if (min_delta_beta > 0 && length(unique(pheno[, "__casecontrol__"])) > 1) {
         # Extract site2 beta values for all pairs
-        site2_beta_mat <- sites_beta[2:n_sites, , drop = FALSE]
+        site2_beta_mat <- sites_beta[end_pair_inds, , drop = FALSE]
 
         # Vectorized mean computation across case/control
         case_betas <- apply(site2_beta_mat[, pheno[, "__casecontrol__"] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
@@ -1226,44 +1305,44 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-    beta,
-    seeds,
-    pheno,
-    seeds_id_col = NULL,
-    sample_group_col = "Sample_Group",
-    casecontrol_col = NULL,
-    covariates = NULL,
-    min_cpg_delta_beta = 0.1,
-    adaptive_min_cpg_delta_beta = TRUE,
-    expansion_step = 500,
-    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-    genome = "hg19",
-    max_pval = 0.05,
-    entanglement = c("strong", "weak"),
-    pval_mode = c("auto", "parametric", "empirical"),
-    empirical_strategy = c("auto", "montecarlo", "permutations"),
-    ntries = 200L,
-    mid_p = FALSE,
-    max_lookup_dist = 10000,
-    expansion_window = "auto",
-    max_bridge_seeds_gaps = 1L,
-    max_bridge_extension_gaps = 1L,
-    min_seeds = 2,
-    min_adj_seeds = 2,
-    min_cpgs = 50,
-    aggfun = c("median", "mean"),
-    ignored_sample_groups = NULL,
-    output_prefix = NULL,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    chunk_size = getOption("DMRsegal.chunk_size", 10000),
-    beta_row_names_file = NULL,
-    annotate_with_genes = TRUE,
-    rank_dmrs = TRUE,
-    bed_provided = FALSE,
-    bed_chrom_col = "chrom",
-    bed_start_col = "start",
-    verbose = getOption("DMRsegal.verbose", 1),
-    .load_debug = FALSE
+  beta,
+  seeds,
+  pheno,
+  seeds_id_col = NULL,
+  sample_group_col = "Sample_Group",
+  casecontrol_col = NULL,
+  covariates = NULL,
+  min_cpg_delta_beta = 0.1,
+  adaptive_min_cpg_delta_beta = TRUE,
+  expansion_step = 500,
+  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+  genome = "hg19",
+  max_pval = 0.05,
+  entanglement = c("strong", "weak"),
+  pval_mode = c("auto", "parametric", "empirical"),
+  empirical_strategy = c("auto", "montecarlo", "permutations"),
+  ntries = 200L,
+  mid_p = FALSE,
+  max_lookup_dist = 10000,
+  expansion_window = "auto",
+  max_bridge_seeds_gaps = 1L,
+  max_bridge_extension_gaps = 1L,
+  min_seeds = 2,
+  min_adj_seeds = 2,
+  min_cpgs = 50,
+  aggfun = c("median", "mean"),
+  ignored_sample_groups = NULL,
+  output_prefix = NULL,
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  chunk_size = getOption("DMRsegal.chunk_size", 10000),
+  beta_row_names_file = NULL,
+  annotate_with_genes = TRUE,
+  rank_dmrs = TRUE,
+  bed_provided = FALSE,
+  bed_chrom_col = "chrom",
+  bed_start_col = "start",
+  verbose = getOption("DMRsegal.verbose", 1),
+  .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)

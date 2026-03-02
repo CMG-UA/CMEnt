@@ -18,6 +18,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         covariates = c("Age", "Gender"),
         min_seeds = 2,
         min_cpgs = 3,
+        njobs = 1,
         max_lookup_dist = 1000,
     )
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
@@ -72,7 +73,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
     # Assertions
     expect_s4_class(dmrs_segal, "GRanges")
-    expect_equal(length(dmrs_segal), 258)
+    expect_equal(length(dmrs_segal), 259)
     expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
     # Check that all DMRs meet the criteria

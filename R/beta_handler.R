@@ -521,6 +521,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     regions <- chr
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
+                    regions <- sort(unique(regions), by = ~chr + start)
                 }
                 beta_subset <- bedr::tabix(regions, private$.tabix_file,
                     check.valid = FALSE,
@@ -530,9 +531,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     stop("Requested CpG sites not found in beta tabix file")
                 }
                 # bedr forces the first three columns to be named "chr", "start", "stop" .... https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
-                beta_subset <- merge(beta_subset, regions[, c("chr", "start", "name")], by.x = c("chr", "start"), by.y = c("chr", "start"), all.x = TRUE, all.y = FALSE)
+                beta_subset <- merge(regions[, c("chr", "start", "name")], beta_subset, by.x = c("chr", "start"), by.y = c("chr", "start"), all.x = TRUE, all.y = FALSE)
                 rownames(beta_subset) <- beta_subset$name
-                beta_subset <- beta_subset[, 7:(ncol(beta_subset) - 1), drop = FALSE]
+                # order by input row_names if provided
+                if (!is.null(row_names)) {
+                    beta_subset <- beta_subset[row_names, , drop = FALSE]
+                }
+                beta_subset <- beta_subset[, 8:ncol(beta_subset), drop = FALSE]
                 beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]

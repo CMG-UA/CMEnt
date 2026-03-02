@@ -167,7 +167,7 @@ names(dmps_gr) <- rownames(dmps)
 
 ## Method 1: DMRsegal
 
-```{r DMRsegal, message=TRUE}
+```{r DMRsegal}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
