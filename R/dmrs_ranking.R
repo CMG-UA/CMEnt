@@ -951,9 +951,10 @@ rankDMRs <- function(
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)
     cv_metrics <- do.call(f, process_args)
     cv_metrics <- do.call(rbind, cv_metrics)
+
     .log_success("Cross-validated classification scores computed", level = 2)
-    mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
-    mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
+    mcols(dmrs)$score <- as.numeric(cv_metrics[, "score"])
+    mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics[, "cv_accuracy"])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
     .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 2)
 
