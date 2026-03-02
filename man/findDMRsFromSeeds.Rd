@@ -41,13 +41,12 @@ findDMRsFromSeeds(
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
-  chr_levels = NULL,
   verbose = getOption("DMRsegal.verbose", 1),
   .load_debug = FALSE
 )
 }
 \arguments{
-\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix.}
+\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.}
 
 \item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.}
 
@@ -116,8 +115,6 @@ findDMRsFromSeeds(
 \item{bed_chrom_col}{Character. Column name for chromosome in the BED file. Default is "chrom".}
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
-
-\item{chr_levels}{Character vector. Custom chromosome levels to use. Default is NULL.}
 
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".}
 

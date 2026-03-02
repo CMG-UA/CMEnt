@@ -16,6 +16,7 @@ plotDMR(
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
   max_cpgs = 100,
+  max_samples_per_group = 10,
   plot_motif = TRUE,
   motif_flank_size = 5,
   plot_title = TRUE,
@@ -47,6 +48,8 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 \item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
 
 \item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
+
+\item{max_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 10).}
 
 \item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
 

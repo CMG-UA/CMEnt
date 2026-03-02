@@ -16,7 +16,7 @@ plotDMRBlockFormation(
   block_gap_quantile = 0.95,
   block_gap_multiplier = 1.5,
   block_gap_min_bp = 250000,
-  block_gap_max_bp = 5000000,
+  block_gap_max_bp = 5e+06,
   point_alpha = 0.7,
   point_size = 1
 )
@@ -45,7 +45,7 @@ segmentation (default: \code{2}).}
 \item{block_gap_fixed_bp}{Numeric. Maximum allowed midpoint gap (bp) when
 \code{block_gap_mode = "fixed"}. Ignored otherwise.}
 
-\item{block_gap_quantile}{Numeric in \code{(0, 1)}. Gap quantile used for adaptive
+\item{block_gap_quantile}{Numeric in \verb{(0, 1)}. Gap quantile used for adaptive
 thresholding (default: \code{0.95}).}
 
 \item{block_gap_multiplier}{Numeric > 0. Multiplier for adaptive gap threshold
@@ -57,7 +57,7 @@ Default is \code{250000}.}
 \item{block_gap_max_bp}{Numeric >= \code{block_gap_min_bp}. Upper clamp for adaptive
 gap threshold (bp). Default is \code{5000000}.}
 
-\item{point_alpha}{Numeric. Alpha for raw score points in \code{[0, 1]}
+\item{point_alpha}{Numeric. Alpha for raw score points in \verb{[0, 1]}
 (default: \code{0.7}).}
 
 \item{point_size}{Numeric. Point size for raw scores (default: \code{1.0}).}

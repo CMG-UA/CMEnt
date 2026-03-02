@@ -18,7 +18,7 @@ rankDMRs(
   block_gap_quantile = 0.95,
   block_gap_multiplier = 1.5,
   block_gap_min_bp = 250000,
-  block_gap_max_bp = 5000000
+  block_gap_max_bp = 5e+06
 )
 }
 \arguments{
@@ -42,7 +42,7 @@ rankDMRs(
 \item{block_gap_fixed_bp}{Numeric. Maximum allowed midpoint gap (bp) when
 \code{block_gap_mode = "fixed"}. Ignored otherwise.}
 
-\item{block_gap_quantile}{Numeric in \code{(0, 1)}. Quantile of chromosome DMR midpoint
+\item{block_gap_quantile}{Numeric in \verb{(0, 1)}. Quantile of chromosome DMR midpoint
 gaps used in adaptive thresholding. Default is \code{0.95}.}
 
 \item{block_gap_multiplier}{Numeric > 0. Multiplier applied to the adaptive

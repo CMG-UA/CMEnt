@@ -38,6 +38,7 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
 \item \href{#method-BetaHandler-validate}{\code{BetaHandler$validate()}}
 \item \href{#method-BetaHandler-getBetaLocs}{\code{BetaHandler$getBetaLocs()}}
 \item \href{#method-BetaHandler-getBetaChunkSize}{\code{BetaHandler$getBetaChunkSize()}}
+\item \href{#method-BetaHandler-isArrayBased}{\code{BetaHandler$isArrayBased()}}
 \item \href{#method-BetaHandler-getBeta}{\code{BetaHandler$getBeta()}}
 \item \href{#method-BetaHandler-clone}{\code{BetaHandler$clone()}}
 }
@@ -54,6 +55,8 @@ Create a new BetaHandler object
   genome = "hg19",
   beta_row_names_file = NULL,
   sorted_locs = NULL,
+  chrom_col = "#chrom",
+  start_col = "start",
   njobs = 1
 )}\if{html}{\out{</div>}}
 }
@@ -69,7 +72,11 @@ Create a new BetaHandler object
 
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 
-\item{\code{sorted_locs}}{Sorted genomic locations data frame. If NULL, will be retrieved automatically}
+\item{\code{sorted_locs}}{Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically}
+
+\item{\code{chrom_col}}{Chromosome column name in tabix file}
+
+\item{\code{start_col}}{Start position column name in tabix file}
 
 \item{\code{njobs}}{Number of parallel jobs}
 }
@@ -171,6 +178,19 @@ Integer chunk size
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-isArrayBased"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-isArrayBased}{}}}
+\subsection{Method \code{isArrayBased()}}{
+Check if the beta data is array-based (i.e. does not have row names in 'chr:pos' format)
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$isArrayBased()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+Logical indicating if the beta data is array-based
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaHandler-getBeta"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-getBeta}{}}}
 \subsection{Method \code{getBeta()}}{
@@ -180,7 +200,6 @@ Extract beta values for specific CpG sites and samples
   row_names = NULL,
   col_names = NULL,
   allow_missing = FALSE,
-  check_mem = FALSE,
   chr = NULL
 )}\if{html}{\out{</div>}}
 }
@@ -194,14 +213,12 @@ Extract beta values for specific CpG sites and samples
 
 \item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
 
-\item{\code{check_mem}}{Logical. If TRUE, checks memory usage and may return a big.matrix if size exceeds threshold (default: TRUE)}
-
 \item{\code{chr}}{Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-Matrix of beta values, or big.matrix if estimated size exceeds mem_thres
+Matrix of beta values
 }
 }
 \if{html}{\out{<hr>}}

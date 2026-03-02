@@ -394,6 +394,133 @@
     cache_dir
 }
 
+createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select = NULL,
+                         chunk_size = 100000, sep = "\t") {
+  stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
+  stopifnot(is.character(output_h5file), length(output_h5file) == 1)
+
+  if (file.exists(output_h5file)) file.remove(output_h5file)
+  rhdf5::h5createFile(output_h5file)
+
+  row_offset <- 0L
+  initialized <- FALSE
+  p <- NULL
+
+  cb <- readr::DataFrameCallback$new(function(df, pos) {
+    if (!is.null(select)) {
+        df <- df[, select, drop = FALSE]
+    }
+    if (!initialized) {
+      p <<- ncol(df)
+      rhdf5::h5createDataset(
+        file = output_h5file,
+        dataset = dataset_name,
+        dims = c(0, p),
+        maxdims = c(rhdf5::H5Sunlimited(), p),
+        chunk = c(min(chunk_size, max(1L, nrow(df))), p),
+        storage.mode = "character",
+        level = 7
+      )
+      rhdf5::h5write(names(df), output_h5file, paste0(dataset_name, "_colnames"))
+      initialized <<- TRUE
+    }
+
+    n_new <- nrow(df)
+    if (n_new == 0L) return(invisible(NULL))
+
+    # Convert whole chunk to character matrix
+    # (keeps NA as NA_character_)
+    mat <- as.matrix(data.frame(lapply(df, as.character), check.names = FALSE))
+
+    new_total <- row_offset + n_new
+
+    # Extend then write
+    rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+
+    idx_rows <- (row_offset + 1L):new_total
+    rhdf5::h5write(
+      mat,
+      file = output_h5file,
+      name = dataset_name,
+      index = list(idx_rows, 1:p)
+    )
+
+    row_offset <<- new_total
+    invisible(NULL)
+  })
+
+  readr::read_tsv_chunked(
+    file = input_file,
+    callback = cb,
+    chunk_size = chunk_size,
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+
+  rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
+  invisible(output_h5file)
+}
+
+.postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
+    if (!is.null(select)) {
+        df <- df[, select, drop = FALSE]
+    }
+    if (!is.null(rename)) {
+        for (name in names(rename)) {
+            colnames(df)[colnames(df) == name] <- rename[[name]]
+        }
+    }
+    if (!is.null(derive)) {
+        for (new_col in names(derive)) {
+            col_info <- derive[[new_col]]
+            if (!all(col_info$cols %in% colnames(df))) {
+                stop(
+                    "Cannot derive column ", new_col, " because not all required columns are present. ",
+                    "Required columns: ", paste(col_info$cols, collapse = ", "), ". ",
+                    "Available columns: ", paste(colnames(df), collapse = ", ")
+                )
+            }
+            df[[new_col]] <- do.call(col_info$fun, df[col_info$cols])
+        }
+    }
+    if (!is.null(indices)){
+        missing_indices <- setdiff(indices, colnames(df))
+        if (length(missing_indices) > 0) {
+            stop(
+                "Cannot set indices because the following specified index columns are missing: ",
+                paste(missing_indices, collapse = ", "), ". ",
+                "Available columns: ", paste(colnames(df), collapse = ", ")
+            )
+        }
+        if (length(indices) == 1) {
+            rownames(df) <- df[[indices]]
+        } else {
+            rownames(df) <- do.call(paste, c(df[, indices], sep = ":" ))
+        }
+    }
+    df
+}
+
+getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL, chunk_size = 100000) {
+    if (is.data.frame(obj)) {
+        return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
+    }
+    cache_dir <- getOption("DMRsegal.h5_cache_dir")
+    h5_file <- file.path(cache_dir, paste0(.getFileHash(obj), ".h5"))
+    createH5file(
+        input_file = obj,
+        output_h5file =  h5_file,
+        dataset_name = "data",
+        select = select,
+        chunk_size = chunk_size
+    )
+    da <- HDF5Array::HDF5Array(h5_file, "data")
+    x <- DelayedDataFrame::DelayedDataFrame(da)
+    colnames(x) <- rhdf5::h5read(h5_file, "data_colnames")
+    .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
+}
+
+
 
 #' Create Genomic Location Registry from Tabix BED File
 #'
@@ -403,7 +530,7 @@
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
-#' @return Returns a Registry object
+#' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
 genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col="#chrom", start_col="start") { # nolint
@@ -442,8 +569,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
         )
     }
     if (getOption("DMRsegal.use_tabix_cache", FALSE)) {
-        locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
-        saveRDS(sorted_locs, file = locations_file)
+        saveRDS(sorted_locs, file = cache_file)
     }
     sorted_locs
 }

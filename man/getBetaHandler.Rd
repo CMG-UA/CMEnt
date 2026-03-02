@@ -10,6 +10,8 @@ getBetaHandler(
   genome = c("hg19", "hg38", "mm10", "mm39"),
   beta_row_names_file = NULL,
   sorted_locs = NULL,
+  chrom_col = "#chrom",
+  start_col = "start",
   njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
 )
 }
@@ -24,7 +26,11 @@ getBetaHandler(
 
 \item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.}
 
-\item{njobs}{Number of parallel jobs}
+\item{chrom_col}{Chromosome column name in tabix file}
+
+\item{start_col}{Start position column name in tabix file}
+
+\item{njobs}{Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.}
 }
 \value{
 A new BetaHandler object

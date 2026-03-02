@@ -15,7 +15,7 @@
 #' significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
 #'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file, or a BSseq object. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a Registry object. If a BSseq object is provided, genomic locations and methylation values will be extracted using bsseq methods.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file, or a BSseq object. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. If a BSseq object is provided, genomic locations and methylation values will be extracted using bsseq methods.
 #' @param seeds Character. Path to the seeds TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is 1.
@@ -453,7 +453,7 @@
         sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
         s <- nrow(sites_locs)
         if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
-            dists <- sites_locs[2:s, "start"] - sites_locs[1:(s - 1), "start"]
+            dists <- as.numeric(sites_locs[2:s, "start"]) - as.numeric(sites_locs[1:(s - 1), "start"])
             exceeded_dist <- dists > max_lookup_dist | sites_locs[2:s, "chr"] != sites_locs[1:(s - 1), "chr"]
         } else {
             exceeded_dist <- rep(FALSE, n_sites - 1L)
@@ -949,7 +949,7 @@
 
     # Check distance condition if provided (vectorized)
     if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
-        dists <- sites_locs[2:n_sites, "start"] - sites_locs[1:(n_sites - 1), "start"]
+        dists <- as.numeric(sites_locs[2:n_sites, "start"]) - as.numeric(sites_locs[1:(n_sites - 1), "start"])
         exceeded_dist <- dists > max_lookup_dist
         connected[exceeded_dist] <- FALSE
         reasons[exceeded_dist] <- "exceeded max distance"
@@ -1194,7 +1194,7 @@
 #'
 #' This function identifies DMRs from a given set of seeds and a beta value file.
 #'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a Registry object.
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.
 #' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
 #' @param pheno Data frame. Phenotype data.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
@@ -1789,7 +1789,7 @@ findDMRsFromSeeds <- function(
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
         .log_step("Building expansion connectivity array..", level = 2)
-        connectivity_array <- .buildConnectivityArray(
+        ret <- .buildConnectivityArray(
             beta_handler = beta_handler,
             pheno = pheno_detection,
             group_inds = group_inds,
@@ -1809,6 +1809,7 @@ findDMRsFromSeeds <- function(
             expansion_windows = expansion_windows,
             max_bridge_gaps = max_bridge_extension_gaps
         )
+        connectivity_array <- ret$connectivity_array
     }
     .log_success("Connectivity array built.", level = 2)
     .log_info("Number of underlying connected CpGs found: ", sum(connectivity_array$connected), level = 1)

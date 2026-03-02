@@ -14,9 +14,6 @@ update_package_option <- future:::update_package_option
 update_package_option("DMRsegal.random_seed", mode = "numeric", default = 42)
 update_package_option("DMRsegal.njobs", mode = "numeric", default = min(8, future::availableCores() - 1))
 update_package_option("DMRsegal.beta_in_mem_threshold_mb", mode = "numeric", default = 500)
-update_package_option("DMRsegal.registry_in_mem_threshold_mb", mode = "numeric", default = 500)
-update_package_option("DMRsegal.registry_chunk_size", mode = "numeric", default = 50000)
-update_package_option("DMRsegal.registry_query_chunk_size", mode = "numeric", default = 50000)
 update_package_option("DMRsegal.verbose", mode = "numeric", default = 1)
 update_package_option("DMRsegal.use_bed_cache", mode = "logical", default = FALSE)
 update_package_option("DMRsegal.bed_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
@@ -24,6 +21,7 @@ update_package_option("DMRsegal.use_tabix_cache", mode = "logical", default = TR
 update_package_option("DMRsegal.tabix_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
 update_package_option("DMRsegal.use_annotation_cache", mode = "logical", default = TRUE)
 update_package_option("DMRsegal.annotation_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "annotation_cache"))
+update_package_option("DMRsegal.h5_cache_dir", mode = "character", default = file.path(path.expand("~"), ".cache", "R", "DMRsegal", "h5_cache"))
 update_package_option("DMRsegal.ranking_nfold", mode = "numeric", default = 5)
 update_package_option("DMRsegal.min_motif_similarity", mode = "numeric", default = 0.8)
 update_package_option("DMRsegal.jaspar_cache_dir", mode = "character", default = file.path(

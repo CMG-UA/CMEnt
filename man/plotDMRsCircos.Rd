@@ -9,7 +9,7 @@ plotDMRsCircos(
   beta,
   pheno,
   genome = "hg19",
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  array = "450K",
   sorted_locs = NULL,
   sample_group_col = "Sample_Group",
   min_similarity = 0.8,
