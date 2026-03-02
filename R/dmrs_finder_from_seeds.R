@@ -2162,7 +2162,8 @@ findDMRsFromSeeds <- function(
             array = array,
             sorted_locs = beta_handler$getGenomicLocs(),
             sample_group_col = sample_group_col,
-            covariates = covariates
+            covariates = covariates,
+            njobs = njobs
         )
         .log_success("DMR ranking completed.", level = 1)
     }

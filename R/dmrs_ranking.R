@@ -475,8 +475,8 @@
                                                    block_gap_fixed_bp = NULL,
                                                    block_gap_quantile = 0.95,
                                                    block_gap_multiplier = 1.5,
-                                                   block_gap_min_bp = 250000,
-                                                   block_gap_max_bp = 5000000) {
+                                                   block_gap_min_bp = 2500,
+                                                   block_gap_max_bp = 50000) {
     f_chr <- .gaussianSmoothAdaptiveKNN(x_chr, y_chr, k = k_neighbors)
     seg <- .segmentLinearPELT(
         x = x_chr,
@@ -811,8 +811,9 @@ rankDMRs <- function(
     block_gap_fixed_bp = NULL,
     block_gap_quantile = 0.95,
     block_gap_multiplier = 1.5,
-    block_gap_min_bp = 250000,
-    block_gap_max_bp = 5000000
+    block_gap_min_bp = 2500,
+    block_gap_max_bp = 50000,
+    njobs = getOption("DMRsegal.njobs", 1L)
 ) {
     verbose <- getOption("DMRsegal.verbose", 1)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
@@ -841,9 +842,10 @@ rankDMRs <- function(
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     dmr_cpgs <- strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
-
-    .setupParallel()
-    on.exit(.finalizeParallel(), add = TRUE)
+    if (njobs > 1L) {
+        .setupParallel()
+        on.exit(.finalizeParallel(), add = TRUE)
+    }
     p_con <- NULL
     if (verbose > 0) {
         # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
@@ -852,24 +854,33 @@ rankDMRs <- function(
             p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
         }
     }
-
-    cv_metrics <- future.apply::future_sapply(
+    process_args <- c(
         X = seq_along(dmrs),
-        FUN = function(i) {
+        FUN = function(i, beta_handler) {
             beta_mat <- beta_handler$getBeta(row_names = dmr_cpgs[[i]], col_names = beta_col_names)
             m_values <- .transformBeta(beta_mat, pheno = pheno, covariate_model = covariate_model)
             cv_results <- .performCrossPrediction(m_values, groups = groups, folds = folds, nfold = nfold)
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         },
+        beta_handler = beta_handler
+    )
+    f <- sapply
+    if (njobs > 1L) {
+        process_args <- c(
+        process_args,
         future.seed = TRUE,
         future.globals = c(
-            "beta_handler", "pheno", "beta_col_names", "p_con",
+            "pheno", "beta_col_names", "p_con",
             ".performCrossPrediction", ".transformBeta",
             "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
         ),
         future.stdout = NA
-    )
+        )
+        f <- future.apply::future_sapply
+    }
+
+    cv_metrics <- do.call(f, process_args)
     mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
