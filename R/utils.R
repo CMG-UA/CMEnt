@@ -484,7 +484,7 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
                     "Available columns: ", paste(colnames(df), collapse = ", ")
                 )
             }
-            df[[new_col]] <- do.call(col_info$fun, df[col_info$cols])
+            df[[new_col]] <- do.call(col_info$fun, df[, col_info$cols])
         }
     }
     if (!is.null(indices)) {
@@ -1333,7 +1333,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 .transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
-    m_values <- log2(beta / (1 - beta) + 1e-6)
+    m_values <- log2(beta / (1 - beta + 1e-6) + 1e-6)
     if (is.null(covariate_model)) {
         covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
     }
@@ -1348,6 +1348,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             t_covariate_matrix = covariate_model$t_covariate_matrix
         )
     }
+    m_values[is.na(m_values)] <- 0
     m_values
 }
 

@@ -1840,7 +1840,7 @@ findDMRsFromSeeds <- function(
             x
         }
         if (njobs == 1) {
-            ret <- apply(chr_dmrs, 1, fun, simplify = FALSE)
+            chr_ret <- apply(chr_dmrs, 1, fun, simplify = FALSE)
         } else {
             .setupParallel()
             chr_ret <- future.apply::future_apply(

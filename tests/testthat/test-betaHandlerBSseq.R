@@ -15,7 +15,6 @@ test_that("BetaHandler can be created from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
@@ -36,7 +35,7 @@ test_that("BetaHandler can extract row names from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste0("cg", seq_len(n_loci))
+    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -58,7 +57,6 @@ test_that("BetaHandler can extract column names from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -80,7 +78,7 @@ test_that("BetaHandler can extract beta values from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste0("cg", seq_len(n_loci))
+    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
     names(gr) <- cpg_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
@@ -108,14 +106,14 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste0("cg", seq_len(n_loci))
+    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
-    subset_cpgs <- c("cg5", "cg10", "cg15")
+    subset_cpgs <- cpg_names[c(1, 10, 20)]
     beta_subset <- beta_handler$getBeta(row_names = subset_cpgs)
     expect_equal(nrow(beta_subset), 3)
     expect_equal(rownames(beta_subset), subset_cpgs)
@@ -131,7 +129,6 @@ test_that("BetaHandler can subset beta values from BSseq object by column names"
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -155,7 +152,6 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = start_positions, width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
@@ -220,16 +216,17 @@ test_that("BetaHandler allows missing CpGs from BSseq when allow_missing=TRUE", 
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    names(gr) <- paste0("cg", seq_len(n_loci))
+    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
+    names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
     beta_subset <- beta_handler$getBeta(
-        row_names = c("cg1", "cg999", "cg5"),
+        row_names = c(cpg_names[[1]], cpg_names[[2]], "cg5"),
         allow_missing = TRUE
     )
     expect_equal(nrow(beta_subset), 2)
-    expect_equal(rownames(beta_subset), c("cg1", "cg5"))
+    expect_equal(rownames(beta_subset), c(cpg_names[[1]], cpg_names[[2]]))
 })

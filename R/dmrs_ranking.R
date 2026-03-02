@@ -854,7 +854,7 @@ rankDMRs <- function(
             p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
         }
     }
-    process_args <- c(
+    process_args <- list(
         X = seq_along(dmrs),
         FUN = function(i, beta_handler) {
             beta_mat <- beta_handler$getBeta(row_names = dmr_cpgs[[i]], col_names = beta_col_names)
@@ -869,13 +869,15 @@ rankDMRs <- function(
     if (njobs > 1L) {
         process_args <- c(
             process_args,
-            future.seed = TRUE,
-            future.globals = c(
-                "pheno", "beta_col_names", "p_con",
-                ".performCrossPrediction", ".transformBeta",
-                "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
-            ),
-            future.stdout = NA
+            list(
+                future.seed = TRUE,
+                future.globals = c(
+                    "pheno", "beta_col_names", "p_con",
+                    ".performCrossPrediction", ".transformBeta",
+                    "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
+                ),
+                future.stdout = NA
+            )
         )
         f <- future.apply::future_sapply
     }
