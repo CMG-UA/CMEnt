@@ -253,7 +253,7 @@
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
 
-    .make_template <- function(nrows, reason_default) {
+    .makeOutputTemplate <- function(nrows, reason_default) {
         ret <- data.frame(
             connected = rep(FALSE, nrows),
             pval = rep(NA_real_, nrows),
@@ -270,7 +270,7 @@
         }
         ret
     }
-    .get_chunk_beta <- function(site_start, site_end, mask = NULL) {
+    .getChunkBeta <- function(site_start, site_end, mask = NULL) {
         if (!is.null(mask)) {
             site_indices <- rownames(beta_locs[site_start:site_end, ][mask, ])
         } else {
@@ -282,7 +282,7 @@
         )
     }
 
-    .chunk_pair_ranges <- function(pair_ranges_df) {
+    .chunkPairRanges <- function(pair_ranges_df) {
         if (is.null(pair_ranges_df) || nrow(pair_ranges_df) == 0L) {
             return(matrix(numeric(0), ncol = 2))
         }
@@ -311,7 +311,7 @@
         do.call(rbind, out[seq_len(out_n)])
     }
 
-    .build_all_pair_ranges <- function() {
+    .buildAllPairRanges <- function() {
         out <- vector("list", length(unique(beta_chr)))
         out_n <- 0L
         for (chr in unique(beta_chr)) {
@@ -390,18 +390,18 @@
         )
     }
     if (is.null(splits)) {
-        pair_ranges <- if (window_mode) .build_window_pair_ranges() else .build_all_pair_ranges()
-        splits <- .chunk_pair_ranges(pair_ranges)
+        pair_ranges <- if (window_mode) .build_window_pair_ranges() else .buildAllPairRanges()
+        splits <- .chunkPairRanges(pair_ranges)
     }
     if (nrow(splits) == 0L) {
-        connectivity_array <- .make_template(n_sites, default_reason)
+        connectivity_array <- .makeOutputTemplate(n_sites, default_reason)
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
         return(list(connectivity_array = connectivity_array, splits = splits))
     }
 
     if (is.null(connectivity_array)) {
-        connectivity_array <- .make_template(n_sites, default_reason)
+        connectivity_array <- .makeOutputTemplate(n_sites, default_reason)
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
         revisited_mask <- NULL
@@ -449,7 +449,7 @@
             level = 2
         )
         # select testing settings using the first chunk as a pilot
-        first_chunk <- .get_chunk_beta(splits[1, 1], splits[1, 2] + 1)
+        first_chunk <- .getChunkBeta(splits[1, 1], splits[1, 2] + 1)
         sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
         s <- nrow(sites_locs)
         if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
@@ -491,9 +491,9 @@
         if (!is.null(revisited_mask)) {
             mask_seg <- revisited_mask[site_start:site_end]
             locs <- locs[mask_seg, , drop = FALSE]
-            chunk_beta <- .get_chunk_beta(site_start, site_end, mask_seg)
+            chunk_beta <- .getChunkBeta(site_start, site_end, mask_seg)
         } else {
-            chunk_beta <- .get_chunk_beta(site_start, site_end)
+            chunk_beta <- .getChunkBeta(site_start, site_end)
         }
         if (nrow(chunk_beta) != nrow(locs)) {
             stop("Mismatch between number of rows in beta chunk (", nrow(chunk_beta), ") and number of locations (", nrow(locs), ").")
@@ -514,7 +514,10 @@
             ntries = ntries,
             mid_p = mid_p
         )
-
+        rm(chunk_beta)
+        if ( getOption("DMRsegal.njobs", 1L) > 1L && split_ind %% getOption("DMRsegal.njobs") == 0L ) {
+            gc()
+        }
         if (!is.null(revisited_mask)) {
             # global site indices in this chunk are site_start:site_end
             sel_sites_rel <- which(mask_seg) # indices relative to site_start
@@ -558,7 +561,7 @@
                 "mid_p",
                 "verbose",
                 "p_ext",
-                ".get_chunk_beta",
+                ".getChunkBeta",
                 ".testConnectivityBatch"
             ),
             FUN = fun
@@ -698,7 +701,7 @@
         empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
         .log_info("Connectivity array built with gap allowance of ", gap, " (", sum(connectivity_array$connected), " connected CpGs).", level = 2)
     }
-    connectivity_array
+    list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group)
 }
 
 
@@ -1651,7 +1654,7 @@ findDMRsFromSeeds <- function(
         )
     } else {
         .log_step("Building seed connectivity array...", level = 2)
-        seeds_connectivity_array <- .buildConnectivityArray(
+        ret <- .buildConnectivityArray(
             beta_handler = beta_handler,
             beta_locs = seeds_locs,
             pheno = pheno_detection,
@@ -1672,6 +1675,9 @@ findDMRsFromSeeds <- function(
             expansion_windows = NULL,
             max_bridge_gaps = max_bridge_seeds_gaps
         )
+        seeds_connectivity_array <- ret$connectivity_array
+        pval_mode_per_group <- ret$pval_mode_per_group
+        empirical_strategy_per_group <- ret$empirical_strategy_per_group
         .log_success("Seed connectivity array built.", level = 2)
         # connected_seeds[i] encodes edge i -> i+1
         connected_seeds <- seeds_connectivity_array$connected
