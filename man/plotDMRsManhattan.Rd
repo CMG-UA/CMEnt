@@ -11,7 +11,11 @@ plotDMRsManhattan(
   promoter_col = "in_promoter_of",
   gene_body_col = "in_gene_body_of",
   point_size = 1.1,
-  point_alpha = 0.75
+  point_alpha = 0.75,
+  block_col = "block_id",
+  show_blocks = TRUE,
+  block_alpha = 0.12,
+  block_linewidth = 0.25
 )
 }
 \arguments{
@@ -28,6 +32,14 @@ plotDMRsManhattan(
 \item{point_size}{Numeric. Point size (default: \code{1.1}).}
 
 \item{point_alpha}{Numeric. Point alpha in \verb{[0, 1]} (default: \code{0.75}).}
+
+\item{block_col}{Character. Metadata column containing block IDs (default: \code{"block_id"}).}
+
+\item{show_blocks}{Logical. If TRUE, draw translucent rectangles for identified blocks (default: \code{TRUE}).}
+
+\item{block_alpha}{Numeric. Alpha for block rectangles in \verb{[0, 1]} (default: \code{0.12}).}
+
+\item{block_linewidth}{Numeric. Line width for block rectangle borders (default: \code{0.25}).}
 }
 \value{
 A ggplot object.

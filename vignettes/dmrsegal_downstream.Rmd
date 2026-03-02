@@ -136,7 +136,7 @@ interaction_results <- computeDMRsInteraction(
     min_similarity = 0.8,
     flank_size = 5,
     min_component_size = 2,
-    query_components_with_jaspar = FALSE
+    query_components_with_jaspar = TRUE
 )
 
 interaction_tbl <- interaction_results$interactions
@@ -285,8 +285,9 @@ The information includes:
 - Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
-```{r circos_plot, eval=FALSE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs
+circos_summary_plotted <- FALSE
 
 tryCatch(
     {
@@ -307,15 +308,22 @@ tryCatch(
             degenerate_resolution = 1e6,
             verbose = 1
         )
+        circos_summary_plotted <- TRUE
     },
     error = function(e) {
         message("Circos plot generation failed: ", conditionMessage(e))
         NULL
     }
 )
+if (!circos_summary_plotted) {
+    plot.new()
+    text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
+}
 ```
 It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr19:14700kb-16100kb and for chr20:61600kb-63000kb, which are regions that in the earlier plot were shown to interact:
-```{r circos_plot_region, eval=FALSE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+circos_region_plotted <- FALSE
+
 tryCatch(
     {
         plotDMRsCircos(
@@ -335,12 +343,17 @@ tryCatch(
             degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
             verbose = 1
         )
+        circos_region_plotted <- TRUE
     },
     error = function(e) {
         message("Circos plot generation failed: ", conditionMessage(e))
         NULL
     }
 )
+if (!circos_region_plotted) {
+    plot.new()
+    text(0.5, 0.5, "Circos region plot unavailable for selected regions.", cex = 1.1)
+}
 ```
 
 

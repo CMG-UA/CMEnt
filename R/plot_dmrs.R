@@ -4,8 +4,7 @@ if (getRversion() >= "2.15.1") {
         "Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position",
         "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y",
         "label", "Group", "block_id", "xmin", "xmax", "ymin", "ymax", "midpoint",
-        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope",
-        "segment_label", "x_pos", "y_pos"
+        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope"
     ))
 }
 
@@ -56,12 +55,14 @@ if (getRversion() >= "2.15.1") {
     }
 
     # Extract DMR information
+    seeds <- strsplit(dmr_data$seeds, split = ",")[[1]]
+    cpgs <- strsplit(dmr_data$cpgs, split = ",")[[1]]
     downstream_sup_cpgs <- strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
+    downstream_sup_cpgs <- setdiff(downstream_sup_cpgs, seeds)
     downstream_sup_cpgs_locs <- as.data.frame(beta_locs[downstream_sup_cpgs, , drop = FALSE])
     upstream_sup_cpgs <- strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
+    upstream_sup_cpgs <- setdiff(upstream_sup_cpgs, seeds)
     upstream_sup_cpgs_locs <- as.data.frame(beta_locs[upstream_sup_cpgs, , drop = FALSE])
-    seeds <- strsplit(dmr$seeds, split = ",")[[1]]
-    cpgs <- strsplit(dmr$cpgs, split = ",")[[1]]
     if (length(upstream_sup_cpgs) == 0) {
         start_cpg <- seeds[[1]]
     } else {
@@ -412,14 +413,14 @@ if (getRversion() >= "2.15.1") {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(0.5, 1),
-                labels = c("Array CpGs", "seeds"),
+                labels = c("Array CpGs", "Seeds\n(Used in Motif Analysis)"),
                 limits = c(-0.1, 1.15)
             )
     } else {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(1),
-                labels = c("seeds"),
+                labels = c("Seeds\n(Used in Motif Analysis)"),
                 limits = c(-0.1, 1.15)
             )
     }
@@ -459,8 +460,25 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        total_shown_positions <- rbind(extended_nsup_cpgs_locs, extended_sup_cpgs_locs, as.data.frame(dmr_locs[seeds, , drop = FALSE]))
-        total_shown_positions <- total_shown_positions[order(total_shown_positions$start), ]
+        nsup_df <- extended_nsup_cpgs_locs
+        if (nrow(nsup_df) > 0) {
+            nsup_df$cpg_id <- rownames(nsup_df)
+        } else {
+            nsup_df$cpg_id <- character(0)
+        }
+        sup_df <- extended_sup_cpgs_locs
+        if (nrow(sup_df) > 0) {
+            sup_df$cpg_id <- rownames(sup_df)
+        } else {
+            sup_df$cpg_id <- character(0)
+        }
+        seed_df <- as.data.frame(dmr_locs[seeds, , drop = FALSE])
+        seed_df$cpg_id <- rownames(seed_df)
+        total_shown_positions <- rbind(nsup_df, sup_df, seed_df)
+        total_shown_positions <- total_shown_positions[!duplicated(total_shown_positions$cpg_id), , drop = FALSE]
+        rownames(total_shown_positions) <- total_shown_positions$cpg_id
+        total_shown_positions <- total_shown_positions[order(total_shown_positions$start), , drop = FALSE]
+        total_shown_positions$cpg_id <- NULL
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
     invisible(p)
@@ -1282,6 +1300,13 @@ plotDMR <- function(dmrs,
                 return(NULL)
             }
             overlap <- chr_dmrs[S4Vectors::queryHits(overlaps)]
+            # Clip ranges to the selected region bounds to avoid out-of-sector coordinates.
+            GenomicRanges::start(overlap) <- pmax(GenomicRanges::start(overlap), reg_start)
+            GenomicRanges::end(overlap) <- pmin(GenomicRanges::end(overlap), reg_end)
+            overlap <- overlap[GenomicRanges::start(overlap) <= GenomicRanges::end(overlap)]
+            if (length(overlap) == 0) {
+                return(NULL)
+            }
             new_seqlevel <- sprintf(
                 "%s:%d-%d",
                 region_df$chr[i],
@@ -2293,9 +2318,6 @@ plotDMRBlockFormation <- function(dmrs,
     blocks_df <- details$blocks_df
 
     y_rng <- range(c(dmr_df$score_raw, dmr_df$score_smoothed), na.rm = TRUE)
-    y_span <- diff(y_rng)
-    y_pad <- max(y_span * 0.12, 1e-4)
-    y_top <- y_rng[2] + y_pad
 
     p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = midpoint, y = score_raw)) +
         ggplot2::geom_point(color = "#4D4D4D", alpha = point_alpha, size = point_size) +
@@ -2348,21 +2370,6 @@ plotDMRBlockFormation <- function(dmrs,
         )
     }
 
-    if (nrow(seg_df) > 0) {
-        seg_label_df <- seg_df
-        seg_label_df$x_pos <- (seg_label_df$start_bp + seg_label_df$end_bp) / 2
-        seg_label_df$y_pos <- y_top
-        seg_label_df$segment_label <- paste0("s", seg_label_df$segment_id, ": ", formatC(seg_label_df$slope, format = "e", digits = 2))
-        p <- p + ggplot2::geom_text(
-            data = seg_label_df,
-            ggplot2::aes(x = x_pos, y = y_pos, label = segment_label),
-            inherit.aes = FALSE,
-            color = "#6A3D9A",
-            size = 2.4,
-            vjust = 0
-        )
-    }
-
     subtitle <- paste0(
         "gap_mode=", block_gap_mode,
         ", gap_threshold=", format(round(details$gap_threshold_bp), big.mark = ",", scientific = FALSE), " bp",
@@ -2384,7 +2391,7 @@ plotDMRBlockFormation <- function(dmrs,
             plot.title = ggplot2::element_text(face = "bold"),
             plot.subtitle = ggplot2::element_text(size = 9)
         ) +
-        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.03, 0.15)))
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.03, 0.05)))
 
     p
 }

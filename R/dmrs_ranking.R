@@ -139,16 +139,19 @@
     for (i in seq_len(n)) {
         d <- abs(x - x[i])
         knearest <- order(d)[seq_len(k)]
-        h <- max(d[knearest], na.rm = TRUE)
+        local_d <- d[knearest]
+        h <- max(local_d, na.rm = TRUE)
         if (!is.finite(h) || h <= 0) {
             h <- min_pos_dx
         }
-        w <- exp(-0.5 * (d / h)^2)
+        # Use a tighter local kernel on k-nearest neighbors to reduce over-smoothing.
+        h <- max(h * 0.75, min_pos_dx)
+        w <- exp(-0.5 * (local_d / h)^2)
         w_sum <- sum(w)
         if (!is.finite(w_sum) || w_sum <= 0) {
             smoothed[i] <- y[i]
         } else {
-            smoothed[i] <- sum(w * y) / w_sum
+            smoothed[i] <- sum(w * y[knearest]) / w_sum
         }
     }
     smoothed
