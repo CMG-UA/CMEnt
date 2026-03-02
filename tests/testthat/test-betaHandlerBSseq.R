@@ -35,7 +35,7 @@ test_that("BetaHandler can extract row names from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
+    cpg_names <- paste(seqnames(gr), start(gr), sep = ":")
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -78,7 +78,7 @@ test_that("BetaHandler can extract beta values from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
+    cpg_names <- paste(seqnames(gr), start(gr), sep = ":")
     names(gr) <- cpg_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
@@ -106,7 +106,7 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
+    cpg_names <- paste(seqnames(gr), start(gr), sep = ":")
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -216,7 +216,7 @@ test_that("BetaHandler allows missing CpGs from BSseq when allow_missing=TRUE", 
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    cpg_names <- paste(gr$seqnames, start(gr$ranges), sep = ":")
+    cpg_names <- paste(seqnames(gr), start(gr), sep = ":")
     names(gr) <- cpg_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,

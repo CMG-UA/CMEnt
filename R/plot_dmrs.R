@@ -438,9 +438,11 @@ if (getRversion() >= "2.15.1") {
         )
 
     # Add ticks for the seeds on the x-axis
-    breaks <- c(plot_start, as.integer(beta_locs[start_cpg:end_cpg, "start"]), plot_end)
-    cpg_positions <- as.integer(beta_locs[start_cpg:end_cpg, "start"])
-    cpg_ids <- rownames(beta_locs[start_cpg:end_cpg, , drop = FALSE])
+    start_cpg_ind <- which(beta_locs_rownames == start_cpg)
+    end_cpg_ind <- which(beta_locs_rownames == end_cpg)
+    breaks <- c(plot_start, as.integer(beta_locs[start_cpg_ind:end_cpg_ind, "start"]), plot_end)
+    cpg_positions <- as.integer(beta_locs[start_cpg_ind:end_cpg_ind, "start"])
+    cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
     cpgs_labs <- paste0(
         format(cpg_positions, big.mark = ",", scientific = FALSE),
         " (", cpg_ids, ")"

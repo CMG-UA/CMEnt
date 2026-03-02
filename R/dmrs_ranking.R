@@ -660,7 +660,9 @@
                                        block_gap_multiplier = 1.5,
                                        block_gap_min_bp = 250000,
                                        block_gap_max_bp = 5000000,
-                                       return_details = FALSE) {
+                                       return_details = FALSE,
+                                       njobs = getOption("DMRsegal.njobs", 1L),
+                                       verbose = getOption("DMRsegal.verbose", 1L)) {
     if (!inherits(dmrs, "GRanges")) {
         stop("dmrs must be a GRanges object.")
     }
@@ -678,17 +680,31 @@
     chr_values <- as.character(GenomicRanges::seqnames(dmrs))
     scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
     midpoints <- floor((GenomicRanges::start(dmrs) + GenomicRanges::end(dmrs)) / 2)
+    chromosomes <- unique(chr_values)
+    p_con <- NULL
+    if (verbose > 0) {
+        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
 
-    for (chr in unique(chr_values)) {
+        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
+            p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
+        }
+    }
+    fun <- function(chr) {
         chr_idx <- which(chr_values == chr)
         if (length(chr_idx) < 3L) {
-            next
+            if (!is.null(p_con)) {
+                p_con(length(chr_idx))
+            }
+            return (NULL)
         }
         x_chr <- midpoints[chr_idx]
         y_chr <- scores[chr_idx]
         valid <- is.finite(x_chr) & is.finite(y_chr)
         if (sum(valid) < 3L) {
-            next
+            if (!is.null(p_con)) {
+                p_con(sum(valid))
+            }
+            return (NULL)
         }
 
         chr_idx <- chr_idx[valid]
@@ -713,18 +729,53 @@
             block_gap_min_bp = block_gap_min_bp,
             block_gap_max_bp = block_gap_max_bp
         )
-        details[[chr]] <- chr_details
+        if (!is.null(p_con)) {
+            p_con(length(chr_idx))
+        }
+        list(chr = chr, chr_details = chr_details, chr_idx = chr_idx)
+    }
 
+
+    if (length(chromosomes) == 0L) {
+        warning("No valid chromosomes found in DMRs for block assignment.")
+    } else {
+        if (njobs > 1L && length(chromosomes) > 1L) {
+            .setupParallel()
+            ret <- future.apply::future_lapply(
+                chromosomes,
+                fun,
+                future.seed = TRUE,
+                future.stdout = NA,
+                future.globals = c(
+                    "chr_values", "scores", "midpoints", ".computeDMRBlockFormationForChromosome",
+                    "k_neighbors", "min_segment_size", "block_gap_mode", "block_gap_fixed_bp",
+                    "block_gap_quantile", "block_gap_multiplier", "block_gap_min_bp", "block_gap_max_bp",
+                    "njobs", "verbose"
+                )
+            )
+        } else {
+            ret <- lapply(chromosomes, fun)
+        }
+    }
+    details <- list()
+    for (res in ret) {
+        if (is.null(res)) {
+            next
+        }
+        chr <- res$chr
+        chr_details <- res$chr_details
+        details[[chr]] <- chr_details
+        chr_idx <- res$chr_idx
         score_smooth[chr_idx] <- chr_details$dmr_df$score_smoothed
         segment_id[chr_idx] <- chr_details$dmr_df$segment_id
         segment_slope[chr_idx] <- chr_details$dmr_df$segment_slope
-
         local_ids <- chr_details$dmr_df$block_local_id
         has_block <- is.finite(local_ids)
         if (any(has_block)) {
             block_id[chr_idx[has_block]] <- paste0(chr, "_block", as.integer(local_ids[has_block]))
         }
     }
+
 
     S4Vectors::mcols(dmrs)$score_smoothed <- score_smooth
     S4Vectors::mcols(dmrs)$segment_id <- segment_id
@@ -898,7 +949,9 @@ rankDMRs <- function(
         block_gap_quantile = block_gap_quantile,
         block_gap_multiplier = block_gap_multiplier,
         block_gap_min_bp = block_gap_min_bp,
-        block_gap_max_bp = block_gap_max_bp
+        block_gap_max_bp = block_gap_max_bp,
+        njobs = njobs,
+        verbose = verbose
     )
 
     dmrs <- dmrs[order(mcols(dmrs)$rank)]
