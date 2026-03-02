@@ -298,9 +298,10 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
-    if (level %in% names(.DMRsegal_log_env$last_step_time) && !is.null(.DMRsegal_log_env$last_step_time[[level]])) {
+    if (level <= length(.DMRsegal_log_env$last_step_time)) {
         dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
     } else {
+        .log_warn("No previous step time recorded for level ", level, " to calculate duration.")
         dur <- ""
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
@@ -334,7 +335,7 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
-    .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time() # nolint
+    .DMRsegal_log_env$last_step_time[[level]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))

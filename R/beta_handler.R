@@ -84,17 +84,21 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_step("Extracting genomic locations from BSseq object...", level = 2)
+                .log_step("Running granges..", level = 3)
                 gr <- granges(beta)
-                sorted_locs <- data.frame(
+                .log_success("Ran granges..", level = 3)
+                .log_step("Constructing sorted_locs delayed data frame..", level = 3)
+                sorted_locs <- DelayedDataFrame::DelayedDataFrame(
                     chr = as.character(seqnames(gr)),
                     start = start(gr),
                     end = end(gr)
                 )
-                sorted_locs$name <- paste0(sorted_locs$chr, ":", sorted_locs$start)
+                .log_success("Constructed sorted_locs delayed data frame..", level = 3)
+                .log_step("Creating 'name' column for sorted_locs..", level = 3)
+                rownames(sorted_locs) <- paste0(sorted_locs$chr, ":", sorted_locs$start)
+                .log_success("Created 'name' column for sorted_locs..", level = 3)
+
                 .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " CpGs", level = 2)
-                .log_step("Loading sorted genomic locations into registry...", level = 2)
-                sorted_locs <- getRegistry(sorted_locs, "name")
-                .log_success("Sorted genomic locations loaded into registry", level = 2)
                 private$.self_contained <- TRUE
             }
             self$sorted_locs <- sorted_locs
