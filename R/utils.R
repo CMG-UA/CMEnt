@@ -484,7 +484,7 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
                     "Available columns: ", paste(colnames(df), collapse = ", ")
                 )
             }
-            df[[new_col]] <- do.call(col_info$fun, df[, col_info$cols])
+            df[[new_col]] <- do.call(col_info$fun, as.data.frame(df[, col_info$cols]))
         }
     }
     if (!is.null(indices)) {
