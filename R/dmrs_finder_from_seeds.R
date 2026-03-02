@@ -619,6 +619,9 @@
             connectivity_array[fill_indices, "connected"] <- TRUE
             connectivity_array[fill_indices, "reason"] <- "bridged"
         }
+        # Keep chromosome termini as hard boundaries even after bridging.
+        connectivity_array[chr_ends, "connected"] <- FALSE
+        connectivity_array[chr_ends, "reason"] <- "end-of-input"
     } else if (!is.null(revisited_mask)) {
         connectivity_array[, "contingently_connected"] <- connectivity_array[, "connected"]
     }

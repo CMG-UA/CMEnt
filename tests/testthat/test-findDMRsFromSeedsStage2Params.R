@@ -75,3 +75,64 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         expect_true(length(dmrs_with_filter) <= length(dmrs_no_filter))
     }
 })
+
+test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
+    cpg_ids <- c("cgA", "cgB", "cgC", "cgD")
+    beta <- matrix(
+        c(
+            0.10, 0.20, 0.30, 0.15, 0.25, 0.35,
+            0.11, 0.21, 0.31, 0.14, 0.24, 0.34,
+            0.60, 0.50, 0.40, 0.65, 0.55, 0.45,
+            0.59, 0.49, 0.39, 0.66, 0.56, 0.46
+        ),
+        nrow = 4,
+        byrow = TRUE
+    )
+    rownames(beta) <- cpg_ids
+    colnames(beta) <- paste0("S", seq_len(6))
+
+    locs <- data.frame(
+        chr = c("chr1", "chr1", "chr2", "chr2"),
+        start = c(100, 200, 100, 200),
+        end = c(101, 201, 101, 201),
+        row.names = cpg_ids,
+        stringsAsFactors = FALSE
+    )
+
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        Sample_Group = c("A", "A", "A", "B", "B", "B"),
+        casecontrol = c(0, 0, 0, 1, 1, 1),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    seeds <- data.frame(pval = rep(1e-6, length(cpg_ids)), row.names = cpg_ids)
+
+    dmrs <- expect_no_error(findDMRsFromSeeds(
+        rank_dmrs = FALSE,
+        beta = beta_handler,
+        seeds = seeds,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        min_seeds = 2,
+        min_cpgs = 2,
+        min_cpg_delta_beta = 0,
+        adaptive_min_cpg_delta_beta = FALSE,
+        max_lookup_dist = 1000,
+        max_pval = 0.05,
+        pval_mode = "parametric",
+        max_bridge_seeds_gaps = 1,
+        max_bridge_extension_gaps = 0,
+        annotate_with_genes = FALSE,
+        njobs = 1,
+        verbose = 0
+    ))
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_true(length(dmrs) > 0)
+
+    dmr_df <- as.data.frame(dmrs)
+    cpg_chr <- setNames(locs$chr, rownames(locs))
+    expect_true(all(cpg_chr[dmr_df$start_seed] == cpg_chr[dmr_df$end_seed]))
+})
