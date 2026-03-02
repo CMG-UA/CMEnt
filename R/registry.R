@@ -840,11 +840,12 @@ Registry <- R6::R6Class("Registry", # nolint
         .load_data = function(data, memory_threshold_mb, sqlite_path, select = NULL, rename = NULL, derive = NULL) {
             size_mb <- private$.estimate_input_size_mb(data)
             use_memory <- size_mb <= memory_threshold_mb
-
             if (use_memory) {
+                .log_info("Loading data into memory (estimated size: ", round(size_mb, 3), " MB).")
                 private$.backend <- "memory"
                 private$.load_to_memory(data, select = select, rename = rename, derive = derive)
             } else {
+                .log_info("Loading data into SQLite (estimated size: ", round(size_mb, 3), " MB).")
                 private$.backend <- "sqlite"
                 private$.load_to_sqlite(data, sqlite_path, select = select, rename = rename, derive = derive)
             }

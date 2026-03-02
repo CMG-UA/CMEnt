@@ -83,7 +83,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 sorted_locs <- genomicLocsFromTabix(input_tabix = beta, chrom_col = chrom_col, start_col = start_col)
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
-                .log_info("Extracting genomic locations from BSseq object...", level = 2)
+                .log_step("Extracting genomic locations from BSseq object...", level = 2)
                 gr <- granges(beta)
                 sorted_locs <- data.frame(
                     chr = as.character(seqnames(gr)),
@@ -91,7 +91,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     end = end(gr)
                 )
                 sorted_locs$name <- paste0(sorted_locs$chr, ":", sorted_locs$start)
+                .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " CpGs", level = 2)
+                .log_step("Loading sorted genomic locations into registry...", level = 2)
                 sorted_locs <- getRegistry(sorted_locs, "name")
+                .log_success("Sorted genomic locations loaded into registry", level = 2)
                 private$.self_contained <- TRUE
             }
             self$sorted_locs <- sorted_locs
@@ -421,9 +424,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Check if the beta data is array-based (i.e. does not have row names in 'chr:pos' format)
         #' @return Logical indicating if the beta data is array-based
         isArrayBased = function() {
+            if (!is.null(private$.is_array_based)) {
+                return(private$.is_array_based)
+            }
             self$load()
             first_loc <- self$getBetaLocs()[1, , drop = FALSE]
-            !grepl(rownames(first_loc), pattern = "^chr[A-Za-z0-9]+:\\d+$", ignore.case = TRUE)
+            private$.is_array_based <- !grepl(rownames(first_loc), pattern = "^chr[A-Za-z0-9]+:\\d+$", ignore.case = TRUE)
+            private$.is_array_based
         },
         #' @description Extract beta values for specific CpG sites and samples
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
@@ -601,6 +608,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .validated = FALSE,
         .beta_file = NULL,
         .tabix_file = NULL,
+        .is_array_based = NULL,
         .beta_file_in_memory = NULL,
         .bsseq_object = NULL,
         .self_contained = FALSE,
