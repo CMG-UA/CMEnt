@@ -842,6 +842,11 @@ rankDMRs <- function(
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     dmr_cpgs <- strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    dmrs_m <- .transformBeta(beta_handler$getBeta(
+        row_names = unique(unlist(dmr_cpgs)),
+        col_names = beta_col_names
+    ), pheno = pheno, covariate_model = covariate_model)
+    dmrs_m <- DelayedDataFrame::DelayedDataFrame(dmrs_m, row.names = rownames(dmrs_m))
     if (njobs > 1L) {
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
@@ -856,14 +861,13 @@ rankDMRs <- function(
     }
     process_args <- list(
         X = seq_along(dmrs),
-        FUN = function(i, beta_handler) {
-            beta_mat <- beta_handler$getBeta(row_names = dmr_cpgs[[i]], col_names = beta_col_names)
-            m_values <- .transformBeta(beta_mat, pheno = pheno, covariate_model = covariate_model)
+        FUN = function(i, dmrs_m) {
+            m_values <- dmrs_m[dmr_cpgs[[i]], , drop = FALSE]
             cv_results <- .performCrossPrediction(m_values, groups = groups, folds = folds, nfold = nfold)
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         },
-        beta_handler = beta_handler
+        dmrs_m = dmrs_m
     )
     f <- sapply
     if (njobs > 1L) {
@@ -873,8 +877,8 @@ rankDMRs <- function(
                 future.seed = TRUE,
                 future.globals = c(
                     "pheno", "beta_col_names", "p_con",
-                    ".performCrossPrediction", ".transformBeta",
-                    "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
+                    ".performCrossPrediction",
+                    "groups", "folds", "nfold", "dmr_cpgs"
                 ),
                 future.stdout = NA
             )
