@@ -912,17 +912,22 @@ rankDMRs <- function(
             p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
         }
     }
+    dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
+        dmr_cpgs_i <- dmr_cpgs[[i]]
+        if (length(dmr_cpgs_i) == 0L) {
+            return(NULL)
+        }
+        dmrs_m[dmr_cpgs_i, , drop = FALSE]
+    })
     process_args <- list(
-        X = seq_along(dmrs),
-        FUN = function(i, dmrs_m) {
-            m_values <- dmrs_m[dmr_cpgs[[i]], , drop = FALSE]
-            cv_results <- .performCrossPrediction(m_values, groups = groups, folds = folds, nfold = nfold)
+        X = dmrs_m_values,
+        FUN = function(dmrs_m) {
+            cv_results <- .performCrossPrediction(dmrs_m, groups = groups, folds = folds, nfold = nfold)
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
-        },
-        dmrs_m = dmrs_m
+        }
     )
-    f <- sapply
+    f <- lapply
     if (njobs > 1L) {
         process_args <- c(
             process_args,
@@ -936,10 +941,11 @@ rankDMRs <- function(
                 future.stdout = NA
             )
         )
-        f <- future.apply::future_sapply
+        f <- future.apply::future_lapply
     }
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)
     cv_metrics <- do.call(f, process_args)
+    cv_metrics <- do.call(rbind, cv_metrics)
     .log_success("Cross-validated classification scores computed", level = 2)
     mcols(dmrs)$score <- as.numeric(cv_metrics["score", ])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
