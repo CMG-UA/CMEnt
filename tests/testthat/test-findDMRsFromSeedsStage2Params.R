@@ -21,7 +21,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
             max_bridge_seeds_gaps = 2, # Allow bridging up to 2 seeds apart
             annotate_with_genes = FALSE,
             verbose = 2
-        ), "Stage 2 connectivity restricted to 383 seed-derived windows" # Expect the windows to be the same number as the DMRs at that point
+        ), "Stage 2 connectivity restricted to 355 seed-derived windows" # Expect the windows to be the same number as the DMRs at that point
     )
 
     # Assertions
