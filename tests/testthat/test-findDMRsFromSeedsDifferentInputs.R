@@ -162,6 +162,7 @@ test_that("findDMRsFromSeeds works with BSseq input", {
     expect_warning(
         dmrs <- findDMRsFromSeeds(
             beta = bsseq_obj,
+            seeds_id_col = "cpg_id",
             seeds = seeds,
             pheno = pheno,
             sample_group_col = "Group",

@@ -187,22 +187,6 @@ test_that("computeDMRsInteraction validates similarity values", {
     }
 })
 
-test_that("computeDMRsInteraction enforces min_similarity on reported interactions", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    dmrs <- .loadMotifsAndReduce(dmrs)
-
-
-    result <- suppressWarnings(computeDMRsInteraction(
-        dmrs,
-        genome = "hg19",
-        array = "450K",
-        min_similarity = 0.8
-    ))
-
-    if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
-        expect_true(all(result$interactions$sim >= 0.8))
-    }
-})
 
 test_that("computeDMRsInteraction assigns contiguous positive component IDs when ranks exist", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))

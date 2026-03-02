@@ -650,19 +650,21 @@
 
 #' @keywords internal
 #' @noRd
-.assignDMRBlocksFromScores <- function(dmrs,
-                                       score_col = "score",
-                                       k_neighbors = 5L,
-                                       min_segment_size = 2L,
-                                       block_gap_mode = c("adaptive", "fixed", "none"),
-                                       block_gap_fixed_bp = NULL,
-                                       block_gap_quantile = 0.95,
-                                       block_gap_multiplier = 1.5,
-                                       block_gap_min_bp = 250000,
-                                       block_gap_max_bp = 5000000,
-                                       return_details = FALSE,
-                                       njobs = getOption("DMRsegal.njobs", 1L),
-                                       verbose = getOption("DMRsegal.verbose", 1L)) {
+.assignDMRBlocksFromScores <- function(
+    dmrs,
+    score_col = "score",
+    k_neighbors = 5L,
+    min_segment_size = 2L,
+    block_gap_mode = c("adaptive", "fixed", "none"),
+    block_gap_fixed_bp = NULL,
+    block_gap_quantile = 0.95,
+    block_gap_multiplier = 1.5,
+    block_gap_min_bp = 250000,
+    block_gap_max_bp = 5000000,
+    return_details = FALSE,
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    verbose = getOption("DMRsegal.verbose", 1L)
+) {
     if (!inherits(dmrs, "GRanges")) {
         stop("dmrs must be a GRanges object.")
     }
@@ -864,7 +866,7 @@ rankDMRs <- function(
     block_gap_multiplier = 1.5,
     block_gap_min_bp = 2500,
     block_gap_max_bp = 50000,
-    njobs = getOption("DMRsegal.njobs", 1L)
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
 ) {
     verbose <- getOption("DMRsegal.verbose", 1)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
