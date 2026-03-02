@@ -401,6 +401,7 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
   stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
   if (file.exists(output_h5file)) file.remove(output_h5file)
+  dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
   rhdf5::h5createFile(output_h5file)
 
   row_offset <- 0L
