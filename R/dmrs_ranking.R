@@ -901,7 +901,6 @@ rankDMRs <- function(
         row_names = unique(unlist(dmr_cpgs)),
         col_names = beta_col_names
     ), pheno = pheno, covariate_model = covariate_model)
-    dmrs_m <- DelayedDataFrame::DelayedDataFrame(dmrs_m, row.names = rownames(dmrs_m))
     .log_success("Beta values transformed", level = 2)
     if (njobs > 1L) {
         .setupParallel()
