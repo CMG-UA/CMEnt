@@ -868,14 +868,14 @@ rankDMRs <- function(
     f <- sapply
     if (njobs > 1L) {
         process_args <- c(
-        process_args,
-        future.seed = TRUE,
-        future.globals = c(
-            "pheno", "beta_col_names", "p_con",
-            ".performCrossPrediction", ".transformBeta",
-            "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
-        ),
-        future.stdout = NA
+            process_args,
+            future.seed = TRUE,
+            future.globals = c(
+                "pheno", "beta_col_names", "p_con",
+                ".performCrossPrediction", ".transformBeta",
+                "groups", "folds", "nfold", "dmr_cpgs", "covariate_model"
+            ),
+            future.stdout = NA
         )
         f <- future.apply::future_sapply
     }
