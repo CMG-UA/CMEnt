@@ -508,13 +508,15 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     }
     cache_dir <- getOption("DMRsegal.h5_cache_dir")
     h5_file <- file.path(cache_dir, paste0(.getFileHash(obj), ".h5"))
-    createH5file(
-        input_file = obj,
-        output_h5file =  h5_file,
-        dataset_name = "data",
-        select = select,
-        chunk_size = chunk_size
-    )
+    if (!file.exists(h5_file)) {
+        createH5file(
+            input_file = obj,
+            output_h5file =  h5_file,
+            dataset_name = "data",
+            select = select,
+            chunk_size = chunk_size
+        )
+    }
     da <- HDF5Array::HDF5Array(h5_file, "data")
     x <- DelayedDataFrame::DelayedDataFrame(da)
     colnames(x) <- rhdf5::h5read(h5_file, "data_colnames")

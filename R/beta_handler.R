@@ -84,9 +84,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_step("Extracting genomic locations from BSseq object...", level = 2)
-                .log_step("Running granges..", level = 3)
                 gr <- granges(beta)
-                .log_success("Ran granges..", level = 3)
                 .log_step("Constructing sorted_locs delayed data frame..", level = 3)
                 sorted_locs <- DelayedDataFrame::DelayedDataFrame(
                     chr = as.character(seqnames(gr)),
