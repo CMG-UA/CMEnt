@@ -866,9 +866,10 @@ rankDMRs <- function(
     block_gap_multiplier = 1.5,
     block_gap_min_bp = 2500,
     block_gap_max_bp = 50000,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    verbose = getOption("DMRsegal.verbose", 1L)
 ) {
-    verbose <- getOption("DMRsegal.verbose", 1)
+    options("DMRsegal.verbose" = verbose)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
@@ -895,23 +896,19 @@ rankDMRs <- function(
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     dmr_cpgs <- strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    .log_step("Transforming beta values for DMR ranking", level = 2)
     dmrs_m <- .transformBeta(beta_handler$getBeta(
         row_names = unique(unlist(dmr_cpgs)),
         col_names = beta_col_names
     ), pheno = pheno, covariate_model = covariate_model)
     dmrs_m <- DelayedDataFrame::DelayedDataFrame(dmrs_m, row.names = rownames(dmrs_m))
+    .log_success("Beta values transformed", level = 2)
     if (njobs > 1L) {
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
     }
-    p_con <- NULL
-    if (verbose > 0) {
-        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
 
-        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-            p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
-        }
-    }
+    .log_step("Extracting DMR-specific beta matrices for classification", level = 2)
     dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
         dmr_cpgs_i <- dmr_cpgs[[i]]
         if (length(dmr_cpgs_i) == 0L) {
@@ -919,6 +916,7 @@ rankDMRs <- function(
         }
         dmrs_m[dmr_cpgs_i, , drop = FALSE]
     })
+    .log_success("DMR-specific beta matrices extracted", level = 2)
     process_args <- list(
         X = dmrs_m_values,
         FUN = function(dmrs_m) {
@@ -943,6 +941,14 @@ rankDMRs <- function(
         )
         f <- future.apply::future_lapply
     }
+    p_con <- NULL
+    if (verbose > 0) {
+        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
+
+        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
+            p_con <- progressr::progressor(steps = length(dmrs), message = "Ranking DMRs..")
+        }
+    }
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)
     cv_metrics <- do.call(f, process_args)
     cv_metrics <- do.call(rbind, cv_metrics)
@@ -951,6 +957,7 @@ rankDMRs <- function(
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics["cv_accuracy", ])
     mcols(dmrs)$rank <- as.numeric(as.factor(rank(-mcols(dmrs)$score, ties.method = "first")))
     .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 2)
+
     dmrs <- .assignDMRBlocksFromScores(
         dmrs = dmrs,
         score_col = "score",

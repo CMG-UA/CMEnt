@@ -15,7 +15,8 @@ test_that("rankDMRs adds score column to DMRs", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
-        sample_group_col = "Sample_Group"
+        sample_group_col = "Sample_Group",
+        verbose = 2
     )
 
     expect_true("score" %in% names(mcols(ranked_dmrs)))
