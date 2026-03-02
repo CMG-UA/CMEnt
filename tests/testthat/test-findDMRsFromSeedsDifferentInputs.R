@@ -159,7 +159,8 @@ test_that("findDMRsFromSeeds works with BSseq input", {
         cpg_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
         pval = rep(0.001, length(dmr_region_idx))
     )
-    dmrs <- findDMRsFromSeeds(
+    expect_warning(
+        dmrs <- findDMRsFromSeeds(
             beta = bsseq_obj,
             seeds = seeds,
             pheno = pheno,
@@ -168,8 +169,9 @@ test_that("findDMRsFromSeeds works with BSseq input", {
             max_lookup_dist = 200,
             njobs = 1,
             annotate_with_genes = FALSE
-        )
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
+        ),
+        "No DMRs remain after filtering based on min_seeds."
+    )
 })
 
 
