@@ -270,17 +270,6 @@
         }
         ret
     }
-    .getChunkBeta <- function(site_start, site_end, mask = NULL) {
-        if (!is.null(mask)) {
-            site_indices <- rownames(beta_locs[site_start:site_end, ][mask, ])
-        } else {
-            site_indices <- rownames(beta_locs[site_start:site_end, ])
-        }
-        beta_handler$getBeta(
-            row_names = site_indices,
-            col_names = col_names
-        )
-    }
 
     .chunkPairRanges <- function(pair_ranges_df) {
         if (is.null(pair_ranges_df) || nrow(pair_ranges_df) == 0L) {
@@ -449,7 +438,10 @@
             level = 2
         )
         # select testing settings using the first chunk as a pilot
-        first_chunk <- .getChunkBeta(splits[1, 1], splits[1, 2] + 1)
+        first_chunk <- beta_handler$getBeta(
+            row_names = rownames(beta_locs)[splits[1, 1]:(splits[1, 2] + 1L)],
+            col_names = col_names
+        )
         sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
         s <- nrow(sites_locs)
         if (!is.null(max_lookup_dist) && !is.null(sites_locs)) {
@@ -481,23 +473,29 @@
     }
 
     gc()
-    fun <- function(split_ind) {
+    fun <- function(split_ind, beta_handler) {
         split <- splits[split_ind, ]
         pair_start <- as.integer(split[1])
         pair_end <- as.integer(split[2])
         site_start <- pair_start
         site_end <- pair_end + 1L
-        locs <- beta_locs[site_start:site_end, , drop = FALSE]
+        inds <- site_start:site_end
         if (!is.null(revisited_mask)) {
             mask_seg <- revisited_mask[site_start:site_end]
-            locs <- locs[mask_seg, , drop = FALSE]
-            chunk_beta <- .getChunkBeta(site_start, site_end, mask_seg)
-        } else {
-            chunk_beta <- .getChunkBeta(site_start, site_end)
+            sel_sites <- site_start + which(mask_seg) - 1L
+            if (length(sel_sites) >= 2L) {
+                # pair indices correspond to the first site of each consecutive selected pair
+                recomputed_pairs <- sel_sites[-length(sel_sites)]
+            } else {
+                recomputed_pairs <- integer(0)
+            }
+            inds <- sel_sites
         }
-        if (nrow(chunk_beta) != nrow(locs)) {
-            stop("Mismatch between number of rows in beta chunk (", nrow(chunk_beta), ") and number of locations (", nrow(locs), ").")
-        }
+        locs <- beta_handler$getBetaLocs()[inds, , drop = FALSE]
+        chunk_beta <- beta_handler$getBeta(
+            row_names = rownames(locs),
+            col_names = col_names
+        )
         x <- .testConnectivityBatch(
             sites_beta = chunk_beta,
             group_inds = group_inds,
@@ -515,18 +513,7 @@
             mid_p = mid_p
         )
         rm(chunk_beta)
-        if ( getOption("DMRsegal.njobs", 1L) > 1L && split_ind %% getOption("DMRsegal.njobs") == 0L ) {
-            gc()
-        }
         if (!is.null(revisited_mask)) {
-            # global site indices in this chunk are site_start:site_end
-            sel_sites_rel <- which(mask_seg) # indices relative to site_start
-            if (length(sel_sites_rel) >= 2L) {
-                # pair indices correspond to the first site of each consecutive selected pair
-                recomputed_pairs <- site_start + sel_sites_rel[-length(sel_sites_rel)] - 1L
-            } else {
-                recomputed_pairs <- integer(0)
-            }
             # attach to result so outer loop can map back exactly
             attr(x, "recomputed_pairs") <- recomputed_pairs
         }
@@ -545,7 +532,6 @@
             future.stdout = NA,
             future.globals = c(
                 "splits",
-                "beta_locs",
                 "group_inds",
                 "pheno",
                 "covariates",
@@ -561,9 +547,9 @@
                 "mid_p",
                 "verbose",
                 "p_ext",
-                ".getChunkBeta",
                 ".testConnectivityBatch"
             ),
+            beta_handler = beta_handler,
             FUN = fun
         )
         .finalizeParallel()
@@ -638,8 +624,10 @@
     }
 
     list(
-        connectivity_array = connectivity_array, splits = splits,
-        pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group
+        connectivity_array = connectivity_array,
+        splits = splits,
+        pval_mode_per_group = pval_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group
     )
 }
 
