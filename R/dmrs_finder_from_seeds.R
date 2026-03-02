@@ -205,29 +205,29 @@
 #' @keywords internal
 #' @noRd
 .buildConnectivityArraySinglePass <- function(
-  beta_handler,
-  beta_locs = NULL,
-  pheno,
-  group_inds,
-  pval_mode_per_group,
-  empirical_strategy_per_group,
-  col_names = NULL,
-  max_pval = 0.05,
-  min_delta_beta = 0,
-  covariates = NULL,
-  max_lookup_dist = 1000,
-  chunk_size = getOption("DMRsegal.chunk_size", 1000),
-  entanglement = "strong",
-  aggfun = median,
-  ntries = 500,
-  mid_p = TRUE,
-  njobs = 1,
-  expansion_windows = NULL,
-  connectivity_array = NULL,
-  ugap = 0L,
-  dgap = 0L,
-  recheck = NULL,
-  splits = NULL
+    beta_handler,
+    beta_locs = NULL,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    connectivity_array = NULL,
+    ugap = 0L,
+    dgap = 0L,
+    recheck = NULL,
+    splits = NULL
 ) {
     if (is.null(beta_locs)) {
         beta_locs <- beta_handler$getBetaLocs()
@@ -422,7 +422,7 @@
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
         run_mask <- run_mask[run_mask]
- 
+
         if (ugap > 0L) {
             run_mask <- run_mask & run_starts - ugap > 0
             for (i in seq_len(ugap)) {
@@ -664,25 +664,25 @@
 }
 
 .buildConnectivityArray <- function(
-  beta_handler,
-  beta_locs = NULL,
-  pheno,
-  group_inds,
-  pval_mode_per_group,
-  empirical_strategy_per_group,
-  col_names = NULL,
-  max_pval = 0.05,
-  min_delta_beta = 0,
-  covariates = NULL,
-  max_lookup_dist = 1000,
-  chunk_size = getOption("DMRsegal.chunk_size", 1000),
-  entanglement = "strong",
-  aggfun = median,
-  ntries = 500,
-  mid_p = TRUE,
-  njobs = 1,
-  expansion_windows = NULL,
-  max_bridge_gaps = 0
+    beta_handler,
+    beta_locs = NULL,
+    pheno,
+    group_inds,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    njobs = 1,
+    expansion_windows = NULL,
+    max_bridge_gaps = 0
 ) {
     connectivity_array <- NULL
     splits <- NULL
@@ -728,7 +728,6 @@
         }
         .buildConnectivityArraySinglePassWithGapsRecursive <- function(build_args, gap) {
             build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, gap)
-            recheck <- build_ret$recheck
             if (any(build_ret$recheck)) {
                 build_args$recheck <- build_ret$recheck
                 build_args$connectivity_array <- build_ret$connectivity_array
@@ -1305,44 +1304,44 @@
 #' @return Data frame of identified DMRs.
 #' @export
 findDMRsFromSeeds <- function(
-  beta,
-  seeds,
-  pheno,
-  seeds_id_col = NULL,
-  sample_group_col = "Sample_Group",
-  casecontrol_col = NULL,
-  covariates = NULL,
-  min_cpg_delta_beta = 0.1,
-  adaptive_min_cpg_delta_beta = TRUE,
-  expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-  genome = "hg19",
-  max_pval = 0.05,
-  entanglement = c("strong", "weak"),
-  pval_mode = c("auto", "parametric", "empirical"),
-  empirical_strategy = c("auto", "montecarlo", "permutations"),
-  ntries = 200L,
-  mid_p = FALSE,
-  max_lookup_dist = 10000,
-  expansion_window = "auto",
-  max_bridge_seeds_gaps = 1L,
-  max_bridge_extension_gaps = 1L,
-  min_seeds = 2,
-  min_adj_seeds = 2,
-  min_cpgs = 50,
-  aggfun = c("median", "mean"),
-  ignored_sample_groups = NULL,
-  output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  chunk_size = getOption("DMRsegal.chunk_size", 10000),
-  beta_row_names_file = NULL,
-  annotate_with_genes = TRUE,
-  rank_dmrs = TRUE,
-  bed_provided = FALSE,
-  bed_chrom_col = "chrom",
-  bed_start_col = "start",
-  verbose = getOption("DMRsegal.verbose", 1),
-  .load_debug = FALSE
+    beta,
+    seeds,
+    pheno,
+    seeds_id_col = NULL,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = NULL,
+    covariates = NULL,
+    min_cpg_delta_beta = 0.1,
+    adaptive_min_cpg_delta_beta = TRUE,
+    expansion_step = 500,
+    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+    genome = "hg19",
+    max_pval = 0.05,
+    entanglement = c("strong", "weak"),
+    pval_mode = c("auto", "parametric", "empirical"),
+    empirical_strategy = c("auto", "montecarlo", "permutations"),
+    ntries = 200L,
+    mid_p = FALSE,
+    max_lookup_dist = 10000,
+    expansion_window = "auto",
+    max_bridge_seeds_gaps = 1L,
+    max_bridge_extension_gaps = 1L,
+    min_seeds = 2,
+    min_adj_seeds = 2,
+    min_cpgs = 50,
+    aggfun = c("median", "mean"),
+    ignored_sample_groups = NULL,
+    output_prefix = NULL,
+    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+    chunk_size = getOption("DMRsegal.chunk_size", 10000),
+    beta_row_names_file = NULL,
+    annotate_with_genes = TRUE,
+    rank_dmrs = TRUE,
+    bed_provided = FALSE,
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    verbose = getOption("DMRsegal.verbose", 1),
+    .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)

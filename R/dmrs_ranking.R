@@ -263,22 +263,21 @@
 
     prefixes <- .buildLinearCostPrefixes(x, y)
 
-    # F[t + 1] stores optimal cost up to index t; t = 0..n
-    F <- rep(Inf, n + 1L)
-    F[1] <- -penalty
+    # cost[t + 1] stores optimal cost up to index t; t = 0..n
+    cost <- rep(Inf, n + 1L)
+    cost[1] <- -penalty
     cps <- vector("list", n + 1L)
-    R <- 0L
-    K <- 0
+    runlen <- 0L
 
     for (t in seq_len(n)) {
-        eligible <- R[R <= (t - min_segment_size)]
-        ineligible <- R[R > (t - min_segment_size)]
+        eligible <- runlen[runlen <= (t - min_segment_size)]
+        ineligible <- runlen[runlen > (t - min_segment_size)]
 
         costs <- numeric(0)
         finite_mask <- logical(0)
         if (length(eligible) > 0L) {
             costs <- vapply(eligible, function(tau) {
-                prev_cost <- F[tau + 1L]
+                prev_cost <- cost[tau + 1L]
                 if (!is.finite(prev_cost)) {
                     return(Inf)
                 }
@@ -290,17 +289,17 @@
         if (length(costs) > 0L && any(finite_mask)) {
             best_local <- which.min(costs)
             best_tau <- eligible[best_local]
-            F[t + 1L] <- costs[best_local]
+            cost[t + 1L] <- costs[best_local]
             cps[[t + 1L]] <- c(cps[[best_tau + 1L]], best_tau)
 
             keep_flags <- rep(FALSE, length(eligible))
-            keep_flags[finite_mask] <- costs[finite_mask] <= (F[t + 1L] + K)
+            keep_flags[finite_mask] <- costs[finite_mask] <= cost[t + 1L]
             keep_eligible <- eligible[keep_flags]
         } else {
             keep_eligible <- eligible
         }
 
-        R <- sort(unique(c(ineligible, keep_eligible, t)))
+        runlen <- sort(unique(c(ineligible, keep_eligible, t)))
     }
 
     best_cps <- cps[[n + 1L]]
@@ -546,8 +545,8 @@
                 split_events_list[[length(split_events_list) + 1L]] <- ev
             }
 
-            for (r in seq_len(nrow(split_result$ranges))) {
-                cluster_idx <- candidate_idx[split_result$ranges$local_start[r]:split_result$ranges$local_end[r]]
+            for (runlen in seq_len(nrow(split_result$ranges))) {
+                cluster_idx <- candidate_idx[split_result$ranges$local_start[runlen]:split_result$ranges$local_end[runlen]]
                 cluster_segment_ids <- sort(unique(seg$segment_id[cluster_idx]))
                 accepted <- .acceptClusterBySlopeOrder(cluster_segment_ids, seg$slopes, d = slope_threshold)
                 if (!accepted) {
@@ -697,7 +696,7 @@
             if (!is.null(p_con)) {
                 p_con(length(chr_idx))
             }
-            return (NULL)
+            return(NULL)
         }
         x_chr <- midpoints[chr_idx]
         y_chr <- scores[chr_idx]
@@ -706,7 +705,7 @@
             if (!is.null(p_con)) {
                 p_con(sum(valid))
             }
-            return (NULL)
+            return(NULL)
         }
 
         chr_idx <- chr_idx[valid]
@@ -924,7 +923,7 @@ rankDMRs <- function(
             cv_results
         }
     )
-    f <- lapply
+    cost <- lapply
     if (njobs > 1L) {
         process_args <- c(
             process_args,
@@ -938,7 +937,7 @@ rankDMRs <- function(
                 future.stdout = NA
             )
         )
-        f <- future.apply::future_lapply
+        cost <- future.apply::future_lapply
     }
     p_con <- NULL
     if (verbose > 0) {
@@ -949,7 +948,7 @@ rankDMRs <- function(
         }
     }
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)
-    cv_metrics <- do.call(f, process_args)
+    cv_metrics <- do.call(cost, process_args)
     cv_metrics <- do.call(rbind, cv_metrics)
 
     .log_success("Cross-validated classification scores computed", level = 2)

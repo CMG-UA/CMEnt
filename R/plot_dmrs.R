@@ -509,12 +509,19 @@ if (getRversion() >= "2.15.1") {
         if (any(group_counts > max_samples_per_group)) {
             .log_info("Limiting to ", max_samples_per_group, " samples per group for plotting. Original group counts:\n", paste(names(group_counts), group_counts, sep = ": ", collapse = "\n"))
             set.seed(123) # for reproducibility
-            selected_samples <- unlist(lapply(names(group_counts), function(g) {
-                group_samples <- rownames(pheno)[pheno[[sample_group_col]] == g]
-                if (length(group_samples) > max_samples_per_group) {
-                    sample(group_samples, max_samples_per_group)
-                } else {                    group_samples
-                }            }))
+            selected_samples <- unlist(
+                lapply(
+                    names(group_counts),
+                    function(g) {
+                        group_samples <- rownames(pheno)[pheno[[sample_group_col]] == g]
+                        if (length(group_samples) > max_samples_per_group) {
+                            sample(group_samples, max_samples_per_group)
+                        } else {
+                            group_samples
+                        }
+                    }
+                )
+            )
 
         }
     } else {
