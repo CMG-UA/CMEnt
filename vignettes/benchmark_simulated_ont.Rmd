@@ -164,7 +164,7 @@ We extend beyond strict FDR significance to capture a broader set of potential s
 We also rank seeds by a combined score of statistical significance and effect size (delta beta) to prioritize biologically relevant candidates.
 
 
-```{r}
+```{r seeds_calculation}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 seeds_tsv <- file.path(output_dir, "seeds.tsv")
@@ -383,13 +383,6 @@ if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("DMRsegal.njobs" = dmrsegal_njobs)
     options("DMRsegal.verbose" = 3)
-    cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
-    cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
-    cat(sprintf("CpGs in beta matrix: %s\n", format(nrow(sim_bs), big.mark = ",")))
-    cat(sprintf("Samples in beta matrix: %d\n", ncol(sim_bs)))
-    cat(sprintf("Seed CpGs: %s\n", format(nrow(sig_seeds), big.mark = ",")))
-    cat("Starting DMRsegal::findDMRsFromSeeds()...\n")
-    flush.console()
     start_time <- Sys.time()
 
     beta_handler <- DMRsegal::getBetaHandler(
