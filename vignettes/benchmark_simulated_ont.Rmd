@@ -161,7 +161,6 @@ knitr::kable(
 This step is crucial for DMRsegal, which relies on seed CpGs to guide DMR assembly.
 We use a limma-based approach to identify candidate seeds based on differential methylation evidence.
 We extend beyond strict FDR significance to capture a broader set of potential seeds, which may improve sensitivity in DMRsegal's region assembly.
-We also rank seeds by a combined score of statistical significance and effect size (delta beta) to prioritize biologically relevant candidates.
 
 
 ```{r seeds_calculation}
@@ -169,7 +168,6 @@ design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
 seeds_tsv <- file.path(output_dir, "seeds.tsv")
 seeds_meta_rds <- file.path(output_dir, "seeds.meta.rds")
-seed_strategy_version <- "score_weighted_v2"
 
 if (!file.exists(seeds_tsv)) {
     gr <- granges(sim_bs)
@@ -248,7 +246,6 @@ if (!file.exists(seeds_tsv)) {
     write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
     saveRDS(
         list(
-            strategy_version = seed_strategy_version,
             generated_at = Sys.time(),
             target_seed_n = target_seed_n,
             n_seeds = nrow(sig_seeds)
