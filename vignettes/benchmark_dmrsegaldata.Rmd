@@ -328,7 +328,7 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 minDmrSize = 50,
                 PDFplot = FALSE,
                 Rplot = FALSE,
-                resultsDir = "/tmp/champ_probelasso"
+                resultsDir = file.path(tempdir(), "champ_probelasso")
             )
 
             pl_dmr <- result$ProbeLassoDMR

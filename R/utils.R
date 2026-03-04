@@ -384,13 +384,16 @@
             if (is.character(use_cache)) {
                 cache_dir <- use_cache
             } else {
-                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "tabix_cache")
+                cache_dir <- .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
             }
         } else {
             cache_dir <- tempdir()
         }
     } else {
         cache_dir <- output_dir
+    }
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
     cache_dir
 }
@@ -509,7 +512,10 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     if (is.data.frame(obj)) {
         return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
     }
-    cache_dir <- getOption("DMRsegal.h5_cache_dir")
+    cache_dir <- getOption("DMRsegal.h5_cache_dir", .getOSCacheDir(file.path("R", "DMRsegal", "h5_cache")))
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
     h5_file <- file.path(cache_dir, paste0(.getFileHash(obj), ".h5"))
     if (!file.exists(h5_file)) {
         createH5file(
@@ -531,7 +537,7 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #'
 #' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/R/DMRsegal/tabix_cache/` (default: NULL)
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
@@ -599,7 +605,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `~/.cache/R/DMRsegal/tabix_cache/` (default: NULL)
+#'   a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
 #'
@@ -868,7 +874,10 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
+        cache_dir <- getOption(
+            "DMRsegal.tabix_cache_dir",
+            .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
+        )
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -1329,10 +1338,17 @@ sortBetaFileByCoordinates <- function(beta_file,
         t_covariate_matrix <- t(covariate_matrix)
     }
     effect <- t(pseudo_solution %*% t(signal))
-    signal - effect %*% t_covariate_matrix
+    fitted <- effect %*% t_covariate_matrix
+    if (inherits(signal, "DelayedArray")) {
+        fitted <- DelayedArray::DelayedArray(fitted)
+    }
+    signal - fitted
 }
 
 .transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
+    if (inherits(beta, "DelayedDataFrame")) {
+        beta <- DelayedArray::DelayedArray(beta)
+    }
     m_values <- log2(beta / (1 - beta + 1e-6) + 1e-6)
     if (is.null(covariate_model)) {
         covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
@@ -1357,10 +1373,9 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (from_genome == to_genome) {
         return(granges)
     }
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("DMRsegal", "annotations"))
+    )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -1423,10 +1438,10 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         stop("Provided array is NULL but locations file was not provided.")
     }
     array <- strex::match_arg(array, ignore_case = TRUE)
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -1690,6 +1705,11 @@ orderByLoc <- function(x,
     pkg_name
 }
 
+
+.getOSCacheDir <- function(prefix) {
+    R.utils::getAbsolutePath(path.expand(rappdirs::user_cache_dir(prefix)))
+}
+
 #' Extract DNA Sequences for DMRs
 #'
 #' @description Retrieves the DNA sequences corresponding to genomic regions
@@ -1805,10 +1825,8 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         return(unlist(cpg_counts))
     }
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir", file.path(
-            path.expand("~"),
-            ".cache", "R", "DMRsegal", "annotations"
-        )
+        "DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2025,10 +2043,10 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200) {
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
 

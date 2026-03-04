@@ -287,6 +287,7 @@ seed_gr <- GenomicRanges::makeGRangesFromDataFrame(
 seed_truth_hits <- GenomicRanges::findOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
 seed_overlaps_truth <- rep(FALSE, length(seed_gr))
 truth_has_seed <- rep(FALSE, length(truth_dmrs))
+truth_has_2seeds <- 0L
 
 if (length(seed_truth_hits) > 0) {
     seed_overlaps_truth[unique(S4Vectors::queryHits(seed_truth_hits))] <- TRUE
@@ -298,6 +299,7 @@ seeds_per_truth <- if (length(truth_dmrs) > 0) {
 } else {
     integer(0)
 }
+truth_has_2seeds <- sum(seeds_per_truth >= 2L)
 safe_pct <- function(x) if (length(x) == 0) 0 else 100 * mean(x)
 
 seed_truth_summary <- data.frame(
@@ -307,6 +309,8 @@ seed_truth_summary <- data.frame(
     Truth_DMRs_Total = length(truth_dmrs),
     Truth_DMRs_With_Seed = sum(truth_has_seed),
     Truth_DMRs_With_Seed_Pct = safe_pct(truth_has_seed),
+    Truth_DMRs_With_2Seeds = truth_has_2seeds,
+    Truth_DMRs_With_2Seeds_Pct = ifelse(length(truth_dmrs) == 0, 0, 100 * truth_has_2seeds / length(truth_dmrs)),
     Median_Seeds_Per_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_real_, stats::median(seeds_per_truth)),
     Median_Seeds_Per_Hit_Truth_DMR = ifelse(sum(truth_has_seed) == 0, 0, stats::median(seeds_per_truth[truth_has_seed])),
     Max_Seeds_In_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_integer_, max(seeds_per_truth))
@@ -327,8 +331,11 @@ if ("delta_beta" %in% colnames(seed_df) &&
     seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
     seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
 }
-cat(sprintf("DMRsegal **maximum possible** DMR-truth overlapping seeds: %d\n", length(seed_truth_hits)))
-cat(sprintf("DMRsegal **maximum possible** truth DMRs with at least one overlapping seed: %d\n", sum(truth_has_seed)))
+cat(sprintf("Seed-truth overlap pairs (seed, truth): %d\n", length(seed_truth_hits)))
+cat(sprintf("Unique seed CpGs overlapping truth: %d\n", sum(seed_overlaps_truth)))
+cat(sprintf("Truth DMRs with at least one overlapping seed: %d\n", sum(truth_has_seed)))
+cat(sprintf("Truth DMRs with at least two overlapping seeds: %d\n", truth_has_2seeds))
+cat("Note: truth-side seed counts are not directly comparable to predicted-side DMR overlap counts.\n")
 knitr::kable(
     seed_truth_summary,
     digits = 2,
@@ -780,11 +787,14 @@ knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
 
 ```{r}
 evaluate_against_truth <- function(pred, truth) {
+    n_pred <- length(pred)
+    n_truth <- length(truth)
     if (length(pred) == 0) {
         return(data.frame(
-            TP_regions = 0,
+            Pred_Overlapping_Truth_Regions = 0,
+            Truth_Overlapping_Pred_Regions = 0,
             FP_regions = 0,
-            FN_regions = length(truth),
+            FN_regions = n_truth,
             Precision_regions = 0,
             Recall_regions = 0,
             F1_regions = 0,
@@ -798,12 +808,13 @@ evaluate_against_truth <- function(pred, truth) {
         ))
     }
 
-    tp <- sum(overlapsAny(pred, truth))
-    fp <- length(pred) - tp
-    fn <- sum(!overlapsAny(truth, pred))
+    pred_overlap_truth <- sum(overlapsAny(pred, truth))
+    truth_overlap_pred <- sum(overlapsAny(truth, pred))
+    fp <- n_pred - pred_overlap_truth
+    fn <- n_truth - truth_overlap_pred
 
-    precision <- ifelse(tp + fp == 0, 0, tp / (tp + fp))
-    recall <- ifelse(tp + fn == 0, 0, tp / (tp + fn))
+    precision <- ifelse(n_pred == 0, 0, pred_overlap_truth / n_pred)
+    recall <- ifelse(n_truth == 0, 0, truth_overlap_pred / n_truth)
     f1 <- ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
 
     pred_red <- reduce(pred)
@@ -821,7 +832,8 @@ evaluate_against_truth <- function(pred, truth) {
     iou_bp <- ifelse(union_bp == 0, 0, inter_bp / union_bp)
 
     data.frame(
-        TP_regions = tp,
+        Pred_Overlapping_Truth_Regions = pred_overlap_truth,
+        Truth_Overlapping_Pred_Regions = truth_overlap_pred,
         FP_regions = fp,
         FN_regions = fn,
         Precision_regions = precision,
@@ -846,7 +858,9 @@ truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
 truth_eval <- truth_eval |>
     dplyr::select(
         Method,
-        TP_regions, FP_regions, FN_regions,
+        Pred_Overlapping_Truth_Regions,
+        Truth_Overlapping_Pred_Regions,
+        FP_regions, FN_regions,
         Precision_regions, Recall_regions, F1_regions,
         Precision_bp, Recall_bp, F1_bp, IoU_bp
     )
@@ -886,8 +900,8 @@ for (i in seq_along(all_sets)) {
     }
 }
 
-knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (rows overlap columns)")
-knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (rows overlap columns)")
+knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row, reference=column)")
+knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
 ```
 
 ### DMRsegal Number of seeds within Ground Truth not overlapping DMRsegal DMRs
@@ -900,16 +914,19 @@ seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
 
 if (length(dmrs_segal) > 0) {
     seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_segal, ignore.strand = TRUE)
+    seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_segal, ignore.strand = TRUE)
     seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_segal, ignore.strand = TRUE, invert = TRUE)
 } else {
     seeds_in_dmrs <- seed_gr[0]
+    seeds_in_truth_and_dmrs <- seed_gr[0]
     seeds_in_truth_not_dmrs <- seeds_in_truth
 }
 cat(sprintf(
-    "- Seeds in truth DMRs: %d\n - Seeds in DMRsegal DMRs: %d\n - Seeds in truth DMRs but not in DMRsegal DMRs: %d\n",
+    "- Seeds in truth DMRs: %d\n - Seeds in truth DMRs overlapping DMRsegal DMRs: %d\n - Seeds in truth DMRs not overlapping DMRsegal DMRs: %d\n - All seeds overlapping DMRsegal DMRs: %d\n",
     length(seeds_in_truth),
-    length(seeds_in_dmrs),
-    length(seeds_in_truth_not_dmrs)
+    length(seeds_in_truth_and_dmrs),
+    length(seeds_in_truth_not_dmrs),
+    length(seeds_in_dmrs)
 ))
 
 # Table of number of consecutive seeds within each truth DMR not overlapping DMRsegal DMRs
@@ -1036,6 +1053,7 @@ ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
 ```{r}
 if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
     dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$rank, decreasing = FALSE)]
+    truth_reduced <- reduce(truth_dmrs)
 
     n_bins <- min(10, max(2, floor(length(dmrs_segal_ranked) / 5)))
     bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)
@@ -1044,18 +1062,27 @@ if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
         s <- (i - 1) * bin_size + 1
         e <- min(i * bin_size, length(dmrs_segal_ranked))
         bin_dmrs <- dmrs_segal_ranked[s:e]
-        tp_bin <- sum(width(subsetByOverlaps(bin_dmrs, truth_dmrs, ignore.strand = TRUE))) / sum(width(bin_dmrs))
+        bin_reduced <- reduce(bin_dmrs)
+        bin_bp <- sum(width(bin_reduced))
+        inter_bp <- if (length(bin_reduced) == 0 || length(truth_reduced) == 0) {
+            0
+        } else {
+            inter_gr <- GenomicRanges::intersect(bin_reduced, truth_reduced)
+            if (length(inter_gr) == 0) 0 else sum(width(inter_gr))
+        }
+        bp_overlap_pct <- ifelse(bin_bp == 0, 0, 100 * inter_bp / bin_bp)
+        region_overlap_pct <- ifelse(length(bin_dmrs) == 0, 0, 100 * mean(overlapsAny(bin_dmrs, truth_dmrs)))
         data.frame(
             Rank_Bin = i,
             DMRs_in_Bin = length(bin_dmrs),
-            TP_in_Bin = tp_bin,
-            Pct_Overlapping_Truth = 100 * tp_bin
+            Region_Overlap_Pct = region_overlap_pct,
+            BP_Overlap_Pct = bp_overlap_pct
         )
     }))
 
-    knitr::kable(ranking_quality, digits = 2, caption = "DMRsegal rank bins vs ground truth overlap")
+    knitr::kable(ranking_quality, digits = 2, caption = "DMRsegal rank bins vs ground truth overlap (region-side and base-pair)")
 
-    ggplot(ranking_quality, aes(x = Rank_Bin, y = Pct_Overlapping_Truth)) +
+    ggplot(ranking_quality, aes(x = Rank_Bin, y = BP_Overlap_Pct)) +
         geom_col(fill = "steelblue") +
         geom_line(group = 1, color = "firebrick", linewidth = 1) +
         geom_point(color = "firebrick", size = 2) +
@@ -1065,7 +1092,7 @@ if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
             title = "DMRsegal Rank Quality",
             subtitle = "Higher-ranked bins should show stronger truth overlap",
             x = "Rank Bin (1 = best ranks)",
-            y = "% DMRs overlapping truth"
+            y = "Bin base-pairs overlapping truth (%)"
         )
 }
 ```

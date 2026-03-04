@@ -707,7 +707,7 @@ options("DMRsegal.use_bed_cache" = TRUE)
 
 ### Option: `DMRsegal.bed_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
 **Description:** Directory for BED file cache.
 
 ```{r}
@@ -725,7 +725,7 @@ options("DMRsegal.use_tabix_cache" = TRUE)
 
 ### Option: `DMRsegal.tabix_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
 **Description:** Directory for tabix file cache.
 
 ```{r}
@@ -743,7 +743,7 @@ options("DMRsegal.use_annotation_cache" = TRUE)
 
 ### Option: `DMRsegal.annotation_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/annotation_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/annotation_cache`  
 **Description:** Directory for annotation cache.
 
 ```{r}
@@ -752,7 +752,7 @@ options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
 
 ### Option: `DMRsegal.jaspar_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/jaspar_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/jaspar_cache`  
 **Description:** Directory for JASPAR motif database cache.
 
 ```{r}

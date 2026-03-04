@@ -40,10 +40,10 @@
 
 
 comparePWMToJaspar <- function(pwm_queries) {
-    cache <- getOption("DMRsegal.jaspar_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "jaspar_cache"
-    ))
+    cache <- getOption(
+        "DMRsegal.jaspar_cache_dir",
+        .getOSCacheDir(file.path("R", "DMRsegal", "jaspar_cache"))
+    )
     tax_group <- getOption("DMRsegal.jaspar_tax_group", "vertebrates")
     jaspar_version <- getOption("DMRsegal.jaspar_version", 2024)
     corr_threshold <- getOption("DMRsegal.jaspar_corr_threshold", 0.9)
@@ -128,10 +128,9 @@ comparePWMToJaspar <- function(pwm_queries) {
 
 
 getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
     dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
     cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", flank_size, ".rds"))
     if (!file.exists(cache_file)) {

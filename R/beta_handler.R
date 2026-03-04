@@ -556,12 +556,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(private$.tabix_file)) {
                 .log_step("Subsetting from tabix file..", level = 3)
                 if (!is.null(chr)) {
-                    regions <- chr
+                    qregions <- chr
+                    regions <- data.frame(chr = strsplit(chr, ",")[[1]])
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
-                    regions <- sort(unique(regions), by = ~chr + start)
+                    qregions <- regions[!duplicated(regions),]
+                    qregions <- qregions[str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
                 }
-                beta_subset <- bedr::tabix(regions, private$.tabix_file,
+                beta_subset <- bedr::tabix(qregions, private$.tabix_file,
                     check.valid = FALSE,
                     check.sort = FALSE, check.chr = FALSE, verbose = FALSE
                 )
@@ -569,7 +571,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     stop("Requested CpG sites not found in beta tabix file")
                 }
                 # bedr forces the first three columns to be named "chr", "start", "stop" .... https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
-                beta_subset <- merge(regions[, c("chr", "start", "name")], beta_subset, by.x = c("chr", "start"), by.y = c("chr", "start"), all.x = TRUE, all.y = FALSE)
+                if (is.null(chr)) {
+                    merge_on <- c("chr", "start")
+                    beta_subset <- merge(
+                        regions[, c(merge_on, "name")],
+                        beta_subset, by.x = merge_on, by.y = merge_on,
+                        all.x = TRUE, all.y = FALSE
+                    )
+                }
                 rownames(beta_subset) <- beta_subset$name
                 # order by input row_names if provided
                 if (!is.null(row_names)) {

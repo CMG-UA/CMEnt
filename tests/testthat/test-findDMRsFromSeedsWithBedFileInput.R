@@ -74,7 +74,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        verbose = 2
+        verbose = 3
     )
 
 

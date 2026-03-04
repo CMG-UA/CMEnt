@@ -21,14 +21,36 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
             max_bridge_seeds_gaps = 2, # Allow bridging up to 2 seeds apart
             annotate_with_genes = FALSE,
             verbose = 2
-        ), "Stage 2 connectivity restricted to 355 seed-derived windows" # Expect the windows to be the same number as the DMRs at that point
+        ), "Stage 2 connectivity restricted to 264 seed-derived windows" # Expect the windows to be the same number as the DMRs at that point
     )
 
     # Assertions
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
-        expect_true(length(dmrs_expanded) >= 0)
+        expect_equal(length(dmrs_expanded), 114L)
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
+        dmr_df <- as.data.frame(dmrs_expanded)
+        # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
+        win_df <- DMRsegal:::.buildConnectivityWindowsFromDMRs(
+            dmrs = data.frame(
+                chr = as.character(dmr_df$seqnames),
+                start_seed_pos = dmr_df$start_seed_pos,
+                end_seed_pos = dmr_df$end_seed_pos,
+                stringsAsFactors = FALSE
+            ),
+            expansion_window = 1
+        )
+        inside_window <- vapply(seq_len(nrow(dmr_df)), function(i) {
+            chr_wins <- win_df[win_df$chr == as.character(dmr_df$seqnames[i]), , drop = FALSE]
+            any(dmr_df$start[i] >= chr_wins$start & dmr_df$end[i] <= chr_wins$end)
+        }, logical(1))
+        expect_true(all(inside_window))
+
+        # Projection from subset indices must preserve original CpG IDs.
+        all_beta_ids <- rownames(beta)
+        used_cpgs <- unique(unlist(strsplit(dmr_df$cpgs, ",", fixed = TRUE), use.names = FALSE))
+        used_cpgs <- used_cpgs[nzchar(used_cpgs)]
+        expect_true(all(used_cpgs %in% all_beta_ids))
     }
 })
 
