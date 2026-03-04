@@ -152,8 +152,8 @@ colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
 sim_bs  <- sort(sim_bs)
 
 knitr::kable(
-    table(pheno),
-    caption = "Phenotype table"
+    table(pheno$Sample_Group),
+    caption = "Phenotype Frequency Table"
 )
 ```
 
@@ -376,7 +376,7 @@ if (!is.null(rank_col) && length(seed_gr) > 0) {
 
 ## Method 1: DMRsegal
 
-```{r dmrsegal, message=TRUE}
+```{r dmrsegal}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
 
 if (!file.exists(dmrsegal_file)) {
