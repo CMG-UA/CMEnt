@@ -445,26 +445,64 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 stop("Cannot specify both row_names and chr for subsetting.")
             }
             self$validate()
+            # Fast-path numeric row indexing for non in-memory backends:
+            # convert indices to row names once and avoid repeated set operations downstream.
+            if (!is.null(row_names) && is.numeric(row_names) && is.null(private$.beta_file_in_memory)) {
+                row_idx <- as.integer(row_names)
+                all_row_names <- self$getBetaRowNames()
+                n_all <- length(all_row_names)
+                if (allow_missing) {
+                    keep <- !is.na(row_idx) & row_idx >= 1L & row_idx <= n_all
+                    row_idx <- row_idx[keep]
+                } else {
+                    bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_all
+                    if (any(bad)) {
+                        bad_idx <- unique(row_idx[bad])
+                        bad_idx <- bad_idx[!is.na(bad_idx)]
+                        stop(
+                            "Requested row indices out of bounds [1,", n_all, "]: ",
+                            paste(head(bad_idx, 10), collapse = ", ")
+                        )
+                    }
+                }
+                row_names <- all_row_names[row_idx]
+            }
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
                 if (!is.null(row_names)) {
                     if (is.numeric(row_names)) {
-                        rcmp <- seq_len(nrow(private$.beta_file_in_memory))
+                        row_idx <- as.integer(row_names)
+                        n_rows <- nrow(private$.beta_file_in_memory)
+                        if (allow_missing) {
+                            keep <- !is.na(row_idx) & row_idx >= 1L & row_idx <= n_rows
+                            row_idx <- row_idx[keep]
+                        } else {
+                            bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_rows
+                            if (any(bad)) {
+                                bad_idx <- unique(row_idx[bad])
+                                bad_idx <- bad_idx[!is.na(bad_idx)]
+                                stop(
+                                    "Requested row indices out of bounds [1,", n_rows, "]: ",
+                                    paste(head(bad_idx, 10), collapse = ", ")
+                                )
+                            }
+                        }
+                        beta_subset <- private$.beta_file_in_memory[row_idx, , drop = FALSE]
                     } else {
                         rcmp <- rownames(private$.beta_file_in_memory)
-                    }
-                    if (allow_missing) {
-                        row_names <- intersect(row_names, rcmp)
-                    } else {
-                        missing_rows <- setdiff(row_names, rcmp)
-                        if (length(missing_rows) > 0) {
-                            stop(
-                                "Requested CpG sites not found in beta data: ",
-                                paste(missing_rows, collapse = ", ")
-                            )
+                        if (allow_missing) {
+                            row_names <- intersect(row_names, rcmp)
+                        } else {
+                            missing_rows <- setdiff(row_names, rcmp)
+                            if (length(missing_rows) > 0) {
+                                stop(
+                                    "Requested CpG sites not found in beta data: ",
+                                    paste(missing_rows, collapse = ", ")
+                                )
+                            }
                         }
+                        beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                     }
-                    beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                 } else if (!is.null(chr)) {
                     .log_step("Subsetting by chromosome from in-memory beta data..", level = 3)
                     .log_info("Getting genomic locations for chromosome subsetting...", level = 4)

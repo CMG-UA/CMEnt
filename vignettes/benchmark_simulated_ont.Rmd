@@ -393,8 +393,9 @@ if (!file.exists(dmrsegal_file)) {
             seeds_id_col = "cpg_id",
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
-            max_bridge_seeds_gaps = 2L, # Allow bridging across up to 2 seed CpGs to form larger candidate regions during stage 1.
+            max_bridge_seeds_gaps = 1L, # Allow bridging across up to 1 seed CpG to form larger candidate regions during stage 1.
             max_bridge_extension_gaps = 3L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
+            max_pval = 0.1, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
             min_seeds = 2,
             min_cpgs = 3,
             max_lookup_dist = 10000,

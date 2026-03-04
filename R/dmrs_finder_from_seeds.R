@@ -404,6 +404,7 @@
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
         checked_inds <- NULL
+        updating_inds <- integer(0)
     } else {
         # If connectivity array is provided, we assume it has already been filled for all sites up to the chromosome ends.
         # Instead, we re-assess the disconnected sites on the edges of the connected regions,
@@ -446,14 +447,14 @@
             checked_inds <- data.frame(before = run_starts - ugap, after = run_starts)
             updating_inds <- run_starts - ugap
             .log_info(
-                "Re-assessing connectivity for ", length(checked_inds), " sites at the upstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ", nrow(checked_inds), " sites at the upstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
             )
         } else if (dgap > 0L) {
             checked_inds <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
             updating_inds <- run_ends + 1
             .log_info(
-                "Re-assessing connectivity for ", length(checked_inds), " sites at the downstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ", nrow(checked_inds), " sites at the downstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
             )
         }
@@ -478,9 +479,14 @@
             "Selecting p-value computation mode for each group using the first chunk as a pilot.",
             level = 2
         )
+        use_numeric_row_index <- !is.character(beta_handler$beta)
+        first_chunk_rows <- splits[1, 1]:(splits[1, 2] + 1L)
+        if (!use_numeric_row_index) {
+            first_chunk_rows <- rownames(beta_locs)[first_chunk_rows]
+        }
         # select testing settings using the first chunk as a pilot
         first_chunk <- beta_handler$getBeta(
-            row_names = rownames(beta_locs)[splits[1, 1]:(splits[1, 2] + 1L)],
+            row_names = first_chunk_rows,
             col_names = col_names
         )
         sites_locs <- as.data.frame(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), , drop = FALSE])
@@ -514,6 +520,10 @@
     }
 
     gc()
+    beta_chr_vec <- beta_chr
+    beta_start_vec <- as.numeric(beta_locs[, "start"])
+    use_numeric_row_index <- !is.character(beta_handler$beta)
+    beta_row_ids <- if (!use_numeric_row_index) rownames(beta_locs) else NULL
     fun <- function(split_ind, beta_handler) {
         split <- splits[split_ind, ]
         pair_start <- as.integer(split[1])
@@ -542,10 +552,14 @@
                 return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
             }
         }
-        loc_ids <- rownames(beta_locs)[inds]
-        locs <- beta_locs[inds, , drop = FALSE]
+        locs <- data.frame(
+            chr = beta_chr_vec[inds],
+            start = beta_start_vec[inds],
+            stringsAsFactors = FALSE
+        )
+        row_ids <- if (use_numeric_row_index) inds else beta_row_ids[inds]
         chunk_beta <- beta_handler$getBeta(
-            row_names = loc_ids,
+            row_names = row_ids,
             col_names = col_names
         )
         x <- .testConnectivityBatch(
@@ -577,58 +591,33 @@
         }
         list(pair_start = pair_start, pair_end = pair_end, result = x)
     }
-    if (njobs == 1) {
-        ret <- lapply(seq_len(nrow(splits)), fun, beta_handler)
-    } else {
-        .setupParallel()
-        ret <- future.apply::future_lapply(
-            X = seq_len(nrow(splits)),
-            future.seed = TRUE,
-            future.stdout = NA,
-            future.globals = c(
-                "splits",
-                "group_inds",
-                "pheno",
-                "covariates",
-                "max_pval",
-                "min_delta_beta",
-                "max_lookup_dist",
-                "entanglement",
-                "aggfun",
-                "pval_mode_per_group",
-                "empirical_strategy_per_group",
-                "ntries",
-                "mid_p",
-                "updating_inds",
-                "checked_inds",
-                "verbose",
-                "p_ext",
-                ".testConnectivityBatch"
-            ),
-            beta_handler = beta_handler,
-            FUN = fun
-        )
-        .finalizeParallel()
-    }
+    # Work with local vectors to avoid repeated data.frame copy-on-modify in the hot loop.
+    connected_vec <- connectivity_array$connected
+    pval_vec <- connectivity_array$pval
+    reason_vec <- connectivity_array$reason
+    fail_col <- if ("first_failing_group" %in% names(connectivity_array)) "first_failing_group" else if ("failing_groups" %in% names(connectivity_array)) "failing_groups" else NULL
+    fail_vec <- if (!is.null(fail_col)) connectivity_array[[fail_col]] else NULL
+    delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
+
     bridge_mask <- rep(FALSE, n_sites)
     recheck <- rep(FALSE, n_sites)
-    for (item in ret) {
-        idx <- item$pair_start:item$pair_end
+
+    .applyChunkResult <- function(item) {
         x <- item$result
-        missing_cols <- setdiff(names(x), names(connectivity_array))
-        if (length(missing_cols) > 0L) {
-            for (col in missing_cols) {
-                if (is.character(x[[col]])) {
-                    connectivity_array[[col]] <- rep("", n_sites)
-                } else {
-                    connectivity_array[[col]] <- rep(NA, n_sites)
-                }
-            }
+        if (nrow(x) == 0L) {
+            return(invisible(NULL))
         }
         if (is.null(checked_inds)) {
             # First pass: full overwrite
-            for (col in names(x)) {
-                connectivity_array[idx, col] <- x[[col]]
+            idx <- item$pair_start:item$pair_end
+            connected_vec[idx] <<- x$connected
+            pval_vec[idx] <<- x$pval
+            reason_vec[idx] <<- x$reason
+            if (!is.null(fail_col) && fail_col %in% names(x)) {
+                fail_vec[idx] <<- x[[fail_col]]
+            }
+            if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
+                delta_vec[idx] <<- x$delta_beta
             }
         } else {
             # Map result rows to the exact global pair indices returned by the worker.
@@ -641,8 +630,15 @@
             update_m <- x[["connected"]]
             if (any(update_m) && length(masked_idx) >= 1L) {
                 recheck[masked_idx[update_m]] <- TRUE
-                for (col in names(x)) {
-                    connectivity_array[masked_idx[update_m], col] <- x[[col]][update_m]
+                update_idx <- masked_idx[update_m]
+                connected_vec[update_idx] <<- x$connected[update_m]
+                pval_vec[update_idx] <<- x$pval[update_m]
+                reason_vec[update_idx] <<- x$reason[update_m]
+                if (!is.null(fail_col) && fail_col %in% names(x)) {
+                    fail_vec[update_idx] <<- x[[fail_col]][update_m]
+                }
+                if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
+                    delta_vec[update_idx] <<- x$delta_beta[update_m]
                 }
                 gap <- if (ugap > 0L) ugap else dgap
                 for (i in 0:(gap - 1L)) {
@@ -650,9 +646,67 @@
                 }
             }
         }
+        invisible(NULL)
     }
-    connectivity_array[bridge_mask, "connected"] <- TRUE
-    connectivity_array[bridge_mask, "reason"] <- "bridged"
+
+    if (njobs == 1L) {
+        for (split_ind in seq_len(nrow(splits))) {
+            .applyChunkResult(fun(split_ind, beta_handler))
+        }
+    } else {
+        .setupParallel()
+        all_split_inds <- seq_len(nrow(splits))
+        batch_size <- as.integer(getOption("DMRsegal.parallel_result_batch_size", max(njobs * 4L, 16L)))
+        batch_size <- max(1L, batch_size)
+        for (batch_start in seq.int(1L, length(all_split_inds), by = batch_size)) {
+            batch_end <- min(batch_start + batch_size - 1L, length(all_split_inds))
+            batch_inds <- all_split_inds[batch_start:batch_end]
+            ret <- future.apply::future_lapply(
+                X = batch_inds,
+                future.seed = TRUE,
+                future.stdout = NA,
+                future.globals = c(
+                    "splits",
+                    "group_inds",
+                    "pheno",
+                    "covariates",
+                    "max_pval",
+                    "min_delta_beta",
+                    "max_lookup_dist",
+                    "entanglement",
+                    "aggfun",
+                    "pval_mode_per_group",
+                    "empirical_strategy_per_group",
+                    "ntries",
+                    "mid_p",
+                    "updating_inds",
+                    "checked_inds",
+                    "verbose",
+                    "p_ext",
+                    ".testConnectivityBatch"
+                ),
+                beta_handler = beta_handler,
+                FUN = fun
+            )
+            for (item in ret) {
+                .applyChunkResult(item)
+            }
+            rm(ret)
+        }
+        .finalizeParallel()
+    }
+
+    connected_vec[bridge_mask] <- TRUE
+    reason_vec[bridge_mask] <- "bridged"
+    connectivity_array$connected <- connected_vec
+    connectivity_array$pval <- pval_vec
+    connectivity_array$reason <- reason_vec
+    if (!is.null(fail_col)) {
+        connectivity_array[[fail_col]] <- fail_vec
+    }
+    if (!is.null(delta_vec)) {
+        connectivity_array$delta_beta <- delta_vec
+    }
 
     list(
         connectivity_array = connectivity_array,
