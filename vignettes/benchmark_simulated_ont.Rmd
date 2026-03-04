@@ -151,7 +151,10 @@ rownames(pheno) <- pheno$Sample_ID
 colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
 sim_bs  <- sort(sim_bs)
 
-table(pheno$Sample_Group)
+knitr::kable(
+    table(pheno),
+    caption = "Phenotype table"
+)
 ```
 
 ## Extract Methylation Matrix and Generate Seeds
@@ -402,7 +405,7 @@ if (!file.exists(dmrsegal_file)) {
             casecontrol_col = "casecontrol",
             max_bridge_seeds_gaps = 1L, # Allow bridging across up to 1 seed CpG to form larger candidate regions during stage 1.
             max_bridge_extension_gaps = 3L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
-            max_pval = 0.1, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
+            max_pval = 0.2, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
             min_seeds = 2,
             min_cpgs = 3,
             max_lookup_dist = 10000,
@@ -418,8 +421,6 @@ if (!file.exists(dmrsegal_file)) {
     time_dmrsegal <- end_time - start_time
     saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)
 } else {
-    cat(sprintf("Using cached DMRsegal result: %s\n", dmrsegal_file))
-    flush.console()
     ret <- readRDS(dmrsegal_file)
     dmrs_segal <- ret$dmrs
     time_dmrsegal <- ret$time
