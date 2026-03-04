@@ -904,10 +904,9 @@ knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row
 knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
 ```
 
-### DMRsegal Number of seeds within Ground Truth not overlapping DMRsegal DMRs
-Assessing stage 1 connection efficiency
+### DMRsegal Stage 1 Quality Assessment (Seed Linkage)
+Assessing seed-space recoverability and seed capture efficiency.
 ```{r}
-# Seeds within truth DMRs but not overlapping DMRsegal DMRs
 seed_gr <- sort(seed_gr)
 mcols(seed_gr)$index <- seq_along(seed_gr)
 seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
@@ -921,6 +920,29 @@ if (length(dmrs_segal) > 0) {
     seeds_in_truth_and_dmrs <- seed_gr[0]
     seeds_in_truth_not_dmrs <- seeds_in_truth
 }
+
+seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs, ignore.strand = TRUE)
+truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs))
+seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs, ignore.strand = TRUE)
+truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs))
+truth_seed_capture_pct <- ifelse(truth_seed_total > 0, 100 * truth_seed_captured / truth_seed_total, NA_real_)
+
+recoverable_truth <- truth_seed_total >= 2L
+recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
+recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
+
+stage1_quality <- data.frame(
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
+    Truth_DMRs_Stage1Recoverable_2plusSeeds = sum(recoverable_truth),
+    Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds = sum(recoverable_with2captured),
+    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
+    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, 100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth)),
+    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
+)
+
+knitr::kable(stage1_quality, digits = 2, caption = "Stage 1 quality summary (seed linkage and capture)")
+
 cat(sprintf(
     "- Seeds in truth DMRs: %d\n - Seeds in truth DMRs overlapping DMRsegal DMRs: %d\n - Seeds in truth DMRs not overlapping DMRsegal DMRs: %d\n - All seeds overlapping DMRsegal DMRs: %d\n",
     length(seeds_in_truth),
@@ -929,11 +951,13 @@ cat(sprintf(
     length(seeds_in_dmrs)
 ))
 
-# Table of number of consecutive seeds within each truth DMR not overlapping DMRsegal DMRs
 if (length(seeds_in_truth_not_dmrs) > 0) {
-    # Consecutive runs are computed within each truth DMR using the original seed index.
+    # Consecutive missed-seed runs are computed per truth DMR using original seed index.
     ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
-    run_df <- do.call(rbind, lapply(split(queryHits(ov_truth), subjectHits(ov_truth)), function(qh) {
+    qh_by_truth <- split(queryHits(ov_truth), subjectHits(ov_truth))
+    run_df <- do.call(rbind, lapply(names(qh_by_truth), function(truth_id_chr) {
+        truth_id <- as.integer(truth_id_chr)
+        qh <- qh_by_truth[[truth_id_chr]]
         idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
         db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
 
@@ -943,43 +967,102 @@ if (length(seeds_in_truth_not_dmrs) > 0) {
 
         run_id <- cumsum(c(TRUE, diff(idx) != 1L))
         data.frame(
+            Truth_DMR_Index = truth_id,
             run_length = as.integer(tabulate(run_id)),
             mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
         )
     }))
 
-    ret <- as.data.frame(table(run_df$run_length))
-    colnames(ret) <- c("Consecutive_Seed_Length", "Count")
-    delta_summary <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
-    colnames(delta_summary) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
-    delta_summary <- merge(ret, delta_summary, by = "Consecutive_Seed_Length", all.x = TRUE)
-    knitr::kable(
-        ret,
-        caption = "Consecutive Seed Runs in Truth DMRs Not Overlapping DMRsegal DMRs"
+    run_count <- as.data.frame(table(run_df$run_length))
+    colnames(run_count) <- c("Consecutive_Seed_Length", "Count")
+    run_delta <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
+    colnames(run_delta) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
+    run_summary <- merge(run_count, run_delta, by = "Consecutive_Seed_Length", all.x = TRUE)
+
+    max_run_per_truth <- aggregate(run_length ~ Truth_DMR_Index, data = run_df, FUN = max)
+    run_overview <- data.frame(
+        Truth_DMRs_With_Missed_Seeds = nrow(max_run_per_truth),
+        Median_Max_Missed_Run_Per_Truth = stats::median(max_run_per_truth$run_length),
+        Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
     )
+
+    knitr::kable(run_summary, digits = 2, caption = "Consecutive missed-seed runs in truth DMRs")
+    knitr::kable(run_overview, digits = 2, caption = "Missed-seed run overview (truth-side)")
 }
-
-
 ```
-### DMRsegal Distribution of  number of DMRs within each truth DMR
-Assessing stage 2-4 extension efficiency
+
+### DMRsegal Stage 2-4 Quality Assessment (Extension and Merging)
+Assessing truth-side recovery and prediction-side fragmentation/purity after extension and merging.
 ```{r}
 if (length(dmrs_segal) > 0) {
-    dmrs_in_truth <- subsetByOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
-    dmrs_in_truth_counts <- table(factor(subjectHits(findOverlaps(dmrs_in_truth, truth_dmrs, ignore.strand = TRUE)), levels = seq_along(truth_dmrs)))
+    truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_segal, ignore.strand = TRUE)
+    preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
+
+    truth_overlap_bp <- numeric(length(truth_dmrs))
+    if (length(truth_to_pred_hits) > 0) {
+        truth_intersections <- pintersect(
+            truth_dmrs[queryHits(truth_to_pred_hits)],
+            dmrs_segal[subjectHits(truth_to_pred_hits)]
+        )
+        truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
+        truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
+            truth_intersections_by_truth,
+            function(gr) sum(width(reduce(gr))),
+            numeric(1)
+        )
+    }
+    truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
+
+    pred_to_truth_hits <- findOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
+    pred_overlap_bp <- numeric(length(dmrs_segal))
+    if (length(pred_to_truth_hits) > 0) {
+        pred_intersections <- pintersect(
+            dmrs_segal[queryHits(pred_to_truth_hits)],
+            truth_dmrs[subjectHits(pred_to_truth_hits)]
+        )
+        pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
+        pred_overlap_bp[as.integer(names(pred_intersections_by_pred))] <- vapply(
+            pred_intersections_by_pred,
+            function(gr) sum(width(reduce(gr))),
+            numeric(1)
+        )
+    }
+    pred_bp_precision <- ifelse(width(dmrs_segal) > 0, pred_overlap_bp / width(dmrs_segal), 0)
+
+    stage24_quality <- data.frame(
+        Pred_DMRs_Total = length(dmrs_segal),
+        Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_segal, truth_dmrs)),
+        Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
+        Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
+        Truth_DMRs_Total = length(truth_dmrs),
+        Truth_DMRs_Hit = sum(preds_per_truth > 0),
+        Truth_DMRs_BPRecall_ge50pct = sum(truth_bp_recall >= 0.5),
+        Truth_DMRs_BPRecall_ge80pct = sum(truth_bp_recall >= 0.8),
+        Median_Truth_BPRecall_Pct_Hit = ifelse(sum(preds_per_truth > 0) == 0, 0, 100 * stats::median(truth_bp_recall[preds_per_truth > 0])),
+        Median_Pred_BPPrecision_Pct_Overlap = ifelse(sum(pred_bp_precision > 0) == 0, 0, 100 * stats::median(pred_bp_precision[pred_bp_precision > 0])),
+        Truth_DMRs_With_Multiple_Pred = sum(preds_per_truth >= 2),
+        Median_Preds_Per_Hit_Truth = ifelse(sum(preds_per_truth > 0) == 0, 0, stats::median(preds_per_truth[preds_per_truth > 0])),
+        Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
+    )
+    knitr::kable(stage24_quality, digits = 2, caption = "Stage 2-4 quality summary (extension, merging, fragmentation)")
+
     dmrs_in_truth_counts_df <- data.frame(
         Truth_DMR_Index = seq_along(truth_dmrs),
-        DMRsegal_DMR_Count = as.integer(dmrs_in_truth_counts)
+        DMRsegal_DMR_Count = as.integer(preds_per_truth),
+        Truth_BP_Recall_Pct = 100 * truth_bp_recall
     )
     # Stem plot of number of DMRsegal DMRs within each truth DMR
-    ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count)) +
-        geom_segment(aes(xend = Truth_DMR_Index, yend = 0), color = "steelblue") +
-        geom_point(color = "steelblue", size = 2) +
+    ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)) +
+        geom_segment(aes(xend = Truth_DMR_Index, yend = 0), alpha = 0.5) +
+        geom_point(size = 2) +
+        scale_color_viridis_c(option = "C") +
         theme_minimal() +
         labs(
-            title = "Number of DMRsegal DMRs within Each Truth DMR",
+            title = "DMRsegal DMR multiplicity per truth DMR",
+            subtitle = "Point color encodes truth-side base-pair recall (%)",
             x = "Truth DMR Index",
-            y = "Count of DMRsegal DMRs"
+            y = "Count of DMRsegal DMRs",
+            color = "Truth BP recall (%)"
         )
 }
 ```
