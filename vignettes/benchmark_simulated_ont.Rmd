@@ -48,7 +48,6 @@ Primary goal:
 
 ```{r}
 devtools::load_all()
-
 library(bsseq)
 library(data.table)
 library(ggplot2)
@@ -58,13 +57,6 @@ library(progressr)
 library(SummarizedExperiment)
 library(S4Vectors)
 
-if (!requireNamespace("karyoploteR", quietly = TRUE)) {
-    if (!requireNamespace("BiocManager", quietly = TRUE)) {
-        install.packages("BiocManager")
-    }
-    BiocManager::install("karyoploteR", update = FALSE, ask = FALSE)
-}
-library(karyoploteR)
 
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
@@ -94,6 +86,7 @@ if (!requireNamespace("hummingbird", quietly = TRUE)) {
 if (!requireNamespace("karyoploteR", quietly = TRUE)) {
     BiocManager::install("karyoploteR", update = FALSE, ask = FALSE)
 }
+library(karyoploteR)
 
 if (!requireNamespace("tidyr", quietly = TRUE)) {
     install.packages("tidyr")
@@ -810,15 +803,8 @@ run_hummingbird_bsseq <- function(
     bs_obj,
     max_gap = 500L,
     min_cpgs = 3L,
-    min_length = 50L,
-    p_value = 0.05,
-    p_adj = 0.1
+    min_length = 50L
 ) {
-    if (!requireNamespace("hummingbird", quietly = TRUE)) {
-        warning("hummingbird not installed; returning empty set.")
-        return(GenomicRanges::GRanges())
-    }
-
     sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
     if (!"Sample_Group" %in% colnames(sample_df)) {
         warning("Sample_Group not present in BSseq colData; returning empty set.")
@@ -862,12 +848,6 @@ run_hummingbird_bsseq <- function(
             next
         }
 
-        cat(sprintf(
-            "hummingbird: %s (%s CpGs)\n",
-            chr_name,
-            format(length(chr_idx), big.mark = ",")
-        ))
-
         chr_gr <- row_gr[chr_idx]
         control_se <- SummarizedExperiment::SummarizedExperiment(
             rowRanges = chr_gr,
@@ -886,32 +866,17 @@ run_hummingbird_bsseq <- function(
 
         chr_out <- tryCatch(
             {
-                hb_fit <- hummingbird::hummingbirdEM(control = control_se, abnorm = case_se)
+                hb_fit <- hummingbird::hummingbirdEM(experimentInfoControl = control_se, experimentInfoCase = case_se, binSize = 40)
                 hb_fit <- hummingbird::hummingbirdPostAdjustment(
-                    hb_fit,
+                    emInfo = hb_fit,
+                    experimentInfoControl = control_se,
+                    experimentInfoCase = case_se,
                     maxGap = as.integer(max_gap),
                     minCpGs = as.integer(min_cpgs),
-                    minLength = as.integer(min_length),
-                    pValue = as.numeric(p_value),
-                    pAdj = as.numeric(p_adj)
+                    minLength = as.integer(min_length)
                 )
 
-                dmrs_df <- hb_fit$DMRs
-                if (is.null(dmrs_df) || nrow(dmrs_df) == 0) {
-                    return(NULL)
-                }
-                if (!all(c("chromosome", "start", "end") %in% colnames(dmrs_df))) {
-                    warning("hummingbird output missing chromosome/start/end columns; skipping chromosome.")
-                    return(NULL)
-                }
-
-                GenomicRanges::makeGRangesFromDataFrame(
-                    dmrs_df,
-                    seqnames.field = "chromosome",
-                    start.field = "start",
-                    end.field = "end",
-                    keep.extra.columns = TRUE
-                )
+                hb_fit$DMRs
             },
             error = function(e) {
                 cat(sprintf("hummingbird failed (%s): %s\n", chr_name, e$message))
@@ -933,17 +898,17 @@ run_hummingbird_bsseq <- function(
     GenomicRanges::sort(out)
 }
 
-if (!file.exists(hummingbird_file)) {
+# if (!file.exists(hummingbird_file)) {
     start_time <- Sys.time()
     dmrs_hummingbird <- run_hummingbird_bsseq(sim_bs)
     end_time <- Sys.time()
     time_hummingbird <- end_time - start_time
     saveRDS(list(dmrs = dmrs_hummingbird, time = time_hummingbird), hummingbird_file)
-} else {
-    ret <- readRDS(hummingbird_file)
-    dmrs_hummingbird <- ret$dmrs
-    time_hummingbird <- ret$time
-}
+# } else {
+#     ret <- readRDS(hummingbird_file)
+#     dmrs_hummingbird <- ret$dmrs
+#     time_hummingbird <- ret$time
+# }
 ```
 
 ```{r}
@@ -1290,22 +1255,48 @@ dmrs_in_truth_counts_df <- data.frame(
     DMRsegal_DMR_Count = as.integer(preds_per_truth),
     Truth_BP_Recall_Pct = 100 * truth_bp_recall
 )
-dmrs_in_truth_counts_df[, "DMRsegal_DMR_Count_P"] <- ifelse(dmrs_in_truth_counts_df$DMRsegal_DMR_Count > 0, 1, NA_integer_)
 dmrs_in_truth_counts_df[dmrs_in_truth_counts_df[, "Truth_BP_Recall_Pct"] == 0, "Truth_BP_Recall_Pct"] <- NA
+dmrs_points_df <- dmrs_in_truth_counts_df[
+    dmrs_in_truth_counts_df$DMRsegal_DMR_Count > 0,
+    ,
+    drop = FALSE
+]
+color_upper <- as.numeric(stats::quantile(
+    dmrs_points_df$Truth_BP_Recall_Pct,
+    probs = 0.95,
+    na.rm = TRUE,
+    names = FALSE
+))
+color_lower <- suppressWarnings(min(dmrs_points_df$Truth_BP_Recall_Pct, na.rm = TRUE))
+if (!is.finite(color_lower) || !is.finite(color_upper)) {
+    color_lower <- 0
+    color_upper <- 1
+}
+if (color_upper <= color_lower) {
+    color_upper <- color_lower + 1e-6
+}
 
-# Stem plot of number of DMRsegal DMRs within each truth DMR
-ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)) +
-    geom_point(mapping = aes(size = DMRsegal_DMR_Count_P), alpha = 0.7, na.rm = TRUE) +
-    geom_line(group = 1, color = "darkgray", alpha = 0.7) +
-    scale_color_viridis_c(option = "C") +
-    theme_minimal(axis.text.x = element_blank()) +
+ggplot(dmrs_in_truth_counts_df,
+    aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)
+    ) +
+    scale_y_continuous(breaks = scales::breaks_pretty()) +
+    geom_point(data = dmrs_points_df, size = 0.6, alpha = 0.7, na.rm = TRUE) +
+    scale_color_viridis_c(
+        option = "C",
+        limits = c(color_lower, color_upper),
+        oob = scales::squish
+    ) +
+    theme_minimal() +
+    theme(
+        legend.position = "right",
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()
+    ) +
     labs(
-        title = "DMRsegal DMR multiplicity per truth DMR",
-        x = "Truth DMR Index",
+        x = "Truth DMRs",
         y = "Count of DMRsegal DMRs",
         color = "Truth BP recall (%)"
     )
-
 ```
 
 ## Visualizations
