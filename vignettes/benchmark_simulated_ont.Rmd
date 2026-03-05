@@ -808,20 +808,24 @@ run_hummingbird_bsseq <- function(
     sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
     if (!"Sample_Group" %in% colnames(sample_df)) {
         warning("Sample_Group not present in BSseq colData; returning empty set.")
-        return(GenomicRanges::GRanges())
+        return(GenomicRanges::GPos())
     }
 
     ctrl_idx <- which(sample_df$Sample_Group == "Condition1")
     case_idx <- which(sample_df$Sample_Group == "Condition2")
     if (length(ctrl_idx) == 0 || length(case_idx) == 0) {
         warning("Need both Condition1 and Condition2 samples for hummingbird.")
-        return(GenomicRanges::GRanges())
+        return(GenomicRanges::GPos())
     }
 
     meth_mat <- bsseq::getCoverage(bs_obj, type = "M")
     cov_mat <- bsseq::getCoverage(bs_obj, type = "Cov")
     unmeth_mat <- cov_mat - meth_mat
     row_gr <- bsseq::granges(bs_obj)
+    # granges to gpos for hummingbird
+    row_gr <- GPos(
+        seqnames = GenomicRanges::seqnames(row_gr),
+        pos = GenomicRanges::start(row_gr))
 
     to_count_matrix <- function(x) {
         x <- as.matrix(x)
@@ -836,7 +840,7 @@ run_hummingbird_bsseq <- function(
     chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
     if (length(chr_vec) == 0) {
         warning("No chromosomes found in BSseq object; returning empty set.")
-        return(GenomicRanges::GRanges())
+        return(GenomicRanges::GPos())
     }
 
     dmrs_by_chr <- vector("list", length(chr_vec))
@@ -891,24 +895,24 @@ run_hummingbird_bsseq <- function(
 
     dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
     if (length(dmrs_by_chr) == 0) {
-        return(GenomicRanges::GRanges())
+        return(GenomicRanges::GPos())
     }
 
     out <- do.call(c, unname(dmrs_by_chr))
     GenomicRanges::sort(out)
 }
 
-# if (!file.exists(hummingbird_file)) {
+if (!file.exists(hummingbird_file)) {
     start_time <- Sys.time()
     dmrs_hummingbird <- run_hummingbird_bsseq(sim_bs)
     end_time <- Sys.time()
     time_hummingbird <- end_time - start_time
     saveRDS(list(dmrs = dmrs_hummingbird, time = time_hummingbird), hummingbird_file)
-# } else {
-#     ret <- readRDS(hummingbird_file)
-#     dmrs_hummingbird <- ret$dmrs
-#     time_hummingbird <- ret$time
-# }
+} else {
+    ret <- readRDS(hummingbird_file)
+    dmrs_hummingbird <- ret$dmrs
+    time_hummingbird <- ret$time
+}
 ```
 
 ```{r}
