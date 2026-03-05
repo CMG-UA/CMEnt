@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal vs DMRcate vs dmrseq on Simulated ONT BSseq Data"
+title: "DMRsegal vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output:
     BiocStyle::html_document:
         code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal vs DMRcate vs dmrseq on Simulated ONT BSseq Data}
+  %\VignetteIndexEntry{DMRsegal vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -29,9 +29,10 @@ This vignette benchmarks DMR detection on simulated ONT-style methylation data w
 
 Methods:
 
-- **DMRsegal** (seed-guided, correlation-based DMR assembly)
-- **DMRcate** (smoothing-based DMR detection)
-- **dmrseq** (BSseq-native region-level inference; optional comparator)
+- **DMRsegal** seed-guided, correlation-based DMR assembly
+- **DMRcate** Gaussian Kernel smoothing-based DMR detection
+- **dmrseq** BSseq-native region-level inference
+- **hummingbird** HMM-based DMR detection
 
 Data:
 
@@ -41,7 +42,7 @@ Data:
 Primary goal:
 
 - assess DMRsegal performance against ground truth
-- compare with DMRcate and dmrseq using the same dataset
+- compare with DMRcate, dmrseq, and hummingbird using the same dataset
 
 ## Setup and Dependencies
 
@@ -56,6 +57,14 @@ library(GenomicRanges)
 library(progressr)
 library(SummarizedExperiment)
 library(S4Vectors)
+
+if (!requireNamespace("karyoploteR", quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+    }
+    BiocManager::install("karyoploteR", update = FALSE, ask = FALSE)
+}
+library(karyoploteR)
 
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
@@ -76,6 +85,14 @@ if (!requireNamespace("DMRcate", quietly = TRUE)) {
 
 if (!requireNamespace("dmrseq", quietly = TRUE)) {
     BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("hummingbird", quietly = TRUE)) {
+    BiocManager::install("hummingbird", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("karyoploteR", quietly = TRUE)) {
+    BiocManager::install("karyoploteR", update = FALSE, ask = FALSE)
 }
 
 if (!requireNamespace("tidyr", quietly = TRUE)) {
@@ -160,7 +177,9 @@ knitr::kable(
 ## Extract Methylation Matrix and Generate Seeds
 This step is crucial for DMRsegal, which relies on seed CpGs to guide DMR assembly.
 We use a limma-based approach to identify candidate seeds based on differential methylation evidence.
-We extend beyond strict FDR significance to capture a broader set of potential seeds, which may improve sensitivity in DMRsegal's region assembly.
+We extend beyond strict FDR significance to capture a broader set of potential seeds, 
+which may improve sensitivity in DMRsegal's region assembly.
+We rank seeds by a combined score of p-value and effect size (delta beta) to prioritize biologically relevant candidates.
 
 
 ```{r seeds_calculation}
@@ -204,13 +223,12 @@ if (!file.exists(seeds_tsv)) {
     ctrl_idx <- which(!pheno$casecontrol)
     delta_beta <- rowMeans(beta_mat[, case_idx, drop = FALSE], na.rm = TRUE) -
         rowMeans(beta_mat[, ctrl_idx, drop = FALSE], na.rm = TRUE)
-    seed_score <- -log10(pval_vec + .Machine$double.xmin)
+    seed_score <- -log10(pval_vec + .Machine$double.xmin) * abs(delta_beta)
 
     target_seed_n <- sum(qval_vec < 0.1, na.rm = TRUE)
     if (target_seed_n < 10) {
         target_seed_n <- min(50000, length(pval_vec))
         sig_idx <- order(pval_vec, na.last = NA)[seq_len(target_seed_n)]
-        cat("Few FDR-significant seeds found; using top seeds by raw p-value\n")
     } else {
         ord_score <- order(seed_score, decreasing = TRUE, na.last = NA)
         target_seed_n <- min(target_seed_n, length(ord_score))
@@ -226,51 +244,129 @@ if (!file.exists(seeds_tsv)) {
         stringsAsFactors = FALSE
     )
     sig_seeds <- sig_seeds[order(sig_seeds$seed_score, -sig_seeds$pval, decreasing = TRUE), , drop = FALSE]
-
-    seed_chr <- sub(":.*$", "", sig_seeds$cpg_id)
-    seed_chr_tbl <- sort(table(seed_chr), decreasing = TRUE)
-    cat("Top seed chromosomes:\n")
-    print(utils::head(seed_chr_tbl, 10))
-
+    write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
     seed_locs <- locs[sig_seeds$cpg_id, , drop = FALSE]
     seed_locs <- seed_locs[order(seed_locs$chr, seed_locs$start), , drop = FALSE]
-    seed_dist <- unlist(lapply(split(seed_locs$start, seed_locs$chr), function(x) {
-        if (length(x) < 2) return(numeric(0))
-        diff(x)
-    }))
-    if (length(seed_dist) > 0) {
-        cat("Seed distance quantiles (bp):\n")
-        print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
-    }
-
-    write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+    seeds_meta <- list(
+        seed_locs = seed_locs
+    )
     saveRDS(
-        list(
-            generated_at = Sys.time(),
-            target_seed_n = target_seed_n,
-            n_seeds = nrow(sig_seeds)
-        ),
+        seeds_meta,
         seeds_meta_rds
     )
 } else {
     sig_seeds <- data.table::fread(seeds_tsv)
     rownames(sig_seeds) <- sig_seeds$cpg_id
+    seeds_meta <- readRDS(seeds_meta_rds)
     if (!"seed_score" %in% colnames(sig_seeds) && all(c("pval", "delta_beta") %in% colnames(sig_seeds))) {
         sig_seeds$seed_score <- -log10(as.numeric(sig_seeds$pval) + .Machine$double.xmin) *
             abs(as.numeric(sig_seeds$delta_beta))
     }
 }
+seed_locs <- seeds_meta$seed_locs
+if (is.null(seed_locs) || nrow(seed_locs) == 0) {
+    seed_locs <- data.frame(
+        chr = sub(":.*$", "", sig_seeds$cpg_id),
+        start = suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", sig_seeds$cpg_id))),
+        end = suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", sig_seeds$cpg_id))),
+        stringsAsFactors = FALSE
+    )
+    seed_locs <- seed_locs[!is.na(seed_locs$start) & nzchar(seed_locs$chr), , drop = FALSE]
+}
+seed_dist <- unlist(lapply(split(seed_locs$start, seed_locs$chr), function(x) {
+    if (length(x) < 2) return(numeric(0))
+    diff(x)
+}))
+if (length(seed_dist) > 0) {
+    cat("Seed distance quantiles (bp):\n")
+    print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
+}
 cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
+
+
+```
+
+### Genome-wide Seeds and DMRs Visualization
+
+```{r seed_dmr_karyoplot, fig.width=14, fig.height=8}
+seed_plot_gr <- GenomicRanges::makeGRangesFromDataFrame(
+    seed_locs,
+    seqnames.field = "chr",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = FALSE
+)
+
+all_plot_gr <- c(seed_plot_gr, truth_dmrs)
+chr_lengths <- tapply(
+    GenomicRanges::end(all_plot_gr),
+    as.character(GenomicRanges::seqnames(all_plot_gr)),
+    max,
+    na.rm = TRUE
+)
+chr_lengths <- chr_lengths[is.finite(chr_lengths) & chr_lengths > 0]
+plot_genome_df <- data.frame(
+    chr = names(chr_lengths),
+    start = 1L,
+    end = as.integer(chr_lengths),
+    stringsAsFactors = FALSE
+)
+plot_genome_df <- plot_genome_df[order(plot_genome_df$chr), , drop = FALSE]
+
+kp <- karyoploteR::plotKaryotype(
+    genome = plot_genome_df,
+    chromosomes = plot_genome_df$chr,
+    plot.type = 2
+)
+karyoploteR::kpPlotDensity(
+    kp,
+    data = seed_plot_gr,
+    window.size = 1e6,
+    col = "#1f78b4",
+    border = NA,
+    r0 = 0.06,
+    r1 = 0.46
+)
+karyoploteR::kpAddLabels(kp, labels = "Seed density", r0 = 0.06, r1 = 0.46, cex = 0.8, label.margin = 0.02)
+karyoploteR::kpPlotRegions(
+    kp,
+    data = truth_dmrs,
+    col = "#e31a1c",
+    border = NA,
+    r0 = 0.58,
+    r1 = 0.95
+)
+karyoploteR::kpAddLabels(kp, labels = "Ground-truth DMRs", r0 = 0.58, r1 = 0.95, cex = 0.8, label.margin = 0.02)
+graphics::legend(
+    "bottomleft",
+    legend = c("Seed density", "Ground-truth DMRs"),
+    fill = c("#1f78b4", "#e31a1c"),
+    border = NA,
+    bty = "n",
+    cex = 0.8
+)
 ```
 
 ### Seed Overlap with Ground Truth
 
+Metrics explanation:
+
+- **Seeds_Total**: Total number of seed CpGs identified.
+- **Seeds_Overlapping_Truth**: Number of seed CpGs that overlap any ground-truth DMR.
+- **Seeds_Overlap_Pct**: Percentage of seed CpGs that overlap ground-truth DMRs.
+- **Truth_DMRs_Total**: Total number of ground-truth DMRs.
+- **Truth_DMRs_With_Seed_Pct**: Percentage of ground-truth DMRs that have at least one overlapping seed CpG.
+- **Truth_DMRs_With_2Seeds_Pct**: Percentage of ground-truth DMRs that have at least two overlapping seed CpGs.
+- **Median_Seeds_Per_Truth_DMR**: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
+- **Median_Seeds_Per_Hit_Truth_DMR**: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
+- **Max_Seeds_In_Truth_DMR**: Maximum number of overlapping seeds in any single ground-truth DMR.
+- **Overlap_Pairs_Direction_Match_Pct**: Among seed-truth overlap pairs, the percentage where the direction of methylation change (hyper/hypo) matches between the seed and the truth DMR.
+- **Overlapping_Seeds_Any_Direction_Match_Pct**: Percentage of seeds that have at least one overlapping truth DMR with a matching direction of change.
+
+Metrics values:
+
 ```{r}
 seed_df <- as.data.frame(sig_seeds, stringsAsFactors = FALSE)
-if (!"cpg_id" %in% colnames(seed_df)) {
-    stop("Expected 'cpg_id' column in seed table.")
-}
-
 seed_df$chr <- sub(":.*$", "", seed_df$cpg_id)
 seed_df$start <- suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", seed_df$cpg_id)))
 seed_df <- seed_df[!is.na(seed_df$start) & nzchar(seed_df$chr), , drop = FALSE]
@@ -307,71 +403,52 @@ seed_truth_summary <- data.frame(
     Seeds_Overlapping_Truth = sum(seed_overlaps_truth),
     Seeds_Overlap_Pct = safe_pct(seed_overlaps_truth),
     Truth_DMRs_Total = length(truth_dmrs),
-    Truth_DMRs_With_Seed = sum(truth_has_seed),
     Truth_DMRs_With_Seed_Pct = safe_pct(truth_has_seed),
-    Truth_DMRs_With_2Seeds = truth_has_2seeds,
     Truth_DMRs_With_2Seeds_Pct = ifelse(length(truth_dmrs) == 0, 0, 100 * truth_has_2seeds / length(truth_dmrs)),
     Median_Seeds_Per_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_real_, stats::median(seeds_per_truth)),
     Median_Seeds_Per_Hit_Truth_DMR = ifelse(sum(truth_has_seed) == 0, 0, stats::median(seeds_per_truth[truth_has_seed])),
     Max_Seeds_In_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_integer_, max(seeds_per_truth))
 )
+seed_sign <- sign(as.numeric(seed_df$delta_beta))
+truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
+pair_match <- seed_sign[S4Vectors::queryHits(seed_truth_hits)] ==
+    truth_sign[S4Vectors::subjectHits(seed_truth_hits)]
 
-if ("delta_beta" %in% colnames(seed_df) &&
-        "delta_beta" %in% names(SummarizedExperiment::mcols(truth_dmrs)) &&
-        length(seed_truth_hits) > 0) {
-    seed_sign <- sign(as.numeric(seed_df$delta_beta))
-    truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
-    pair_match <- seed_sign[S4Vectors::queryHits(seed_truth_hits)] ==
-        truth_sign[S4Vectors::subjectHits(seed_truth_hits)]
+seed_pair_direction_match_pct <- if (all(is.na(pair_match))) NA_real_ else 100 * mean(pair_match, na.rm = TRUE)
+per_seed_dir_match <- tapply(pair_match, S4Vectors::queryHits(seed_truth_hits), function(x) any(x, na.rm = TRUE))
+seed_any_direction_match_pct <- if (length(per_seed_dir_match) == 0) NA_real_ else 100 * mean(per_seed_dir_match)
 
-    seed_pair_direction_match_pct <- if (all(is.na(pair_match))) NA_real_ else 100 * mean(pair_match, na.rm = TRUE)
-    per_seed_dir_match <- tapply(pair_match, S4Vectors::queryHits(seed_truth_hits), function(x) any(x, na.rm = TRUE))
-    seed_any_direction_match_pct <- if (length(per_seed_dir_match) == 0) NA_real_ else 100 * mean(per_seed_dir_match)
+seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
+seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
 
-    seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
-    seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
-}
-cat(sprintf("Seed-truth overlap pairs (seed, truth): %d\n", length(seed_truth_hits)))
-cat(sprintf("Unique seed CpGs overlapping truth: %d\n", sum(seed_overlaps_truth)))
-cat(sprintf("Truth DMRs with at least one overlapping seed: %d\n", sum(truth_has_seed)))
-cat(sprintf("Truth DMRs with at least two overlapping seeds: %d\n", truth_has_2seeds))
-cat("Note: truth-side seed counts are not directly comparable to predicted-side DMR overlap counts.\n")
-knitr::kable(
-    seed_truth_summary,
-    digits = 2,
-    caption = "Seed overlap diagnostics against ground truth"
-)
-
-rank_col <- NULL
-if ("seed_score" %in% colnames(seed_df) && any(is.finite(as.numeric(seed_df$seed_score)))) {
-    rank_col <- "seed_score"
-    ord <- order(as.numeric(seed_df$seed_score), decreasing = TRUE, na.last = TRUE)
-} else if ("pval" %in% colnames(seed_df)) {
-    rank_col <- "pval"
-    ord <- order(as.numeric(seed_df$pval), na.last = TRUE)
+for (i in seq_along(seed_truth_summary)) {
+    cat(sprintf("**%s**: %s\n", names(seed_truth_summary)[i], seed_truth_summary[[i]]))
 }
 
-if (!is.null(rank_col) && length(seed_gr) > 0) {
-    top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
-    top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
-        idx <- ord[seq_len(k)]
-        n_hit <- sum(seed_overlaps_truth[idx])
-        data.frame(
-            Top_Seeds = k,
-            Overlap_Count = n_hit,
-            Overlap_Pct = 100 * n_hit / k
-        )
-    }))
-
-    knitr::kable(
-        top_seed_overlap,
-        digits = 2,
-        caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds (%s)", rank_col)
-    )
-}
 ```
 
-## Method 1: DMRsegal
+```{r}
+rank_col <- "seed_score"
+
+
+top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
+top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
+    idx <- ord[seq_len(k)]
+    n_hit <- sum(seed_overlaps_truth[idx])
+    data.frame(
+        `Top Seeds` = k,
+        `Overlap Pct` = 100 * n_hit / k
+    )
+}))
+
+knitr::kable(
+    top_seed_overlap,
+    digits = 2,
+    caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds (%s)")
+)
+```
+
+## Benchmarking DMR Detection Methods
 
 ```{r dmrsegal}
 dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
@@ -395,7 +472,7 @@ if (!file.exists(dmrsegal_file)) {
             casecontrol_col = "casecontrol",
             max_bridge_seeds_gaps = 1L, # Allow bridging across up to 1 seed CpG to form larger candidate regions during stage 1.
             max_bridge_extension_gaps = 3L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
-            max_pval = 0.2, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
+            max_pval = 0.1, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
             min_seeds = 2,
             min_cpgs = 3,
             max_lookup_dist = 10000,
@@ -416,10 +493,8 @@ if (!file.exists(dmrsegal_file)) {
     time_dmrsegal <- ret$time
 }
 
-cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_segal), round(as.numeric(time_dmrsegal, units = "secs"))))
 ```
 
-## Method 2: DMRcate
 
 ```{r dmrcate}
 dmrcate_file <- file.path(output_dir, "dmrs.DMRcate.rds")
@@ -564,11 +639,7 @@ if (!file.exists(dmrcate_file)) {
     dmrs_dmrcate <- ret$dmrs
     time_dmrcate <- ret$time
 }
-
-cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
 ```
-
-## Method 3: dmrseq
 
 ```{r dmrseq}
 dmrseq_file <- file.path(output_dir, "dmrs.dmrseq.rds")
@@ -728,7 +799,157 @@ if (!file.exists(dmrseq_file)) {
     time_dmrseq <- ret$time
 }
 
-cat(sprintf("dmrseq: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
+
+```
+
+```{r hummingbird}
+hummingbird_file <- file.path(output_dir, "dmrs.hummingbird.rds")
+
+run_hummingbird_bsseq <- function(
+    bs_obj,
+    max_gap = 500L,
+    min_cpgs = 3L,
+    min_length = 50L,
+    p_value = 0.05,
+    p_adj = 0.1
+) {
+    if (!requireNamespace("hummingbird", quietly = TRUE)) {
+        warning("hummingbird not installed; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
+    if (!"Sample_Group" %in% colnames(sample_df)) {
+        warning("Sample_Group not present in BSseq colData; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    ctrl_idx <- which(sample_df$Sample_Group == "Condition1")
+    case_idx <- which(sample_df$Sample_Group == "Condition2")
+    if (length(ctrl_idx) == 0 || length(case_idx) == 0) {
+        warning("Need both Condition1 and Condition2 samples for hummingbird.")
+        return(GenomicRanges::GRanges())
+    }
+
+    meth_mat <- bsseq::getCoverage(bs_obj, type = "M")
+    cov_mat <- bsseq::getCoverage(bs_obj, type = "Cov")
+    unmeth_mat <- cov_mat - meth_mat
+    row_gr <- bsseq::granges(bs_obj)
+
+    to_count_matrix <- function(x) {
+        x <- as.matrix(x)
+        x[!is.finite(x)] <- 0
+        x[x < 0] <- 0
+        storage.mode(x) <- "integer"
+        x
+    }
+
+    all_seqnames <- as.character(GenomicRanges::seqnames(row_gr))
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
+
+    for (chr_name in chr_vec) {
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) < as.integer(min_cpgs)) {
+            next
+        }
+
+        cat(sprintf(
+            "hummingbird: %s (%s CpGs)\n",
+            chr_name,
+            format(length(chr_idx), big.mark = ",")
+        ))
+
+        chr_gr <- row_gr[chr_idx]
+        control_se <- SummarizedExperiment::SummarizedExperiment(
+            rowRanges = chr_gr,
+            assays = list(
+                normM = to_count_matrix(meth_mat[chr_idx, ctrl_idx, drop = FALSE]),
+                normUM = to_count_matrix(unmeth_mat[chr_idx, ctrl_idx, drop = FALSE])
+            )
+        )
+        case_se <- SummarizedExperiment::SummarizedExperiment(
+            rowRanges = chr_gr,
+            assays = list(
+                abnormM = to_count_matrix(meth_mat[chr_idx, case_idx, drop = FALSE]),
+                abnormUM = to_count_matrix(unmeth_mat[chr_idx, case_idx, drop = FALSE])
+            )
+        )
+
+        chr_out <- tryCatch(
+            {
+                hb_fit <- hummingbird::hummingbirdEM(control = control_se, abnorm = case_se)
+                hb_fit <- hummingbird::hummingbirdPostAdjustment(
+                    hb_fit,
+                    maxGap = as.integer(max_gap),
+                    minCpGs = as.integer(min_cpgs),
+                    minLength = as.integer(min_length),
+                    pValue = as.numeric(p_value),
+                    pAdj = as.numeric(p_adj)
+                )
+
+                dmrs_df <- hb_fit$DMRs
+                if (is.null(dmrs_df) || nrow(dmrs_df) == 0) {
+                    return(NULL)
+                }
+                if (!all(c("chromosome", "start", "end") %in% colnames(dmrs_df))) {
+                    warning("hummingbird output missing chromosome/start/end columns; skipping chromosome.")
+                    return(NULL)
+                }
+
+                GenomicRanges::makeGRangesFromDataFrame(
+                    dmrs_df,
+                    seqnames.field = "chromosome",
+                    start.field = "start",
+                    end.field = "end",
+                    keep.extra.columns = TRUE
+                )
+            },
+            error = function(e) {
+                cat(sprintf("hummingbird failed (%s): %s\n", chr_name, e$message))
+                NULL
+            }
+        )
+
+        dmrs_by_chr[[chr_name]] <- chr_out
+        rm(chr_gr, control_se, case_se, chr_out)
+        gc(verbose = FALSE)
+    }
+
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GRanges())
+    }
+
+    out <- do.call(c, unname(dmrs_by_chr))
+    GenomicRanges::sort(out)
+}
+
+if (!file.exists(hummingbird_file)) {
+    start_time <- Sys.time()
+    dmrs_hummingbird <- run_hummingbird_bsseq(sim_bs)
+    end_time <- Sys.time()
+    time_hummingbird <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_hummingbird, time = time_hummingbird), hummingbird_file)
+} else {
+    ret <- readRDS(hummingbird_file)
+    dmrs_hummingbird <- ret$dmrs
+    time_hummingbird <- ret$time
+}
+```
+
+```{r}
+cat(sprintf("**DMRsegal**: Found %d DMRs in %d seconds\n", length(dmrs_segal), round(as.numeric(time_dmrsegal, units = "secs"))))
+cat(sprintf("**DMRcate**: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
+cat(sprintf("**dmrseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
+cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummingbird), round(as.numeric(time_hummingbird, units = "secs"))))
 ```
 
 ## Comparative Analysis
@@ -737,30 +958,31 @@ cat(sprintf("dmrseq: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(
 methods_list <- list(
     DMRsegal = dmrs_segal,
     DMRcate = dmrs_dmrcate,
-    dmrseq = dmrs_dmrseq
+    dmrseq = dmrs_dmrseq,
+    hummingbird = dmrs_hummingbird
 )
 
 get_dmr_stats <- function(dmrs, method) {
     if (length(dmrs) == 0) {
         return(data.frame(
             Method = method,
-            Number_of_DMRs = 0,
-            Mean_DMR_Width = NA,
-            Median_DMR_Width = NA,
-            Total_Coverage_bp = 0,
-            Min_Width = NA,
-            Max_Width = NA
+            `Number of DMRs` = 0,
+            `Mean DMR Width` = NA_real_,
+            `Median DMR Width` = NA_real_,
+            `Total Coverage bp` = 0,
+            `Min Width` = NA_real_,
+            `Max Width` = NA_real_
         ))
     }
 
     data.frame(
         Method = method,
-        Number_of_DMRs = length(dmrs),
-        Mean_DMR_Width = mean(width(dmrs)),
-        Median_DMR_Width = median(width(dmrs)),
-        Total_Coverage_bp = sum(width(dmrs)),
-        Min_Width = min(width(dmrs)),
-        Max_Width = max(width(dmrs))
+        `Number of DMRs` = length(dmrs),
+        `Mean DMR Width` = mean(width(dmrs)),
+        `Median DMR Width` = median(width(dmrs)),
+        `Total Coverage bp` = sum(width(dmrs)),
+        `Min Width` = min(width(dmrs)),
+        `Max Width` = max(width(dmrs))
     )
 }
 
@@ -780,25 +1002,6 @@ knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
 evaluate_against_truth <- function(pred, truth) {
     n_pred <- length(pred)
     n_truth <- length(truth)
-    if (length(pred) == 0) {
-        return(data.frame(
-            Pred_Overlapping_Truth_Regions = 0,
-            Truth_Overlapping_Pred_Regions = 0,
-            FP_regions = 0,
-            FN_regions = n_truth,
-            Precision_regions = 0,
-            Recall_regions = 0,
-            F1_regions = 0,
-            Predicted_bp = 0,
-            Truth_bp = sum(width(reduce(truth))),
-            Intersect_bp = 0,
-            Precision_bp = 0,
-            Recall_bp = 0,
-            F1_bp = 0,
-            IoU_bp = 0
-        ))
-    }
-
     pred_overlap_truth <- sum(overlapsAny(pred, truth))
     truth_overlap_pred <- sum(overlapsAny(truth, pred))
     fp <- n_pred - pred_overlap_truth
@@ -823,8 +1026,7 @@ evaluate_against_truth <- function(pred, truth) {
     iou_bp <- ifelse(union_bp == 0, 0, inter_bp / union_bp)
 
     data.frame(
-        Pred_Overlapping_Truth_Regions = pred_overlap_truth,
-        Truth_Overlapping_Pred_Regions = truth_overlap_pred,
+        TP_regions = truth_overlap_pred,
         FP_regions = fp,
         FN_regions = fn,
         Precision_regions = precision,
@@ -846,17 +1048,30 @@ truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
     out
 }))
 
+
 truth_eval <- truth_eval |>
     dplyr::select(
         Method,
-        Pred_Overlapping_Truth_Regions,
-        Truth_Overlapping_Pred_Regions,
+        TP_regions,
         FP_regions, FN_regions,
         Precision_regions, Recall_regions, F1_regions,
         Precision_bp, Recall_bp, F1_bp, IoU_bp
     )
 
-knitr::kable(truth_eval, digits = 4, caption = "Performance Against Ground Truth")
+regions_truth_eval <- truth_eval |>
+    dplyr::select(Method, TP_regions, FP_regions, FN_regions, Precision_regions, Recall_regions, F1_regions) |>
+    dplyr::rename_with(~ sub("_regions$", "", .), ends_with("_regions"))
+
+bp_truth_eval <- truth_eval |>
+    dplyr::select(Method, Precision_bp, Recall_bp, F1_bp, IoU_bp) |>
+    dplyr::rename_with(~ sub("_bp$", "", .), ends_with("_bp"))
+```
+```{r}
+knitr::kable(regions_truth_eval, digits = 4, caption = "Macro (Region-level) Performance Against Ground Truth")
+```
+
+```{r}
+knitr::kable(bp_truth_eval, digits = 4, caption = "Micro (Base-pair-level) Performance Against Ground Truth")
 ```
 
 ### Overlap Matrices (Methods + Truth)
@@ -892,11 +1107,28 @@ for (i in seq_along(all_sets)) {
 }
 
 knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row, reference=column)")
+```
+```{r}
 knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
 ```
 
 ### DMRsegal Stage 1 Quality Assessment (Seed Linkage)
 Assessing seed-space recoverability and seed capture efficiency.
+Metrics explanation:
+
+- Truth_DMRs_Total: Total number of ground truth DMRs.
+- Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed CpG.
+- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs, which is the minimum for DMRsegal stage 1 to potentially recover the region.
+- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs that also overlap DMRsegal-predicted DMRs, indicating they are potentially recoverable and captured by the method.
+- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed CpGs are captured by DMRsegal-predicted DMRs, indicating ideal stage 1 capture.
+- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed CpGs that overlap truth DMRs that are also captured by DMRsegal-predicted DMRs.
+- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed CpG, the median percentage of those seed CpGs that are captured by DMRsegal-predicted DMRs.
+- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed CpG that is not captured by DMRsegal-predicted DMRs.
+- Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed CpGs.
+- Max_Missed_Run_Observed: The maximum length of consecutive missed seed CpGs observed across all truth DMRs.
+
+Metrics values:
+
 ```{r}
 seed_gr <- sort(seed_gr)
 mcols(seed_gr)$index <- seq_along(seed_gr)
@@ -932,130 +1164,147 @@ stage1_quality <- data.frame(
     Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
 )
 
-knitr::kable(stage1_quality, digits = 2, caption = "Stage 1 quality summary (seed linkage and capture)")
-
-cat(sprintf(
-    "- Seeds in truth DMRs: %d\n - Seeds in truth DMRs overlapping DMRsegal DMRs: %d\n - Seeds in truth DMRs not overlapping DMRsegal DMRs: %d\n - All seeds overlapping DMRsegal DMRs: %d\n",
-    length(seeds_in_truth),
-    length(seeds_in_truth_and_dmrs),
-    length(seeds_in_truth_not_dmrs),
-    length(seeds_in_dmrs)
-))
-
-if (length(seeds_in_truth_not_dmrs) > 0) {
-    # Consecutive missed-seed runs are computed per truth DMR using original seed index.
-    ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
-    qh_by_truth <- split(queryHits(ov_truth), subjectHits(ov_truth))
-    run_df <- do.call(rbind, lapply(names(qh_by_truth), function(truth_id_chr) {
-        truth_id <- as.integer(truth_id_chr)
-        qh <- qh_by_truth[[truth_id_chr]]
-        idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
-        db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
-
-        ord <- order(idx)
-        idx <- idx[ord]
-        db <- db[ord]
-
-        run_id <- cumsum(c(TRUE, diff(idx) != 1L))
-        data.frame(
-            Truth_DMR_Index = truth_id,
-            run_length = as.integer(tabulate(run_id)),
-            mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
-        )
-    }))
-
-    run_count <- as.data.frame(table(run_df$run_length))
-    colnames(run_count) <- c("Consecutive_Seed_Length", "Count")
-    run_delta <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
-    colnames(run_delta) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
-    run_summary <- merge(run_count, run_delta, by = "Consecutive_Seed_Length", all.x = TRUE)
-
-    max_run_per_truth <- aggregate(run_length ~ Truth_DMR_Index, data = run_df, FUN = max)
-    run_overview <- data.frame(
-        Truth_DMRs_With_Missed_Seeds = nrow(max_run_per_truth),
-        Median_Max_Missed_Run_Per_Truth = stats::median(max_run_per_truth$run_length),
-        Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
-    )
-
-    knitr::kable(run_summary, digits = 2, caption = "Consecutive missed-seed runs in truth DMRs")
-    knitr::kable(run_overview, digits = 2, caption = "Missed-seed run overview (truth-side)")
+for (col in colnames(stage1_quality)) {
+    cat(sprintf("- %s: %s\n", col, stage1_quality[[col]]))
 }
+
+# Consecutive missed-seed runs are computed per truth DMR using original seed index.
+ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
+qh_by_truth <- split(queryHits(ov_truth), subjectHits(ov_truth))
+run_df <- do.call(rbind, lapply(names(qh_by_truth), function(truth_id_chr) {
+    truth_id <- as.integer(truth_id_chr)
+    qh <- qh_by_truth[[truth_id_chr]]
+    idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
+    db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
+
+    ord <- order(idx)
+    idx <- idx[ord]
+    db <- db[ord]
+
+    run_id <- cumsum(c(TRUE, diff(idx) != 1L))
+    data.frame(
+        Truth_DMR_Index = truth_id,
+        run_length = as.integer(tabulate(run_id)),
+        mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
+    )
+}))
+
+run_count <- as.data.frame(table(run_df$run_length))
+colnames(run_count) <- c("Consecutive_Seed_Length", "Count")
+run_delta <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
+colnames(run_delta) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
+run_summary <- merge(run_count, run_delta, by = "Consecutive_Seed_Length", all.x = TRUE)
+
+max_run_per_truth <- aggregate(run_length ~ Truth_DMR_Index, data = run_df, FUN = max)
+run_overview <- data.frame(
+    Truth_DMRs_With_Missed_Seeds = nrow(max_run_per_truth),
+    Median_Max_Missed_Run_Per_Truth = stats::median(max_run_per_truth$run_length),
+    Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
+)
+for (col in colnames(run_overview)) {
+    cat(sprintf("- %s: %s\n", col, run_overview[[col]]))
+}
+
 ```
 
 ### DMRsegal Stage 2-4 Quality Assessment (Extension and Merging)
 Assessing truth-side recovery and prediction-side fragmentation/purity after extension and merging.
+Metrics explanation:
+
+- Pred_DMRs_Total: Total number of DMRsegal DMRs.
+- Pred_DMRs_Overlapping_Truth: Number of DMRsegal DMRs that overlap at least one truth DMR.
+- Pred_DMRs_BPPrecision_ge50pct: Number of DMRsegal DMRs with base-pair precision >= 50% (i.e., at least 50% of the DMRsegal DMR's base pairs overlap with truth DMRs).
+- Pred_DMRs_BPPrecision_ge80pct: Number of DMRsegal DMRs with base-pair precision >= 80%.
+- Truth_DMRs_Total: Total number of truth DMRs.
+- Truth_DMRs_Hit: Number of truth DMRs that have at least one overlapping DMRsegal DMR.
+- Truth_DMRs_BPRecall_ge50pct: Number of truth DMRs with base-pair recall >= 50% (i.e., at least 50% of the truth DMR's base pairs are covered by DMRsegal DMRs).
+- Truth_DMRs_BPRecall_ge80pct: Number of truth DMRs with base-pair recall >= 80%.
+- Median_Truth_BPRecall_Pct_Hit: Median base-pair recall percentage among truth DMRs that have at least one overlapping DMRsegal DMR.
+- Median_Pred_BPPrecision_Pct_Overlap: Median base-pair precision percentage among DMRsegal DMRs that have at least some overlap with truth DMRs.
+- Truth_DMRs_With_Multiple_Pred: Number of truth DMRs that have 2 or more overlapping DMRsegal DMRs, indicating potential fragmentation.
+- Median_Preds_Per_Hit_Truth: Median number of overlapping DMRsegal DMRs among truth DMRs that have at least one overlapping DMRsegal DMR.
+- Max_Preds_On_Truth: Maximum number of overlapping DMRsegal DMRs observed on any single truth DMR.
+
+Metrics values:
+
 ```{r}
-if (length(dmrs_segal) > 0) {
-    truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_segal, ignore.strand = TRUE)
-    preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
+truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_segal, ignore.strand = TRUE)
+preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
 
-    truth_overlap_bp <- numeric(length(truth_dmrs))
-    if (length(truth_to_pred_hits) > 0) {
-        truth_intersections <- pintersect(
-            truth_dmrs[queryHits(truth_to_pred_hits)],
-            dmrs_segal[subjectHits(truth_to_pred_hits)]
-        )
-        truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
-        truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
-            truth_intersections_by_truth,
-            function(gr) sum(width(reduce(gr))),
-            numeric(1)
-        )
-    }
-    truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
-
-    pred_to_truth_hits <- findOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
-    pred_overlap_bp <- numeric(length(dmrs_segal))
-    if (length(pred_to_truth_hits) > 0) {
-        pred_intersections <- pintersect(
-            dmrs_segal[queryHits(pred_to_truth_hits)],
-            truth_dmrs[subjectHits(pred_to_truth_hits)]
-        )
-        pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
-        pred_overlap_bp[as.integer(names(pred_intersections_by_pred))] <- vapply(
-            pred_intersections_by_pred,
-            function(gr) sum(width(reduce(gr))),
-            numeric(1)
-        )
-    }
-    pred_bp_precision <- ifelse(width(dmrs_segal) > 0, pred_overlap_bp / width(dmrs_segal), 0)
-
-    stage24_quality <- data.frame(
-        Pred_DMRs_Total = length(dmrs_segal),
-        Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_segal, truth_dmrs)),
-        Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
-        Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
-        Truth_DMRs_Total = length(truth_dmrs),
-        Truth_DMRs_Hit = sum(preds_per_truth > 0),
-        Truth_DMRs_BPRecall_ge50pct = sum(truth_bp_recall >= 0.5),
-        Truth_DMRs_BPRecall_ge80pct = sum(truth_bp_recall >= 0.8),
-        Median_Truth_BPRecall_Pct_Hit = ifelse(sum(preds_per_truth > 0) == 0, 0, 100 * stats::median(truth_bp_recall[preds_per_truth > 0])),
-        Median_Pred_BPPrecision_Pct_Overlap = ifelse(sum(pred_bp_precision > 0) == 0, 0, 100 * stats::median(pred_bp_precision[pred_bp_precision > 0])),
-        Truth_DMRs_With_Multiple_Pred = sum(preds_per_truth >= 2),
-        Median_Preds_Per_Hit_Truth = ifelse(sum(preds_per_truth > 0) == 0, 0, stats::median(preds_per_truth[preds_per_truth > 0])),
-        Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
+truth_overlap_bp <- numeric(length(truth_dmrs))
+if (length(truth_to_pred_hits) > 0) {
+    truth_intersections <- pintersect(
+        truth_dmrs[queryHits(truth_to_pred_hits)],
+        dmrs_segal[subjectHits(truth_to_pred_hits)]
     )
-    knitr::kable(stage24_quality, digits = 2, caption = "Stage 2-4 quality summary (extension, merging, fragmentation)")
-
-    dmrs_in_truth_counts_df <- data.frame(
-        Truth_DMR_Index = seq_along(truth_dmrs),
-        DMRsegal_DMR_Count = as.integer(preds_per_truth),
-        Truth_BP_Recall_Pct = 100 * truth_bp_recall
+    truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
+    truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
+        truth_intersections_by_truth,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
     )
-    # Stem plot of number of DMRsegal DMRs within each truth DMR
-    ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)) +
-        geom_segment(aes(xend = Truth_DMR_Index, yend = 0), alpha = 0.5) +
-        geom_point(size = 2) +
-        scale_color_viridis_c(option = "C") +
-        theme_minimal() +
-        labs(
-            title = "DMRsegal DMR multiplicity per truth DMR",
-            subtitle = "Point color encodes truth-side base-pair recall (%)",
-            x = "Truth DMR Index",
-            y = "Count of DMRsegal DMRs",
-            color = "Truth BP recall (%)"
-        )
 }
+truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
+
+pred_to_truth_hits <- findOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
+pred_overlap_bp <- numeric(length(dmrs_segal))
+if (length(pred_to_truth_hits) > 0) {
+    pred_intersections <- pintersect(
+        dmrs_segal[queryHits(pred_to_truth_hits)],
+        truth_dmrs[subjectHits(pred_to_truth_hits)]
+    )
+    pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
+    pred_overlap_bp[as.integer(names(pred_intersections_by_pred))] <- vapply(
+        pred_intersections_by_pred,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
+    )
+}
+pred_bp_precision <- ifelse(width(dmrs_segal) > 0, pred_overlap_bp / width(dmrs_segal), 0)
+
+stage24_quality <- data.frame(
+    Pred_DMRs_Total = length(dmrs_segal),
+    Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_segal, truth_dmrs)),
+    Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
+    Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_Hit = sum(preds_per_truth > 0),
+    Truth_DMRs_BPRecall_ge50pct = sum(truth_bp_recall >= 0.5),
+    Truth_DMRs_BPRecall_ge80pct = sum(truth_bp_recall >= 0.8),
+    Median_Truth_BPRecall_Pct_Hit = ifelse(sum(preds_per_truth > 0) == 0, 0, 100 * stats::median(truth_bp_recall[preds_per_truth > 0])),
+    Median_Pred_BPPrecision_Pct_Overlap = ifelse(sum(pred_bp_precision > 0) == 0, 0, 100 * stats::median(pred_bp_precision[pred_bp_precision > 0])),
+    Truth_DMRs_With_Multiple_Pred = sum(preds_per_truth >= 2),
+    Median_Preds_Per_Hit_Truth = ifelse(sum(preds_per_truth > 0) == 0, 0, stats::median(preds_per_truth[preds_per_truth > 0])),
+    Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
+)
+for (col in names(stage24_quality)) {
+    cat(sprintf("- %s: %s\n", col, stage24_quality[[col]]))
+}
+```
+DMRsegal DMR multiplicity per truth DMR.
+Point color encodes truth-side base-pair recall (%)
+```{r, fig.width=8, fig.height=6, dpi=300}
+dmrs_in_truth_counts_df <- data.frame(
+    Truth_DMR_Index = seq_along(truth_dmrs),
+    DMRsegal_DMR_Count = as.integer(preds_per_truth),
+    Truth_BP_Recall_Pct = 100 * truth_bp_recall
+)
+dmrs_in_truth_counts_df[, "DMRsegal_DMR_Count_P"] <- ifelse(dmrs_in_truth_counts_df$DMRsegal_DMR_Count > 0, 1, NA_integer_)
+dmrs_in_truth_counts_df[dmrs_in_truth_counts_df[, "Truth_BP_Recall_Pct"] == 0, "Truth_BP_Recall_Pct"] <- NA
+
+# Stem plot of number of DMRsegal DMRs within each truth DMR
+ggplot(dmrs_in_truth_counts_df, aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)) +
+    geom_point(mapping = aes(size = DMRsegal_DMR_Count_P), alpha = 0.7, na.rm = TRUE) +
+    geom_line(group = 1, color = "darkgray", alpha = 0.7) +
+    scale_color_viridis_c(option = "C") +
+    theme_minimal(axis.text.x = element_blank()) +
+    labs(
+        title = "DMRsegal DMR multiplicity per truth DMR",
+        x = "Truth DMR Index",
+        y = "Count of DMRsegal DMRs",
+        color = "Truth BP recall (%)"
+    )
+
 ```
 
 ## Visualizations
@@ -1095,7 +1344,7 @@ ggplot(plot_df, aes(x = Method, y = Value, fill = Method)) +
 
 ### Width Distributions
 
-```{r, fig.width=10, fig.height=6}
+```{r, fig.width=8, fig.height=6, dpi=300}
 width_data <- do.call(rbind, lapply(names(all_sets), function(method) {
     x <- all_sets[[method]]
     if (length(x) == 0) {
@@ -1124,12 +1373,12 @@ ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
 
 ## DMRsegal Ranking Quality vs Ground Truth
 
-```{r}
-if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
-    dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$rank, decreasing = FALSE)]
+```{r, fig.width=8, fig.height=4, dpi=300}
+if (length(dmrs_segal) > 0 && "score" %in% names(mcols(dmrs_segal))) {
+    dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$score, decreasing = FALSE)]
     truth_reduced <- reduce(truth_dmrs)
 
-    n_bins <- min(10, max(2, floor(length(dmrs_segal_ranked) / 5)))
+    n_bins <- min(100, max(2, floor(length(dmrs_segal_ranked) / 5)))
     bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)
 
     ranking_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
@@ -1145,27 +1394,25 @@ if (length(dmrs_segal) > 0 && "rank" %in% names(mcols(dmrs_segal))) {
             if (length(inter_gr) == 0) 0 else sum(width(inter_gr))
         }
         bp_overlap_pct <- ifelse(bin_bp == 0, 0, 100 * inter_bp / bin_bp)
-        region_overlap_pct <- ifelse(length(bin_dmrs) == 0, 0, 100 * mean(overlapsAny(bin_dmrs, truth_dmrs)))
         data.frame(
-            Rank_Bin = i,
+            Score_Bin = i,
             DMRs_in_Bin = length(bin_dmrs),
-            Region_Overlap_Pct = region_overlap_pct,
             BP_Overlap_Pct = bp_overlap_pct
         )
     }))
 
-    knitr::kable(ranking_quality, digits = 2, caption = "DMRsegal rank bins vs ground truth overlap (region-side and base-pair)")
-
-    ggplot(ranking_quality, aes(x = Rank_Bin, y = BP_Overlap_Pct)) +
-        geom_col(fill = "steelblue") +
-        geom_line(group = 1, color = "firebrick", linewidth = 1) +
-        geom_point(color = "firebrick", size = 2) +
+    ggplot(
+        ranking_quality,
+        aes(x = Score_Bin, y = BP_Overlap_Pct)
+    ) +
+        geom_col(fill = "None", col = "black") +
+        geom_line(group = 1, color = "darkgray", linewidth = 1) +
         theme_minimal() +
-        scale_x_continuous(breaks = ranking_quality$Rank_Bin) +
+        scale_x_continuous(breaks = ranking_quality$Score_Bin) +
+        scale_y_continuous(labels = scales::percent_format(scale = 1)) +
         labs(
             title = "DMRsegal Rank Quality",
-            subtitle = "Higher-ranked bins should show stronger truth overlap",
-            x = "Rank Bin (1 = best ranks)",
+            x = "Score Bin (1 = best ranks)",
             y = "Bin base-pairs overlapping truth (%)"
         )
 }
