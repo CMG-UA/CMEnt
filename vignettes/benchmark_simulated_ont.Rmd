@@ -277,13 +277,14 @@ seed_dist <- unlist(lapply(split(seed_locs$start, seed_locs$chr), function(x) {
     if (length(x) < 2) return(numeric(0))
     diff(x)
 }))
-if (length(seed_dist) > 0) {
-    cat("Seed distance quantiles (bp):\n")
-    print(round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)), 2))
-}
-cat(sprintf("Seeds for DMRsegal: %d\n", nrow(sig_seeds)))
-
-
+seeds_qs <- round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)))
+cat(sprintf("Number of seeds for DMRsegal: %d\n", nrow(sig_seeds)))
+knitr::kable(
+    seeds_qs,
+    digits = 2,
+    col.names="Distance (bp)",
+    caption = sprintf("Seed distance quantiles")
+)
 ```
 
 ### Genome-wide Seeds and DMRs Visualization
@@ -396,7 +397,7 @@ seeds_per_truth <- if (length(truth_dmrs) > 0) {
     integer(0)
 }
 truth_has_2seeds <- sum(seeds_per_truth >= 2L)
-safe_pct <- function(x) if (length(x) == 0) 0 else 100 * mean(x)
+safe_pct <- function(x) if (length(x) == 0) 0 else round(100 * mean(x), 1)
 
 seed_truth_summary <- data.frame(
     Seeds_Total = length(seed_gr),
@@ -418,8 +419,8 @@ seed_pair_direction_match_pct <- if (all(is.na(pair_match))) NA_real_ else 100 *
 per_seed_dir_match <- tapply(pair_match, S4Vectors::queryHits(seed_truth_hits), function(x) any(x, na.rm = TRUE))
 seed_any_direction_match_pct <- if (length(per_seed_dir_match) == 0) NA_real_ else 100 * mean(per_seed_dir_match)
 
-seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- seed_pair_direction_match_pct
-seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- seed_any_direction_match_pct
+seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- round(seed_pair_direction_match_pct, 1)
+seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- round(seed_any_direction_match_pct, 1)
 
 for (i in seq_along(seed_truth_summary)) {
     cat(sprintf("**%s**: %s\n", names(seed_truth_summary)[i], seed_truth_summary[[i]]))
@@ -444,7 +445,7 @@ top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
 knitr::kable(
     top_seed_overlap,
     digits = 2,
-    caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds (%s)")
+    caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds")
 )
 ```
 
