@@ -430,7 +430,7 @@ for (i in seq_along(seed_truth_summary)) {
 ```{r}
 rank_col <- "seed_score"
 
-
+ord <- order(seed_df[[rank_col]], decreasing = TRUE, na.last = NA)
 top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
 top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
     idx <- ord[seq_len(k)]
