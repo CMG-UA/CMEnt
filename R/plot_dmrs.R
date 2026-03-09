@@ -841,7 +841,15 @@ plotDMRs <- function(dmrs,
                      array = c("450K", "27K", "EPIC", "EPICv2"),
                      beta_locs = NULL,
                      ncol = 1,
+                     output_file = NULL,
+                     width = 8,
+                     height = 12,
                      ...) {
+    if (!is.null(output_file)) {
+        if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
+            stop("Output file must have a .pdf extension.")
+        }
+    }
     showtext::showtext_auto()
     if (!is.null(array)) {
         if (length(array) > 1) {
@@ -869,6 +877,12 @@ plotDMRs <- function(dmrs,
         )
         beta_locs <- beta$getBetaLocs()
     }
+    if (!is.null(output_file)) {
+        grDevices::cairo_pdf(output_file, width = width, height = height)
+    }
+    if (.Device == "null device") {
+        grDevices::cairo_pdf(width = width, height = height)
+    }
     plot_list <- lapply(seq_along(dmr_indices), function(idx) {
         i <- dmr_indices[idx]
         plotDMR(
@@ -883,6 +897,9 @@ plotDMRs <- function(dmrs,
             ...
         )
     })
+    if (!is.null(output_file)) {
+        grDevices::dev.off()
+    }
     invisible(plot_list)
 }
 
@@ -953,6 +970,11 @@ plotDMR <- function(dmrs,
                     output_file = NULL,
                     width = 8,
                     height = 12) {
+    if (!is.null(output_file)) {
+        if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
+            stop("Output file must have a .pdf extension.")
+        }
+    }
     dmrs <- convertToGRanges(dmrs, genome)
     if (!is.null(array)) {
         if (length(array) > 1) {
