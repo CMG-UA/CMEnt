@@ -1417,7 +1417,7 @@ plotAutoDMRsCircos <- function(dmrs,
                                motif_cpg_flank_size = 5,
                                min_component_size = 2,
                                chromosomes = NULL,
-                               query_components_with_jaspar = FALSE,
+                               query_components_with_jaspar = TRUE,
                                ...) {
     call_arg_names <- names(as.list(sys.call()))
     if (!is.null(call_arg_names) && "region" %in% call_arg_names[nzchar(call_arg_names)]) {
@@ -1437,7 +1437,10 @@ plotAutoDMRsCircos <- function(dmrs,
         stop("No DMRs remain after applying automatic-selection chromosome filters.")
     }
     interaction_state <- NULL
-    if (method %in% c("components", "hybrid") || !is.null(components) || !is.null(interactions)) {
+    if (method %in% c("components", "hybrid") || !is.null(components) || !is.null(interactions)) { 
+        if (is.null(sorted_locs) && inherits(beta, "BetaHandler")) {
+            sorted_locs <- beta$getBetaLocs()
+        }
         interaction_state <- .computeCircosInteractionState(
             dmrs = dmrs_gr,
             genome = genome,
