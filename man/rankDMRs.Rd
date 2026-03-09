@@ -17,8 +17,10 @@ rankDMRs(
   block_gap_fixed_bp = NULL,
   block_gap_quantile = 0.95,
   block_gap_multiplier = 1.5,
-  block_gap_min_bp = 250000,
-  block_gap_max_bp = 5e+06
+  block_gap_min_bp = 2500,
+  block_gap_max_bp = 50000,
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  verbose = getOption("DMRsegal.verbose", 1L)
 )
 }
 \arguments{

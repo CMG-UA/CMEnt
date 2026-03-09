@@ -14,7 +14,8 @@ computeDMRsInteraction(
   find_components = TRUE,
   min_component_size = 2,
   query_components_with_jaspar = TRUE,
-  plot_dir = NULL
+  plot_dir = NULL,
+  output_prefix = NULL
 )
 }
 \arguments{
@@ -36,6 +37,10 @@ locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 \item{min_component_size}{Integer. Minimum size of connected components to consider (default: 2)}
 
 \item{query_components_with_jaspar}{Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)}
+
+\item{plot_dir}{Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)}
+
+\item{output_prefix}{Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)}
 }
 \value{
 Data frame of motif-based DMR interactions with columns:

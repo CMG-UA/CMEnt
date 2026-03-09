@@ -38,6 +38,7 @@ findDMRsFromSeeds(
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   rank_dmrs = TRUE,
+  extract_motifs = TRUE,
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
@@ -109,6 +110,8 @@ findDMRsFromSeeds(
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
 \item{rank_dmrs}{Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.}
+
+\item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 
 \item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.}
 

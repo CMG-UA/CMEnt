@@ -15,7 +15,10 @@ plotDMRsManhattan(
   block_col = "block_id",
   show_blocks = TRUE,
   block_alpha = 0.12,
-  block_linewidth = 0.25
+  block_linewidth = 0.25,
+  output_file = NULL,
+  width = 12,
+  height = 6
 )
 }
 \arguments{
@@ -40,6 +43,12 @@ plotDMRsManhattan(
 \item{block_alpha}{Numeric. Alpha for block rectangles in \verb{[0, 1]} (default: \code{0.12}).}
 
 \item{block_linewidth}{Numeric. Line width for block rectangle borders (default: \code{0.25}).}
+
+\item{output_file}{Character or NULL. If non-NULL, path to save the plot as a PDF (default: \code{NULL}).}
+
+\item{width}{Numeric. Width of the output PDF in inches (default: \code{12}).}
+
+\item{height}{Numeric. Height of the output PDF in inches (default: \code{6}).}
 }
 \value{
 A ggplot object.

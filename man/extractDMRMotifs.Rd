@@ -6,7 +6,7 @@
 \usage{
 extractDMRMotifs(
   dmrs,
-  genome,
+  genome = "hg38",
   array = "450k",
   beta_locs = NULL,
   flank_size = 5,
@@ -16,9 +16,9 @@ extractDMRMotifs(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and CpG indices}
 
-\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg38")}
+\item{genome}{Character. Genome version to use for sequence extraction. Defaults to hg38.}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based. (default: "450K")}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Ignored if input is not array-based. (default: "450K")}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
