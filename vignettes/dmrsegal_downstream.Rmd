@@ -111,7 +111,7 @@ motif_dmrs <- extractDMRMotifs(
     dmrs = dmrs,
     genome = genome,
     array = array_type,
-    flank_size = 5
+    motif_cpg_flank_size = 5
 )
 
 n_motif_consensus <- sum(!is.na(mcols(motif_dmrs)$consensus_seq))
@@ -134,7 +134,7 @@ interaction_results <- computeDMRsInteraction(
     genome = genome,
     array = array_type,
     min_similarity = 0.8,
-    flank_size = 5,
+    motif_cpg_flank_size = 5,
     min_component_size = 2,
     query_components_with_jaspar = TRUE
 )
@@ -299,7 +299,7 @@ tryCatch(
             array = array_type,
             sample_group_col = "Sample_Group",
             min_similarity = 0.8,
-            flank_size = 5,
+            motif_cpg_flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
@@ -334,7 +334,7 @@ tryCatch(
             array = array_type,
             sample_group_col = "Sample_Group",
             min_similarity = 0.8,
-            flank_size = 5,
+            motif_cpg_flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,

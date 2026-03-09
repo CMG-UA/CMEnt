@@ -133,7 +133,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
     }
 })
 
-test_that("computeDMRsInteraction handles custom flank_size", {
+test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
@@ -141,14 +141,14 @@ test_that("computeDMRsInteraction handles custom flank_size", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        flank_size = 5
+        motif_cpg_flank_size = 5
     ))
 
     result_custom <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        flank_size = 10
+        motif_cpg_flank_size = 10
     ))
 
     expect_type(result_default, "list")
@@ -316,7 +316,7 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
         genome = "hg19",
         array = "450K",
         min_similarity = 0.7,
-        flank_size = 5,
+        motif_cpg_flank_size = 5,
         query_components_with_jaspar = FALSE
     ))
 

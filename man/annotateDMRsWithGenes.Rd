@@ -36,7 +36,7 @@ gene bodies overlap with the DMR coordinates.
 }
 \details{
 The function uses genome-appropriate TxDb packages. For \code{hs1}, DMRsegal
-uses hg38 gene models lifted to \code{hs1} before computing overlaps.
+uses hg38 gene models and lifts them to \code{hs1} before computing overlaps.
 Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.
 }

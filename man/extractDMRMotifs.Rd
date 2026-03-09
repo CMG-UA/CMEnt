@@ -9,7 +9,7 @@ extractDMRMotifs(
   genome = "hg38",
   array = "450k",
   beta_locs = NULL,
-  flank_size = 5,
+  motif_cpg_flank_size = 5,
   plot_dir = NULL
 )
 }
@@ -23,7 +23,7 @@ extractDMRMotifs(
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
-\item{flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+\item{motif_cpg_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
 }
 \value{
 The input Dataframe/GRanges object with an additional metadata column:

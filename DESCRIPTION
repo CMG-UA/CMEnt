@@ -123,5 +123,6 @@ Collate:
     'find_dmrs_from_seeds.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'
+    'plot_dmrs_circos.R'
     'zzz.R'
 NeedsCompilation: no

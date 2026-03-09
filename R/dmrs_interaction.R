@@ -127,18 +127,18 @@ comparePWMToJaspar <- function(pwm_queries) {
 }
 
 
-getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
+getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
     )
     dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", flank_size, ".rds"))
+    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", motif_cpg_flank_size, ".rds"))
     if (!file.exists(cache_file)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
         sorted_locs <- convertToGRanges(sorted_locs, genome)
-        cpg_seqs <- getDMRSequences(sorted_locs, genome, uflank_size = flank_size, dflank_size = flank_size + 1)
-        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
+        cpg_seqs <- getDMRSequences(sorted_locs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1)
+        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         bg_frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
         tryCatch(
@@ -165,7 +165,7 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
 #' @param array Character. Array platform type (e.g., "450K", "EPIC"). Ignored if input is not array-based. (default: "450K")
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
-#' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
+#' @param motif_cpg_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @return The input Dataframe/GRanges object with an additional metadata column:
 #' \itemize{
 #'   \item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, C, G, T)
@@ -188,7 +188,7 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
 extractDMRMotifs <- function(
-    dmrs, genome="hg38", array = "450k", beta_locs = NULL, flank_size = 5, plot_dir = NULL
+    dmrs, genome="hg38", array = "450k", beta_locs = NULL, motif_cpg_flank_size = 5, plot_dir = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
@@ -207,10 +207,10 @@ extractDMRMotifs <- function(
     }
     array_based <- !is.null(array)
     if (array_based) {
-        bg_pwm <- getBackgroundArrayMotif(genome, array, flank_size = flank_size)
+        bg_pwm <- getBackgroundArrayMotif(genome, array, motif_cpg_flank_size = motif_cpg_flank_size)
     }
     sequences <- getDMRSequences(
-        dmrs, genome, uflank_size = flank_size, dflank_size = flank_size + 1
+        dmrs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1
     )
     dmrs_seeds <- unlist(strsplit(mcols(dmrs)[, "seeds"], split = ","))
     beta_locs_start <- as.data.frame(beta_locs[dmrs_seeds, "start", drop = FALSE])
@@ -220,10 +220,10 @@ extractDMRMotifs <- function(
         start_locs <- beta_locs_start[dmrs_seeds[[i]], ]
         sequence <- sequences[[i]]
         start_loc_base <- start_locs[[1]]
-        seq_cpg_inds <- beta_locs_start[dmrs_seeds[[i]], ] - start_loc_base + 1 + flank_size
-        cpg_seqs <- substring(sequence, seq_cpg_inds - flank_size, seq_cpg_inds + flank_size + 1)
+        seq_cpg_inds <- beta_locs_start[dmrs_seeds[[i]], ] - start_loc_base + 1 + motif_cpg_flank_size
+        cpg_seqs <- substring(sequence, seq_cpg_inds - motif_cpg_flank_size, seq_cpg_inds + motif_cpg_flank_size + 1)
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
-        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * flank_size + 2, byrow = FALSE)
+        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
         if (array_based) {
             frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))
@@ -240,7 +240,7 @@ extractDMRMotifs <- function(
 }
 
 
-.extractMotifsSimilarity <- function(dmrs, flank_size = 5) {
+.extractMotifsSimilarity <- function(dmrs, motif_cpg_flank_size = 5) {
     if (inherits(dmrs, "GRanges")) {
         pwms <- mcols(dmrs)$pwm
     } else {
@@ -249,7 +249,7 @@ extractDMRMotifs <- function(
     if (length(pwms) == 0) {
         return(matrix(0, nrow = 0, ncol = 0))
     }
-    cpg_cols <- c(flank_size + 1, flank_size + 2)
+    cpg_cols <- c(motif_cpg_flank_size + 1, motif_cpg_flank_size + 2)
     # Compare motifs with a position-aware centered cosine:
     # 1) remove central CpG positions,
     # 2) center base frequencies around 0.25,
@@ -283,7 +283,7 @@ extractDMRMotifs <- function(
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
-#' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
+#' @param motif_cpg_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
 #' @param min_component_size Integer. Minimum size of connected components to consider (default: 2)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
@@ -322,7 +322,7 @@ computeDMRsInteraction <- function(
     array = "450K",
     min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
     beta_locs = NULL,
-    flank_size = 5,
+    motif_cpg_flank_size = 5,
     find_components = TRUE,
     min_component_size = 2,
     query_components_with_jaspar = TRUE, 
@@ -342,7 +342,7 @@ computeDMRsInteraction <- function(
     }
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
-        dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, flank_size = flank_size)
+        dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, motif_cpg_flank_size = motif_cpg_flank_size)
     }
     if (length(dmrs) == 1) {
         .log_info("Only one DMR provided, skipping interaction analysis.", level = 2)
@@ -352,7 +352,7 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
         ))
     }
-    similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
+    similarity_matrix <- .extractMotifsSimilarity(dmrs, motif_cpg_flank_size = motif_cpg_flank_size)
     if (!is.null(plot_dir)) {
         dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
         to_show <- similarity_matrix
