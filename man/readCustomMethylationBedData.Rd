@@ -7,7 +7,7 @@
 readCustomMethylationBedData(
   bed_file,
   pheno,
-  genome = "hg19",
+  genome = "hg38",
   chrom_col = "#chrom",
   start_col = "start",
   output_dir = NULL,
@@ -22,7 +22,7 @@ methylation values. Can be gzipped (default: NULL)}
 \item{pheno}{Data frame. Phenotype data with sample IDs as rownames. Only samples
 present in both the pheno rownames and BED file header will be processed}
 
-\item{genome}{Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")}
+\item{genome}{Character. Genome version to use (e.g., "hg38", "hg19") (default: "hg38")}
 
 \item{chrom_col}{Character. Name of the chromosome column in the BED file
 (default: "#chrom")}

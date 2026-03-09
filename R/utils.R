@@ -599,7 +599,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'   methylation values. Can be gzipped (default: NULL)
 #' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
 #'   present in both the pheno rownames and BED file header will be processed
-#' @param genome Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")
+#' @param genome Character. Genome version to use (e.g., "hg38", "hg19") (default: "hg38")
 #' @param chrom_col Character. Name of the chromosome column in the BED file
 #'   (default: "#chrom")
 #' @param start_col Character. Name of the start position column in the BED file
@@ -684,7 +684,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
 #'
 #' @export
-readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom_col = "#chrom",
+readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
                                          start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(
         {
@@ -805,7 +805,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
-#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
+#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
 #' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
 #'   directory in tempdir() with hash-based naming (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
@@ -849,7 +849,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = "hg19",
+                               genome = "hg38",
                                locations_file = NULL,
                                output_file = NULL,
                                chunk_size = 50000,
@@ -1180,7 +1180,7 @@ convertBetaToTabix <- function(beta_file,
 #' @param beta_file Character. Path to the input beta values file to be sorted
 #' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
 #' @param array Character. Array platform type (default: "450K")
-#' @param genome Character. Genome version (default: "hg19")
+#' @param genome Character. Genome version (default: "hg38")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
 #'
@@ -1214,7 +1214,7 @@ convertBetaToTabix <- function(beta_file,
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
                                       array = c("450K", "27K", "EPIC", "EPICv2"),
-                                      genome = "hg19",
+                                      genome = "hg38",
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
     # Validate inputs
@@ -1405,7 +1405,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' The function caches the results.
 #'
 #' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.
-#' @param genome Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided
+#' @param genome Character. Genome version (supported: "hg38", "hg19", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
@@ -1417,7 +1417,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' }
 #'
 #' @examples
-#' # Get sorted locations for 450K array (hg19)
+#' # Get sorted locations for 450K array (hg38)
 #' locs_450k <- getSortedGenomicLocs("450K")
 #'
 #' # Get sorted locations for EPIC array with hg38
@@ -1427,7 +1427,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #'
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg38", "hg19", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
         return(locs)
@@ -1568,7 +1568,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
 #' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
-#' @param genome Character. Genome version, either "hg19" or "hg38" (default: "hg19")
+#' @param genome Character. Genome version, either "hg38" or "hg19" (default: "hg38")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #'
@@ -1586,7 +1586,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #' @export
 orderByLoc <- function(x,
                        array = c("450K", "27K", "EPIC", "EPICv2"),
-                       genome = c("hg19", "hg38", "mm10", "mm39"),
+                       genome = c("hg38", "hg19", "mm10", "mm39"),
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
@@ -2005,7 +2005,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' gene bodies overlap with the DMR coordinates.
 #'
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation. (default: "hg19")
+#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
 #' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
 #'   define promoter region (default: 2000)
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
@@ -2029,7 +2029,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #'     start = c(1000000, 2000000),
 #'     end = c(1001000, 2001000)
 #' )
-#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
+#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
 #'
 #' # Use custom promoter definition
 #' dmrs_annotated <- annotateDMRsWithGenes(
@@ -2040,7 +2040,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' )
 #'
 #' @export
-annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
+annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200) {
     cache_dir <- getOption(

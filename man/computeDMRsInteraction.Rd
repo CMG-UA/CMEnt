@@ -6,7 +6,7 @@
 \usage{
 computeDMRsInteraction(
   dmrs,
-  genome = "hg19",
+  genome = "hg38",
   array = "450K",
   min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
   beta_locs = NULL,
@@ -14,13 +14,13 @@ computeDMRsInteraction(
   find_components = TRUE,
   min_component_size = 2,
   query_components_with_jaspar = TRUE,
-  plot.dir = NULL
+  plot_dir = NULL
 )
 }
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and motif information}
 
-\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg19")}
+\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg38")}
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
 
@@ -63,10 +63,10 @@ dmrs <- data.frame(
     start_cpg = c("cg00000029", "cg00000108"),
     end_cpg = c("cg13426503", "cg08730726")
 )
-dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
+dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 interactions <- computeDMRsInteraction(
     dmrs_with_motifs,
-    genome = "hg19",
+    genome = "hg38",
     array = "450K",
 )
 }

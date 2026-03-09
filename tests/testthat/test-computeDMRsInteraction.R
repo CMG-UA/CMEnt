@@ -277,7 +277,7 @@ test_that("computeDMRsInteraction works with different array types", {
     expect_type(result_epic, "list")
 })
 
-test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
+test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
@@ -290,7 +290,7 @@ test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
         genome = "hg19",
         array = "450K",
         min_similarity = 0.7,
-        plot.dir = plot_dir,
+        plot_dir = plot_dir,
         query_components_with_jaspar = FALSE
     ))
 

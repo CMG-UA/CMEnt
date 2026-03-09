@@ -9,7 +9,7 @@ rankDMRs(
   beta,
   pheno,
   covariates = NULL,
-  genome = "hg19",
+  genome = "hg38",
   array = "450K",
   sorted_locs = NULL,
   sample_group_col = "Sample_Group",
@@ -28,7 +28,7 @@ rankDMRs(
 
 \item{pheno}{Data frame. Phenotype data containing sample group information}
 
-\item{genome}{Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19"}
+\item{genome}{Character. Genome version (e.g., "hg38", "hg19", "mm10"). Default is "hg38"}
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"}
 

@@ -799,7 +799,7 @@
 #' @param dmrs Data frame or GRanges object containing DMR coordinates and metadata
 #' @param beta Character. Path to beta value file, tabix file, beta matrix, BetaHandler object, or bed file
 #' @param pheno Data frame. Phenotype data containing sample group information
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19"
+#' @param genome Character. Genome version (e.g., "hg38", "hg19", "mm10"). Default is "hg38"
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
 #' @param sample_group_col Character. Column name in pheno containing sample group information. Default is "Sample_Group"
@@ -857,7 +857,7 @@
 #' @export
 rankDMRs <- function(
     dmrs, beta, pheno, covariates = NULL,
-    genome = "hg19", array = "450K", sorted_locs = NULL,
+    genome = "hg38", array = "450K", sorted_locs = NULL,
     sample_group_col = "Sample_Group",
     block_gap_mode = c("adaptive", "fixed", "none"),
     block_gap_fixed_bp = NULL,

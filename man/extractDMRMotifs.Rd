@@ -10,13 +10,13 @@ extractDMRMotifs(
   array = "450k",
   beta_locs = NULL,
   flank_size = 5,
-  plot.dir = NULL
+  plot_dir = NULL
 )
 }
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and CpG indices}
 
-\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg19")}
+\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg38")}
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based. (default: "450K")}
 
@@ -50,7 +50,7 @@ dmrs <- data.frame(
     end_seed = c("cg13426503", "cg08730726"),
     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
-dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
+dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 # Access motif frequencies for the first DMR
 motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 }

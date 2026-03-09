@@ -142,7 +142,7 @@ dmrs <- findDMRsFromSeeds(
 
 ### `genome`
 **Type:** Character
-**Default:** `"hg19"`  
+**Default:** `"hg38"`  
 **Description:** Reference genome version.
 
 **Example:**

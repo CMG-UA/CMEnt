@@ -161,8 +161,8 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
 #' calculates base frequencies at each position, and stores the results in
 #' the DMR metadata.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and CpG indices
-#' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based. (default: "450K")
+#' @param genome Character. Genome version to use for sequence extraction. Defaults to hg38.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Ignored if input is not array-based. (default: "450K")
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param flank_size Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)
@@ -183,12 +183,12 @@ getBackgroundArrayMotif <- function(genome, array, flank_size = 5) {
 #'     end_seed = c("cg13426503", "cg08730726"),
 #'     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 #' )
-#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
+#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 #' # Access motif frequencies for the first DMR
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
 extractDMRMotifs <- function(
-    dmrs, genome, array = "450k", beta_locs = NULL, flank_size = 5, plot.dir = NULL
+    dmrs, genome="hg38", array = "450k", beta_locs = NULL, flank_size = 5, plot_dir = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
@@ -278,7 +278,7 @@ extractDMRMotifs <- function(
 #' motif similarity. Identifies pairs of DMRs with significant motif similarity
 #' and returns a data frame of interactions. Assigns directionality based on ranking, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
-#' @param genome Character. Genome version to use for sequence extraction (e.g., "hg19")
+#' @param genome Character. Genome version to use for sequence extraction (e.g., "hg38")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
@@ -287,6 +287,8 @@ extractDMRMotifs <- function(
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
 #' @param min_component_size Integer. Minimum size of connected components to consider (default: 2)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
+#' @param output_prefix Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)
+#' @param plot_dir Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)
 #' @return Data frame of motif-based DMR interactions with columns:
 #' \itemize{
 #'   \item start_chr: Chromosome of the start DMR
@@ -306,19 +308,25 @@ extractDMRMotifs <- function(
 #'     start_cpg = c("cg00000029", "cg00000108"),
 #'     end_cpg = c("cg13426503", "cg08730726")
 #' )
-#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
+#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 #' interactions <- computeDMRsInteraction(
 #'     dmrs_with_motifs,
-#'     genome = "hg19",
+#'     genome = "hg38",
 #'     array = "450K",
 #' )
 #' @export
 computeDMRsInteraction <- function(
-    dmrs, genome = "hg19", array = "450K",
+    dmrs,
+    genome = "hg38",
+    array = "450K",
     min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
-    beta_locs = NULL, flank_size = 5,
-    find_components = TRUE, min_component_size = 2,
-    query_components_with_jaspar = TRUE, plot.dir = NULL
+    beta_locs = NULL,
+    flank_size = 5,
+    find_components = TRUE,
+    min_component_size = 2,
+    query_components_with_jaspar = TRUE, 
+    plot_dir = NULL,
+    output_prefix = NULL
 ) {
     if (length(dmrs) == 0) {
         .log_info("No DMRs provided for interaction analysis.", level = 2)
@@ -340,8 +348,8 @@ computeDMRsInteraction <- function(
         ))
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
-    if (!is.null(plot.dir)) {
-        dir.create(plot.dir, showWarnings = FALSE, recursive = TRUE)
+    if (!is.null(plot_dir)) {
+        dir.create(plot_dir, showWarnings = FALSE, recursive = TRUE)
         to_show <- similarity_matrix
         diag(to_show) <- NA
         to_show[lower.tri(to_show)] <- NA
@@ -354,7 +362,7 @@ computeDMRsInteraction <- function(
             ggplot2::theme_minimal() +
             ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)) +
             ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
-        ggplot2::ggsave(filename = file.path(plot.dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
+        ggplot2::ggsave(filename = file.path(plot_dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
     mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_similarity)
     # remove diagonal
@@ -455,6 +463,10 @@ computeDMRsInteraction <- function(
     }
     if (find_components && nrow(interactions_df) > 0) {
         interactions_df$component_id <- membership_to_component[interactions_df$index1]
+    }
+    if (!is.null(output_prefix)) {
+        write.table(interactions_df, paste0(output_prefix, "dmr_interactions.csv"), row.names = FALSE, quote = FALSE, sep="\t")
+        write.table(components_df, paste0(output_prefix, "dmr_components.csv"), row.names = FALSE, quote = FALSE, sep="\t")
     }
     list(
         interactions = interactions_df,

@@ -19,7 +19,7 @@ if (getRversion() >= "2.15.1") {
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
 #' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.
-#' @param genome Character. Genome version (default: "hg19"). Ignored if beta_locs is provided.
+#' @param genome Character. Genome version (default: "hg38"). Ignored if beta_locs is provided.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
@@ -30,7 +30,7 @@ if (getRversion() >= "2.15.1") {
 .plotDMRStructure <- function(dmrs,
                               dmr_index = 1,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = "hg19",
+                              genome = "hg38",
                               beta_locs = NULL,
                               extend_by_dmr_size_ratio = 0.2,
                               min_extension_bp = 50,
@@ -813,7 +813,7 @@ minmaxscale <- function(x) {
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
-#' @param genome Character. Genome version (default: "hg19").
+#' @param genome Character. Genome version (default: "hg38").
 #' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param ncol Integer. Number of columns in the grid (default: 1).
@@ -840,7 +840,7 @@ plotDMRs <- function(dmrs,
                      beta = NULL,
                      pheno = NULL,
                      sample_group_col = "Sample_Group",
-                     genome = "hg19",
+                     genome = "hg38",
                      array = c("450K", "27K", "EPIC", "EPICv2"),
                      beta_locs = NULL,
                      ncol = 1,
@@ -921,7 +921,7 @@ plotDMRs <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
-#' @param genome Character. Genome version (default: "hg19").
+#' @param genome Character. Genome version (default: "hg38").
 #' @param array Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
@@ -939,7 +939,7 @@ plotDMRs <- function(dmrs,
 #'
 #' @examples
 #' # Using BetaHandler
-#' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
+#' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg38")
 #' plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 #'
 #' # Using a file path (handler created automatically)
@@ -959,7 +959,7 @@ plotDMR <- function(dmrs,
                     dmr_index,
                     beta = NULL,
                     pheno = NULL,
-                    genome = "hg19",
+                    genome = "hg38",
                     array = c("450K", "27K", "EPIC", "EPICv2"),
                     beta_locs = NULL,
                     sample_group_col = "Sample_Group",
@@ -1537,7 +1537,7 @@ plotDMR <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
 #'   rownames matching beta column names (required for beta track).
-#' @param genome Character. Genome version (e.g., "hg19").
+#' @param genome Character. Genome version (e.g., "hg38").
 #' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
@@ -1578,7 +1578,7 @@ plotDMR <- function(dmrs,
 plotDMRsCircos <- function(dmrs,
                            beta,
                            pheno,
-                           genome = "hg19",
+                           genome = "hg38",
                            array = "450K",
                            sorted_locs = NULL,
                            sample_group_col = "Sample_Group",
@@ -2248,7 +2248,7 @@ plotDMRsCircos <- function(dmrs,
 #' @param score_col Character. Metadata column used for y-axis values
 #' (default: `"score"`).
 #' @param genome Character. Genome version passed to `convertToGRanges`
-#' (default: `"hg19"`).
+#' (default: `"hg38"`).
 #' @param k_neighbors Integer. Number of nearest neighbors used in adaptive Gaussian
 #' smoothing (default: `5`).
 #' @param min_segment_size Integer. Minimum size of linear segments in PELT
@@ -2281,7 +2281,7 @@ plotDMRsCircos <- function(dmrs,
 plotDMRBlockFormation <- function(dmrs,
                                   chromosome,
                                   score_col = "score",
-                                  genome = "hg19",
+                                  genome = "hg38",
                                   k_neighbors = 5L,
                                   min_segment_size = 2L,
                                   block_gap_mode = "adaptive",
@@ -2437,7 +2437,7 @@ plotDMRBlockFormation <- function(dmrs,
 #'
 #' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
 #' @param score_col Character. Metadata column used for y-axis values (default: `"score"`).
-#' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg19"`).
+#' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg38"`).
 #' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
 #' @param point_size Numeric. Point size (default: `1.1`).
@@ -2446,7 +2446,10 @@ plotDMRBlockFormation <- function(dmrs,
 #' @param show_blocks Logical. If TRUE, draw translucent rectangles for identified blocks (default: `TRUE`).
 #' @param block_alpha Numeric. Alpha for block rectangles in `[0, 1]` (default: `0.12`).
 #' @param block_linewidth Numeric. Line width for block rectangle borders (default: `0.25`).
-#'
+#' @param output_file Character or NULL. If non-NULL, path to save the plot as a PDF (default: `NULL`).
+#' @param width Numeric. Width of the output PDF in inches (default: `12`).
+#' @param height Numeric. Height of the output PDF in inches (default: `6`).
+#' 
 #' @return A ggplot object.
 #'
 #' @examples
@@ -2458,7 +2461,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @export
 plotDMRsManhattan <- function(dmrs,
                               score_col = "score",
-                              genome = "hg19",
+                              genome = "hg38",
                               promoter_col = "in_promoter_of",
                               gene_body_col = "in_gene_body_of",
                               point_size = 1.1,
@@ -2466,7 +2469,10 @@ plotDMRsManhattan <- function(dmrs,
                               block_col = "block_id",
                               show_blocks = TRUE,
                               block_alpha = 0.12,
-                              block_linewidth = 0.25) {
+                              block_linewidth = 0.25,
+                              output_file = NULL,
+                              width = 12,
+                              height = 6) {
     dmrs <- convertToGRanges(dmrs, genome = genome)
     if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("score_col '", score_col, "' not found in DMR metadata.")
@@ -2594,6 +2600,9 @@ plotDMRsManhattan <- function(dmrs,
         )
     if (length(chrom_boundaries) > 0) {
         p <- p + ggplot2::geom_vline(xintercept = chrom_boundaries, color = "#DADADA", linewidth = 0.3)
+    }
+    if (!is.null(output_file)) {
+        ggsave(filename = output_file, plot = p, width = width, height = height, units = "in", dpi = 300)
     }
     p
 }

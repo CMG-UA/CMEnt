@@ -7,7 +7,7 @@
 getBetaHandler(
   beta,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg19", "hg38", "mm10", "mm39"),
+  genome = c("hg38", "hg19", "mm10", "mm39"),
   beta_row_names_file = NULL,
   sorted_locs = NULL,
   chrom_col = "#chrom",
@@ -20,7 +20,7 @@ getBetaHandler(
 
 \item{array}{Array platform type, \strong{ignored} if sorted_locs or a BSseq object have been provided}
 
-\item{genome}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs or a BSseq object have been provided.}
+\item{genome}{Reference genome version, eg. hg38. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs or a BSseq object have been provided.}
 
 \item{beta_row_names_file}{Path to row names file}
 
@@ -45,7 +45,7 @@ beta_matrix <- loadExampleInputData("beta")
 beta_handler <- getBetaHandler(
     beta = beta_matrix,
     array = "450K",
-    genome = "hg19"
+    genome = "hg38"
 )
 
 beta_locs <- beta_handler$getBetaLocs()

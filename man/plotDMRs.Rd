@@ -11,7 +11,7 @@ plotDMRs(
   beta = NULL,
   pheno = NULL,
   sample_group_col = "Sample_Group",
-  genome = "hg19",
+  genome = "hg38",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   beta_locs = NULL,
   ncol = 1,
@@ -31,7 +31,7 @@ plotDMRs(
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
-\item{genome}{Character. Genome version (default: "hg19").}
+\item{genome}{Character. Genome version (default: "hg38").}
 
 \item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
 

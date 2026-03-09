@@ -8,7 +8,7 @@ convertBetaToTabix(
   beta_file,
   sorted_locs = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  genome = "hg38",
   locations_file = NULL,
   output_file = NULL,
   chunk_size = 50000,
@@ -24,7 +24,7 @@ If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: 
 
 \item{array}{Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")}
 
-\item{genome}{Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")}
+\item{genome}{Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")}
 
 \item{output_file}{Character. Path for the output tabix file. If NULL, uses a cache
 directory in tempdir() with hash-based naming (default: NULL)}

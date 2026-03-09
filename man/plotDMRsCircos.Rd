@@ -8,7 +8,7 @@ plotDMRsCircos(
   dmrs,
   beta,
   pheno,
-  genome = "hg19",
+  genome = "hg38",
   array = "450K",
   sorted_locs = NULL,
   sample_group_col = "Sample_Group",
@@ -37,7 +37,7 @@ plotDMRsCircos(
 \item{pheno}{Data frame or character path to phenotype file. Sample information with
 rownames matching beta column names (required for beta track).}
 
-\item{genome}{Character. Genome version (e.g., "hg19").}
+\item{genome}{Character. Genome version (e.g., "hg38").}
 
 \item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
 

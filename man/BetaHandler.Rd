@@ -52,7 +52,7 @@ Create a new BetaHandler object
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$new(
   beta = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  genome = "hg38",
   beta_row_names_file = NULL,
   sorted_locs = NULL,
   chrom_col = "#chrom",
@@ -68,7 +68,7 @@ Create a new BetaHandler object
 
 \item{\code{array}}{Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
-\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
+\item{\code{genome}}{Reference genome version, eg. hg38. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 

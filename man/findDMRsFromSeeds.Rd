@@ -16,7 +16,7 @@ findDMRsFromSeeds(
   adaptive_min_cpg_delta_beta = TRUE,
   expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-  genome = "hg19",
+  genome = "hg38",
   max_pval = 0.05,
   entanglement = c("strong", "weak"),
   pval_mode = c("auto", "parametric", "empirical"),
@@ -68,7 +68,7 @@ findDMRsFromSeeds(
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
-\item{genome}{Character. Genome version. Default is "hg19".}
+\item{genome}{Character. Genome version. Default is "hg38".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 

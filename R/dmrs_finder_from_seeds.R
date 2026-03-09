@@ -26,7 +26,7 @@
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
-#' @param genome Character. Genome version (e.g., "hg19", "hg38", "mm10"). Default is "hg19".
+#' @param genome Character. Genome version (e.g., "hg38", "hg19", "mm10"). Default is "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
@@ -1506,7 +1506,7 @@
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
-#' @param genome Character. Genome version. Default is "hg19".
+#' @param genome Character. Genome version. Default is "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
 #' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
@@ -1526,6 +1526,7 @@
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
 #' @param rank_dmrs Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.
+#' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
@@ -1547,7 +1548,7 @@ findDMRsFromSeeds <- function(
     adaptive_min_cpg_delta_beta = TRUE,
     expansion_step = 500,
     array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-    genome = "hg19",
+    genome = "hg38",
     max_pval = 0.05,
     entanglement = c("strong", "weak"),
     pval_mode = c("auto", "parametric", "empirical"),
@@ -1569,6 +1570,7 @@ findDMRsFromSeeds <- function(
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
     rank_dmrs = TRUE,
+    extract_motifs = TRUE,
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
     bed_start_col = "start",
@@ -2530,8 +2532,16 @@ findDMRsFromSeeds <- function(
         .log_success("DMR ranking completed.", level = 1)
     }
 
+
+    
     if (is.data.frame(annotated_dmrs)) {
         annotated_dmrs <- convertToGRanges(annotated_dmrs, genome = genome)
+    }
+
+    if (extract_motifs) {
+        .log_step("Extracting DMR motifs...", level = 1)
+        annotated_dmrs <- extractDMRMotifs(annotated_dmrs, genome = genome, array = array, beta_locs = beta_locs)
+        .log_success("DMR motifs computed.", level = 1)
     }
 
     final_dmrs_granges <- annotated_dmrs

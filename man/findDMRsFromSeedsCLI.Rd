@@ -28,7 +28,7 @@ args <- list(
     sample_group_col = "Sample_Group",
     casecontrol_col = "casecontrol",
     array = "450K",
-    genome = "hg19",
+    genome = "hg38",
     output_prefix = "my_analysis",
     njobs = 4,
     verbose = 1,

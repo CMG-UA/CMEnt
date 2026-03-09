@@ -9,7 +9,7 @@ plotDMR(
   dmr_index,
   beta = NULL,
   pheno = NULL,
-  genome = "hg19",
+  genome = "hg38",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   beta_locs = NULL,
   sample_group_col = "Sample_Group",
@@ -35,7 +35,7 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{genome}{Character. Genome version (default: "hg19").}
+\item{genome}{Character. Genome version (default: "hg38").}
 
 \item{array}{Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")}
 
@@ -73,7 +73,7 @@ plot is added showing the nucleotide composition and information content around 
 }
 \examples{
 # Using BetaHandler
-beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
+beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg38")
 plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 
 # Using a file path (handler created automatically)

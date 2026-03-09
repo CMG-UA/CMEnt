@@ -10,7 +10,7 @@ test_that("plotDMRsManhattan returns a ggplot object", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- plotDMRsManhattan(dmrs, score_col = "score")
+    p <- plotDMRsManhattan(dmrs, score_col = "score", genome = "hg19")
     expect_s3_class(p, "ggplot")
 })
 
@@ -25,7 +25,7 @@ test_that("plotDMRsManhattan validates score column", {
     }
 
     expect_error(
-        plotDMRsManhattan(dmrs, score_col = "missing_score_col"),
+        plotDMRsManhattan(dmrs, score_col = "missing_score_col", genome = "hg19"),
         "not found"
     )
 })
@@ -41,7 +41,7 @@ test_that("plotDMRsManhattan draws block rectangles when block ids are present",
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA, NA)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_block1", "chr1_block1", NA, NA)
 
-    p <- plotDMRsManhattan(dmrs, score_col = "score")
+    p <- plotDMRsManhattan(dmrs, score_col = "score", genome = "hg19")
     geom_classes <- vapply(p$layers, function(layer) class(layer$geom)[1], character(1))
 
     expect_true("GeomRect" %in% geom_classes)
@@ -91,7 +91,8 @@ test_that("plotDMRBlockFormation returns a ggplot diagnostics object", {
         dmrs = dmrs,
         chromosome = "chr1",
         block_gap_mode = "fixed",
-        block_gap_fixed_bp = 1e6
+        block_gap_fixed_bp = 1e6,
+        genome = "hg19"
     )
     expect_s3_class(p, "ggplot")
 
@@ -109,7 +110,7 @@ test_that("plotDMRBlockFormation validates chromosome availability", {
     S4Vectors::mcols(dmrs)$score <- 0.7
 
     expect_error(
-        plotDMRBlockFormation(dmrs = dmrs, chromosome = "chr2"),
+        plotDMRBlockFormation(dmrs = dmrs, chromosome = "chr2", genome = "hg19"),
         "not found"
     )
 })

@@ -8,7 +8,7 @@ plotDMRBlockFormation(
   dmrs,
   chromosome,
   score_col = "score",
-  genome = "hg19",
+  genome = "hg38",
   k_neighbors = 5L,
   min_segment_size = 2L,
   block_gap_mode = "adaptive",
@@ -31,7 +31,7 @@ or \code{rankDMRs}.}
 (default: \code{"score"}).}
 
 \item{genome}{Character. Genome version passed to \code{convertToGRanges}
-(default: \code{"hg19"}).}
+(default: \code{"hg38"}).}
 
 \item{k_neighbors}{Integer. Number of nearest neighbors used in adaptive Gaussian
 smoothing (default: \code{5}).}
