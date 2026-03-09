@@ -499,23 +499,23 @@ get_dmr_stats <- function(dmrs, method) {
     if (length(dmrs) == 0) {
         return(data.frame(
             Method = method,
-            Number_of_DMRs = 0,
-            Mean_DMR_Width = NA,
-            Median_DMR_Width = NA,
-            Total_Coverage_bp = 0,
-            Min_Width = NA,
-            Max_Width = NA
+            `Number of DMRs` = 0,
+            `Mean DMR Width` = NA,
+            `Median DMR Width` = NA,
+            `Total Coverage bp` = 0,
+            `Min Width` = NA,
+            `Max Width` = NA
         ))
     }
 
     data.frame(
         Method = method,
-        Number_of_DMRs = length(dmrs),
-        Mean_DMR_Width = mean(width(dmrs)),
-        Median_DMR_Width = median(width(dmrs)),
-        Total_Coverage_bp = sum(width(dmrs)),
-        Min_Width = min(width(dmrs)),
-        Max_Width = max(width(dmrs))
+        `Number of DMRs` = length(dmrs),
+        `Mean DMR Width` = round(mean(width(dmrs)), 1),
+        `Median DMR Width` = median(width(dmrs)),
+        `Total Coverage bp` = sum(width(dmrs)),
+        `Min Width` = min(width(dmrs)),
+        `Max Width` = max(width(dmrs))
     )
 }
 

@@ -291,14 +291,41 @@ seed_plot_gr <- GenomicRanges::makeGRangesFromDataFrame(
     keep.extra.columns = FALSE
 )
 
-all_plot_gr <- c(seed_plot_gr, truth_dmrs)
-chr_lengths <- tapply(
+all_plot_gr <- c(seed_plot_gr, truth_dmrs, GenomicRanges::granges(sim_bs))
+chr_max <- tapply(
     GenomicRanges::end(all_plot_gr),
     as.character(GenomicRanges::seqnames(all_plot_gr)),
     max,
     na.rm = TRUE
 )
-chr_lengths <- chr_lengths[is.finite(chr_lengths) & chr_lengths > 0]
+chr_max <- chr_max[is.finite(chr_max) & chr_max > 0]
+
+# Prefer full chromosome lengths from a matching reference genome if available.
+candidate_genomes <- c("hg38", "hg19")
+candidate_scores <- rep(Inf, length(candidate_genomes))
+names(candidate_scores) <- candidate_genomes
+for (genome_name in candidate_genomes) {
+    si <- tryCatch(GenomeInfoDb::Seqinfo(genome = genome_name), error = function(e) NULL)
+    if (is.null(si)) {
+        next
+    }
+    sl <- GenomeInfoDb::seqlengths(si)[names(chr_max)]
+    if (all(!is.na(sl)) && all(chr_max <= sl)) {
+        candidate_scores[genome_name] <- sum(as.numeric(sl) - as.numeric(chr_max))
+    }
+}
+
+if (any(is.finite(candidate_scores))) {
+    best_genome <- names(which.min(candidate_scores))[1]
+    ref_chr_lengths <- GenomeInfoDb::seqlengths(
+        GenomeInfoDb::Seqinfo(genome = best_genome)
+    )[names(chr_max)]
+    chr_lengths <- pmax(as.numeric(chr_max), as.numeric(ref_chr_lengths), na.rm = TRUE)
+    names(chr_lengths) <- names(chr_max)
+} else {
+    chr_lengths <- chr_max
+}
+
 plot_genome_df <- data.frame(
     chr = names(chr_lengths),
     start = 1L,
@@ -307,10 +334,15 @@ plot_genome_df <- data.frame(
 )
 plot_genome_df <- plot_genome_df[order(plot_genome_df$chr), , drop = FALSE]
 
+plot_params <- karyoploteR::getDefaultPlotParams(plot.type = 2)
+plot_params$leftmargin <- 0.16
+plot_params$rightmargin <- 0.03
+
 kp <- karyoploteR::plotKaryotype(
     genome = plot_genome_df,
     chromosomes = plot_genome_df$chr,
-    plot.type = 2
+    plot.type = 2,
+    plot.params = plot_params
 )
 karyoploteR::kpPlotDensity(
     kp,
@@ -321,7 +353,7 @@ karyoploteR::kpPlotDensity(
     r0 = 0.06,
     r1 = 0.46
 )
-karyoploteR::kpAddLabels(kp, labels = "Seed density", r0 = 0.06, r1 = 0.46, cex = 0.8, label.margin = 0.02)
+karyoploteR::kpAddLabels(kp, labels = "Seed density", r0 = 0.06, r1 = 0.46, cex = 0.8, label.margin = 0.005)
 karyoploteR::kpPlotRegions(
     kp,
     data = truth_dmrs,
@@ -330,7 +362,7 @@ karyoploteR::kpPlotRegions(
     r0 = 0.58,
     r1 = 0.95
 )
-karyoploteR::kpAddLabels(kp, labels = "Ground-truth DMRs", r0 = 0.58, r1 = 0.95, cex = 0.8, label.margin = 0.02)
+karyoploteR::kpAddLabels(kp, labels = "Ground-truth DMRs", r0 = 0.58, r1 = 0.95, cex = 0.8, label.margin = 0.005)
 graphics::legend(
     "bottomleft",
     legend = c("Seed density", "Ground-truth DMRs"),
@@ -345,26 +377,23 @@ graphics::legend(
 
 Metrics explanation:
 
-- **Seeds_Total**: Total number of seed CpGs identified.
-- **Seeds_Overlapping_Truth**: Number of seed CpGs that overlap any ground-truth DMR.
-- **Seeds_Overlap_Pct**: Percentage of seed CpGs that overlap ground-truth DMRs.
-- **Truth_DMRs_Total**: Total number of ground-truth DMRs.
-- **Truth_DMRs_With_Seed_Pct**: Percentage of ground-truth DMRs that have at least one overlapping seed CpG.
-- **Truth_DMRs_With_2Seeds_Pct**: Percentage of ground-truth DMRs that have at least two overlapping seed CpGs.
-- **Median_Seeds_Per_Truth_DMR**: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
-- **Median_Seeds_Per_Hit_Truth_DMR**: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
-- **Max_Seeds_In_Truth_DMR**: Maximum number of overlapping seeds in any single ground-truth DMR.
-- **Overlap_Pairs_Direction_Match_Pct**: Among seed-truth overlap pairs, the percentage where the direction of methylation change (hyper/hypo) matches between the seed and the truth DMR.
-- **Overlapping_Seeds_Any_Direction_Match_Pct**: Percentage of seeds that have at least one overlapping truth DMR with a matching direction of change.
+- Seeds_Total: Total number of seed CpGs identified.
+- Seeds_Overlapping_Truth: Number of seed CpGs that overlap any ground-truth DMR.
+- Seeds_Overlap_Pct: Percentage of seed CpGs that overlap ground-truth DMRs.
+- Truth_DMRs_Total: Total number of ground-truth DMRs.
+- Truth_DMRs_With_Seed_Pct: Percentage of ground-truth DMRs that have at least one overlapping seed CpG.
+- Truth_DMRs_With_2Seeds_Pct: Percentage of ground-truth DMRs that have at least two overlapping seed CpGs.
+- Median_Seeds_Per_Truth_DMR: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
+- Median_Seeds_Per_Hit_Truth_DMR: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
+- Max_Seeds_In_Truth_DMR: Maximum number of overlapping seeds in any single ground-truth DMR.
+- Overlap_Pairs_Direction_Match_Pct: Among seed-truth overlap pairs, the percentage where the direction of methylation change (hyper/hypo) matches between the seed and the truth DMR.
+- Overlapping_Seeds_Any_Direction_Match_Pct: Percentage of seeds that have at least one overlapping truth DMR with a matching direction of change.
 
 Metrics values:
 
 ```{r}
 seed_df <- as.data.frame(sig_seeds, stringsAsFactors = FALSE)
-seed_df$chr <- sub(":.*$", "", seed_df$cpg_id)
-seed_df$start <- suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", seed_df$cpg_id)))
 seed_df <- seed_df[!is.na(seed_df$start) & nzchar(seed_df$chr), , drop = FALSE]
-seed_df$end <- seed_df$start
 
 seed_gr <- GenomicRanges::makeGRangesFromDataFrame(
     seed_df,
@@ -416,7 +445,7 @@ seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- round(seed_pair_directio
 seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- round(seed_any_direction_match_pct, 1)
 
 for (i in seq_along(seed_truth_summary)) {
-    cat(sprintf("**%s**: %s\n", names(seed_truth_summary)[i], seed_truth_summary[[i]]))
+    cat(sprintf("- **%s**: %s\n", names(seed_truth_summary)[i], seed_truth_summary[[i]]))
 }
 
 ```
@@ -898,7 +927,7 @@ run_hummingbird_bsseq <- function(
         return(GenomicRanges::GPos())
     }
 
-    out <- do.call(c, unname(dmrs_by_chr))
+    out <- suppressWarnings(do.call(c, unname(dmrs_by_chr)))
     GenomicRanges::sort(out)
 }
 
@@ -931,6 +960,7 @@ methods_list <- list(
     dmrseq = dmrs_dmrseq,
     hummingbird = dmrs_hummingbird
 )
+method_order <- names(methods_list)
 
 get_dmr_stats <- function(dmrs, method) {
     if (length(dmrs) == 0) {
@@ -962,6 +992,12 @@ comparison_stats <- do.call(rbind, lapply(names(methods_list), function(m) {
 
 truth_stats <- get_dmr_stats(truth_dmrs, "Ground Truth")
 comparison_stats <- rbind(comparison_stats, truth_stats)
+comparison_stats$Method <- factor(
+    comparison_stats$Method,
+    levels = c(method_order, "Ground Truth")
+)
+comparison_stats <- comparison_stats[order(comparison_stats$Method), , drop = FALSE]
+comparison_stats$Method <- as.character(comparison_stats$Method)
 
 knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
 ```
@@ -1017,6 +1053,9 @@ truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
     out$Method <- method
     out
 }))
+truth_eval$Method <- factor(truth_eval$Method, levels = method_order)
+truth_eval <- truth_eval[order(truth_eval$Method), , drop = FALSE]
+truth_eval$Method <- as.character(truth_eval$Method)
 
 
 truth_eval <- truth_eval |>
@@ -1084,6 +1123,7 @@ knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=
 
 ### DMRsegal Stage 1 Quality Assessment (Seed Linkage)
 Assessing seed-space recoverability and seed capture efficiency.
+
 Metrics explanation:
 
 - Truth_DMRs_Total: Total number of ground truth DMRs.
@@ -1118,7 +1158,7 @@ seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs, ignore.strand = TRUE)
 truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs))
 seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs, ignore.strand = TRUE)
 truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs))
-truth_seed_capture_pct <- ifelse(truth_seed_total > 0, 100 * truth_seed_captured / truth_seed_total, NA_real_)
+truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
 
 recoverable_truth <- truth_seed_total >= 2L
 recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
@@ -1130,12 +1170,12 @@ stage1_quality <- data.frame(
     Truth_DMRs_Stage1Recoverable_2plusSeeds = sum(recoverable_truth),
     Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds = sum(recoverable_with2captured),
     Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
-    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, 100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth)),
+    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
     Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
 )
 
 for (col in colnames(stage1_quality)) {
-    cat(sprintf("- %s: %s\n", col, stage1_quality[[col]]))
+    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
 }
 
 # Consecutive missed-seed runs are computed per truth DMR using original seed index.
@@ -1172,7 +1212,7 @@ run_overview <- data.frame(
     Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
 )
 for (col in colnames(run_overview)) {
-    cat(sprintf("- %s: %s\n", col, run_overview[[col]]))
+    cat(sprintf("- **%s**: %s\n", col, run_overview[[col]]))
 }
 
 ```
@@ -1248,11 +1288,13 @@ stage24_quality <- data.frame(
     Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
 )
 for (col in names(stage24_quality)) {
-    cat(sprintf("- %s: %s\n", col, stage24_quality[[col]]))
+    cat(sprintf("- **%s**: %s\n", col, stage24_quality[[col]]))
 }
 ```
+
 DMRsegal DMR multiplicity per truth DMR.
 Point color encodes truth-side base-pair recall (%)
+
 ```{r, fig.width=8, fig.height=6, dpi=300}
 dmrs_in_truth_counts_df <- data.frame(
     Truth_DMR_Index = seq_along(truth_dmrs),
@@ -1321,6 +1363,7 @@ plot_df$Metric <- factor(
     levels = c("F1_regions", "F1_bp", "IoU_bp"),
     labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
 )
+plot_df$Method <- factor(plot_df$Method, levels = method_order)
 
 ggplot(plot_df, aes(x = Method, y = Value, fill = Method)) +
     geom_col() +
@@ -1348,6 +1391,7 @@ width_data <- do.call(rbind, lapply(names(all_sets), function(method) {
     }
     data.frame(Method = method, Width = width(x))
 }))
+width_data$Method <- factor(width_data$Method, levels = names(all_sets))
 
 ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
     geom_violin(alpha = 0.7) +
@@ -1363,55 +1407,6 @@ ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
         x = "",
         y = "Width (bp, log scale)"
     )
-```
-
-
-
-## DMRsegal Ranking Quality vs Ground Truth
-
-```{r, fig.width=8, fig.height=4, dpi=300}
-if (length(dmrs_segal) > 0 && "score" %in% names(mcols(dmrs_segal))) {
-    dmrs_segal_ranked <- dmrs_segal[order(mcols(dmrs_segal)$score, decreasing = FALSE)]
-    truth_reduced <- reduce(truth_dmrs)
-
-    n_bins <- min(100, max(2, floor(length(dmrs_segal_ranked) / 5)))
-    bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)
-
-    ranking_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
-        s <- (i - 1) * bin_size + 1
-        e <- min(i * bin_size, length(dmrs_segal_ranked))
-        bin_dmrs <- dmrs_segal_ranked[s:e]
-        bin_reduced <- reduce(bin_dmrs)
-        bin_bp <- sum(width(bin_reduced))
-        inter_bp <- if (length(bin_reduced) == 0 || length(truth_reduced) == 0) {
-            0
-        } else {
-            inter_gr <- GenomicRanges::intersect(bin_reduced, truth_reduced)
-            if (length(inter_gr) == 0) 0 else sum(width(inter_gr))
-        }
-        bp_overlap_pct <- ifelse(bin_bp == 0, 0, 100 * inter_bp / bin_bp)
-        data.frame(
-            Score_Bin = i,
-            DMRs_in_Bin = length(bin_dmrs),
-            BP_Overlap_Pct = bp_overlap_pct
-        )
-    }))
-
-    ggplot(
-        ranking_quality,
-        aes(x = Score_Bin, y = BP_Overlap_Pct)
-    ) +
-        geom_col(fill = "None", col = "black") +
-        geom_line(group = 1, color = "darkgray", linewidth = 1) +
-        theme_minimal() +
-        scale_x_continuous(breaks = ranking_quality$Score_Bin) +
-        scale_y_continuous(labels = scales::percent_format(scale = 1)) +
-        labs(
-            title = "DMRsegal Rank Quality",
-            x = "Score Bin (1 = best ranks)",
-            y = "Bin base-pairs overlapping truth (%)"
-        )
-}
 ```
 
 ## Summary
