@@ -18,12 +18,11 @@ plotAutoDMRsCircos(
   sorted_locs = NULL,
   components = NULL,
   interactions = NULL,
-  sample_group_col = "Sample_Group",
   min_similarity = 0.8,
   motif_cpg_flank_size = 5,
   min_component_size = 2,
   chromosomes = NULL,
-  query_components_with_jaspar = FALSE,
+  query_components_with_jaspar = TRUE,
   ...
 )
 }
@@ -58,8 +57,6 @@ merged instead of being shown as separate Circos sectors (default: \code{5e6}).}
 \item{components}{Data frame. Output from motif component detection (optional, will be computed if missing).}
 
 \item{interactions}{Data frame. Output from motif interaction detection (optional, will be computed if missing).}
-
-\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).}
 
