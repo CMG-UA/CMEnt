@@ -817,6 +817,9 @@ minmaxscale <- function(x) {
 #' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param ncol Integer. Number of columns in the grid (default: 1).
+#' @param output_file Character. Path to save the combined plot as PDF (optional). If NULL, the plot is not saved to file.
+#' @param width Numeric. Width of the output PDF in inches (default: 8).
+#' @param height Numeric. Height of the output PDF in inches (default: 12).
 #' @param ... Additional arguments passed to plotDMR.
 #'
 #' @return If beta is NULL: A gtable object.
