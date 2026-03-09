@@ -267,7 +267,7 @@ tryCatch(
             sample_group_col = "Sample_Group",
             genome = genome,
             array = array_type,
-            motif_flank_size = 5
+            motif_cpg_flank_size = 5
         )
     },
     error = function(e) {

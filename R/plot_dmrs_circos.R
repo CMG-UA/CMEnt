@@ -420,7 +420,7 @@
         size = 1,
         mean_abs_delta = abs_delta,
         source = "dmr",
-        source_id = as.character(seq_len(length(dmrs))),
+        source_id = as.character(seq_along(dmrs)),
         stringsAsFactors = FALSE
     )
     candidates <- candidates[order(

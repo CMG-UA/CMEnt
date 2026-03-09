@@ -612,7 +612,7 @@ minmaxscale <- function(x) {
     (x - min(x)) / max(max(x) - min(x), 1e-10)
 }
 
-.summarizeMotifContext <- function(dmrs, dmr_index, genome, array, beta_locs, motif_flank_size = 5) {
+.summarizeMotifContext <- function(dmrs, dmr_index, genome, array, beta_locs, motif_cpg_flank_size = 5) {
     ret <- list(top_interactions = data.frame(), jaspar = data.frame())
     if (length(dmrs) < 2) {
         return(ret)
@@ -640,7 +640,7 @@ minmaxscale <- function(x) {
             genome = genome,
             array = array,
             beta_locs = beta_locs,
-            motif_cpg_flank_size = motif_flank_size
+            motif_cpg_flank_size = motif_cpg_flank_size
         )
     }
     local_idx <- match(dmr_index, candidate_inds)
@@ -652,7 +652,7 @@ minmaxscale <- function(x) {
         return(ret)
     }
 
-    sim_matrix <- .extractMotifsSimilarity(cand_dmrs, motif_cpg_flank_size = motif_flank_size)
+    sim_matrix <- .extractMotifsSimilarity(cand_dmrs, motif_cpg_flank_size = motif_cpg_flank_size)
     sim_vec <- sim_matrix[local_idx, ]
     sim_vec[local_idx] <- NA_real_
     valid <- which(is.finite(sim_vec))
@@ -754,12 +754,12 @@ minmaxscale <- function(x) {
         )
 }
 
-.plotPWM <- function(dmr, genome, array, beta_locs, motif_flank_size = 5) {
+.plotPWM <- function(dmr, genome, array, beta_locs, motif_cpg_flank_size = 5) {
     # Extract DMR motifs if not already present
     if (!"pwm" %in% colnames(S4Vectors::mcols(dmr))) {
         dmr <- extractDMRMotifs(dmr,
             genome = genome, array = array,
-            beta_locs = beta_locs, motif_cpg_flank_size = motif_flank_size
+            beta_locs = beta_locs, motif_cpg_flank_size = motif_cpg_flank_size
         )
     }
     pwm <- mcols(dmr)$pwm[[1]]
@@ -774,7 +774,7 @@ minmaxscale <- function(x) {
         return(NULL)
     }
 
-    position_labels <- c(seq(-motif_flank_size, 0), seq(0, motif_flank_size))
+    position_labels <- c(seq(-motif_cpg_flank_size, 0), seq(0, motif_cpg_flank_size))
 
     rownames(pwm) <- Biostrings::DNA_BASES
 
@@ -930,7 +930,7 @@ plotDMRs <- function(dmrs,
 #' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
 #' @param max_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 10).
 #' @param plot_motif Logical. Whether to plot the sequence logo motif (default: TRUE).
-#' @param motif_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
+#' @param motif_cpg_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #' @param output_file Character. If provided, saves the plot to the specified file path (PDF format).
 #'
@@ -949,7 +949,7 @@ plotDMRs <- function(dmrs,
 #' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 #'
 #' # With custom flank size for motif extraction
-#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_flank_size = 10)
+#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_cpg_flank_size = 10)
 #'
 #' # Without motif plot
 #' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
@@ -968,7 +968,7 @@ plotDMR <- function(dmrs,
                     max_cpgs = 100,
                     max_samples_per_group = 10,
                     plot_motif = TRUE,
-                    motif_flank_size = 5,
+                    motif_cpg_flank_size = 5,
                     plot_title = TRUE,
                     output_file = NULL,
                     width = 8,
@@ -1107,7 +1107,7 @@ plotDMR <- function(dmrs,
 
     if (plot_motif) {
         .log_info("Generating motif PWM plot...", level = 3)
-        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_flank_size = motif_flank_size)
+        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_cpg_flank_size = motif_cpg_flank_size)
         if (!is.null(pwm_plot)) {
             motif_context <- .summarizeMotifContext(
                 dmrs = dmrs,
@@ -1115,7 +1115,7 @@ plotDMR <- function(dmrs,
                 genome = genome,
                 array = array,
                 beta_locs = beta_locs,
-                motif_flank_size = motif_flank_size
+                motif_cpg_flank_size = motif_cpg_flank_size
             )
             motif_lines <- .buildMotifContextLines(motif_context)
             motif_context_plot <- .plotMotifContext(motif_lines)
@@ -1338,8 +1338,6 @@ plotDMRBlockFormation <- function(dmrs,
     candidate_df <- details$candidates_df
     split_df <- details$split_events_df
     blocks_df <- details$blocks_df
-
-    y_rng <- range(c(dmr_df$score_raw, dmr_df$score_smoothed), na.rm = TRUE)
 
     p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = midpoint, y = score_raw)) +
         ggplot2::geom_point(color = "#4D4D4D", alpha = point_alpha, size = point_size) +
@@ -1594,4 +1592,3 @@ plotDMRsManhattan <- function(dmrs,
     }
     p
 }
-
