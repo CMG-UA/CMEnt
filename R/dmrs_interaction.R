@@ -289,15 +289,16 @@ extractDMRMotifs <- function(
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
 #' @param output_prefix Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)
 #' @param plot_dir Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)
-#' @return Data frame of motif-based DMR interactions with columns:
+#' @return A list with:
 #' \itemize{
-#'   \item start_chr: Chromosome of the start DMR
-#'   \item start: Start position of the start DMR
-#'   \item end: End position of the start DMR
-#'   \item end_chr: Chromosome of the end DMR
-#'   \item end: Start position of the end DMR
-#'   \item end_end: End position of the end DMR
-#'   \item sim: Similarity value of the motif PWMs between the DMRs
+#'   \item interactions: Data frame of motif-based DMR interactions with columns
+#'   \code{chr1}, \code{start1}, \code{end1}, \code{chr2}, \code{start2},
+#'   \code{end2}, \code{sim}, and when components are requested,
+#'   \code{component_id}
+#'   \item components: Data frame of discovered motif components
+#'   \item dmrs: The input DMRs in the same class as provided, with an added
+#'   \code{component_ids} column containing comma-separated component IDs for
+#'   each DMR (or \code{NA} when the DMR is not part of a retained component)
 #' }
 #' @examples
 #' # Compute motif-based interactions for DMRs
@@ -328,14 +329,17 @@ computeDMRsInteraction <- function(
     plot_dir = NULL,
     output_prefix = NULL
 ) {
+    input_is_df <- is.data.frame(dmrs)
+    dmrs <- convertToGRanges(dmrs, genome)
+    mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
     if (length(dmrs) == 0) {
         .log_info("No DMRs provided for interaction analysis.", level = 2)
         return(list(
             interactions = data.frame(),
-            components = data.frame()
+            components = data.frame(),
+            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
         ))
     }
-    dmrs <- convertToGRanges(dmrs, genome)
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, flank_size = flank_size)
@@ -344,7 +348,8 @@ computeDMRsInteraction <- function(
         .log_info("Only one DMR provided, skipping interaction analysis.", level = 2)
         return(list(
             interactions = data.frame(),
-            components = data.frame()
+            components = data.frame(),
+            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
         ))
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, flank_size = flank_size)
@@ -375,7 +380,8 @@ computeDMRsInteraction <- function(
         .log_info("No motif similarities found above the threshold.", level = 2)
         return(list(
             interactions = interactions_df,
-            components = components_df
+            components = components_df,
+            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
         ))
     }
     has_rank <- inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))
@@ -461,6 +467,24 @@ computeDMRsInteraction <- function(
             }
         }
     }
+    if (find_components && nrow(components_df) > 0) {
+        component_ids_by_dmr <- vector("list", length(dmrs))
+        for (i in seq_len(nrow(components_df))) {
+            idxs <- components_df$indices[[i]]
+            component_id <- as.character(components_df$component_id[[i]])
+            for (idx in idxs) {
+                component_ids_by_dmr[[idx]] <- c(component_ids_by_dmr[[idx]], component_id)
+            }
+        }
+        mcols(dmrs)$component_ids <- vapply(component_ids_by_dmr, function(ids) {
+            ids <- unique(ids)
+            if (length(ids) == 0) {
+                NA_character_
+            } else {
+                paste(ids, collapse = ",")
+            }
+        }, character(1))
+    }
     if (find_components && nrow(interactions_df) > 0) {
         interactions_df$component_id <- membership_to_component[interactions_df$index1]
     }
@@ -470,6 +494,7 @@ computeDMRsInteraction <- function(
     }
     list(
         interactions = interactions_df,
-        components = components_df
+        components = components_df,
+        dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
     )
 }

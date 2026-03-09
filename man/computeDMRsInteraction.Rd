@@ -43,15 +43,16 @@ locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 \item{output_prefix}{Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)}
 }
 \value{
-Data frame of motif-based DMR interactions with columns:
+A list with:
 \itemize{
-\item start_chr: Chromosome of the start DMR
-\item start: Start position of the start DMR
-\item end: End position of the start DMR
-\item end_chr: Chromosome of the end DMR
-\item end: Start position of the end DMR
-\item end_end: End position of the end DMR
-\item sim: Similarity value of the motif PWMs between the DMRs
+\item interactions: Data frame of motif-based DMR interactions with columns
+\code{chr1}, \code{start1}, \code{end1}, \code{chr2}, \code{start2},
+\code{end2}, \code{sim}, and when components are requested,
+\code{component_id}
+\item components: Data frame of discovered motif components
+\item dmrs: The input DMRs in the same class as provided, with an added
+\code{component_ids} column containing comma-separated component IDs for
+each DMR (or \code{NA} when the DMR is not part of a retained component)
 }
 }
 \description{

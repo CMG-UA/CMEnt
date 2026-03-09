@@ -29,6 +29,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
     expect_type(result, "list")
     expect_true("interactions" %in% names(result))
     expect_true("components" %in% names(result))
+    expect_true("dmrs" %in% names(result))
 
     if (!is.null(result$interactions)) {
         expect_s3_class(result$interactions, "data.frame")
@@ -41,6 +42,8 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
     }
 
     expect_s3_class(result$components, "data.frame")
+    expect_s4_class(result$dmrs, "GRanges")
+    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
     expect_true(
         all(
             c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
@@ -325,4 +328,47 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
             expect_equal(ncol(pwm), 2 * 5 + 2)
         }
     }
+})
+
+test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
+    pwm_a <- matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_t <- matrix(
+        rep(c(0, 1, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_uniform <- matrix(
+        0.25,
+        nrow = 4,
+        ncol = 12,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", 6),
+        ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+
+    result <- computeDMRsInteraction(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        min_similarity = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE
+    )
+
+    expect_true("dmrs" %in% names(result))
+    expect_s4_class(result$dmrs, "GRanges")
+    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
+    expect_equal(
+        as.character(mcols(result$dmrs)$component_ids),
+        c("1", "1", "1", "2", "2", NA)
+    )
 })

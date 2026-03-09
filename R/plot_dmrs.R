@@ -1540,6 +1540,8 @@ plotDMR <- function(dmrs,
 #' @param genome Character. Genome version (e.g., "hg38").
 #' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
+#' @param components Data frame. Output from findMotifInteractinos (optional, will be computed if missing).
+#' @param interactions Data frame. Output from findMotifInteractions (optional, will be computed if missing).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).
 #' @param flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
@@ -1581,6 +1583,8 @@ plotDMRsCircos <- function(dmrs,
                            genome = "hg38",
                            array = "450K",
                            sorted_locs = NULL,
+                           components = NULL,
+                           interactions = NULL,
                            sample_group_col = "Sample_Group",
                            min_similarity = 0.8,
                            flank_size = 5,
@@ -1734,15 +1738,17 @@ plotDMRsCircos <- function(dmrs,
         write.table(heatmap_df, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
 
-    .log_step("Computing motif-based DMR interactions...", level = 2)
+    .log_step("Computing DMRs links...", level = 2)
 
     link_data <- .prepareCircosLinkData(
-        dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size
+        dmrs, genome, array, beta_locs, min_similarity, flank_size,
+        max_components, min_component_size,
+        components = components, interactions = interactions
     )
 
-    .log_success("DMR interactions data prepared", level = 2)
+    .log_success("DMR links data prepared", level = 2)
     if (getOption("DMRsegal.make_debug_dir", FALSE) && !is.null(link_data) && nrow(link_data) > 0) {
-        .log_info("Saving DMR interactions data to debug/circos_link_data.tsv", level = 1)
+        .log_info("Saving DMR links data to debug/circos_link_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
@@ -2830,8 +2836,11 @@ plotDMRsManhattan <- function(dmrs,
 }
 
 
-.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size) {
-    ret <- tryCatch(
+.prepareCircosLinkData <- function(dmrs, genome, array, beta_locs, min_similarity, flank_size, max_components, min_component_size, components=NULL, interactions=NULL) {
+    if (is.null(components) || is.null(interactions)) {
+        .log_info("Computing motif-based interactions for DMRs with min_similarity = ", min_similarity, "...")
+    
+        ret <- tryCatch(
         {
             computeDMRsInteraction(
                 dmrs = dmrs,
@@ -2847,7 +2856,10 @@ plotDMRsManhattan <- function(dmrs,
             .log_warn("Failed to compute motif-based interactions: ", e$message)
             NULL
         }
-    )
+        )
+    } else {
+        ret <- list(components = components, interactions = interactions)
+    }
 
     if ((is.null(ret) || nrow(ret$interactions) == 0)) {
         .log_info("No significant interactions found at similarity >=", min_similarity, ". Skipping link track.", level = 2)
