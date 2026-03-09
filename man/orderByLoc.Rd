@@ -7,7 +7,7 @@
 orderByLoc(
   x,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg38", "hg19", "mm10", "mm39"),
+  genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
   genomic_locs = NULL
 )
 }
@@ -16,7 +16,7 @@ orderByLoc(
 
 \item{array}{Character. Array platform type, either "450K" or "EPIC" (default: "450K")}
 
-\item{genome}{Character. Genome version, either "hg38" or "hg19" (default: "hg38")}
+\item{genome}{Character. Genome version, either "hg38", "hg19", or "hs1" (default: "hg38")}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

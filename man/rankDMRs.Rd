@@ -30,7 +30,7 @@ rankDMRs(
 
 \item{pheno}{Data frame. Phenotype data containing sample group information}
 
-\item{genome}{Character. Genome version (e.g., "hg38", "hg19", "mm10"). Default is "hg38"}
+\item{genome}{Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"}
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"}
 

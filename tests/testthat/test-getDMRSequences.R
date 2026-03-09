@@ -64,6 +64,22 @@ test_that("getDMRSequences works with different genomes", {
     expect_length(seq_hg38, 1)
 })
 
+test_that("getDMRSequences works with hs1 when the BSgenome package is available", {
+    skip_if_not_installed("BSgenome.Hsapiens.UCSC.hs1")
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(start = 10000, end = 10050),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hs1")
+    )
+
+    sequences <- getDMRSequences(dmrs, genome = "hs1")
+
+    expect_type(sequences, "character")
+    expect_length(sequences, 1)
+    expect_equal(as.integer(nchar(sequences[1])), 51)
+})
+
 test_that("getDMRSequences handles batched processing efficiently", {
     skip_on_cran()
     skip_if_offline()

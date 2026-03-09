@@ -799,7 +799,7 @@
 #' @param dmrs Data frame or GRanges object containing DMR coordinates and metadata
 #' @param beta Character. Path to beta value file, tabix file, beta matrix, BetaHandler object, or bed file
 #' @param pheno Data frame. Phenotype data containing sample group information
-#' @param genome Character. Genome version (e.g., "hg38", "hg19", "mm10"). Default is "hg38"
+#' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
 #' @param sample_group_col Character. Column name in pheno containing sample group information. Default is "Sample_Group"

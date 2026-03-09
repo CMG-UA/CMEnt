@@ -109,6 +109,7 @@ Suggests:
     TxDb.Hsapiens.UCSC.hg38.knownGene,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
+    BSgenome.Hsapiens.UCSC.hs1,
     org.Hs.eg.db,
     JASPAR2024,
     optparse

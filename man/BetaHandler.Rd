@@ -68,7 +68,7 @@ Create a new BetaHandler object
 
 \item{\code{array}}{Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
-\item{\code{genome}}{Reference genome version, eg. hg38. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
+\item{\code{genome}}{Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 

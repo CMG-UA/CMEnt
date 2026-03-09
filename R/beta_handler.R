@@ -39,7 +39,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
         #' @param array Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
-        #' @param genome Reference genome version, eg. hg38. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
+        #' @param genome Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
         #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
         #' @param sorted_locs Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically
         #' @param chrom_col Chromosome column name in tabix file
@@ -690,7 +690,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #'
 #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
 #' @param array Array platform type, **ignored** if sorted_locs or a BSseq object have been provided
-#' @param genome Reference genome version, eg. hg38. Only human and mouse genomes are supported. **Ignored** if sorted_locs or a BSseq object have been provided.
+#' @param genome Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. **Ignored** if sorted_locs or a BSseq object have been provided.
 #' @param beta_row_names_file Path to row names file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.
 #' @param chrom_col Chromosome column name in tabix file
@@ -715,7 +715,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #'
 #' @export
 getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
-                           genome = c("hg38", "hg19", "mm10", "mm39"),
+                           genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
                            chrom_col = "#chrom",

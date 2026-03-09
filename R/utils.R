@@ -599,7 +599,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'   methylation values. Can be gzipped (default: NULL)
 #' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
 #'   present in both the pheno rownames and BED file header will be processed
-#' @param genome Character. Genome version to use (e.g., "hg38", "hg19") (default: "hg38")
+#' @param genome Character. Genome version to use (e.g., "hg38", "hg19", "hs1") (default: "hg38")
 #' @param chrom_col Character. Name of the chromosome column in the BED file
 #'   (default: "#chrom")
 #' @param start_col Character. Name of the start position column in the BED file
@@ -1384,7 +1384,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (!file.exists(chain_file)) {
         utils::download.file(
             url = paste0(
-                "http://hgdownload.soe.ucsc.edu/goldenPath/",
+                "https://hgdownload.soe.ucsc.edu/goldenPath/",
                 from_genome, "/liftOver/", chain_name, ".gz"
             ),
             destfile = paste0(chain_file, ".gz"), mode = "wb"
@@ -1394,6 +1394,9 @@ sortBetaFileByCoordinates <- function(beta_file,
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
     lifted_unlisted <- unlist(lifted)
+    if (length(lifted_unlisted) > 0) {
+        GenomeInfoDb::genome(lifted_unlisted) <- to_genome
+    }
     lifted_unlisted
 }
 
@@ -1405,7 +1408,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' The function caches the results.
 #'
 #' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.
-#' @param genome Character. Genome version (supported: "hg38", "hg19", "mm10", "mm39"), ignored if locations_file is provided
+#' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
@@ -1427,7 +1430,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #'
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg38", "hg19", "mm10", "mm39"), locations_file = NULL) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg38", "hg19", "hs1", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
         return(locs)
@@ -1458,7 +1461,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         return(locs)
     }
     pkg_name <- NULL
-    if (genome %in% c("hg19", "hg38")) {
+    if (genome %in% c("hg19", "hg38", "hs1")) {
         if (array == "450k") {
             pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
         } else if (array == "epic") {
@@ -1471,7 +1474,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             stop(
                 paste0(
                     "Incorrect array and genome combination was provided. ",
-                    "For hg19 and hg38, ('450K','EPIC','EPICv2','27K') arrays are supported."
+                    "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported."
                 )
             )
         }
@@ -1504,18 +1507,17 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
-    from_genome <- NULL
-    if (genome == "mm39") {
-        from_genome <- "mm10"
+    source_genome <- NULL
+    if (tolower(array) %in% c("450k", "epic", "27k")) {
+        source_genome <- "hg19"
+    } else if (tolower(array) == "epicv2") {
+        source_genome <- "hg38"
+    } else if (tolower(array) == "mouse") {
+        source_genome <- "mm10"
     }
-    if (genome == "hg38") {
-        if (tolower(array) != "epicv2") {
-            from_genome <- "hg19"
-        }
-    } else {
-        if (tolower(array) == "epicv2") {
-            from_genome <- "hg38"
-        }
+    from_genome <- NULL
+    if (!is.null(source_genome) && !identical(genome, source_genome)) {
+        from_genome <- source_genome
     }
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
@@ -1568,7 +1570,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
 #' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
-#' @param genome Character. Genome version, either "hg38" or "hg19" (default: "hg38")
+#' @param genome Character. Genome version, either "hg38", "hg19", or "hs1" (default: "hg38")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #'
@@ -1586,7 +1588,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #' @export
 orderByLoc <- function(x,
                        array = c("450K", "27K", "EPIC", "EPICv2"),
-                       genome = c("hg38", "hg19", "mm10", "mm39"),
+                       genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
@@ -1662,6 +1664,8 @@ orderByLoc <- function(x,
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
     } else if (genome == "hg38") {
         pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
+    } else if (genome == "hs1") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hs1"
     } else if (genome == "mm10") {
         pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
     } else if (genome == "mm39") {
@@ -1718,7 +1722,7 @@ orderByLoc <- function(x,
 #' motif finding or sequence composition analysis.
 #'
 #' @param dmrs GRanges object containing genomic coordinates of DMRs
-#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg19".
+#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg38" or "hs1".
 #' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
 #'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
 #'   fallback when packages are unavailable (default: FALSE)
@@ -1735,6 +1739,7 @@ orderByLoc <- function(x,
 #' \itemize{
 #'   \item hg19: BSgenome.Hsapiens.UCSC.hg19
 #'   \item hg38: BSgenome.Hsapiens.UCSC.hg38
+#'   \item hs1: BSgenome.Hsapiens.UCSC.hs1
 #'   \item mm10: BSgenome.Mmusculus.UCSC.mm10
 #'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
 #' }
@@ -1894,7 +1899,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' Uses parallel processing and batched requests for improved performance.
 #'
 #' @param dmrs GRanges object containing genomic coordinates
-#' @param genome Character. Genome version (e.g., "hg19", "mm39")
+#' @param genome Character. Genome version (e.g., "hg38", "hs1", "mm39")
 #' @param batch_size Integer. Number of regions to process per batch (default: 100)
 #' @param njobs Integer. Number of cores for parallel processing (default: 1)
 #'
@@ -2018,7 +2023,8 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' }
 #'
 #' @details
-#' The function uses genome-appropriate TxDb packages.
+#' The function uses genome-appropriate TxDb packages. For `hs1`, DMRsegal
+#' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
 #' Gene symbols are retrieved from the appropriate org.*.eg.db package.
 #' Multiple overlapping genes are concatenated with commas.
 #'
@@ -2050,14 +2056,15 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
 
+    target_genome <- tolower(genome)
+    annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
     supported_organisms <- Organism.dplyr::supportedOrganisms()
-    # find row matching the genome
-    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), , drop = FALSE]
-    if (length(matched_row) == 0) {
+    matched_row <- supported_organisms[grepl(annotation_source_genome, tolower(supported_organisms$TxDb)), , drop = FALSE]
+    if (nrow(matched_row) == 0) {
         stop("Unsupported genome: ", genome)
     }
-    txdb_pkg <- matched_row$TxDb
-    orgdb_pkg <- matched_row$OrgDb
+    txdb_pkg <- matched_row$TxDb[1]
+    orgdb_pkg <- matched_row$OrgDb[1]
 
     # Load required packages
     if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
@@ -2072,6 +2079,13 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             install.packages("BiocManager")
         }
         BiocManager::install(orgdb_pkg)
+    }
+    if (annotation_source_genome != target_genome) {
+        .log_info(
+            "Using ", annotation_source_genome,
+            " gene models lifted to ", target_genome, " for annotation.",
+            level = 2
+        )
     }
     .log_step("Loading gene annotations for ", genome, "...", level = 2)
 
@@ -2095,6 +2109,11 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             # get genes only within standard chromosomes
             std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::seqinfo(txdb))
             genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% std_chroms]
+            if (annotation_source_genome != target_genome) {
+                genes <- .liftOverFromGenomeToGenome(genes, annotation_source_genome, target_genome)
+                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
+                genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% target_std_chroms]
+            }
             tryCatch(
                 {
                     saveRDS(genes, genes_file)
@@ -2122,6 +2141,11 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
             promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
             promoters <- stack(promoters)
+            if (annotation_source_genome != target_genome) {
+                promoters <- .liftOverFromGenomeToGenome(promoters, annotation_source_genome, target_genome)
+                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
+                promoters <- promoters[as.character(GenomeInfoDb::seqnames(promoters)) %in% target_std_chroms]
+            }
             tryCatch(
                 {
                     saveRDS(promoters, promoters_file)

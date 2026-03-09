@@ -21,7 +21,7 @@ option_list <- list(
     make_option("--ignored_sample_groups", default = NULL, help = "The sample groups to ignore while considering connection and expansion, comma separated. Can also be 'case' or 'control'."),
     make_option("--expansion_step", default = 500, type = "integer", help = "The index-specific DMR expansion step, defaults to 500"),
     make_option("--array", default = "450K", help = "Array platform ('450K', '27K', 'EPIC', 'EPICv2', 'Mouse', 'NULL'). Must be 'NULL' if not applicable"),
-    make_option("--genome", default = "hg38", help = "Reference genome identifier. For an array-based experiment only hg38, hg19, mm10 and mm39 are supported."),
+    make_option("--genome", default = "hg38", help = "Reference genome identifier. hg38, hg19, hs1, mm10, and mm39 are supported."),
     make_option("--beta_row_names_file", default = NULL),
     make_option("--max_pval", default = 0.05, type = "double", help = "The maximum p-value to consider positional entanglement, defaults to 0.05"),
     make_option(

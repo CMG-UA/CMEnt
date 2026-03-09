@@ -28,7 +28,7 @@
 #' @section Platform Support:
 #' The package supports methylation data from multiple platforms:
 #' \itemize{
-#'   \item Illumina arrays: 450K, EPIC (850k), EPICv2, 27K
+#'   \item Human arrays: 450K, EPIC (850k), EPICv2, 27K on hg19, hg38, or hs1
 #'   \item Mouse arrays: mm10, mm39 genomes
 #'   \item NGS data: Via tabix-indexed files
 #'   \item Custom platforms: Via BED file input

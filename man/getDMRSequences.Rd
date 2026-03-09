@@ -17,7 +17,7 @@ getDMRSequences(
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
 
-\item{genome}{Character. Genome version to use for sequence extraction, .e.g. "hg19".}
+\item{genome}{Character. Genome version to use for sequence extraction, .e.g. "hg38" or "hs1".}
 
 \item{use_online}{Logical. If TRUE, forces use of online UCSC API instead of
 BSgenome packages. If FALSE (default), uses BSgenome packages with online
@@ -47,6 +47,7 @@ The function first attempts to use genome-appropriate BSgenome packages:
 \itemize{
 \item hg19: BSgenome.Hsapiens.UCSC.hg19
 \item hg38: BSgenome.Hsapiens.UCSC.hg38
+\item hs1: BSgenome.Hsapiens.UCSC.hs1
 \item mm10: BSgenome.Mmusculus.UCSC.mm10
 \item mm39: BSgenome.Mmusculus.UCSC.mm39
 }

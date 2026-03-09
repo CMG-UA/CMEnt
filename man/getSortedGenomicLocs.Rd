@@ -6,14 +6,14 @@
 \usage{
 getSortedGenomicLocs(
   array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
-  genome = c("hg38", "hg19", "mm10", "mm39"),
+  genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
   locations_file = NULL
 )
 }
 \arguments{
 \item{array}{Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.}
 
-\item{genome}{Character. Genome version (supported: "hg38", "hg19", "mm10", "mm39"), ignored if locations_file is provided}
+\item{genome}{Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided}
 
 \item{locations_file}{Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)}
 }
