@@ -1,0 +1,29 @@
+/* DMRsegal Viewer Custom Styles */
+
+.value-box {
+    min-height: 100px;
+}
+
+.card {
+    margin-bottom: 1rem;
+}
+
+.plot-output {
+    min-height: 400px;
+}
+
+.nav-link.active {
+    font-weight: 600;
+}
+
+.btn-primary {
+    margin-top: 0.5rem;
+}
+
+.dataTables_wrapper {
+    font-size: 0.9rem;
+}
+
+.table td, .table th {
+    vertical-align: middle;
+}

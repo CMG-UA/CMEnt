@@ -39,6 +39,7 @@ Imports:
     BiocGenerics,
     Biostrings,
     BSgenome,
+    bslib (>= 0.5.0),
     bsseq,
     circlize,
     cli,
@@ -48,6 +49,7 @@ Imports:
     DBI,
     DelayedDataFrame,
     dplyr,
+    DT,
     e1071,
     FNN,
     future,
@@ -78,6 +80,7 @@ Imports:
     reshape2,
     rtracklayer,
     S4Vectors,
+    shiny (>= 1.7.0),
     showtext,
     stats,
     strex,
@@ -86,7 +89,7 @@ Imports:
     tools,
     utils,
     withr
-Suggests: 
+Suggests:
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
     BiocManager,
@@ -124,5 +127,7 @@ Collate:
     'DMRsegal-package.R'
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
+    'shiny_modules.R'
+    'shiny_app.R'
     'zzz.R'
 NeedsCompilation: no

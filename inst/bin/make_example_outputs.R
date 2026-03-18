@@ -3,7 +3,7 @@ devtools::load_all()
 cases <- c("example_output", "example_outputChr5And11")
 files_to_make <- file.path("inst/extdata", paste0(cases, ".rds"))
 names(files_to_make) <- cases
-files_to_make <- files_to_make[!file.exists(files_to_make)]
+# files_to_make <- files_to_make[!file.exists(files_to_make)]
 if (length(files_to_make) == 0) {
     cat("All example output files already exist. Skipping generation.\n")
     quit(save = "no")
@@ -37,6 +37,7 @@ for (case in names(files_to_make)) {
         max_pval = 0.05,
         pval_mode = "parametric",
         entanglement = "weak",
+        output_prefix = paste0("inst/extdata/", case),
         rank_dmrs = TRUE
     ))
     saveRDS(dmrs_dmrsegal, dmrsegal_file)
