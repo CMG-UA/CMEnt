@@ -283,6 +283,12 @@
 
 #' Internal logging helpers using cli
 
+.log_error <- function(..., .envir = parent.frame()) {
+    msg <- paste0(..., collapse = "")
+    lead <- .col(cli::symbol$cross, "red")
+    stop(paste(lead, msg), call. = FALSE)
+}
+
 #' @keywords internal
 #' @noRd
 .log_warn <- function(..., .envir = parent.frame()) {

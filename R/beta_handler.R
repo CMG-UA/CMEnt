@@ -361,18 +361,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
 
             self$load()
-
-            # Skip validation if no genomic locations available yet, or if using BSseq object (which is already sorted during loading)
-            if (is.null(self$sorted_locs) || !is.null(private$.bsseq_object)) {
-                private$.validated <- TRUE
-                return(invisible(self))
-            }
             .log_info("Loading genomic locations for validation...", level = 2)
             sorted_locs <- self$getGenomicLocs()
             .log_info("Getting beta row names for validation...", level = 2)
             beta_row_names <- self$getBetaRowNames()
             if (is.null(private$.beta_file_in_memory)) {
-                if (!private$.self_contained) {
                     .log_step("Validating beta file sorting by position...", level = 2)
 
                     # Validate that file is sorted
@@ -385,7 +378,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         stop("Provided beta file is not sorted by position!")
                     }
                     .log_success("Beta file sorting validated", level = 2)
-                }
             } else {
                 # Sort in-memory beta data
                 private$.beta_file_in_memory <- private$.beta_file_in_memory[
@@ -395,6 +387,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     ), ,
                     drop = FALSE
                 ]
+                private$.beta_row_names <- rownames(private$.beta_file_in_memory)
             }
             .log_info("Beta file validated.", level = 2)
             private$.validated <- TRUE

@@ -1490,6 +1490,21 @@
     ret
 }
 
+.checkResult <- function(dmrs, stage, start_col = "start", end_col = "end") {
+    end_less_than_start <- dmrs[[end_col]] - dmrs[[start_col]] < 0
+
+    if (any(end_less_than_start)) {
+        .log_error(
+            paste0( "Error in stage ", stage, ": ",
+                sum(end_less_than_start),
+                " DMRs have been assigned an end larger than start ! (CODE BUG TO BE REPORTED)",
+                " Those are: \n\t",
+                paste0(capture.output(print(dmrs[end_less_than_start, ])), collapse = "\n\t")
+            )
+        )
+    }
+}
+
 
 #' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
 #'
@@ -1810,6 +1825,11 @@ findDMRsFromSeeds <- function(
     }
     pheno_all <- pheno[beta_col_names, , drop = FALSE]
     beta_locs <- beta_handler$getBetaLocs()
+    ord <- str_order(paste(beta_locs[, "chr"], ":", beta_locs[, "start"]), numeric = TRUE)
+    if (!all(ord == seq_len(nrow(beta_locs)))) {
+        browser()
+        stop("Beta locations are not sorted. Issue with input data.")
+    }
 
 
     samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups)
@@ -2062,9 +2082,12 @@ findDMRsFromSeeds <- function(
             )
         }
     }
+    .checkResult(dmrs, "1", start_col = "start_seed_pos", end_col = "end_seed_pos")
+
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
     .log_info("Summary of connected seeds DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 3)
     .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)
+
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)
     stage2_beta_handler <- beta_handler
@@ -2251,26 +2274,8 @@ findDMRsFromSeeds <- function(
     extended_dmrs$seeds_num <- as.numeric(extended_dmrs$seeds_num)
     extended_dmrs$connection_corr_pval <- as.numeric(extended_dmrs$connection_corr_pval)
 
-    end_less_than_start <- extended_dmrs$end - extended_dmrs$start < 0
 
-    if (any(end_less_than_start)) {
-        .log_warn(
-            paste(
-                sum(end_less_than_start),
-                "DMRs have been assigned an end larger than start ! (CODE BUG TO BE REPORTED)"
-            )
-        )
-        .log_warn(
-            "Those are: \n\t",
-            paste0(capture.output(print(extended_dmrs[end_less_than_start, ])), collapse = "\n\t")
-        )
-
-        .log_warn("Removing them..")
-        extended_dmrs <- extended_dmrs[!end_less_than_start, ]
-        .log_warn("Remaining: ", nrow(extended_dmrs))
-    }
-
-
+    .checkResult(extended_dmrs, "2", start_col = "start", end_col = "end")
     .log_success("Post-processing complete.", level = 2)
     .log_success("DMR expansion complete.", level = 1)
     .log_info("Summary of extended DMRs:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 3)
