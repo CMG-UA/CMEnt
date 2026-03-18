@@ -25,7 +25,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     # Test missing required parameters
     expect_error(
         findDMRsFromSeeds(
-            rank_dmrs = FALSE,
+            .score_dmrs = FALSE,
             beta = beta,
             seeds = NULL, # Missing
             pheno = pheno
@@ -35,7 +35,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
-            rank_dmrs = FALSE,
+            .score_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = NULL # Missing
@@ -49,7 +49,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
     expect_error(
         findDMRsFromSeeds(
-            rank_dmrs = FALSE,
+            .score_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno_wrong,
@@ -68,7 +68,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     withCallingHandlers(
         {
             dmrs <- findDMRsFromSeeds(
-                rank_dmrs = FALSE,
+                .score_dmrs = FALSE,
                 beta = beta,
                 seeds = dmps,
                 pheno = pheno,
@@ -108,7 +108,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     options("DMRsegal.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = sorted_beta_file,
         seeds = dmps,
         pheno = pheno,
@@ -190,7 +190,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     options("DMRsegal.verbose" = 2)
     options("DMRsegal.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -237,7 +237,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
 
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
     dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",

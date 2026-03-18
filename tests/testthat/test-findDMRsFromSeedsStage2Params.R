@@ -9,7 +9,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
     # Test with expansion_window and max_bridge_seeds_gaps
     expect_message(
         dmrs_expanded <- findDMRsFromSeeds(
-            rank_dmrs = FALSE,
+            .score_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno,
@@ -61,7 +61,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -75,7 +75,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
 
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -131,7 +131,7 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
     seeds <- data.frame(pval = rep(1e-6, length(cpg_ids)), row.names = cpg_ids)
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta_handler,
         seeds = seeds,
         pheno = pheno,
@@ -157,4 +157,45 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
     dmr_df <- as.data.frame(dmrs)
     cpg_chr <- setNames(locs$chr, rownames(locs))
     expect_true(all(cpg_chr[dmr_df$start_seed] == cpg_chr[dmr_df$end_seed]))
+})
+
+test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and chunked parallel execution", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+
+    withr::local_options(list(DMRsegal.parallel_dmr_chunk_size = 1L))
+
+    args <- list(
+        .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        expansion_window = 1,
+        max_bridge_seeds_gaps = 2,
+        annotate_with_genes = FALSE,
+        verbose = 0
+    )
+
+    dmrs_seq <- do.call(findDMRsFromSeeds, c(args, list(njobs = 1)))
+    dmrs_par <- do.call(findDMRsFromSeeds, c(args, list(njobs = 2)))
+
+    expect_s4_class(dmrs_seq, "GRanges")
+    expect_s4_class(dmrs_par, "GRanges")
+
+    seq_df <- as.data.frame(dmrs_seq)
+    par_df <- as.data.frame(dmrs_par)
+
+    ord_cols <- c("seqnames", "start", "end", "start_seed", "end_seed", "seeds")
+    seq_df <- seq_df[do.call(order, seq_df[ord_cols]), , drop = FALSE]
+    par_df <- par_df[do.call(order, par_df[ord_cols]), , drop = FALSE]
+    rownames(seq_df) <- NULL
+    rownames(par_df) <- NULL
+
+    expect_identical(seq_df, par_df)
 })

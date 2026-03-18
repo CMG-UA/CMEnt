@@ -126,7 +126,7 @@ genome <- "hg19"
 beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
-mvalues <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
+mvalues <- minfi::logit2(beta_mat)
 pheno$casecontrol <- pheno$Sample_Group == "cancer"
 ```
 
@@ -192,7 +192,7 @@ if (!file.exists(dmrsegal_file)) {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
-        rank_dmrs = TRUE,
+        .score_dmrs = TRUE,
         chunk_size = 1e5,
         njobs = dmrsegal_njobs,
         verbose = 3
@@ -1124,24 +1124,24 @@ if (length(consensus_3plus) > 0) {
 }
 ```
 
-## DMRsegal Ranking Quality Assessment
+## DMRsegal scoring Quality Assessment
 
 ```{r}
-if ("rank" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
-    dmrs_segal_ranked <- dmrs_dmrsegal[order(mcols(dmrs_dmrsegal)$rank)]
+if ("score" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
+    dmrs_segal_scored <- dmrs_dmrsegal[order(mcols(dmrs_dmrsegal)$score, decreasing = TRUE)]
 
-    n_bins <- min(10, floor(length(dmrs_segal_ranked) / 5))
-    bin_size <- ceiling(length(dmrs_segal_ranked) / n_bins)
+    n_bins <- min(10, floor(length(dmrs_segal_scored) / 5))
+    bin_size <- ceiling(length(dmrs_segal_scored) / n_bins)
 
-    ranking_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
+    scoring_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
         start_idx <- (i - 1) * bin_size + 1
-        end_idx <- min(i * bin_size, length(dmrs_segal_ranked))
-        bin_dmrs <- dmrs_segal_ranked[start_idx:end_idx]
+        end_idx <- min(i * bin_size, length(dmrs_segal_scored))
+        bin_dmrs <- dmrs_segal_scored[start_idx:end_idx]
 
         in_consensus <- sum(overlapsAny(bin_dmrs, consensus_3plus))
 
         data.frame(
-            Rank_Bin = sprintf("Top %d%%", i * 10),
+            Score_Bin = sprintf("Top %d%%", i * 10),
             Bin_Order = i,
             N_DMRs = length(bin_dmrs),
             In_Consensus = in_consensus,
@@ -1149,18 +1149,18 @@ if ("rank" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
         )
     }))
 
-    knitr::kable(ranking_quality, caption = "DMRsegal Ranking Quality: Consensus Overlap by Rank Decile")
+    knitr::kable(scoring_quality, caption = "DMRsegal Scoring Quality: Consensus Overlap by Score Decile")
 
-    ggplot(ranking_quality, aes(x = reorder(Rank_Bin, Bin_Order), y = Pct_In_Consensus)) +
+    ggplot(scoring_quality, aes(x = reorder(Score_Bin, Bin_Order), y = Pct_In_Consensus)) +
         geom_bar(stat = "identity", fill = "steelblue") +
         geom_line(aes(group = 1), color = "red", size = 1) +
         geom_point(color = "red", size = 3) +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         labs(
-            title = "DMRsegal Ranking Quality Assessment",
-            subtitle = "Higher-ranked DMRs should have higher consensus overlap",
-            x = "Rank Decile", y = "% in Consensus (3+ methods)"
+            title = "DMRsegal Scoring Quality Assessment",
+            subtitle = "Higher-scoring DMRs should have higher consensus overlap",
+            x = "Score Decile", y = "% in Consensus (3+ methods)"
         )
 }
 ```

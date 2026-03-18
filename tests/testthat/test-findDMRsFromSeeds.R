@@ -10,7 +10,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
     options(warn = 2)
     options("DMRsegal.verbose" = 2)
     dmrs <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -36,7 +36,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
-    mvalues <- log(beta_mat / (1 - beta_mat + 1e-6) + 1e-6)
+    mvalues <- minfi::logit2(beta_mat)
     pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
     # Find DMPs using minfi's dmpFinder
@@ -54,7 +54,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     options("DMRsegal.verbose" = 2)
     # Run DMRsegal with same parameters as benchmark
     dmrs_segal <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta_handler,
         seeds = sig_dmps,
         pheno = pheno,
@@ -88,7 +88,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with strict min_seeds
     dmrs_strict <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -101,7 +101,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with lenient parameters
     dmrs_lenient <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -114,7 +114,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 
     # Test with different max_pval
     dmrs_strict_pval <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -152,7 +152,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -166,7 +166,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 
     # Test with mean aggregation
     dmrs_mean <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -195,7 +195,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     options("DMRsegal.use_annotation_cache" = FALSE)
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -218,7 +218,7 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
     pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs_not_annotated <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -236,7 +236,7 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
     }
 })
 
-test_that("findDMRsFromSeeds writes TSV when motifs are extracted", {
+test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
@@ -244,7 +244,7 @@ test_that("findDMRsFromSeeds writes TSV when motifs are extracted", {
 
     output_prefix <- file.path(tempdir(), paste0("dmrsegal-test-", as.integer(Sys.time())))
 
-    expect_no_error(findDMRsFromSeeds(
+    dmrs <- expect_no_error(findDMRsFromSeeds(
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -259,7 +259,7 @@ test_that("findDMRsFromSeeds writes TSV when motifs are extracted", {
         max_pval = 0.05,
         pval_mode = "parametric",
         entanglement = "weak",
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         output_prefix = output_prefix,
         njobs = 1
@@ -269,5 +269,10 @@ test_that("findDMRsFromSeeds writes TSV when motifs are extracted", {
     expect_true(file.exists(dmrs_file))
 
     dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
-    expect_false("pwm" %in% colnames(dmrs_df))
+    expect_true("pwm" %in% colnames(dmrs_df))
+
+    loaded_dmrs <- DMRsegal:::.loadDMRsegalData(output_prefix)$dmrs
+    expect_true("pwm" %in% names(S4Vectors::mcols(loaded_dmrs)))
+    expect_true(any(vapply(S4Vectors::mcols(loaded_dmrs)$pwm, is.matrix, logical(1))))
+    expect_equal(length(loaded_dmrs), length(dmrs))
 })

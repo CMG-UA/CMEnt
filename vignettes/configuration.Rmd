@@ -606,21 +606,21 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `rank_dmrs`
+### `.score_dmrs`
 **Type:** Logical  
 **Default:** `TRUE`  
-**Description:** Whether to rank DMRs based on their classification accuracy using cross-validated SVM. When enabled, each DMR is evaluated for its ability to discriminate between sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `accuracy` value represents how well the DMR's methylation pattern can classify samples into their correct groups.
+**Description:** Whether to score DMRs based on their classification accuracy using cross-validated SVM. When enabled, each DMR is evaluated for its ability to discriminate between sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `accuracy` value represents how well the DMR's methylation pattern can classify samples into their correct groups.
 
 **Details:**
 - Uses stratified k-fold cross-validation (default: 5-fold)
-- Number of folds can be controlled with `options(DMRsegal.ranking_nfold = 5)`
+- Number of folds can be controlled with `options(DMRsegal.scoring_nfold = 5)`
 - Random seed is controlled with `options(DMRsegal.random_seed = 42)`
 - Accuracy values range from 0 to 1, where higher values indicate better discriminative power
 - Requires the `e1071` package for SVM classification
 
 **Example:**
 ```{r}
-dmrs_ranked <- rankDMRs(
+dmrs_scoring <- scoreDMRs(
     dmrs = dmrs,
     beta = beta,
     pheno = pheno,
@@ -806,15 +806,15 @@ options("DMRsegal.jaspar_corr_threshold" = 0.85)
 options("DMRsegal.make_debug_dir" = TRUE)
 ```
 
-## DMR Ranking
+## DMR scoring
 
-### Option: `DMRsegal.ranking_nfold`
+### Option: `DMRsegal.scoring_nfold`
 **Type:** Integer  
 **Default:** `5`  
-**Description:** Number of folds for cross-validation when ranking DMRs.
+**Description:** Number of folds for cross-validation when scoring DMRs.
 
 ```{r}
-options("DMRsegal.ranking_nfold" = 3)
+options("DMRsegal.scoring_nfold" = 3)
 ```
 
 # Configuration Examples

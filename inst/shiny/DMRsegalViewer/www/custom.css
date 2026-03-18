@@ -27,3 +27,35 @@
 .table td, .table th {
     vertical-align: middle;
 }
+
+.dmrsegal-viewer-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding-right: 0.25rem;
+}
+
+.dmrsegal-viewer-github {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--bs-navbar-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.dmrsegal-viewer-github:hover,
+.dmrsegal-viewer-github:focus {
+    color: var(--bs-navbar-hover-color);
+}
+
+.dmrsegal-viewer-logo {
+    display: block;
+    height: 42px;
+    width: auto;
+}
+
+.dmrsegal-viewer-wordmark {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}

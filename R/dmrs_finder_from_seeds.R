@@ -26,7 +26,7 @@
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
-#' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38".
+#' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
 #' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
@@ -152,6 +152,109 @@
         end = as.numeric(dmrs$end_seed_pos) + flank
     )
     .mergeGenomicWindows(windows)
+}
+
+
+#' @keywords internal
+#' @noRd
+.normalizeFindDMRsArray <- function(array) {
+    if (is.null(array)) {
+        return(NULL)
+    }
+    array <- as.character(array)
+    if (length(array) == 0L) {
+        return(NULL)
+    }
+    if (length(array) > 1L) {
+        array <- array[1]
+    }
+    if (is.na(array) || !nzchar(array) || tolower(array) == "null") {
+        return(NULL)
+    }
+    supported_arrays <- c("450K", "27K", "EPIC", "EPICv2")
+    matched_idx <- match(tolower(array), tolower(supported_arrays))
+    if (is.na(matched_idx)) {
+        stop(
+            "Unsupported array: ", array,
+            ". Supported arrays are: ", paste(c(supported_arrays, "NULL"), collapse = ", ")
+        )
+    }
+    supported_arrays[matched_idx]
+}
+
+
+#' @keywords internal
+#' @noRd
+.normalizeFindDMRsGenome <- function(genome) {
+    if (is.null(genome)) {
+        return(NULL)
+    }
+    genome <- as.character(genome)
+    if (length(genome) == 0L) {
+        return(NULL)
+    }
+    if (length(genome) > 1L) {
+        genome <- genome[1]
+    }
+    if (is.na(genome) || !nzchar(genome) || tolower(genome) == "null") {
+        return(NULL)
+    }
+    supported_genomes <- c("hg38", "hg19", "hs1", "mm10", "mm39")
+    matched_idx <- match(tolower(genome), tolower(supported_genomes))
+    if (is.na(matched_idx)) {
+        stop(
+            "Unsupported genome: ", genome,
+            ". Supported genomes are: ", paste(supported_genomes, collapse = ", ")
+        )
+    }
+    supported_genomes[matched_idx]
+}
+
+
+#' @keywords internal
+#' @noRd
+.resolveFindDMRsGenome <- function(beta, array = NULL, genome = NULL, bed_provided = FALSE) {
+    genome <- .normalizeFindDMRsGenome(genome)
+    if (!is.null(genome)) {
+        return(genome)
+    }
+
+    array <- .normalizeFindDMRsArray(array)
+
+    if (inherits(beta, "BetaHandler")) {
+        beta_genome <- tryCatch(.normalizeFindDMRsGenome(beta$genome), error = function(e) NULL)
+        if (!is.null(beta_genome)) {
+            return(beta_genome)
+        }
+        beta_array <- tryCatch(.normalizeFindDMRsArray(beta$array), error = function(e) NULL)
+        if (!is.null(beta_array) && beta_array %in% c("450K", "27K", "EPIC")) {
+            return("hg19")
+        }
+        return("hg38")
+    }
+
+    if (is_bsseq(beta)) {
+        gr <- GenomicRanges::granges(beta)
+        bsseq_genome <- unique(as.character(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(gr))))
+        bsseq_genome <- bsseq_genome[!is.na(bsseq_genome) & nzchar(bsseq_genome)]
+        bsseq_genome <- bsseq_genome[tolower(bsseq_genome) %in% c("hg38", "hg19", "hs1", "mm10", "mm39")]
+        if (length(bsseq_genome) > 0L) {
+            return(.normalizeFindDMRsGenome(bsseq_genome[1]))
+        }
+        return("hg38")
+    }
+
+    is_bed_input <- isTRUE(bed_provided) ||
+        (is.character(beta) && length(beta) == 1L && file.exists(beta) && identical(tolower(tools::file_ext(beta)), "bed"))
+    if (is_bed_input) {
+        return("hg38")
+    }
+
+    if (!is.null(array) && array %in% c("450K", "27K", "EPIC")) {
+        return("hg19")
+    }
+
+    "hg38"
 }
 
 
@@ -992,21 +1095,41 @@
                        expansion_step = 500,
                        chr_start_base = 0,
                        subset_to_full_idx = NULL,
-                       full_locs = NULL) {
+                       full_locs = NULL,
+                       chr_locs_idx_map = NULL) {
     .log_step("Expanding DMR..", level = 4)
+    if (is.data.frame(dmr)) {
+        if (nrow(dmr) != 1L) {
+            stop("dmr must contain exactly one row.")
+        }
+        dmr <- as.matrix(dmr)[1, ]
+    }
     dmr_start <- dmr["start_seed"]
     dmr_end <- dmr["end_seed"]
 
-    dmr_start_ind <- which(rownames(chr_locs) == dmr_start)
-    dmr_end_ind <- which(rownames(chr_locs) == dmr_end)
-    if (length(dmr_start_ind) == 0) {
-        stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
+    # Use pre-built index map for O(1) lookup instead of O(n) match
+    if (!is.null(chr_locs_idx_map)) {
+        dmr_start_ind <- chr_locs_idx_map[[dmr_start]]
+        dmr_end_ind <- chr_locs_idx_map[[dmr_end]]
+        if (is.null(dmr_start_ind)) {
+            stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
+        }
+        if (is.null(dmr_end_ind)) {
+            stop("Could not find the end CpG ", dmr_end, " in the beta file row names.")
+        }
+        chr_locs_rownames <- names(chr_locs_idx_map)
+    } else {
+        # Fallback to match() if no index map provided
+        chr_locs_rownames <- rownames(chr_locs)
+        dmr_start_ind <- match(dmr_start, chr_locs_rownames)
+        dmr_end_ind <- match(dmr_end, chr_locs_rownames)
+        if (is.na(dmr_start_ind)) {
+            stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
+        }
+        if (is.na(dmr_end_ind)) {
+            stop("Could not find the end CpG ", dmr_end, " in the beta file row names.")
+        }
     }
-    if (length(dmr_end_ind) == 0) {
-        stop("Could not find the end CpG ", dmr_end, " in the beta file row names.")
-    }
-
-    chr_locs_rownames <- rownames(chr_locs)
     projected_cpg_ids <- chr_locs_rownames
     projected_positions <- as.integer(chr_locs[, "start"])
     if (!is.null(subset_to_full_idx)) {
@@ -1189,6 +1312,45 @@
 
     .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 4)
     dmr
+}
+
+
+#' @keywords internal
+#' @noRd
+.expandDMRChunk <- function(dmr_inds,
+                            chr_dmrs,
+                            chr_array,
+                            chr_locs,
+                            min_cpg_delta_beta = 0,
+                            min_cpgs = 3,
+                            expansion_step = 500,
+                            chr_start_base = 0,
+                            subset_to_full_idx = NULL,
+                            full_locs = NULL,
+                            chr_locs_idx_map = NULL) {
+    if (length(dmr_inds) == 0L) {
+        return(list())
+    }
+    old_warn <- getOption("warn")
+    on.exit(options(warn = old_warn), add = TRUE)
+    options(warn = 2)
+
+    ret <- vector("list", length(dmr_inds))
+    for (i in seq_along(dmr_inds)) {
+        ret[[i]] <- .expandDMR(
+            dmr = chr_dmrs[dmr_inds[[i]], , drop = FALSE],
+            chr_array = chr_array,
+            expansion_step = expansion_step,
+            min_cpgs = min_cpgs,
+            min_cpg_delta_beta = min_cpg_delta_beta,
+            chr_locs = chr_locs,
+            chr_start_base = chr_start_base,
+            subset_to_full_idx = subset_to_full_idx,
+            full_locs = full_locs,
+            chr_locs_idx_map = chr_locs_idx_map
+        )
+    }
+    ret
 }
 
 
@@ -1521,7 +1683,7 @@
 #' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
-#' @param genome Character. Genome version. Default is "hg38".
+#' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
 #' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
@@ -1540,7 +1702,7 @@
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param rank_dmrs Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.
+#' @param .score_dmrs Logical. Whether to score DMRs based on significance and effect size. Default is TRUE.
 #' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
@@ -1563,7 +1725,7 @@ findDMRsFromSeeds <- function(
     adaptive_min_cpg_delta_beta = TRUE,
     expansion_step = 500,
     array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-    genome = "hg38",
+    genome = NULL,
     max_pval = 0.05,
     entanglement = c("strong", "weak"),
     pval_mode = c("auto", "parametric", "empirical"),
@@ -1584,7 +1746,7 @@ findDMRsFromSeeds <- function(
     chunk_size = getOption("DMRsegal.chunk_size", 10000),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
-    rank_dmrs = TRUE,
+    .score_dmrs = TRUE,
     extract_motifs = TRUE,
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
@@ -1677,8 +1839,16 @@ findDMRsFromSeeds <- function(
             stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
         }
     }
-    if (!is.null(array)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
+    array <- .normalizeFindDMRsArray(array)
+    requested_genome <- .normalizeFindDMRsGenome(genome)
+    genome <- .resolveFindDMRsGenome(
+        beta = beta,
+        array = array,
+        genome = requested_genome,
+        bed_provided = bed_provided
+    )
+    if (is.null(requested_genome)) {
+        .log_info("No genome provided. Using inferred genome: ", genome, ".", level = 2)
     }
     all_cpgs <- NULL
     beta_locs_rownames <- NULL
@@ -1790,10 +1960,12 @@ findDMRsFromSeeds <- function(
         ignored_sample_groups <- ignored_sample_groups[nzchar(ignored_sample_groups)]
     }
     if (!is.null(output_prefix)) {
+        output_prefix_base <- output_prefix
         output_dir <- dirname(output_prefix)
         dir.create(output_dir, showWarnings = FALSE)
         output_prefix <- paste0(output_prefix, ".")
     } else {
+        output_prefix_base <- NULL
         output_dir <- NULL
         output_prefix <- NULL
     }
@@ -1844,6 +2016,17 @@ findDMRsFromSeeds <- function(
         stop("At least two samples are required after applying ignored_sample_groups.")
     }
     pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
+    if (!is.null(output_prefix_base)) {
+        viewer_meta_file <- paste0(output_prefix_base, "_meta.rds")
+        viewer_meta <- list(
+            pheno = pheno_detection,
+            genome = genome,
+            array = array,
+            sample_group_col = sample_group_col
+        )
+        saveRDS(viewer_meta, file = viewer_meta_file)
+        .log_info("Saved viewer metadata to ", viewer_meta_file, ".", level = 2)
+    }
     .log_info("Samples to process during DMR detection: ", length(beta_col_names_detection), level = 1)
 
     sample_groups <- factor(pheno_detection[, sample_group_col])
@@ -2207,10 +2390,24 @@ findDMRsFromSeeds <- function(
             rownames(chr_full_locs) <- rownames(beta_locs)[chr_subset_to_full_idx]
             chr_subset_to_full_idx <- seq_len(nrow(chr_locs))
         }
-        fun <- function(dmr) {
-            op <- options(warn = 2)$warn
-            x <- .expandDMR(
-                dmr = dmr,
+        # Create index map once per chromosome for O(1) lookups
+        chr_locs_rownames <- rownames(chr_locs)
+        chr_locs_idx_map <- setNames(seq_along(chr_locs_rownames), chr_locs_rownames)
+
+        chr_dmr_inds <- seq_len(nrow(chr_dmrs))
+        default_dmr_chunk_size <- max(1L, ceiling(length(chr_dmr_inds) / max(njobs * 4L, 1L)))
+        dmr_chunk_size <- as.integer(getOption("DMRsegal.parallel_dmr_chunk_size", default_dmr_chunk_size))[1]
+        if (!is.finite(dmr_chunk_size) || dmr_chunk_size < 1L) {
+            dmr_chunk_size <- default_dmr_chunk_size
+        }
+        dmr_chunk_size <- min(dmr_chunk_size, length(chr_dmr_inds))
+        chr_chunks <- split(chr_dmr_inds, ceiling(chr_dmr_inds / dmr_chunk_size))
+
+        if (njobs == 1L || length(chr_chunks) == 1L) {
+            chr_ret <- lapply(
+                chr_chunks,
+                .expandDMRChunk,
+                chr_dmrs = chr_dmrs,
                 chr_array = chr_array,
                 expansion_step = expansion_step,
                 min_cpgs = min_cpgs,
@@ -2218,24 +2415,30 @@ findDMRsFromSeeds <- function(
                 chr_locs = chr_locs,
                 chr_start_base = chr_start_base,
                 subset_to_full_idx = chr_subset_to_full_idx,
-                full_locs = chr_full_locs
+                full_locs = chr_full_locs,
+                chr_locs_idx_map = chr_locs_idx_map
             )
-            options(warn = op)
-            if (verbose > 0 && !is.null(p_ext)) p_ext()
-            x
-        }
-        if (njobs == 1) {
-            chr_ret <- apply(chr_dmrs, 1, fun, simplify = FALSE)
         } else {
             .setupParallel()
-            chr_ret <- future.apply::future_apply(
-                X = chr_dmrs,
-                MARGIN = 1,
-                FUN = fun,
-                simplify = FALSE,
+            chr_ret <- future.apply::future_lapply(
+                X = chr_chunks,
+                FUN = .expandDMRChunk,
+                chr_dmrs = chr_dmrs,
+                chr_array = chr_array,
+                expansion_step = expansion_step,
+                min_cpgs = min_cpgs,
+                min_cpg_delta_beta = min_cpg_delta_beta,
+                chr_locs = chr_locs,
+                chr_start_base = chr_start_base,
+                subset_to_full_idx = chr_subset_to_full_idx,
+                full_locs = chr_full_locs,
+                chr_locs_idx_map = chr_locs_idx_map,
                 future.seed = TRUE,
+                future.stdout = NA,
                 future.globals = c(
+                    ".expandDMRChunk",
                     ".expandDMR",
+                    "chr_dmrs",
                     "chr_array",
                     "expansion_step",
                     "min_cpgs",
@@ -2244,11 +2447,14 @@ findDMRsFromSeeds <- function(
                     "chr_start_base",
                     "chr_subset_to_full_idx",
                     "chr_full_locs",
-                    "verbose",
-                    "p_ext"
+                    "chr_locs_idx_map"
                 )
             )
             .finalizeParallel()
+        }
+        chr_ret <- unlist(chr_ret, recursive = FALSE, use.names = FALSE)
+        if (verbose > 0 && !is.null(p_ext) && length(chr_ret) > 0L) {
+            p_ext(amount = length(chr_ret))
         }
         .log_info("Chromosome ", chr, ": Number of DMRs processed: ", length(chr_ret), level = 2)
         ret <- c(ret, chr_ret)
@@ -2517,13 +2723,13 @@ findDMRsFromSeeds <- function(
 
     if (annotate_with_genes) {
         .log_step("Annotating DMRs with gene information...", level = 1)
-        annotated_dmrs <- annotateDMRsWithGenes(annotated_dmrs, genome = genome)
+        annotated_dmrs <- annotateDMRsWithGenes(annotated_dmrs, genome = genome, njobs = njobs)
         .log_success("DMR annotation completed.", level = 1)
     }
 
-    if (rank_dmrs) {
-        .log_step("Ranking DMRs...", level = 1)
-        annotated_dmrs <- rankDMRs(
+    if (.score_dmrs) {
+        .log_step("scoring DMRs...", level = 1)
+        annotated_dmrs <- scoreDMRs(
             annotated_dmrs,
             beta = beta,
             pheno = pheno_all,
@@ -2534,11 +2740,10 @@ findDMRsFromSeeds <- function(
             covariates = covariates,
             njobs = njobs
         )
-        .log_success("DMR ranking completed.", level = 1)
+        .log_success("DMR scoring completed.", level = 1)
     }
 
 
-    
     if (is.data.frame(annotated_dmrs)) {
         annotated_dmrs <- convertToGRanges(annotated_dmrs, genome = genome)
     }
@@ -2558,14 +2763,14 @@ findDMRsFromSeeds <- function(
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
-        final_dmrs_export <- final_dmrs
-        list_cols <- vapply(final_dmrs_export, is.list, logical(1))
-        if (any(list_cols)) {
-            .log_warn(
-                "Dropping non-tabular columns from TSV output: ",
-                paste(names(final_dmrs_export)[list_cols], collapse = ",")
+        encoded_dmrs <- .encodeNonTabularColumns(final_dmrs)
+        final_dmrs_export <- encoded_dmrs$data
+        if (length(encoded_dmrs$encoded_columns) > 0L) {
+            .log_info(
+                "Serialized non-tabular columns for TSV output: ",
+                paste(encoded_dmrs$encoded_columns, collapse = ","),
+                level = 2
             )
-            final_dmrs_export <- final_dmrs_export[, !list_cols, drop = FALSE]
         }
         gz <- gzfile(dmrs_file, "w")
         write.table(

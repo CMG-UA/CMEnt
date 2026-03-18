@@ -17,7 +17,7 @@
 #'     sample_group_col = "Sample_Group",
 #'     casecontrol_col = "casecontrol",
 #'     array = "450K",
-#'     genome = "hg38",
+#'     genome = NULL,
 #'     output_prefix = "my_analysis",
 #'     njobs = 4,
 #'     verbose = 1,
@@ -35,8 +35,12 @@ findDMRsFromSeedsCLI <- function(args) {
     if (!is.null(covariates)) {
         covariates <- strsplit(covariates, ",")[[1]]
     }
-    if (tolower(array) == "null") {
+    if (!is.null(array) && tolower(array) == "null") {
         array <- NULL
+    }
+    genome <- args$genome
+    if (!is.null(genome) && tolower(genome) == "null") {
+        genome <- NULL
     }
     # Prepare arguments for findDMRsFromSeeds
     input_args <- list(
@@ -49,7 +53,7 @@ findDMRsFromSeedsCLI <- function(args) {
         adaptive_min_cpg_delta_beta = args$adaptive_min_cpg_delta_beta,
         expansion_step = args$expansion_step,
         array = array,
-        genome = args$genome,
+        genome = genome,
         max_pval = args$max_pval,
         max_lookup_dist = args$max_lookup_dist,
         expansion_window = args$expansion_window,

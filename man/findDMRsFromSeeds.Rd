@@ -16,7 +16,7 @@ findDMRsFromSeeds(
   adaptive_min_cpg_delta_beta = TRUE,
   expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
-  genome = "hg38",
+  genome = NULL,
   max_pval = 0.05,
   entanglement = c("strong", "weak"),
   pval_mode = c("auto", "parametric", "empirical"),
@@ -37,7 +37,7 @@ findDMRsFromSeeds(
   chunk_size = getOption("DMRsegal.chunk_size", 10000),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
-  rank_dmrs = TRUE,
+  .score_dmrs = TRUE,
   extract_motifs = TRUE,
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
@@ -69,7 +69,7 @@ findDMRsFromSeeds(
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
-\item{genome}{Character. Genome version. Default is "hg38".}
+\item{genome}{Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 
@@ -109,7 +109,7 @@ findDMRsFromSeeds(
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
-\item{rank_dmrs}{Logical. Whether to rank DMRs based on significance and effect size. Default is TRUE.}
+\item{.score_dmrs}{Logical. Whether to score DMRs based on significance and effect size. Default is TRUE.}
 
 \item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 

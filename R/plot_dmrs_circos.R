@@ -249,10 +249,10 @@
     if (is.null(link_data) || nrow(link_data) == 0) {
         return(link_data)
     }
-    if ("component_best_rank" %in% colnames(link_data) && any(is.finite(link_data$component_best_rank))) {
-        rank_vec <- link_data$component_best_rank
-        rank_vec[!is.finite(rank_vec)] <- Inf
-        ord <- order(rank_vec, -link_data$sim, link_data$component_id)
+    if ("component_best_score" %in% colnames(link_data) && any(is.finite(link_data$component_best_score))) {
+        score_vec <- link_data$component_best_score
+        score_vec[!is.finite(score_vec)] <- 0
+        ord <- order(-score_vec, -link_data$sim, link_data$component_id)
     } else {
         ord <- order(-link_data$sim, link_data$component_id)
     }
@@ -328,11 +328,6 @@
 .getCircosDMRPriority <- function(dmrs) {
     n <- length(dmrs)
     mcols_df <- S4Vectors::mcols(dmrs)
-    ranks <- if ("rank" %in% colnames(mcols_df)) {
-        suppressWarnings(as.numeric(mcols_df$rank))
-    } else {
-        rep(NA_real_, n)
-    }
     scores <- if ("score" %in% colnames(mcols_df)) {
         suppressWarnings(as.numeric(mcols_df$score))
     } else {
@@ -344,9 +339,8 @@
         rep(NA_real_, n)
     }
     ord <- order(
-        ifelse(is.finite(ranks), ranks, Inf),
-        ifelse(is.finite(scores), -scores, Inf),
-        ifelse(is.finite(abs_delta), -abs_delta, Inf),
+        ifelse(is.finite(scores), -scores, 0),
+        ifelse(is.finite(abs_delta), -abs_delta, 0),
         seq_len(n)
     )
     priority <- integer(n)
@@ -397,7 +391,7 @@
         candidates$priority,
         -candidates$annotation_priority,
         -candidates$size,
-        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, -Inf),
+        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, 0),
         candidates$chr,
         candidates$start
     ), , drop = FALSE]
@@ -426,7 +420,7 @@
     candidates <- candidates[order(
         candidates$priority,
         -candidates$annotation_priority,
-        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, -Inf),
+        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, 0),
         candidates$chr,
         candidates$start
     ), , drop = FALSE]
@@ -484,7 +478,7 @@
         candidates$priority,
         -candidates$annotation_priority,
         -candidates$size,
-        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, -Inf),
+        -ifelse(is.finite(candidates$mean_abs_delta), candidates$mean_abs_delta, 0),
         candidates$chr,
         candidates$start
     ), , drop = FALSE]
@@ -1177,7 +1171,7 @@ plotDMRsCircos <- function(dmrs,
         link_data$has_jaspar_match <- !is.na(link_data$has_jaspar_match) & link_data$has_jaspar_match
         comp_data <- link_data[
             !duplicated(link_data$component_id),
-            c("component_id", "size", "consensus_seq", "jaspar_names", "jaspar_corr", "has_jaspar_match", "component_best_rank"),
+            c("component_id", "size", "consensus_seq", "jaspar_names", "jaspar_corr", "has_jaspar_match", "component_best_score"),
             drop = FALSE
         ]
 
@@ -1187,10 +1181,10 @@ plotDMRsCircos <- function(dmrs,
         )
         matched_components <- comp_data[comp_data$has_jaspar_match, , drop = FALSE]
         if (nrow(matched_components) > 0) {
-            rank_vec <- matched_components$component_best_rank
-            rank_vec[!is.finite(rank_vec)] <- Inf
+            score_vec <- matched_components$component_best_score
+            score_vec[!is.finite(score_vec)] <- 0
             matched_components <- matched_components[
-                order(rank_vec, -matched_components$size, matched_components$component_id),
+                order(-score_vec, -matched_components$size, matched_components$component_id),
                 ,
                 drop = FALSE
             ]
@@ -1223,17 +1217,17 @@ plotDMRsCircos <- function(dmrs,
         link_legend_labels <- NULL
         legend_components <- comp_data[comp_data$has_jaspar_match, , drop = FALSE]
         if (nrow(legend_components) > 0) {
-            rank_vec <- legend_components$component_best_rank
-            rank_vec[!is.finite(rank_vec)] <- Inf
-            legend_components <- legend_components[order(rank_vec, legend_components$component_id), , drop = FALSE]
+            score_vec <- legend_components$component_best_score
+            score_vec[!is.finite(score_vec)] <- 0
+            legend_components <- legend_components[order(-score_vec, legend_components$component_id), , drop = FALSE]
             link_legend_colors <- component_colors[as.character(legend_components$component_id)]
             link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
-                rank_prefix <- if (is.finite(legend_components$component_best_rank[i])) {
-                    paste0("[rank=", as.integer(legend_components$component_best_rank[i]), "] ")
+                score_prefix <- if (is.finite(legend_components$component_best_score[i])) {
+                    paste0("[score=", as.integer(legend_components$component_best_score[i]), "] ")
                 } else {
                     ""
                 }
-                label <- paste0(rank_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
+                label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
                 if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
                     jas_names <- trimws(strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
                     jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
@@ -1275,8 +1269,8 @@ plotDMRsCircos <- function(dmrs,
             )
         }
 
-        has_directionality <- "rank" %in% colnames(S4Vectors::mcols(dmrs)) &&
-            any(is.finite(suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$rank))))
+        has_directionality <- "score" %in% colnames(S4Vectors::mcols(dmrs)) &&
+            any(is.finite(suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$score))))
         directional_flag <- if (has_directionality) 1 else 0
         for (i in seq_len(nrow(link_data))) {
             point1 <- c(link_data$start1[i], link_data$end1[i])
@@ -1367,8 +1361,8 @@ plotDMRsCircos <- function(dmrs,
 #'
 #' @description Selects a small set of informative genomic windows from the input DMRs
 #' and forwards them to [plotDMRsCircos()]. The default `blocks` mode prefers
-#' localized ranked DMR blocks when `block_id` is available, while `quick` mode
-#' falls back to top-ranked individual DMR windows. Both selectors are greedy and
+#' localized high-scoring DMR blocks when `block_id` is available, while `quick` mode
+#' falls back to top-scoring individual DMR windows. Both selectors are greedy and
 #' avoid exhaustive optimization to keep region finding inexpensive.
 #'
 #' @param method Character. Automatic region selection mode: `"blocks"` (default),
@@ -1729,27 +1723,27 @@ plotAutoDMRsCircos <- function(dmrs,
     }
 
     link_data$has_jaspar_match <- .hasNonEmptyString(link_data$jaspar_names)
-    if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
-        ranks <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$rank))
-        pair_rank <- pmin(ranks[link_data$index1], ranks[link_data$index2], na.rm = TRUE)
-        pair_rank[!is.finite(pair_rank)] <- NA_real_
-        link_data$interaction_rank <- pair_rank
-        comp_rank_df <- stats::aggregate(
-            interaction_rank ~ component_id,
+    if ("score" %in% colnames(S4Vectors::mcols(dmrs))) {
+        scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)$score))
+        pair_score <- pmax(scores[link_data$index1], scores[link_data$index2], na.rm = TRUE)
+        pair_score[!is.finite(pair_score)] <- NA_real_
+        link_data$interaction_score <- pair_score
+        comp_score_df <- stats::aggregate(
+            interaction_score ~ component_id,
             data = link_data,
             FUN = function(x) {
                 x <- x[is.finite(x)]
                 if (length(x) == 0) {
                     NA_real_
                 } else {
-                    min(x)
+                    max(x)
                 }
             }
         )
-        colnames(comp_rank_df)[colnames(comp_rank_df) == "interaction_rank"] <- "component_best_rank"
-        link_data <- merge(link_data, comp_rank_df, by = "component_id", all.x = TRUE, sort = FALSE)
+        colnames(comp_score_df)[colnames(comp_score_df) == "interaction_score"] <- "component_best_score"
+        link_data <- merge(link_data, comp_score_df, by = "component_id", all.x = TRUE, sort = FALSE)
     } else {
-        link_data$component_best_rank <- NA_real_
+        link_data$component_best_score <- NA_real_
     }
 
     original_n <- nrow(link_data)

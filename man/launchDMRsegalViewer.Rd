@@ -6,10 +6,6 @@
 \usage{
 launchDMRsegalViewer(
   output_prefix,
-  pheno = NULL,
-  genome = "hg38",
-  array = c("450K", "27K", "EPIC", "EPICv2"),
-  sample_group_col = "Sample_Group",
   launch_browser = TRUE,
   port = NULL,
   ...
@@ -18,21 +14,16 @@ launchDMRsegalViewer(
 \arguments{
 \item{output_prefix}{Character. Prefix used when saving DMR analysis results.
 The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
-\code{{output_prefix}.seeds_beta.tsv.gz}, and optionally interaction/component files.}
-
-\item{pheno}{Data frame or path to phenotype file. Required for heatmap visualizations.}
-
-\item{genome}{Character. Genome assembly (default: "hg38").}
-
-\item{array}{Character. Array platform: "450K", "27K", "EPIC", or "EPICv2" (default: "450K").}
-
-\item{sample_group_col}{Character. Column name in pheno for sample grouping (default: "Sample_Group").}
+\code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}_meta.rds}.}
 
 \item{launch_browser}{Logical. Whether to launch in browser (default: TRUE).}
 
 \item{port}{Integer. Port number for Shiny server (default: auto-assigned).}
 
-\item{...}{Additional arguments passed to \code{\link[shiny]{runApp}}.}
+\item{...}{Additional arguments passed to \code{\link[shiny]{runApp}}.
+Deprecated viewer data arguments (\code{pheno}, \code{genome}, \code{array},
+\code{sample_group_col}) are ignored because the viewer now loads them from
+\code{{output_prefix}_meta.rds}.}
 }
 \value{
 Invisibly returns the Shiny app object.
@@ -56,6 +47,7 @@ The function expects the following output files from \code{findDMRsFromSeeds}:
 \itemize{
 \item \code{{output_prefix}.dmrs.tsv.gz} - Main DMR results (required)
 \item \code{{output_prefix}.seeds_beta.tsv.gz} - Beta values for seeds (required)
+\item \code{{output_prefix}_meta.rds} - Viewer metadata with phenotype, array, and genome information (required)
 \item \code{{output_prefix}dmr_interactions.csv} - DMR interactions (optional)
 \item \code{{output_prefix}dmr_components.csv} - Motif components (optional)
 }
@@ -64,10 +56,7 @@ The function expects the following output files from \code{findDMRsFromSeeds}:
 \dontrun{
 # After running findDMRsFromSeeds with output_prefix = "my_analysis"
 launchDMRsegalViewer(
-  output_prefix = "results/my_analysis",
-  pheno = pheno_df,
-  genome = "hg38",
-  array = "EPIC"
+  output_prefix = "results/my_analysis"
 )
 }
 

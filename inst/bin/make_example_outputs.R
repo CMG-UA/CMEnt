@@ -29,8 +29,10 @@ for (case in names(files_to_make)) {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         covariates = c("Age", "Gender"),
-        max_bridge_seeds_gaps  = 1,
-        max_bridge_extension_gaps = 1,
+        max_bridge_seeds_gaps  = 0,
+        max_bridge_extension_gaps = 3,
+        array = "450K",
+        genome = "hg19",
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
@@ -38,7 +40,7 @@ for (case in names(files_to_make)) {
         pval_mode = "parametric",
         entanglement = "weak",
         output_prefix = paste0("inst/extdata/", case),
-        rank_dmrs = TRUE
+        .score_dmrs = TRUE
     ))
     saveRDS(dmrs_dmrsegal, dmrsegal_file)
 }

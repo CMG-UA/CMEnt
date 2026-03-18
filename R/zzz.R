@@ -34,7 +34,7 @@ update_package_option(
     "DMRsegal.jaspar_cache_dir", mode = "character",
     default = .getOSCacheDir(file.path("R", "DMRsegal", "jaspar_cache"))
 )
-update_package_option("DMRsegal.ranking_nfold", mode = "numeric", default = 5)
+update_package_option("DMRsegal.scoring_nfold", mode = "numeric", default = 5)
 update_package_option("DMRsegal.min_motif_similarity", mode = "numeric", default = 0.8)
 update_package_option("DMRsegal.jaspar_version", mode = "numeric", default = 2024)
 update_package_option("DMRsegal.jaspar_tax_group", mode = "character", default = "vertebrates")

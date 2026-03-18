@@ -10,25 +10,10 @@ test_that("plotDMRsManhattan returns a ggplot object", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- plotDMRsManhattan(dmrs, score_col = "score", genome = "hg19")
+    p <- plotDMRsManhattan(dmrs, genome = "hg19")
     expect_s3_class(p, "ggplot")
 })
 
-test_that("plotDMRsManhattan validates score column", {
-    dmrs_path <- system.file("extdata/example_output.rds", package = "DMRsegal")
-    if (!nzchar(dmrs_path) || !file.exists(dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-    dmrs <- readRDS(dmrs_path)
-    if (is.null(dmrs) || length(dmrs) == 0) {
-        skip("Benchmark DMRs not available")
-    }
-
-    expect_error(
-        plotDMRsManhattan(dmrs, score_col = "missing_score_col", genome = "hg19"),
-        "not found"
-    )
-})
 
 test_that("plotDMRsManhattan draws block rectangles when block ids are present", {
     dmrs <- GenomicRanges::GRanges(
@@ -41,7 +26,7 @@ test_that("plotDMRsManhattan draws block rectangles when block ids are present",
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA, NA)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_block1", "chr1_block1", NA, NA)
 
-    p <- plotDMRsManhattan(dmrs, score_col = "score", genome = "hg19")
+    p <- plotDMRsManhattan(dmrs, genome = "hg19")
     geom_classes <- vapply(p$layers, function(layer) class(layer$geom)[1], character(1))
 
     expect_true("GeomRect" %in% geom_classes)
@@ -60,7 +45,7 @@ test_that(".selectCircosInteractions prioritizes JASPAR-matched interactions", {
         component_id = c(1, 1, 2, 2, 3),
         sim = c(0.91, 0.90, 0.89, 0.88, 0.87),
         has_jaspar_match = c(TRUE, FALSE, TRUE, FALSE, FALSE),
-        component_best_rank = c(1, 1, 2, 2, 3),
+        component_best_score = c(1, 1, 2, 2, 3),
         stringsAsFactors = FALSE
     )
 

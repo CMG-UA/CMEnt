@@ -7,7 +7,6 @@
 plotDMRBlockFormation(
   dmrs,
   chromosome,
-  score_col = "score",
   genome = "hg38",
   k_neighbors = 5L,
   min_segment_size = 2L,
@@ -23,12 +22,9 @@ plotDMRBlockFormation(
 }
 \arguments{
 \item{dmrs}{GRanges object or data frame. DMR results from \code{findDMRsFromSeeds}
-or \code{rankDMRs}.}
+or \code{scoreDMRs}.}
 
 \item{chromosome}{Character. Chromosome to inspect (e.g., \code{"chr7"} or \code{"7"}).}
-
-\item{score_col}{Character. Metadata column used for y-axis values
-(default: \code{"score"}).}
 
 \item{genome}{Character. Genome version passed to \code{convertToGRanges}
 (default: \code{"hg38"}).}

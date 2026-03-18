@@ -192,7 +192,7 @@ test_that(".selectCircosRegions respects region caps and block priority", {
         ),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
-    S4Vectors::mcols(dmrs)$rank <- c(1, 2, 6, 3, 4, 5)
+    S4Vectors::mcols(dmrs)$score <- c(1, 2, 6, 3, 4, 5)
     S4Vectors::mcols(dmrs)$delta_beta <- c(0.4, 0.3, 0.1, 0.35, 0.34, 0.2)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_b1", "chr1_b1", "chr1_b2", "chr2_b1", "chr2_b1", NA)
 
@@ -220,7 +220,7 @@ test_that(".selectCircosRegions supports component and hybrid candidate selectio
         ),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
-    S4Vectors::mcols(dmrs)$rank <- c(1, 2, 4, 5, 3)
+    S4Vectors::mcols(dmrs)$score <- c(1, 2, 4, 5, 3)
     S4Vectors::mcols(dmrs)$delta_beta <- c(0.45, 0.41, 0.3, 0.28, 0.34)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_b1", "chr1_b1", NA, NA, "chr3_b1")
 

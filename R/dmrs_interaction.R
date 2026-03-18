@@ -312,7 +312,7 @@ extractDMRMotifs <- function(
 #'
 #' @description Computes motif-based interactions between DMRs based on their
 #' motif similarity. Identifies pairs of DMRs with significant motif similarity
-#' and returns a data frame of interactions. Assigns directionality based on ranking, if available.
+#' and returns a data frame of interactions. Assigns directionality based on score, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction (e.g., "hg38")
 #' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
@@ -420,12 +420,12 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
         ))
     }
-    has_rank <- inherits(dmrs, "GRanges") && "rank" %in% colnames(mcols(dmrs))
+    has_score <- inherits(dmrs, "GRanges") && "score" %in% colnames(mcols(dmrs))
     if (any(mask)) {
-        if (has_rank) {
+        if (has_score) {
             rowcol_df <- which(mask, arr.ind = TRUE)
-            ranks <- mcols(dmrs)$rank
-            keep <- ranks[rowcol_df[, 1]] <= ranks[rowcol_df[, 2]]
+            scores <- mcols(dmrs)$score
+            keep <- scores[rowcol_df[, 1]] >= scores[rowcol_df[, 2]]
             rowcol_df <- rowcol_df[keep, , drop = FALSE]
             oriented_mask <- matrix(FALSE, nrow = nrow(mask), ncol = ncol(mask))
             oriented_mask[rowcol_df] <- TRUE
@@ -453,7 +453,7 @@ computeDMRsInteraction <- function(
 
     if (find_components) {
         # Components should represent undirected interaction connectivity, even when
-        # interaction links are oriented by rank.
+        # interaction links are oriented by score
         component_mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_similarity)
         diag(component_mask) <- FALSE
         component_mask <- component_mask | t(component_mask)

@@ -6,7 +6,6 @@
 \usage{
 plotDMRsManhattan(
   dmrs,
-  score_col = "score",
   genome = "hg38",
   promoter_col = "in_promoter_of",
   gene_body_col = "in_gene_body_of",
@@ -23,9 +22,6 @@ plotDMRsManhattan(
 }
 \arguments{
 \item{dmrs}{GRanges object or data frame. DMR results from findDMRsFromSeeds.}
-
-\item{score_col}{Character. Metadata column used for y-axis values (default: \code{"score"}).}
-
 \item{genome}{Character. Genome version passed to \code{convertToGRanges} (default: \code{"hg38"}).}
 
 \item{promoter_col}{Character. Metadata column indicating promoter overlap (default: \code{"in_promoter_of"}).}

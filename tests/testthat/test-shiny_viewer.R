@@ -35,6 +35,13 @@ test_that("validateOutputPrefix warns about missing optional files", {
     )
     close(gz)
 
+    meta_file <- paste0(prefix, "_meta.rds")
+    saveRDS(list(
+        pheno = data.frame(Sample_Name = c("S1", "S2"), Sample_Group = c("case", "control")),
+        genome = "hg19",
+        array = "450K"
+    ), meta_file)
+
     result <- DMRsegal:::.validateOutputPrefix(prefix)
     expect_true(result$valid)
     expect_equal(length(result$errors), 0)
@@ -53,9 +60,4 @@ test_that("Shiny module UI functions return tagList", {
     expect_s3_class(DMRsegal:::.manhattanUI("test"), "shiny.tag.list")
     expect_s3_class(DMRsegal:::.blockFormationUI("test"), "shiny.tag.list")
     expect_s3_class(DMRsegal:::.circosUI("test"), "shiny.tag.list")
-})
-
-test_that("createViewerUI returns a shiny UI object", {
-    ui <- DMRsegal:::.createViewerUI()
-    expect_s3_class(ui, "bslib_page")
 })

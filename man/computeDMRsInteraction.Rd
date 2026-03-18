@@ -58,7 +58,7 @@ each DMR (or \code{NA} when the DMR is not part of a retained component)
 \description{
 Computes motif-based interactions between DMRs based on their
 motif similarity. Identifies pairs of DMRs with significant motif similarity
-and returns a data frame of interactions. Assigns directionality based on ranking, if available.
+and returns a data frame of interactions. Assigns directionality based on scoring, if available.
 }
 \examples{
 # Compute motif-based interactions for DMRs

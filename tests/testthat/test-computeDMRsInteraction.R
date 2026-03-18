@@ -191,11 +191,11 @@ test_that("computeDMRsInteraction validates similarity values", {
 })
 
 
-test_that("computeDMRsInteraction assigns contiguous positive component IDs when ranks exist", {
+test_that("computeDMRsInteraction assigns contiguous positive component IDs when scores exist", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
-    mcols(dmrs)$rank <- seq_along(dmrs)
+    mcols(dmrs)$score <- seq_along(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,

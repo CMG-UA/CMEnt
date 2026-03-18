@@ -65,7 +65,7 @@ NULL
 
         output$n_samples <- shiny::renderText({
             shiny::req(data$beta)
-            as.character(ncol(data$beta) - 1)
+            as.character(ncol(data$beta))
         })
 
         output$genome_info <- shiny::renderText({
@@ -105,7 +105,7 @@ NULL
             dmrs_df <- filtered_dmrs()
             display_cols <- intersect(
                 c("id", "chr", "start", "end", "width", "cpgs_num", "seeds_num",
-                  "delta_beta", "cases_beta", "controls_beta", "rank", "block_id",
+                  "delta_beta", "cases_beta", "controls_beta", "score", "block_id",
                   "in_promoter_of", "in_gene_body_of"),
                 colnames(dmrs_df)
             )
@@ -143,7 +143,6 @@ NULL
                         shiny::numericInput(ns("max_cpgs"), "Max CpGs", value = 100, min = 10, max = 500, step = 10),
                         shiny::numericInput(ns("max_samples_per_group"), "Max Samples/Group", value = 10, min = 1, max = 50, step = 1),
                         shiny::checkboxInput(ns("plot_motif"), "Show Motif Logo", value = TRUE),
-                        shiny::numericInput(ns("motif_cpg_flank_size"), "Motif Flank Size", value = 5, min = 1, max = 20, step = 1),
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
@@ -191,9 +190,7 @@ NULL
             list(
                 dmr_index = input$dmr_index,
                 max_cpgs = input$max_cpgs,
-                max_samples_per_group = input$max_samples_per_group,
-                plot_motif = input$plot_motif,
-                motif_cpg_flank_size = input$motif_cpg_flank_size
+                max_samples_per_group = input$max_samples_per_group
             )
         })
 
@@ -216,8 +213,6 @@ NULL
                     sample_group_col = data$sample_group_col,
                     max_cpgs = params$max_cpgs,
                     max_samples_per_group = params$max_samples_per_group,
-                    plot_motif = params$plot_motif,
-                    motif_cpg_flank_size = params$motif_cpg_flank_size,
                     plot_title = TRUE
                 )
             })
@@ -240,8 +235,6 @@ NULL
                     sample_group_col = data$sample_group_col,
                     max_cpgs = params$max_cpgs,
                     max_samples_per_group = params$max_samples_per_group,
-                    plot_motif = params$plot_motif,
-                    motif_cpg_flank_size = params$motif_cpg_flank_size,
                     output_file = file
                 )
             }
@@ -353,11 +346,9 @@ NULL
                 bslib::card(
                     bslib::card_header("Manhattan Plot Settings"),
                     bslib::card_body(
-                        shiny::selectInput(ns("score_col"), "Score Column", choices = c("score", "delta_beta")),
                         shiny::checkboxInput(ns("show_blocks"), "Show Blocks", value = TRUE),
                         shiny::sliderInput(ns("point_size"), "Point Size", min = 0.5, max = 3, value = 1.1, step = 0.1),
                         shiny::sliderInput(ns("point_alpha"), "Point Transparency", min = 0.1, max = 1, value = 0.75, step = 0.05),
-                        shiny::sliderInput(ns("block_alpha"), "Block Transparency", min = 0.05, max = 0.5, value = 0.12, step = 0.01),
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
@@ -381,19 +372,14 @@ NULL
     shiny::moduleServer(id, function(input, output, session) {
         shiny::observe({
             shiny::req(data$dmrs)
-            cols <- colnames(S4Vectors::mcols(data$dmrs))
-            score_cols <- intersect(c("score", "rank", "delta_beta"), cols)
-            shiny::updateSelectInput(session, "score_col", choices = score_cols)
         })
 
         plot_data <- shiny::eventReactive(input$generate_plot, {
             shiny::req(data$dmrs)
             list(
-                score_col = input$score_col,
                 show_blocks = input$show_blocks,
                 point_size = input$point_size,
-                point_alpha = input$point_alpha,
-                block_alpha = input$block_alpha
+                point_alpha = input$point_alpha
             )
         })
 
@@ -403,12 +389,10 @@ NULL
             shiny::withProgress(message = "Generating Manhattan plot...", value = 0.5, {
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
-                    score_col = params$score_col,
                     genome = data$genome,
                     show_blocks = params$show_blocks,
                     point_size = params$point_size,
-                    point_alpha = params$point_alpha,
-                    block_alpha = params$block_alpha
+                    point_alpha = params$point_alpha
                 )
             })
         }, res = 100)
@@ -422,12 +406,10 @@ NULL
                 shiny::req(params)
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
-                    score_col = params$score_col,
                     genome = data$genome,
                     show_blocks = params$show_blocks,
                     point_size = params$point_size,
                     point_alpha = params$point_alpha,
-                    block_alpha = params$block_alpha,
                     output_file = file,
                     width = 14,
                     height = 6
@@ -446,7 +428,6 @@ NULL
                     bslib::card_header("Block Formation Settings"),
                     bslib::card_body(
                         shiny::selectInput(ns("chromosome"), "Chromosome", choices = c()),
-                        shiny::selectInput(ns("score_col"), "Score Column", choices = c("score")),
                         shiny::hr(),
                         shiny::h6("Block Gap Mode"),
                         shiny::radioButtons(ns("block_gap_mode"), NULL,
@@ -483,17 +464,12 @@ NULL
             chrs <- unique(as.character(GenomicRanges::seqnames(data$dmrs)))
             chrs <- chrs[order(suppressWarnings(as.numeric(gsub("chr", "", chrs, ignore.case = TRUE))))]
             shiny::updateSelectInput(session, "chromosome", choices = chrs)
-
-            cols <- colnames(S4Vectors::mcols(data$dmrs))
-            score_cols <- intersect(c("score", "rank", "delta_beta"), cols)
-            shiny::updateSelectInput(session, "score_col", choices = score_cols)
         })
 
         plot_data <- shiny::eventReactive(input$generate_plot, {
             shiny::req(data$dmrs, input$chromosome)
             list(
                 chromosome = input$chromosome,
-                score_col = input$score_col,
                 block_gap_mode = input$block_gap_mode,
                 block_gap_fixed_bp = input$block_gap_fixed_bp,
                 k_neighbors = input$k_neighbors
@@ -507,7 +483,6 @@ NULL
                 plotDMRBlockFormation(
                     dmrs = data$dmrs,
                     chromosome = params$chromosome,
-                    score_col = params$score_col,
                     genome = data$genome,
                     k_neighbors = params$k_neighbors,
                     block_gap_mode = params$block_gap_mode,

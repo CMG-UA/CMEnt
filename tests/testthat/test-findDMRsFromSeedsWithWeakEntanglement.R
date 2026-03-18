@@ -9,7 +9,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
 
 
     dmrs_relaxed <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -36,7 +36,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
     handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
 
     dmrs_strict <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -51,7 +51,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
     )
 
     dmrs_relaxed <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -78,7 +78,7 @@ test_that("entanglement parameter validates correctly", {
 
     expect_error(
         findDMRsFromSeeds(
-            rank_dmrs = FALSE,
+            .score_dmrs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno,

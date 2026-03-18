@@ -2009,6 +2009,57 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
     sequences
 }
 
+#' @keywords internal
+#' @noRd
+.annotateDMRsWithGeneFeature <- function(dmrs, features, orgdb_pkg,
+                                         feature_type = c("promoter", "gene_body")) {
+    feature_type <- match.arg(feature_type)
+    annotations <- rep(NA_character_, length(dmrs))
+    if (length(dmrs) == 0L || length(features) == 0L) {
+        return(annotations)
+    }
+
+    overlaps <- GenomicRanges::findOverlaps(dmrs, features)
+    if (length(overlaps) == 0L) {
+        return(annotations)
+    }
+
+    if (!isNamespaceLoaded(orgdb_pkg)) {
+        loadNamespace(orgdb_pkg)
+    }
+    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
+    feature_hits <- S4Vectors::subjectHits(overlaps)
+    entrez_ids <- switch(feature_type,
+        promoter = as.character(S4Vectors::mcols(features[feature_hits])$name),
+        gene_body = as.character(names(features)[feature_hits])
+    )
+    valid_entrez_ids <- unique(entrez_ids[!is.na(entrez_ids) & nzchar(entrez_ids)])
+    if (length(valid_entrez_ids) == 0L) {
+        return(annotations)
+    }
+
+    symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
+        keys = valid_entrez_ids,
+        column = "SYMBOL",
+        keytype = "ENTREZID",
+        multiVals = "first"
+    ))
+    names(symbols) <- valid_entrez_ids
+    symbols_by_dmr <- split(
+        symbols[entrez_ids],
+        S4Vectors::queryHits(overlaps)
+    )
+    collapsed_symbols <- vapply(symbols_by_dmr, function(x) {
+        genes_vec <- unique(stats::na.omit(as.character(x)))
+        if (length(genes_vec) == 0L) {
+            return(NA_character_)
+        }
+        paste(genes_vec, collapse = ",")
+    }, character(1))
+    annotations[as.integer(names(collapsed_symbols))] <- unname(collapsed_symbols)
+    annotations
+}
+
 #' Annotate DMRs with Gene Information
 #'
 #' @description Annotates DMRs with overlapping gene promoters and gene bodies
@@ -2021,6 +2072,8 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #'   define promoter region (default: 2000)
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
 #'   to define promoter region (default: 200)
+#' @param njobs Integer. Number of parallel jobs used to annotate promoter and
+#'   gene-body overlaps (default: `getOption("DMRsegal.njobs")`)
 #'
 #' @return The input Dataframe/GRanges object with additional metadata columns:
 #' \itemize{
@@ -2048,13 +2101,15 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #'     dmrs,
 #'     genome = "hg38",
 #'     promoter_upstream = 5000,
-#'     promoter_downstream = 1000
+#'     promoter_downstream = 1000,
+#'     njobs = 2
 #' )
 #'
 #' @export
 annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
-                                  promoter_downstream = 200) {
+                                  promoter_downstream = 200,
+                                  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
     cache_dir <- getOption(
         "DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
@@ -2173,93 +2228,57 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     })
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
     .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
-
-    # Find overlaps
-    promoter_overlaps <- GenomicRanges::findOverlaps(dmrs, promoters)
-    gene_body_overlaps <- GenomicRanges::findOverlaps(dmrs, genes)
-
-    # Load org.db namespace
-    if (!isNamespaceLoaded(orgdb_pkg)) {
-        loadNamespace(orgdb_pkg)
-    }
-
-    # Get gene symbols - the main object has the same name as the package
-    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
-
-    # Extract Entrez IDs
-    promoter_regions <- promoters[S4Vectors::subjectHits(promoter_overlaps)]
-
-    promoter_entrez <- as.character(mcols(promoter_regions)$name)
-    gene_body_entrez <- names(genes)[S4Vectors::subjectHits(gene_body_overlaps)]
-
-    # Initialize annotation columns
-    n_dmrs <- length(dmrs)
-    dmrs$in_promoter_of <- rep(NA_character_, n_dmrs)
-    dmrs$in_gene_body_of <- rep(NA_character_, n_dmrs)
     .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
-    # Convert Entrez IDs to symbols only if there are overlaps
-    promoter_symbols <- character(0)
-    if (length(promoter_entrez) > 0 && any(!is.na(promoter_entrez))) {
-        valid_promoter_entrez <- promoter_entrez[!is.na(promoter_entrez) & promoter_entrez != ""]
-        if (length(valid_promoter_entrez) > 0) {
-            promoter_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
-                keys = valid_promoter_entrez,
-                column = "SYMBOL",
-                keytype = "ENTREZID",
-                multiVals = "first"
-            ))
-            names(promoter_symbols) <- valid_promoter_entrez
-        }
+    annotation_specs <- list(
+        list(
+            column = "in_promoter_of",
+            features = promoters,
+            feature_type = "promoter"
+        ),
+        list(
+            column = "in_gene_body_of",
+            features = genes,
+            feature_type = "gene_body"
+        )
+    )
+    if (!is.null(njobs) && is.finite(njobs) && as.integer(njobs) > 1L) {
+        withr::local_options(list(DMRsegal.njobs = as.integer(njobs)))
+        .setupParallel()
+        on.exit(.finalizeParallel(), add = TRUE)
+        annotation_results <- future.apply::future_lapply(
+            annotation_specs,
+            function(spec) {
+                list(
+                    column = spec$column,
+                    values = .annotateDMRsWithGeneFeature(
+                        dmrs = dmrs,
+                        features = spec$features,
+                        orgdb_pkg = orgdb_pkg,
+                        feature_type = spec$feature_type
+                    )
+                )
+            },
+            future.seed = TRUE,
+            future.stdout = NA,
+            future.globals = c(".annotateDMRsWithGeneFeature", "dmrs", "orgdb_pkg")
+        )
+    } else {
+        annotation_results <- lapply(annotation_specs, function(spec) {
+            list(
+                column = spec$column,
+                values = .annotateDMRsWithGeneFeature(
+                    dmrs = dmrs,
+                    features = spec$features,
+                    orgdb_pkg = orgdb_pkg,
+                    feature_type = spec$feature_type
+                )
+            )
+        })
     }
-
-    gene_body_symbols <- character(0)
-    if (length(gene_body_entrez) > 0 && any(!is.na(gene_body_entrez))) {
-        valid_gene_body_entrez <- gene_body_entrez[!is.na(gene_body_entrez) & gene_body_entrez != ""]
-        if (length(valid_gene_body_entrez) > 0) {
-            gene_body_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
-                keys = valid_gene_body_entrez,
-                column = "SYMBOL",
-                keytype = "ENTREZID",
-                multiVals = "first"
-            ))
-            names(gene_body_symbols) <- valid_gene_body_entrez
-        }
+    for (annotation_result in annotation_results) {
+        S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
     .log_success("Gene symbols mapped", level = 2)
-    # Aggregate gene symbols for each DMR
-    if (length(promoter_overlaps) > 0 && length(promoter_symbols) > 0) {
-        promoter_entrez_char <- as.character(promoter_entrez)
-        promoter_symbols_mapped <- promoter_symbols[promoter_entrez_char]
-        promoter_by_dmr <- split(
-            promoter_symbols_mapped,
-            S4Vectors::queryHits(promoter_overlaps)
-        )
-
-        for (i in names(promoter_by_dmr)) {
-            idx <- as.integer(i)
-            genes_vec <- unique(na.omit(promoter_by_dmr[[i]]))
-            if (length(genes_vec) > 0) {
-                dmrs$in_promoter_of[idx] <- paste(genes_vec, collapse = ",")
-            }
-        }
-    }
-
-    if (length(gene_body_overlaps) > 0 && length(gene_body_symbols) > 0) {
-        gene_body_entrez_char <- as.character(gene_body_entrez)
-        gene_body_symbols_mapped <- gene_body_symbols[gene_body_entrez_char]
-        gene_body_by_dmr <- split(
-            gene_body_symbols_mapped,
-            S4Vectors::queryHits(gene_body_overlaps)
-        )
-
-        for (i in names(gene_body_by_dmr)) {
-            idx <- as.integer(i)
-            genes_vec <- unique(na.omit(gene_body_by_dmr[[i]]))
-            if (length(genes_vec) > 0) {
-                dmrs$in_gene_body_of[idx] <- paste(genes_vec, collapse = ",")
-            }
-        }
-    }
     if (dmrs_df_provided) {
         dmrs <- convertToDataFrame(dmrs)
     }
@@ -2269,6 +2288,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
 convertToGRanges <- function(obj, genome) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
+        obj <- .decodeSerializedOutputColumns(obj)
         # If the chr prefix is missing, add it (e.g. "1" -> "chr1")
         if (!any(grepl("^chr", obj[[1]]))) {
             obj[[1]] <- paste0("chr", obj[[1]])
@@ -2301,6 +2321,75 @@ convertToGRanges <- function(obj, genome) {
         }
     }
     obj
+}
+
+.serializedOutputPrefix <- "DMRsegal:serialized_base64:"
+
+#' @keywords internal
+#' @noRd
+.serializeOutputValue <- function(x) {
+    encoded <- jsonlite::base64_enc(serialize(x, connection = NULL, version = 2))
+    encoded <- gsub("[\r\n]", "", encoded)
+    paste0(
+        .serializedOutputPrefix,
+        encoded
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.isSerializedOutputColumn <- function(x) {
+    is.character(x) &&
+        length(x) > 0L &&
+        any(!is.na(x) & startsWith(x, .serializedOutputPrefix)) &&
+        all(is.na(x) | startsWith(x, .serializedOutputPrefix))
+}
+
+#' @keywords internal
+#' @noRd
+.encodeNonTabularColumns <- function(df) {
+    stopifnot(is.data.frame(df))
+
+    encoded_columns <- names(df)[vapply(df, is.list, logical(1))]
+    if (length(encoded_columns) == 0L) {
+        return(list(data = df, encoded_columns = character(0)))
+    }
+
+    encoded_df <- df
+    for (col in encoded_columns) {
+        encoded_df[[col]] <- vapply(encoded_df[[col]], .serializeOutputValue, character(1))
+    }
+
+    list(data = encoded_df, encoded_columns = encoded_columns)
+}
+
+#' @keywords internal
+#' @noRd
+.decodeSerializedOutputColumns <- function(df) {
+    stopifnot(is.data.frame(df))
+
+    serialized_columns <- names(df)[vapply(df, .isSerializedOutputColumn, logical(1))]
+    if (length(serialized_columns) == 0L) {
+        return(df)
+    }
+
+    decoded_df <- df
+    for (col in serialized_columns) {
+        decoded_df[[col]] <- lapply(decoded_df[[col]], function(x) {
+            if (is.na(x) || !startsWith(x, .serializedOutputPrefix)) {
+                return(x)
+            }
+
+            payload <- sub(
+                paste0("^", .serializedOutputPrefix),
+                "",
+                x
+            )
+            unserialize(jsonlite::base64_dec(payload))
+        })
+    }
+
+    decoded_df
 }
 
 convertToDataFrame <- function(gr) {

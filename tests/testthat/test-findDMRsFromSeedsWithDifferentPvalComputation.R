@@ -9,7 +9,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -23,7 +23,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # Test empirical mode with auto strategy
     dmrs_empirical_auto <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -39,7 +39,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # Test automatic p-value mode selection
     dmrs_pval_auto <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -55,7 +55,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # Test empirical mode with montecarlo strategy
     dmrs_empirical_mc <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -71,7 +71,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # Test empirical mode with permutations strategy
     dmrs_empirical_perm <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -114,7 +114,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
 
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -129,7 +129,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     )
     options("DMRsegal.random_seed" = 42)
     dmrs_seed1_run2 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -145,7 +145,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     # Run with different seed
     options("DMRsegal.random_seed" = 123)
     dmrs_seed2 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -178,7 +178,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
 
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -193,7 +193,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
 
     # Test with ntries = 50
     dmrs_ntries_50 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -208,7 +208,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
 
     # Test with ntries = 200
     dmrs_ntries_200 <- findDMRsFromSeeds(
-        rank_dmrs = FALSE,
+        .score_dmrs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,

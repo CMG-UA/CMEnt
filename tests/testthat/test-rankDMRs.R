@@ -1,7 +1,7 @@
-# Test suite for rankDMRs function
+# Test suite for scoreDMRs function
 library(testthat)
 
-test_that("rankDMRs adds score column to DMRs", {
+test_that("scoreDMRs adds score column to DMRs", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
@@ -11,7 +11,7 @@ test_that("rankDMRs adds score column to DMRs", {
 
     expect_false("score" %in% names(mcols(dmrs)))
 
-    ranked_dmrs <- rankDMRs(
+    scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
@@ -19,23 +19,23 @@ test_that("rankDMRs adds score column to DMRs", {
         verbose = 2
     )
 
-    expect_true("score" %in% names(mcols(ranked_dmrs)))
-    expect_true(all(mcols(ranked_dmrs)$score >= 0))
-    expect_true(all(mcols(ranked_dmrs)$score <= 1))
-    expect_true("score_smoothed" %in% names(mcols(ranked_dmrs)))
-    expect_true("segment_id" %in% names(mcols(ranked_dmrs)))
-    expect_true("segment_slope" %in% names(mcols(ranked_dmrs)))
-    expect_true("block_id" %in% names(mcols(ranked_dmrs)))
-    expect_equal(length(dmrs), length(ranked_dmrs))
+    expect_true("score" %in% names(mcols(scoring_dmrs)))
+    expect_true(all(mcols(scoring_dmrs)$score >= 0))
+    expect_true(all(mcols(scoring_dmrs)$score <= 1))
+    expect_true("score_smoothed" %in% names(mcols(scoring_dmrs)))
+    expect_true("segment_id" %in% names(mcols(scoring_dmrs)))
+    expect_true("segment_slope" %in% names(mcols(scoring_dmrs)))
+    expect_true("block_id" %in% names(mcols(scoring_dmrs)))
+    expect_equal(length(dmrs), length(scoring_dmrs))
 })
 
-test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE", {
+test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=TRUE", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs <- findDMRsFromSeeds(
-        rank_dmrs = TRUE,
+        .score_dmrs = TRUE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -52,13 +52,13 @@ test_that("rankDMRs works when called from findDMRsFromSeeds with rank_dmrs=TRUE
     expect_true(all(mcols(dmrs)$score <= 1))
 })
 
-test_that("ignored_sample_groups affects detection only, not downstream ranking", {
+test_that("ignored_sample_groups affects detection only, not downstream scoring", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
-        rank_dmrs = TRUE,
+        .score_dmrs = TRUE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -77,7 +77,7 @@ test_that("ignored_sample_groups affects detection only, not downstream ranking"
     expect_true("cv_accuracy" %in% names(mcols(dmrs)))
 })
 
-test_that("rankDMRs score values are meaningful", {
+test_that("scoreDMRs score values are meaningful", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
@@ -85,18 +85,18 @@ test_that("rankDMRs score values are meaningful", {
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
-    ranked_dmrs <- rankDMRs(
+    scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
         sample_group_col = "Sample_Group"
     )
 
-    expect_true(length(unique(mcols(ranked_dmrs)$score)) > 1)
-    expect_true(any(mcols(ranked_dmrs)$score > 0.5))
+    expect_true(length(unique(mcols(scoring_dmrs)$score)) > 1)
+    expect_true(any(mcols(scoring_dmrs)$score > 0.5))
 })
 
-test_that("rankDMRs works with different nfold values", {
+test_that("scoreDMRs works with different nfold values", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
@@ -104,28 +104,28 @@ test_that("rankDMRs works with different nfold values", {
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
-    options(DMRsegal.ranking_nfold = 3)
-    ranked_dmrs_3fold <- rankDMRs(
+    options(DMRsegal.scoring_nfold = 3)
+    scoring_dmrs_3fold <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
         sample_group_col = "Sample_Group"
     )
 
-    options(DMRsegal.ranking_nfold = 5)
-    ranked_dmrs_5fold <- rankDMRs(
+    options(DMRsegal.scoring_nfold = 5)
+    scoring_dmrs_5fold <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
         sample_group_col = "Sample_Group"
     )
 
-    expect_true("score" %in% names(mcols(ranked_dmrs_3fold)))
-    expect_true("score" %in% names(mcols(ranked_dmrs_5fold)))
-    expect_equal(length(ranked_dmrs_3fold), length(ranked_dmrs_5fold))
+    expect_true("score" %in% names(mcols(scoring_dmrs_3fold)))
+    expect_true("score" %in% names(mcols(scoring_dmrs_5fold)))
+    expect_equal(length(scoring_dmrs_3fold), length(scoring_dmrs_5fold))
 })
 
-test_that("rankDMRs returns DMRs ordered by p-value", {
+test_that("scoreDMRs returns DMRs ordered by p-value", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
@@ -133,14 +133,14 @@ test_that("rankDMRs returns DMRs ordered by p-value", {
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
-    ranked_dmrs <- rankDMRs(
+    scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
         sample_group_col = "Sample_Group"
     )
 
-    pvals <- mcols(ranked_dmrs)$pval
+    pvals <- mcols(scoring_dmrs)$pval
     expect_true(all(diff(pvals) >= 0))
 })
 
@@ -160,7 +160,7 @@ test_that(".assignDMRBlocksFromScores detects increase-plateau-decrease blocks",
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, score_col = "score")
+    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs)
     block_ids <- S4Vectors::mcols(with_blocks)$block_id
 
     expect_true(any(!is.na(block_ids)))
@@ -175,7 +175,7 @@ test_that(".assignDMRBlocksFromScores keeps singleton chromosome entries as NA",
     )
     S4Vectors::mcols(dmrs)$score <- c(0.6, 0.61, 0.9)
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, score_col = "score")
+    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs)
     expect_true(is.na(S4Vectors::mcols(with_blocks)$block_id[3]))
 })
 
@@ -212,10 +212,9 @@ test_that("distance-constrained mode removes over-bridging blocks", {
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    no_gap <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, score_col = "score", block_gap_mode = "none")
+    no_gap <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
     fixed_gap <- DMRsegal:::.assignDMRBlocksFromScores(
         dmrs,
-        score_col = "score",
         block_gap_mode = "fixed",
         block_gap_fixed_bp = 1e6
     )
@@ -251,10 +250,9 @@ test_that("none mode matches effectively unlimited fixed threshold", {
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    none_mode <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, score_col = "score", block_gap_mode = "none")
+    none_mode <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
     huge_fixed <- DMRsegal:::.assignDMRBlocksFromScores(
         dmrs,
-        score_col = "score",
         block_gap_mode = "fixed",
         block_gap_fixed_bp = 1e12
     )
@@ -274,7 +272,7 @@ test_that("adaptive mode enforces maximum internal gap per chromosome block", {
         skip("Benchmark DMRs with score not available")
     }
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, score_col = "score", block_gap_mode = "adaptive")
+    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "adaptive")
     midpoints <- floor((GenomicRanges::start(with_blocks) + GenomicRanges::end(with_blocks)) / 2)
     chrs <- as.character(GenomicRanges::seqnames(with_blocks))
     block_ids <- as.character(S4Vectors::mcols(with_blocks)$block_id)

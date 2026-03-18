@@ -624,8 +624,8 @@ minmaxscale <- function(x) {
     pool_size <- ifelse(is.na(pool_size) || pool_size < 2, min(300L, length(dmrs)), pool_size)
     pool_size <- min(pool_size, length(dmrs))
 
-    if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
-        ord <- order(S4Vectors::mcols(dmrs)$rank, na.last = TRUE)
+    if ("score" %in% colnames(S4Vectors::mcols(dmrs))) {
+        ord <- order(S4Vectors::mcols(dmrs)$score, na.last = TRUE, decreasing = TRUE)
     } else if ("delta_beta" %in% colnames(S4Vectors::mcols(dmrs))) {
         ord <- order(abs(S4Vectors::mcols(dmrs)$delta_beta), decreasing = TRUE, na.last = TRUE)
     } else {
@@ -667,8 +667,8 @@ minmaxscale <- function(x) {
             sim = sim_vec[ord_sim],
             stringsAsFactors = FALSE
         )
-        if ("rank" %in% colnames(S4Vectors::mcols(dmrs))) {
-            top_tbl$rank <- S4Vectors::mcols(dmrs)$rank[top_tbl$dmr_index]
+        if ("score" %in% colnames(S4Vectors::mcols(dmrs))) {
+            top_tbl$score <- S4Vectors::mcols(dmrs)$score[top_tbl$dmr_index]
         }
         ret$top_interactions <- top_tbl
     }
@@ -688,8 +688,8 @@ minmaxscale <- function(x) {
     if (nrow(top_tbl) > 0) {
         lines <- c(lines, "Top motif interactions:")
         for (i in seq_len(min(top_n, nrow(top_tbl)))) {
-            rank_txt <- if ("rank" %in% colnames(top_tbl) && !is.na(top_tbl$rank[i])) {
-                paste0(" rank=", top_tbl$rank[i])
+            score_txt <- if ("score" %in% colnames(top_tbl) && !is.na(top_tbl$score[i])) {
+                paste0(" score=", top_tbl$score[i])
             } else {
                 ""
             }
@@ -701,7 +701,7 @@ minmaxscale <- function(x) {
                 format(top_tbl$start[i], big.mark = ",", scientific = FALSE),
                 format(top_tbl$end[i], big.mark = ",", scientific = FALSE),
                 top_tbl$sim[i],
-                rank_txt
+                score_txt
             ))
         }
     } else {
@@ -1231,10 +1231,8 @@ plotDMR <- function(dmrs,
 #' candidate blocks, distance-based split boundaries, and final accepted blocks.
 #'
 #' @param dmrs GRanges object or data frame. DMR results from `findDMRsFromSeeds`
-#' or `rankDMRs`.
+#' or `scoreDMRs`.
 #' @param chromosome Character. Chromosome to inspect (e.g., `"chr7"` or `"7"`).
-#' @param score_col Character. Metadata column used for y-axis values
-#' (default: `"score"`).
 #' @param genome Character. Genome version passed to `convertToGRanges`
 #' (default: `"hg38"`).
 #' @param k_neighbors Integer. Number of nearest neighbors used in adaptive Gaussian
@@ -1268,7 +1266,6 @@ plotDMR <- function(dmrs,
 #' @export
 plotDMRBlockFormation <- function(dmrs,
                                   chromosome,
-                                  score_col = "score",
                                   genome = "hg38",
                                   k_neighbors = 5L,
                                   min_segment_size = 2L,
@@ -1281,8 +1278,8 @@ plotDMRBlockFormation <- function(dmrs,
                                   point_alpha = 0.7,
                                   point_size = 1.0) {
     dmrs <- convertToGRanges(dmrs, genome = genome)
-    if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
-        stop("score_col '", score_col, "' not found in DMR metadata.")
+    if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
+        stop("Column 'score' not found in DMR metadata.")
     }
     if (!is.numeric(point_alpha) || length(point_alpha) != 1 || is.na(point_alpha) || point_alpha < 0 || point_alpha > 1) {
         stop("point_alpha must be a single numeric value in [0, 1].")
@@ -1303,20 +1300,16 @@ plotDMRBlockFormation <- function(dmrs,
             if (length(unique(chr_values)) > 8) " ..." else ""
         )
     }
-    score_values <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
+    score_values <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[["score"]]))
     keep <- chr_values == chromosome & is.finite(score_values)
     if (sum(keep) < 3L) {
         stop("At least 3 finite DMR scores are required on ", chromosome, " to build diagnostics.")
     }
 
     chr_dmrs <- dmrs[keep]
-    if (!(score_col %in% colnames(S4Vectors::mcols(chr_dmrs)))) {
-        stop("score_col '", score_col, "' not found after chromosome filtering.")
-    }
 
     details_result <- .assignDMRBlocksFromScores(
         dmrs = chr_dmrs,
-        score_col = score_col,
         k_neighbors = k_neighbors,
         min_segment_size = min_segment_size,
         block_gap_mode = block_gap_mode,
@@ -1403,7 +1396,7 @@ plotDMRBlockFormation <- function(dmrs,
             title = paste0("DMR Block Formation Diagnostics (", chromosome, ")"),
             subtitle = subtitle,
             x = "Genomic Midpoint (bp)",
-            y = score_col
+            y = "score"
         ) +
         ggplot2::theme_minimal(base_size = 11) +
         ggplot2::theme(
@@ -1422,7 +1415,6 @@ plotDMRBlockFormation <- function(dmrs,
 #' DMRs are colored by their dominant genomic region class inferred from DMR annotations.
 #'
 #' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
-#' @param score_col Character. Metadata column used for y-axis values (default: `"score"`).
 #' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg38"`).
 #' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
@@ -1446,7 +1438,6 @@ plotDMRBlockFormation <- function(dmrs,
 #' }
 #' @export
 plotDMRsManhattan <- function(dmrs,
-                              score_col = "score",
                               genome = "hg38",
                               promoter_col = "in_promoter_of",
                               gene_body_col = "in_gene_body_of",
@@ -1460,8 +1451,8 @@ plotDMRsManhattan <- function(dmrs,
                               width = 12,
                               height = 6) {
     dmrs <- convertToGRanges(dmrs, genome = genome)
-    if (!(score_col %in% colnames(S4Vectors::mcols(dmrs)))) {
-        stop("score_col '", score_col, "' not found in DMR metadata.")
+    if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
+        stop("Column 'score' not found in DMR metadata.")
     }
     if (!is.numeric(point_size) || length(point_size) != 1 || is.na(point_size) || point_size <= 0) {
         stop("point_size must be a single positive numeric value.")
@@ -1479,10 +1470,10 @@ plotDMRsManhattan <- function(dmrs,
         stop("block_linewidth must be a single non-negative numeric value.")
     }
 
-    scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[[score_col]]))
+    scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[["score"]]))
     keep <- is.finite(scores)
     if (!any(keep)) {
-        stop("No finite score values found in score_col '", score_col, "'.")
+        stop("No finite score values found in column 'score'.")
     }
     dmrs <- dmrs[keep]
     scores <- scores[keep]
@@ -1572,8 +1563,8 @@ plotDMRsManhattan <- function(dmrs,
         ) +
         ggplot2::labs(
             x = "Chromosome",
-            y = score_col,
-            title = paste0("DMR Manhattan Plot (", score_col, ")"),
+            y = "score",
+            title = paste0("DMR Manhattan Plot"),
             subtitle = subtitle
         ) +
         ggplot2::theme_minimal(base_size = 11) +

@@ -39,7 +39,7 @@ cat("
 
 ## Goal
 
-This notebook showcases additional DMRsegal capabilities beyond DMR discovery, including DMR ranking, motif extraction, motif-based DMR interactions, and visualizations. We use the example DMRs from `DMRsegaldata` as a benchmark to demonstrate these downstream analyses.
+This notebook showcases additional DMRsegal capabilities beyond DMR discovery, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. We use the example DMRs from `DMRsegaldata` as a benchmark to demonstrate these downstream analyses.
 
 ## Setup
 
@@ -70,14 +70,14 @@ dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal
 cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 ```
 
-## DMR Summary and Ranking
-The ranking of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, rank, and block ID of each DMR.
+## DMR Summary and scoring
+The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, score, and block ID of each DMR.
 ```{r}
 stopifnot(length(dmrs) > 0)
 
-if (!all(c("rank", "score", "cv_accuracy") %in% colnames(mcols(dmrs)))) {
-    options(DMRsegal.ranking_nfold = 3)
-    dmrs <- rankDMRs(
+if (!all(c("score", "cv_accuracy") %in% colnames(mcols(dmrs)))) {
+    options(DMRsegal.scoring_nfold = 3)
+    dmrs <- scoreDMRs(
         dmrs = dmrs,
         beta = beta_handler,
         pheno = pheno,
@@ -97,11 +97,10 @@ summary_tbl <- data.frame(
     delta_beta = round(mcols(dmrs)$delta_beta, 4),
     score = round(mcols(dmrs)$score, 4),
     cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
-    rank = mcols(dmrs)$rank,
     block_id = mcols(dmrs)$block_id
 )
-summary_tbl <- summary_tbl[order(summary_tbl$rank), ]
-knitr::kable(head(summary_tbl, 5), caption = "Top 5 ranked DMRs (margin-sensitive score + raw CV accuracy)")
+summary_tbl <- summary_tbl[order(summary_tbl$score, decreasing = TRUE), ]
+knitr::kable(head(summary_tbl, 5), caption = "Top 5 scoring DMRs (margin-sensitive score + raw CV accuracy)")
 ```
 
 ## Motif Discovery
@@ -182,11 +181,10 @@ if (annotated_components > 0) {
 ### DMR Score Manhattan Plot
 
 A manhattan plot of the DMRs is drawn, showing their scores, produced by the SVM CV prediction strategy,
-their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the ranking block extension. The DMRs that belong to both promoter and gene body are omitted.
+their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the scoring block extension. The DMRs that belong to both promoter and gene body are omitted.
 ```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
 plotDMRsManhattan(
     dmrs = dmrs,
-    score_col = "score",
     promoter_col = "in_promoter_of",
     gene_body_col = "in_gene_body_of"
 )
@@ -214,8 +212,7 @@ if (nrow(block_df) > 0) {
         {
             plotDMRBlockFormation(
                 dmrs = dmrs,
-                chromosome = target_chr,
-                score_col = "score"
+                chromosome = target_chr
             )
         },
         error = function(e) {
@@ -249,9 +246,9 @@ if (length(complex_candidates) == 0) {
 selected_dmr_idx <- complex_candidates[1]
 cat(
     sprintf(
-        "Selected DMR index %d (rank=%s, seeds_num=%s, cpgs_num=%s)\n",
+        "Selected DMR index %d (score=%s, seeds_num=%s, cpgs_num=%s)\n",
         selected_dmr_idx,
-        as.character(mcols(dmrs)$rank[selected_dmr_idx]),
+        as.character(mcols(dmrs)$score[selected_dmr_idx]),
         as.character(mcols(dmrs)$seeds_num[selected_dmr_idx]),
         as.character(mcols(dmrs)$cpgs_num[selected_dmr_idx])
     )
@@ -281,9 +278,9 @@ tryCatch(
 A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 16 to 22. 
 The information includes:
 
-- The DMRs and their scores (at most 40 DMRs per chromosome, ranked by score, are shown)
-- Selected beta values of the DMRs (at most 5 CpGs per DMR, ranked by absolute delta-beta, are shown)
-- The motif-based interactions between DMRs, with links direction going from higher ranking to lower ranking (at most 120 interactions groups are shown)
+- The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
+- Selected beta values of the DMRs (at most 5 CpGs per DMR, scoring by absolute delta-beta, are shown)
+- The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
 ```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_dmrs <- motif_dmrs

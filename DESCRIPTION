@@ -122,7 +122,7 @@ Collate:
     'beta_handler.R'
     'dmrs_finder_from_seeds.R'
     'dmrs_interaction.R'
-    'dmrs_ranking.R'
+    'dmrs_scoring.R'
     'find_dmrs_from_seeds.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'

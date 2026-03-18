@@ -172,7 +172,7 @@ This step is crucial for DMRsegal, which relies on seed CpGs to guide DMR assemb
 We use a limma-based approach to identify candidate seeds based on differential methylation evidence.
 We extend beyond strict FDR significance to capture a broader set of potential seeds, 
 which may improve sensitivity in DMRsegal's region assembly.
-We rank seeds by a combined score of p-value and effect size (delta beta) to prioritize biologically relevant candidates.
+We score seeds by a combined score of p-value and effect size (delta beta) to prioritize biologically relevant candidates.
 
 
 ```{r seeds_calculation}
@@ -196,7 +196,7 @@ if (!file.exists(seeds_tsv)) {
     rownames(beta_mat) <- cpg_ids
     colnames(beta_mat) <- sample_ids
 
-    mvalues <- log((beta_mat + 1e-6) / (1 - beta_mat + 1e-6))
+    mvalues <- minfi::logit2(beta_mat)
 
     fit_raw <- limma::lmFit(mvalues, design)
     valid_sigma <- is.finite(fit_raw$sigma) & (fit_raw$sigma > 0)
@@ -451,9 +451,9 @@ for (i in seq_along(seed_truth_summary)) {
 ```
 
 ```{r}
-rank_col <- "seed_score"
+score_col <- "seed_score"
 
-ord <- order(seed_df[[rank_col]], decreasing = TRUE, na.last = NA)
+ord <- order(seed_df[[score_col]], decreasing = TRUE, na.last = NA)
 top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
 top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
     idx <- ord[seq_len(k)]
@@ -467,7 +467,7 @@ top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
 knitr::kable(
     top_seed_overlap,
     digits = 2,
-    caption = sprintf("Ground-truth overlap enrichment among top-ranked seeds")
+    caption = sprintf("Ground-truth overlap enrichment among top-scoring seeds")
 )
 ```
 
@@ -502,7 +502,7 @@ if (!file.exists(dmrsegal_file)) {
             chunk_size = 1e6L,
             entanglement = "weak",
             annotate_with_genes = FALSE,
-            rank_dmrs = TRUE,
+            .score_dmrs = TRUE,
             njobs = dmrsegal_njobs,
             verbose = 3
         )
