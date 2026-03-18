@@ -1572,6 +1572,7 @@ plotAutoDMRsCircos <- function(dmrs,
 
     shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]
     shown_locs <- as.data.frame(shown_locs)
+    rownames(shown_locs) <- names(dmrs_cpgs_inds)
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
     shown_locs$end <- as.numeric(shown_locs$end)
