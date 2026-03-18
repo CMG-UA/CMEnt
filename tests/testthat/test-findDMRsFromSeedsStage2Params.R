@@ -159,6 +159,70 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
     expect_true(all(cpg_chr[dmr_df$start_seed] == cpg_chr[dmr_df$end_seed]))
 })
 
+test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
+    cpg_ids <- c("cgA", "cgB", "cgC")
+    beta <- matrix(
+        c(
+            0.10, 0.20, 0.30, 0.15, 0.25, 0.35,
+            0.11, 0.21, 0.31, 0.14, 0.24, 0.34,
+            0.12, 0.22, 0.32, 0.13, 0.23, 0.33
+        ),
+        nrow = 3,
+        byrow = TRUE
+    )
+    rownames(beta) <- cpg_ids
+    colnames(beta) <- paste0("S", seq_len(6))
+
+    locs <- data.frame(
+        chr = rep("chr1", length(cpg_ids)),
+        start = c(100, 200, 300),
+        end = c(101, 201, 301),
+        row.names = cpg_ids,
+        stringsAsFactors = FALSE
+    )
+
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        Sample_Group = c("A", "A", "A", "B", "B", "B"),
+        casecontrol = c(0, 0, 0, 1, 1, 1),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    seeds <- data.frame(pval = rep(1e-6, length(cpg_ids)), row.names = cpg_ids)
+
+    dmrs <- expect_no_error(findDMRsFromSeeds(
+        .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        beta = beta_handler,
+        seeds = seeds,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        min_seeds = 2,
+        min_cpgs = 2,
+        min_cpg_delta_beta = 0,
+        adaptive_min_cpg_delta_beta = FALSE,
+        max_lookup_dist = 1000,
+        max_pval = 0.05,
+        pval_mode = "parametric",
+        max_bridge_seeds_gaps = 1,
+        max_bridge_extension_gaps = 0,
+        annotate_with_genes = FALSE,
+        njobs = 1,
+        verbose = 0
+    ))
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_equal(length(dmrs), 1L)
+
+    dmr_df <- as.data.frame(dmrs)
+    expect_identical(dmr_df$seeds[[1]], paste(cpg_ids, collapse = ","))
+    expect_identical(dmr_df$start_seed[[1]], cpg_ids[[1]])
+    expect_identical(dmr_df$end_seed[[1]], cpg_ids[[length(cpg_ids)]])
+    expect_equal(dmr_df$seeds_num[[1]], length(cpg_ids))
+    expect_equal(length(strsplit(dmr_df$seeds[[1]], ",", fixed = TRUE)[[1]]), dmr_df$seeds_num[[1]])
+})
+
 test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and chunked parallel execution", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")

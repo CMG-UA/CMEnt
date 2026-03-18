@@ -2213,18 +2213,19 @@ findDMRsFromSeeds <- function(
                 pval ~ id,
                 data = agg_data, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
             )
-            dmrs_seeds <- aggregate(seeds ~ id, data = agg_data, function(x) paste(x, collapse = ","))
         } else {
             connected_seeds_connection_corr_pval <- data.frame(
                 id = ids,
                 pval = rep(NA_real_, length(ids))
             )
-            dmrs_seeds <- data.frame(
-                id = ids,
-                seeds = as.character(seeds[connected_seeds_segments_starts]),
-                stringsAsFactors = FALSE
-            )
         }
+        dmrs_seeds <- data.frame(
+            id = ids,
+            seeds = mapply(function(start_idx, end_idx) {
+                paste(seeds[start_idx:end_idx], collapse = ",")
+            }, connected_seeds_segments_starts, connected_seeds_segments_ends, USE.NAMES = FALSE),
+            stringsAsFactors = FALSE
+        )
 
         dmrs <- data.frame(
             chr = connected_seeds_segments_chrs,
@@ -2728,7 +2729,7 @@ findDMRsFromSeeds <- function(
     }
 
     if (.score_dmrs) {
-        .log_step("scoring DMRs...", level = 1)
+        .log_step("Scoring DMRs...", level = 1)
         annotated_dmrs <- scoreDMRs(
             annotated_dmrs,
             beta = beta_handler,

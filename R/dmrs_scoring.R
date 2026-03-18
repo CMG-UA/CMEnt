@@ -128,38 +128,18 @@
     }
     k <- min(k, n)
 
-    ord <- order(x, seq_along(x))
-    x_sorted <- x[ord]
-    y_sorted <- y[ord]
-
-    unique_x <- unique(x_sorted)
+    unique_x <- sort(unique(x))
     dx <- diff(unique_x)
     min_pos_dx <- suppressWarnings(min(dx[dx > 0], na.rm = TRUE))
     if (!is.finite(min_pos_dx) || min_pos_dx <= 0) {
         min_pos_dx <- 1
     }
 
-    smoothed_sorted <- numeric(n)
+    smoothed <- numeric(n)
     for (i in seq_len(n)) {
-        left <- i
-        right <- i
-        while ((right - left + 1L) < k) {
-            if (left <= 1L) {
-                right <- right + 1L
-            } else if (right >= n) {
-                left <- left - 1L
-            } else {
-                left_dist <- x_sorted[i] - x_sorted[left - 1L]
-                right_dist <- x_sorted[right + 1L] - x_sorted[i]
-                if (left_dist <= right_dist) {
-                    left <- left - 1L
-                } else {
-                    right <- right + 1L
-                }
-            }
-        }
-        knearest <- left:right
-        local_d <- abs(x_sorted[knearest] - x_sorted[i])
+        d <- abs(x - x[i])
+        knearest <- order(d)[seq_len(k)]
+        local_d <- d[knearest]
         h <- max(local_d, na.rm = TRUE)
         if (!is.finite(h) || h <= 0) {
             h <- min_pos_dx
@@ -169,13 +149,11 @@
         w <- exp(-0.5 * (local_d / h)^2)
         w_sum <- sum(w)
         if (!is.finite(w_sum) || w_sum <= 0) {
-            smoothed_sorted[i] <- y_sorted[i]
+            smoothed[i] <- y[i]
         } else {
-            smoothed_sorted[i] <- sum(w * y_sorted[knearest]) / w_sum
+            smoothed[i] <- sum(w * y[knearest]) / w_sum
         }
     }
-    smoothed <- numeric(n)
-    smoothed[ord] <- smoothed_sorted
     smoothed
 }
 
@@ -529,12 +507,18 @@
 
     candidates_df <- .findSlopeCandidates(seg, d = slope_threshold)
     if (nrow(candidates_df) > 0) {
-        cand_ranges <- data.frame(
-            dmr_start_idx = seg$starts[candidates_df$seg_start],
-            dmr_end_idx = seg$ends[candidates_df$seg_end],
-            start_bp = x_chr[seg$starts[candidates_df$seg_start]],
-            end_bp = x_chr[seg$ends[candidates_df$seg_end]]
-        )
+        cand_ranges <- lapply(seq_len(nrow(candidates_df)), function(i) {
+            seg_start <- candidates_df$seg_start[i]
+            seg_end <- candidates_df$seg_end[i]
+            idx <- which(seg$segment_id >= seg_start & seg$segment_id <= seg_end)
+            data.frame(
+                dmr_start_idx = if (length(idx) > 0) min(idx) else NA_integer_,
+                dmr_end_idx = if (length(idx) > 0) max(idx) else NA_integer_,
+                start_bp = if (length(idx) > 0) min(x_chr[idx]) else NA_real_,
+                end_bp = if (length(idx) > 0) max(x_chr[idx]) else NA_real_
+            )
+        })
+        cand_ranges <- do.call(rbind, cand_ranges)
         candidates_df <- cbind(candidates_df, cand_ranges)
     }
 
@@ -548,7 +532,7 @@
             seg_start <- candidates_df$seg_start[i]
             seg_end <- candidates_df$seg_end[i]
             candidate_id <- candidates_df$candidate_id[i]
-            candidate_idx <- seg$starts[seg_start]:seg$ends[seg_end]
+            candidate_idx <- which(seg$segment_id >= seg_start & seg$segment_id <= seg_end)
             if (length(candidate_idx) == 0L) {
                 next
             }
@@ -696,8 +680,7 @@
     chr_values <- as.character(GenomicRanges::seqnames(dmrs))
     scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[["score"]]))
     midpoints <- floor((GenomicRanges::start(dmrs) + GenomicRanges::end(dmrs)) / 2)
-    chromosome_indices <- split(seq_along(chr_values), chr_values)
-    chromosomes <- names(chromosome_indices)
+    chromosomes <- unique(chr_values)
     p_con <- NULL
     if (verbose > 0) {
         # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
@@ -707,7 +690,7 @@
         }
     }
     fun <- function(chr) {
-        chr_idx <- chromosome_indices[[chr]]
+        chr_idx <- which(chr_values == chr)
         if (length(chr_idx) < 3L) {
             if (!is.null(p_con)) {
                 p_con(length(chr_idx))
@@ -764,7 +747,7 @@
                 future.seed = TRUE,
                 future.stdout = NA,
                 future.globals = c(
-                    "chromosome_indices", "scores", "midpoints", ".computeDMRBlockFormationForChromosome",
+                    "chr_values", "scores", "midpoints", ".computeDMRBlockFormationForChromosome",
                     "k_neighbors", "min_segment_size", "block_gap_mode", "block_gap_fixed_bp",
                     "block_gap_quantile", "block_gap_multiplier", "block_gap_min_bp", "block_gap_max_bp",
                     "njobs", "verbose"
@@ -810,10 +793,9 @@
 #' discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 #' classification. For each DMR, this function performs stratified k-fold cross-prediction
 #' using an RBF kernel SVM and computes a margin-sensitive classification score based on
-#' decision values, which serves as a measure of the DMR's discriminative power.
-#' The scores are then smoothed along the genome using a Gaussian-kNN approach,
-#' and piecewise-linear segments are detected using the PELT algorithm,
-#' expecting a rising->plateau->decreasing pattern.
+#' decision values, which serves as a measure of the DMR's discriminative power. 
+#' The scores are then smoothed along the genome using a Gaussian-kNN approach, 
+#' and piecewise-linear segments are detected using the PELT algorithm, expecting a rising->plateau->decreasing pattern.
 #' Finally, DMRs are assigned to localized blocks based on the smoothed score profiles
 #' and specified gap rules.
 #'
