@@ -2731,7 +2731,7 @@ findDMRsFromSeeds <- function(
         .log_step("scoring DMRs...", level = 1)
         annotated_dmrs <- scoreDMRs(
             annotated_dmrs,
-            beta = beta,
+            beta = beta_handler,
             pheno = pheno_all,
             genome = genome,
             array = array,

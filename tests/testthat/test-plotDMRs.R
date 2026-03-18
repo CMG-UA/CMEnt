@@ -148,6 +148,25 @@ test_that("plotDMR plot structure contains expected components", {
     expect_true(inherits(p, "grob"))
 })
 
+test_that(".plotPWM clarifies when a motif logo is consensus-only", {
+    skip_if_not_installed("ggplot2")
+
+    dmr <- GenomicRanges::GRanges("chr1", IRanges::IRanges(start = 1, width = 12))
+    S4Vectors::mcols(dmr)$pwm <- list(matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(Biostrings::DNA_BASES, NULL)
+    ))
+    S4Vectors::mcols(dmr)$consensus_seq <- "AAAAAAAAAAAA"
+    S4Vectors::mcols(dmr)$seeds <- "cg00000001"
+
+    p <- DMRsegal:::.plotPWM(dmr, genome = "hg19", array = NULL, beta_locs = NULL)
+
+    expect_s3_class(p, "ggplot")
+    expect_match(p$labels$subtitle, "Consensus-only logo", fixed = TRUE)
+    expect_identical(p$labels$y, "Relative base weight")
+})
+
 test_that("plotDMR with beta and pheno includes PWM plot", {
     skip_if_not_installed("ggplot2")
     skip_if_not_installed("BSgenome.Hsapiens.UCSC.hg19")

@@ -15,6 +15,7 @@ test_that("scoreDMRs adds score column to DMRs", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        genome = "hg19",
         sample_group_col = "Sample_Group",
         verbose = 2
     )
@@ -50,6 +51,25 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
     expect_true("score" %in% names(mcols(dmrs)))
     expect_true(all(mcols(dmrs)$score >= 0))
     expect_true(all(mcols(dmrs)$score <= 1))
+})
+
+test_that("scoreDMRs accepts a BetaHandler input", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal"))
+    beta_handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
+
+    scoring_dmrs <- scoreDMRs(
+        dmrs = dmrs,
+        beta = beta_handler,
+        pheno = pheno,
+        genome = "hg19",
+        sample_group_col = "Sample_Group",
+        verbose = 0
+    )
+
+    expect_true("score" %in% names(mcols(scoring_dmrs)))
+    expect_true("cv_accuracy" %in% names(mcols(scoring_dmrs)))
 })
 
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
@@ -89,6 +109,7 @@ test_that("scoreDMRs score values are meaningful", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        genome = "hg19",
         sample_group_col = "Sample_Group"
     )
 
@@ -109,6 +130,7 @@ test_that("scoreDMRs works with different nfold values", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        genome = "hg19",
         sample_group_col = "Sample_Group"
     )
 
@@ -117,6 +139,7 @@ test_that("scoreDMRs works with different nfold values", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        genome = "hg19",
         sample_group_col = "Sample_Group"
     )
 
@@ -137,6 +160,7 @@ test_that("scoreDMRs returns DMRs ordered by p-value", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        genome = "hg19",
         sample_group_col = "Sample_Group"
     )
 

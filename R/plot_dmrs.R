@@ -774,6 +774,36 @@ minmaxscale <- function(x) {
         return(NULL)
     }
 
+    seed_count <- NA_integer_
+    if ("seeds" %in% colnames(S4Vectors::mcols(dmr))) {
+        seed_ids <- strsplit(as.character(S4Vectors::mcols(dmr)$seeds[[1]]), ",", fixed = TRUE)[[1]]
+        seed_count <- sum(nzchar(seed_ids))
+    }
+    consensus_only <- all(colSums(pwm > 0) <= 1)
+    pwm_subtitle <- NULL
+    if (consensus_only) {
+        seed_label <- if (!is.na(seed_count)) {
+            paste0(seed_count, " seed window", if (seed_count == 1) "" else "s")
+        } else {
+            "seed windows"
+        }
+        seed_verb <- if (!is.na(seed_count) && seed_count == 1) "contributes" else "contribute"
+        pwm_subtitle <- paste0(
+            "Consensus-only logo: ",
+            seed_label,
+            " ",
+            seed_verb,
+            " the same base at every position"
+        )
+    } else if (!is.na(seed_count)) {
+        pwm_subtitle <- paste0(
+            "Built from ",
+            seed_count,
+            " seed window",
+            if (seed_count == 1) "" else "s"
+        )
+    }
+
     position_labels <- c(seq(-motif_cpg_flank_size, 0), seq(0, motif_cpg_flank_size))
 
     rownames(pwm) <- Biostrings::DNA_BASES
@@ -793,7 +823,8 @@ minmaxscale <- function(x) {
             ) +
             ggplot2::labs(
                 x = "Position Relative to CpG",
-                y = "Information Content (bits)",
+                y = "Relative base weight",
+                subtitle = pwm_subtitle,
                 title = paste0("Motif PWM (consensus: ", consensus_seq, ")")
             ) +
             ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))

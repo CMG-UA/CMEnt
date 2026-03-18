@@ -65,8 +65,7 @@ launchDMRsegalViewer <- function(
     app <- shiny::shinyApp(ui = ui, server = server)
     run_args <- c(
         list(appDir = app, launch.browser = launch_browser),
-        if (is.null(port)) list() else list(port = port),
-        output_prefix = output_prefix
+        if (is.null(port)) list() else list(port = port)
     )
 
     invisible(do.call(shiny::runApp, run_args))
