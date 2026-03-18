@@ -2553,9 +2553,18 @@ findDMRsFromSeeds <- function(
     if (!is.null(output_prefix)) {
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
+        final_dmrs_export <- final_dmrs
+        list_cols <- vapply(final_dmrs_export, is.list, logical(1))
+        if (any(list_cols)) {
+            .log_warn(
+                "Dropping non-tabular columns from TSV output: ",
+                paste(names(final_dmrs_export)[list_cols], collapse = ",")
+            )
+            final_dmrs_export <- final_dmrs_export[, !list_cols, drop = FALSE]
+        }
         gz <- gzfile(dmrs_file, "w")
         write.table(
-            final_dmrs,
+            final_dmrs_export,
             gz,
             sep = "\t",
             quote = FALSE,

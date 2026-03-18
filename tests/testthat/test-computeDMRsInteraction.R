@@ -330,6 +330,34 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
     }
 })
 
+test_that("extractDMRMotifs keeps seeds grouped per DMR", {
+    locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
+    chr1_inds <- which(locs$chr == "chr1")
+    skip_if(length(chr1_inds) < 6, "Not enough chr1 CpGs in annotation")
+
+    cpg_ids <- rownames(locs)[chr1_inds[1:6]]
+    dmrs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = as.integer(locs[cpg_ids[c(1, 4)], "start"]),
+        end = as.integer(locs[cpg_ids[c(3, 6)], "start"]),
+        start_cpg = cpg_ids[c(1, 4)],
+        end_cpg = cpg_ids[c(3, 6)],
+        start_seed = cpg_ids[c(1, 4)],
+        end_seed = cpg_ids[c(3, 6)],
+        seeds = c(
+            paste(cpg_ids[1:3], collapse = ","),
+            paste(cpg_ids[4:6], collapse = ",")
+        ),
+        stringsAsFactors = FALSE
+    )
+
+    out <- suppressWarnings(extractDMRMotifs(dmrs, genome = "hg38", array = "450K"))
+    expect_equal(nrow(out), 2)
+    expect_true("pwm" %in% colnames(out))
+    expect_true(all(vapply(out$pwm, is.matrix, logical(1))))
+    expect_true(all(vapply(out$pwm, ncol, integer(1)) == 12))
+})
+
 test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
     pwm_a <- matrix(
         rep(c(1, 0, 0, 0), 12),

@@ -138,6 +138,15 @@ getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
         sorted_locs <- convertToGRanges(sorted_locs, genome)
         cpg_seqs <- getDMRSequences(sorted_locs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1)
+        expected_len <- 2 * motif_cpg_flank_size + 2
+        valid_cpg_seqs <- !is.na(cpg_seqs) & nchar(cpg_seqs) == expected_len
+        if (!all(valid_cpg_seqs)) {
+            .log_warn(sum(!valid_cpg_seqs), " background motif windows had unexpected length and were ignored.")
+        }
+        cpg_seqs <- cpg_seqs[valid_cpg_seqs]
+        if (length(cpg_seqs) == 0) {
+            stop("Could not compute background motif PWM: no valid motif windows were extracted.")
+        }
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         bg_frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
@@ -212,16 +221,43 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1
     )
-    dmrs_seeds <- unlist(strsplit(mcols(dmrs)[, "seeds"], split = ","))
-    beta_locs_start <- as.data.frame(beta_locs[dmrs_seeds, "start", drop = FALSE])
+    dmrs_seeds <- strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
+    all_seeds <- unique(unlist(dmrs_seeds, use.names = FALSE))
+    all_seeds <- all_seeds[nzchar(all_seeds)]
+    beta_locs_start <- as.integer(beta_locs[all_seeds, "start", drop = TRUE])
+    names(beta_locs_start) <- all_seeds
+    expected_len <- 2 * motif_cpg_flank_size + 2
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
-        start_locs <- beta_locs_start[dmrs_seeds[[i]], ]
+        dmr_seeds <- dmrs_seeds[[i]]
+        dmr_seeds <- dmr_seeds[nzchar(dmr_seeds)]
+        if (length(dmr_seeds) == 0) {
+            next
+        }
+
+        start_locs <- beta_locs_start[dmr_seeds]
+        valid_start_locs <- !is.na(start_locs)
+        if (!all(valid_start_locs)) {
+            .log_warn(sum(!valid_start_locs), " seed(s) were missing genomic locations and were ignored in DMR motif extraction.")
+            start_locs <- start_locs[valid_start_locs]
+        }
+        if (length(start_locs) == 0) {
+            next
+        }
+
         sequence <- sequences[[i]]
         start_loc_base <- start_locs[[1]]
-        seq_cpg_inds <- beta_locs_start[dmrs_seeds[[i]], ] - start_loc_base + 1 + motif_cpg_flank_size
+        seq_cpg_inds <- start_locs - start_loc_base + 1 + motif_cpg_flank_size
         cpg_seqs <- substring(sequence, seq_cpg_inds - motif_cpg_flank_size, seq_cpg_inds + motif_cpg_flank_size + 1)
+        valid_cpg_seqs <- !is.na(cpg_seqs) & nchar(cpg_seqs) == expected_len
+        if (!all(valid_cpg_seqs)) {
+            .log_warn(sum(!valid_cpg_seqs), " motif windows had unexpected length and were ignored for one DMR.")
+            cpg_seqs <- cpg_seqs[valid_cpg_seqs]
+        }
+        if (length(cpg_seqs) == 0) {
+            next
+        }
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint

@@ -235,3 +235,39 @@ test_that("findDMRsFromSeeds does not annotate DMRs when annotate_with_genes=FAL
         expect_false("in_gene_body_of" %in% names(mcols(dmrs_not_annotated)))
     }
 })
+
+test_that("findDMRsFromSeeds writes TSV when motifs are extracted", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    pheno$casecontrol <- pheno$Sample_Group == "cancer"
+
+    output_prefix <- file.path(tempdir(), paste0("dmrsegal-test-", as.integer(Sys.time())))
+
+    expect_no_error(findDMRsFromSeeds(
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        covariates = c("Age", "Gender"),
+        max_bridge_seeds_gaps = 1,
+        max_bridge_extension_gaps = 1,
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        max_pval = 0.05,
+        pval_mode = "parametric",
+        entanglement = "weak",
+        rank_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        output_prefix = output_prefix,
+        njobs = 1
+    ))
+
+    dmrs_file <- paste0(output_prefix, ".dmrs.tsv.gz")
+    expect_true(file.exists(dmrs_file))
+
+    dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
+    expect_false("pwm" %in% colnames(dmrs_df))
+})
