@@ -24,14 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: create environment with mamba
-        uses: conda-incubator/setup-miniconda@v2
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3.0.3
         with:
-          mamba-version: "*"
+          miniforge-version: latest
           channels: conda-forge,bioconda,defaults
-          auto-activate-base: false
+          channel-priority: strict
           activate-environment: ci_env
           environment-file: envs/ci_env.yaml
+          auto-activate: true
+
+      - name: Debug conda
+        run: |
+          conda info --envs
+          conda env export -n ci_env
 
       - uses: r-lib/actions/setup-r@v2
         with:
