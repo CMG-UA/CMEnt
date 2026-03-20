@@ -327,7 +327,7 @@ if (!circos_region_plotted) {
 The DMRsegal interactive Shiny app can be launched with the `launchDMRsegalViewer` function, 
 which allows for interactive exploration of the DMRs and the aforementioned plots. In order to use it, the `output_prefix` argument should be provided in the `findDMRsFromSeeds` function, as the app looks for the output files with this prefix.
 ```{r launch_shiny_app, eval=FALSE}
-# launchDMRsegalViewer("vignettes/DMRsegal_example")
+launchDMRsegalViewer("vignettes/DMRsegal_example")
 ```
 
 ## Session Info
