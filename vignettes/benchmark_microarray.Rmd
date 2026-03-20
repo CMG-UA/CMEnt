@@ -58,16 +58,16 @@ options(progressr.enable = TRUE)
 
 get_benchmark_file <- function(filename) {
     benchmark_file <- ""
-    try(benchmark_file <- system.file("benchmarks", "dmrsegaldata", filename, package = "DMRsegal"), silent = TRUE)
+    folder <- "microarray"
+    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "DMRsegal"), silent = TRUE)
     if (benchmark_file == "") {
-        if ("inst" %in% dir()) {
-            benchmark_file <- file.path("inst", "benchmarks", "dmrsegaldata", filename)
-        } else if ("inst" %in% dir("../")) {
-            benchmark_file <- file.path("..", "inst", "benchmarks", "dmrsegaldata", filename)
+        if (getwd() == "vignettes") {
+            benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
+        } else if ("NAMESPACE" %in% dir()) {
+            benchmark_file <- file.path("inst", "benchmarks", folder, filename)
         } else {
-            benchmark_file <- file.path("benchmarks", "dmrsegaldata", filename)
+            benchmark_file <- file.path("benchmarks", folder, filename)
         }
-        benchmark_file <- file.path("inst", "benchmarks", "dmrsegaldata", filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file

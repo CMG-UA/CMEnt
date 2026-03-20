@@ -62,17 +62,17 @@ library(S4Vectors)
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
 get_benchmark_file <- function(filename) {
+    folder = "simulated_ont"
     benchmark_file <- ""
-    try(benchmark_file <- system.file("benchmarks", "simulated_ont", filename, package = "DMRsegal"), silent = TRUE)
+    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "DMRsegal"), silent = TRUE)
     if (benchmark_file == "") {
-        if ("inst" %in% dir()) {
-            benchmark_file <- file.path("inst", "benchmarks", "simulated_ont", filename)
-        } else if ("inst" %in% dir("../")) {
-            benchmark_file <- file.path("..", "inst", "benchmarks", "simulated_ont", filename)
+        if (getwd() == "vignettes") {
+            benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
+        } else if ("NAMESPACE" %in% dir()) {
+            benchmark_file <- file.path("inst", "benchmarks", folder, filename)
         } else {
-            benchmark_file <- file.path("benchmarks", "simulated_ont", filename)
+            benchmark_file <- file.path("benchmarks", folder, filename)
         }
-        benchmark_file <- file.path("inst", "benchmarks", "simulated_ont", filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
@@ -193,7 +193,7 @@ We score seeds by a combined score of p-value and effect size (delta beta) to pr
 ```{r seeds_calculation}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
-seeds_tsv <- get_benchmark_file("seeds.tsv")
+seeds_tsv <- get_benchmark_file("seeds.tsv.gz")
 seeds_meta_rds <- get_benchmark_file("seeds.meta.rds")
 if (!file.exists(seeds_tsv)) {
     gr <- granges(sim_bs)
@@ -251,7 +251,9 @@ if (!file.exists(seeds_tsv)) {
         stringsAsFactors = FALSE
     )
     sig_seeds <- sig_seeds[order(sig_seeds$seed_score, -sig_seeds$pval, decreasing = TRUE), , drop = FALSE]
-    write.table(sig_seeds, seeds_tsv, sep = "\t", quote = FALSE, row.names = FALSE)
+    out <- gzfile(seeds_tsv, "w")
+    write.table(sig_seeds, out, sep = "\t", quote = FALSE, row.names = FALSE)
+    close(out)
     seed_locs <- locs[sig_seeds$cpg_id, , drop = FALSE]
     seed_locs <- seed_locs[order(seed_locs$chr, seed_locs$start), , drop = FALSE]
     seeds_meta <- list(
@@ -271,15 +273,10 @@ if (!file.exists(seeds_tsv)) {
     }
 }
 seed_locs <- seeds_meta$seed_locs
-if (is.null(seed_locs) || nrow(seed_locs) == 0) {
-    seed_locs <- data.frame(
-        chr = sub(":.*$", "", sig_seeds$cpg_id),
-        start = suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", sig_seeds$cpg_id))),
-        end = suppressWarnings(as.integer(sub("^[^:]+:([0-9]+).*$", "\\1", sig_seeds$cpg_id))),
-        stringsAsFactors = FALSE
-    )
-    seed_locs <- seed_locs[!is.na(seed_locs$start) & nzchar(seed_locs$chr), , drop = FALSE]
-}
+sig_seeds <- as.data.frame(sig_seeds, stringsAsFactors = FALSE)
+rownames(sig_seeds) <- sig_seeds$cpg_id
+sig_seeds <- merge(sig_seeds, seed_locs, by = 0)
+sig_seeds$Row.names <- NULL
 seed_dist <- unlist(lapply(split(seed_locs$start, seed_locs$chr), function(x) {
     if (length(x) < 2) return(numeric(0))
     diff(x)
@@ -291,99 +288,6 @@ knitr::kable(
     digits = 2,
     col.names="Distance (bp)",
     caption = sprintf("Seed distance quantiles")
-)
-```
-
-### Genome-wide Seeds and DMRs Visualization
-
-```{r seed_dmr_karyoplot, fig.width=14, fig.height=8}
-seed_plot_gr <- GenomicRanges::makeGRangesFromDataFrame(
-    seed_locs,
-    seqnames.field = "chr",
-    start.field = "start",
-    end.field = "end",
-    keep.extra.columns = FALSE
-)
-
-all_plot_gr <- c(seed_plot_gr, truth_dmrs, GenomicRanges::granges(sim_bs))
-chr_max <- tapply(
-    GenomicRanges::end(all_plot_gr),
-    as.character(GenomicRanges::seqnames(all_plot_gr)),
-    max,
-    na.rm = TRUE
-)
-chr_max <- chr_max[is.finite(chr_max) & chr_max > 0]
-
-# Prefer full chromosome lengths from a matching reference genome if available.
-candidate_genomes <- c("hg38", "hg19")
-candidate_scores <- rep(Inf, length(candidate_genomes))
-names(candidate_scores) <- candidate_genomes
-for (genome_name in candidate_genomes) {
-    si <- tryCatch(GenomeInfoDb::Seqinfo(genome = genome_name), error = function(e) NULL)
-    if (is.null(si)) {
-        next
-    }
-    sl <- GenomeInfoDb::seqlengths(si)[names(chr_max)]
-    if (all(!is.na(sl)) && all(chr_max <= sl)) {
-        candidate_scores[genome_name] <- sum(as.numeric(sl) - as.numeric(chr_max))
-    }
-}
-
-if (any(is.finite(candidate_scores))) {
-    best_genome <- names(which.min(candidate_scores))[1]
-    ref_chr_lengths <- GenomeInfoDb::seqlengths(
-        GenomeInfoDb::Seqinfo(genome = best_genome)
-    )[names(chr_max)]
-    chr_lengths <- pmax(as.numeric(chr_max), as.numeric(ref_chr_lengths), na.rm = TRUE)
-    names(chr_lengths) <- names(chr_max)
-} else {
-    chr_lengths <- chr_max
-}
-
-plot_genome_df <- data.frame(
-    chr = names(chr_lengths),
-    start = 1L,
-    end = as.integer(chr_lengths),
-    stringsAsFactors = FALSE
-)
-plot_genome_df <- plot_genome_df[order(plot_genome_df$chr), , drop = FALSE]
-
-plot_params <- karyoploteR::getDefaultPlotParams(plot.type = 2)
-plot_params$leftmargin <- 0.16
-plot_params$rightmargin <- 0.03
-
-kp <- karyoploteR::plotKaryotype(
-    genome = plot_genome_df,
-    chromosomes = plot_genome_df$chr,
-    plot.type = 2,
-    plot.params = plot_params
-)
-karyoploteR::kpPlotDensity(
-    kp,
-    data = seed_plot_gr,
-    window.size = 1e6,
-    col = "#1f78b4",
-    border = NA,
-    r0 = 0.06,
-    r1 = 0.46
-)
-karyoploteR::kpAddLabels(kp, labels = "Seed density", r0 = 0.06, r1 = 0.46, cex = 0.8, label.margin = 0.005)
-karyoploteR::kpPlotRegions(
-    kp,
-    data = truth_dmrs,
-    col = "#e31a1c",
-    border = NA,
-    r0 = 0.58,
-    r1 = 0.95
-)
-karyoploteR::kpAddLabels(kp, labels = "Ground-truth DMRs", r0 = 0.58, r1 = 0.95, cex = 0.8, label.margin = 0.005)
-graphics::legend(
-    "bottomleft",
-    legend = c("Seed density", "Ground-truth DMRs"),
-    fill = c("#1f78b4", "#e31a1c"),
-    border = NA,
-    bty = "n",
-    cex = 0.8
 )
 ```
 

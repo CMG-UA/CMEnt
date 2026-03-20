@@ -295,7 +295,7 @@ if (!circos_summary_plotted) {
     text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
 }
 ```
-It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr17:72Mb-83Mb, chr19:1Mb-12Mb and chr17:0Mb-3Mb, which are regions that in the earlier plot were shown to interact:
+It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr17:2Mb-5Mb, chr17:72Mb-83Mb and chr19:1Mb-12Mb, which are regions that in the earlier plot were shown to interact. (The reported score in the legend is computed based on the visible DMRs of each component):
 ```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_region_plotted <- FALSE
 
@@ -314,7 +314,7 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            region = "chr17:72Mb-83Mb, chr19:1Mb-12Mb, chr17:0Mb-3Mb",
+            region = "chr17:2Mb-5Mb, chr17:72Mb-83Mb, chr19:1Mb-12Mb",
             degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
             verbose = 1
         )
