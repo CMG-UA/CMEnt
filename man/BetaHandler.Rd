@@ -24,6 +24,12 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
 \item{\code{njobs}}{Number of parallel jobs}
 
 \item{\code{beta_chunk_size}}{Chunk size for subsetting beta values}
+
+\item{\code{epicv2Remap}}{Whether to remap EPICv2 cross-hybridizing probes (EPICv2 only)}
+
+\item{\code{epicv2Filter}}{Strategy for filtering EPICv2 replicate probes (EPICv2 only)}
+
+\item{\code{epicv2Preprocessed}}{Whether EPICv2 preprocessing has been applied}
 }
 \if{html}{\out{</div>}}
 }
@@ -40,6 +46,7 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
 \item \href{#method-BetaHandler-getBetaChunkSize}{\code{BetaHandler$getBetaChunkSize()}}
 \item \href{#method-BetaHandler-isArrayBased}{\code{BetaHandler$isArrayBased()}}
 \item \href{#method-BetaHandler-getBeta}{\code{BetaHandler$getBeta()}}
+\item \href{#method-BetaHandler-applyEPICv2Preprocessing}{\code{BetaHandler$applyEPICv2Preprocessing()}}
 \item \href{#method-BetaHandler-clone}{\code{BetaHandler$clone()}}
 }
 }
@@ -57,7 +64,9 @@ Create a new BetaHandler object
   sorted_locs = NULL,
   chrom_col = "#chrom",
   start_col = "start",
-  njobs = 1
+  njobs = 1,
+  epicv2Remap = TRUE,
+  epicv2Filter = c("mean", "sensitivity", "precision", "random")
 )}\if{html}{\out{</div>}}
 }
 
@@ -79,6 +88,10 @@ Create a new BetaHandler object
 \item{\code{start_col}}{Start position column name in tabix file}
 
 \item{\code{njobs}}{Number of parallel jobs}
+
+\item{\code{epicv2Remap}}{Logical. For EPICv2 arrays: remap cross-hybridizing probes. Default TRUE.}
+
+\item{\code{epicv2Filter}}{Character. For EPICv2 arrays: replicate probe strategy ("mean", "sensitivity", "precision", "random").}
 }
 \if{html}{\out{</div>}}
 }
@@ -219,6 +232,24 @@ Extract beta values for specific CpG sites and samples
 }
 \subsection{Returns}{
 Matrix of beta values
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-applyEPICv2Preprocessing"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-applyEPICv2Preprocessing}{}}}
+\subsection{Method \code{applyEPICv2Preprocessing()}}{
+Apply EPICv2-specific preprocessing to beta values
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$applyEPICv2Preprocessing()}\if{html}{\out{</div>}}
+}
+
+\subsection{Details}{
+Uses DMRcate's methodology to remap cross-hybridizing probes and
+filter replicate probes. Only applies to EPICv2 arrays with in-memory beta values.
+}
+
+\subsection{Returns}{
+Self (invisibly)
 }
 }
 \if{html}{\out{<hr>}}

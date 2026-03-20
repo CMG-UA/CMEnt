@@ -8,7 +8,7 @@ launchDMRsegalViewer(
   output_prefix,
   launch_browser = TRUE,
   port = NULL,
-  ...
+  diagnostic = FALSE
 )
 }
 \arguments{
@@ -20,10 +20,7 @@ The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
 
 \item{port}{Integer. Port number for Shiny server (default: auto-assigned).}
 
-\item{...}{Additional arguments passed to \code{\link[shiny]{runApp}}.
-Deprecated viewer data arguments (\code{pheno}, \code{genome}, \code{array},
-\code{sample_group_col}) are ignored because the viewer now loads them from
-\code{{output_prefix}.meta.rds}.}
+\item{diagnostic}{Logical. Whether to enable diagnostic features for block formation visualization (default: FALSE).}
 }
 \value{
 Invisibly returns the Shiny app object.
@@ -38,8 +35,8 @@ The viewer provides interactive access to all visualization functions in the pac
 \item \strong{Overview}: Summary statistics and filterable DMR table
 \item \strong{Single DMR}: Detailed view of individual DMRs with heatmap and motif logo
 \item \strong{Manhattan}: Genome-wide scatter plot of DMR scores
-\item \strong{Block Formation}: Diagnostic view of DMR block detection
 \item \strong{Circos}: Circular genome plot with motif interactions
+\item \strong{Block Formation}: Diagnostic view of DMR block detection, if \code{diagnostic = TRUE}
 }
 
 The function expects the following output files from \code{findDMRsFromSeeds}:

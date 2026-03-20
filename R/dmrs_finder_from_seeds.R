@@ -48,6 +48,13 @@
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
+#' @param epicv2Remap Logical. For EPICv2 arrays only: remap cross-hybridizing probes
+#'   to their actual genomic targets based on WGBS evidence. Default TRUE.
+#'   Uses DMRcate's methodology (Peters et al., 2024).
+#' @param epicv2Filter Character. For EPICv2 arrays only: strategy for handling replicate
+#'   probes that map to the same CpG site. Options: "mean" (average beta values),
+#'   "sensitivity" (select probe most sensitive to changes), "precision" (select most
+#'   precise probe), or "random". Default "mean". Uses DMRcate's methodology.
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #'
 #' @return A GRanges object containing identified DMRs with metadata columns:
@@ -1752,10 +1759,13 @@ findDMRsFromSeeds <- function(
     bed_chrom_col = "chrom",
     bed_start_col = "start",
     verbose = getOption("DMRsegal.verbose", 1),
-    .load_debug = FALSE
+    .load_debug = FALSE,
+    epicv2Remap = TRUE,
+    epicv2Filter = c("mean", "sensitivity", "precision", "random")
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
+    epicv2Filter <- match.arg(epicv2Filter)
 
     pval_mode_per_group <- rep(pval_mode, length.out = length(unique(pheno[[sample_group_col]])))
     names(pval_mode_per_group) <- unique(pheno[[sample_group_col]])
@@ -1888,9 +1898,20 @@ findDMRsFromSeeds <- function(
             njobs = njobs,
             sorted_locs = beta_locs,
             array = array,
-            genome = genome
+            genome = genome,
+            epicv2Remap = epicv2Remap,
+            epicv2Filter = epicv2Filter
         )
     }
+
+    # Apply EPICv2 preprocessing if needed (remaps cross-hybridizing probes, filters replicates)
+    if (tolower(array) == "epicv2") {
+        beta_handler$applyEPICv2Preprocessing()
+        # Update all_cpgs and beta_locs_rownames after preprocessing since row names may have changed
+        all_cpgs <- rownames(beta_handler$getGenomicLocs())
+        beta_locs_rownames <- beta_handler$getBetaRowNames()
+    }
+
     array_based <- beta_handler$isArrayBased()
 
     if (is.null(all_cpgs)) {

@@ -8,7 +8,8 @@ annotateDMRsWithGenes(
   dmrs,
   genome = "hg38",
   promoter_upstream = 2000,
-  promoter_downstream = 200
+  promoter_downstream = 200,
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
 )
 }
 \arguments{
@@ -21,6 +22,9 @@ define promoter region (default: 2000)}
 
 \item{promoter_downstream}{Integer. Number of base pairs downstream of TSS
 to define promoter region (default: 200)}
+
+\item{njobs}{Integer. Number of parallel jobs used to annotate promoter and
+gene-body overlaps (default: \code{getOption("DMRsegal.njobs")})}
 }
 \value{
 The input Dataframe/GRanges object with additional metadata columns:
@@ -54,7 +58,8 @@ dmrs_annotated <- annotateDMRsWithGenes(
     dmrs,
     genome = "hg38",
     promoter_upstream = 5000,
-    promoter_downstream = 1000
+    promoter_downstream = 1000,
+    njobs = 2
 )
 
 }

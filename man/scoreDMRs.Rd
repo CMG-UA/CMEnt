@@ -73,6 +73,10 @@ discriminate between sample groups using cross-validated Support Vector Machine 
 classification. For each DMR, this function performs stratified k-fold cross-prediction
 using an RBF kernel SVM and computes a margin-sensitive classification score based on
 decision values, which serves as a measure of the DMR's discriminative power.
+The scores are then smoothed along the genome using a Gaussian-kNN approach,
+and piecewise-linear segments are detected using the PELT algorithm, expecting a rising->plateau->decreasing pattern.
+Finally, DMRs are assigned to localized blocks based on the smoothed score profiles
+and specified gap rules.
 }
 \details{
 The function uses stratified k-fold cross-prediction to ensure balanced representation

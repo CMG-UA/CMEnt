@@ -55,7 +55,7 @@ genome <- "hg19"
 
 ## Load Example Inputs and Benchmark DMRs
 
-```{r load_inputs_and_dmrs}
+```{r load_inputs}
 # loadExampleInputData is a helper function to load example data included in the package.
 beta <- loadExampleInputData("beta")
 pheno <- loadExampleInputData("pheno")
@@ -94,13 +94,15 @@ dmrs <- findDMRsFromSeeds(
     seeds = dmps, # The seeds are the DMPs, which are pre-computed and provided as example data.
     seeds_id_col = NULL, # The column in the seeds data that contains the unique identifier for each seed, which will be used to link the seeds to the DMRs. If not provided, like here, the rownames of the seeds data will be used as identifiers. In case of a NGS experiment (of a BED, tabix or bsseq input), the names should be in the format "chr:position" to allow for correct linking to the genomic coordinates.
     pheno = pheno, # The phenotype data, which contains the sample information and covariates. It should have a column with the sample group labels, which will be used for the SVM-based scoring of the DMRs. It can be provided as a TSV file.
+    min_cpgs = 10, # The minimum number of CpGs that a DMR should have to be considered valid. This is used to filter out small regions that may not be biologically relevant.
+    max_bridge_seeds_gaps = 1, # The maximum number of non-significant seeds that can be bridged when expanding the DMRs. This allows for some flexibility in the region expansion, while still maintaining a focus on significant seeds.
+    max_bridge_extension_gaps = 1, # The maximum number of non-significant CpGs that can be bridged when extending the DMRs beyond the seeds. This allows for some flexibility in the region extension, while still maintaining a focus on significant CpGs.
     casecontrol_col = "case_control", # The column in the phenotype data that contains the binary case-control labels for the samples, which will be used for the SVM-based scoring of the DMRs. It should be a logical or factor column with two levels, where one level is considered as "case" and the other as "control". If not provided, the first level of the sample group column will be considered as "control" and the second level as "case".
     sample_group_col = "Sample_Group", # The column in the phenotype data that contains the sample group labels for the SVM-based scoring.
     covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
     genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
     array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
-    output_prefix = "tmp/DMRsegal_example", # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
-    n_cores = 4
+    output_prefix = "tmp/DMRsegal_example" # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
 )
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
 cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))

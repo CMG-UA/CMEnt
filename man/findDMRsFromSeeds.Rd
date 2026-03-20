@@ -43,7 +43,9 @@ findDMRsFromSeeds(
   bed_chrom_col = "chrom",
   bed_start_col = "start",
   verbose = getOption("DMRsegal.verbose", 1),
-  .load_debug = FALSE
+  .load_debug = FALSE,
+  epicv2Remap = TRUE,
+  epicv2Filter = c("mean", "sensitivity", "precision", "random")
 )
 }
 \arguments{

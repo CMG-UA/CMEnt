@@ -83,7 +83,7 @@ Invisibly returns the selected region data frame with columns \code{chr},
 \description{
 Selects a small set of informative genomic windows from the input DMRs
 and forwards them to \code{\link[=plotDMRsCircos]{plotDMRsCircos()}}. The default \code{blocks} mode prefers
-localized scoring DMR blocks when \code{block_id} is available, while \code{quick} mode
+localized high-scoring DMR blocks when \code{block_id} is available, while \code{quick} mode
 falls back to top-scoring individual DMR windows. Both selectors are greedy and
 avoid exhaustive optimization to keep region finding inexpensive.
 }

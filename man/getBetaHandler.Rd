@@ -12,7 +12,9 @@ getBetaHandler(
   sorted_locs = NULL,
   chrom_col = "#chrom",
   start_col = "start",
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
+  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
+  epicv2Remap = TRUE,
+  epicv2Filter = c("mean", "sensitivity", "precision", "random")
 )
 }
 \arguments{
@@ -31,6 +33,13 @@ getBetaHandler(
 \item{start_col}{Start position column name in tabix file}
 
 \item{njobs}{Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.}
+
+\item{epicv2Remap}{Logical. For EPICv2 arrays: remap cross-hybridizing probes to their
+actual genomic targets. Default TRUE. Uses DMRcate's methodology.}
+
+\item{epicv2Filter}{Character. For EPICv2 arrays: strategy for handling replicate
+probes at the same CpG site. Options: "mean", "sensitivity", "precision", "random".
+Default "mean". Uses DMRcate's methodology.}
 }
 \value{
 A new BetaHandler object
