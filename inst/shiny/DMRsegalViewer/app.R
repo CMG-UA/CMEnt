@@ -23,7 +23,7 @@ if (output_prefix == "") {
                     tags$li(tags$code("DMRSEGAL_OUTPUT_PREFIX"), " - Path prefix for output files created by findDMRsFromSeeds()")
                 ),
                 hr(),
-                p("The viewer loads phenotype, array, and genome information from ", tags$code("_meta.rds"), " automatically."),
+                p("The viewer loads phenotype, array, and genome information from ", tags$code(".meta.rds"), " automatically."),
                 p("Alternatively, use the ", tags$code("launchDMRsegalViewer()"), " function from R:"),
                 pre(
                     "launchDMRsegalViewer(\n",

@@ -266,10 +266,15 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
     ))
 
     dmrs_file <- paste0(output_prefix, ".dmrs.tsv.gz")
+    beta_file <- paste0(output_prefix, ".seeds_beta.tsv.gz")
     expect_true(file.exists(dmrs_file))
+    expect_true(file.exists(beta_file))
 
     dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
     expect_true("pwm" %in% colnames(dmrs_df))
+    saved_beta <- read.delim(gzfile(beta_file), row.names = 1, check.names = FALSE)
+    supporting_cpgs <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$cpgs), DMRsegal:::.splitCsvValues), use.names = FALSE))
+    expect_setequal(rownames(saved_beta), supporting_cpgs)
 
     loaded_dmrs <- DMRsegal:::.loadDMRsegalData(output_prefix)$dmrs
     expect_true("pwm" %in% names(S4Vectors::mcols(loaded_dmrs)))

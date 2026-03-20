@@ -947,7 +947,7 @@ scoreDMRs <- function(
         # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
 
         if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-            p_con <- progressr::progressor(steps = length(dmrs), message = "scoring DMRs..")
+            p_con <- progressr::progressor(steps = length(dmrs), message = "Scoring DMRs..")
         }
     }
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)

@@ -400,3 +400,65 @@ test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
         c("1", "1", "1", "2", "2", NA)
     )
 })
+
+test_that("computeDMRsInteraction writes complete tabular outputs", {
+    pwm_a <- matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_t <- matrix(
+        rep(c(0, 1, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_uniform <- matrix(
+        0.25,
+        nrow = 4,
+        ncol = 12,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", 6),
+        ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+
+    output_prefix <- file.path(tempdir(), paste0("dmr-interaction-", as.integer(Sys.time())))
+    interactions_file <- paste0(output_prefix, ".dmr_interactions.tsv")
+    components_file <- paste0(output_prefix, ".dmr_components.tsv")
+
+    result <- computeDMRsInteraction(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        min_similarity = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE,
+        output_prefix = output_prefix
+    )
+
+    expect_true(file.exists(interactions_file))
+    expect_true(file.exists(components_file))
+
+    saved_interactions <- read.delim(
+        interactions_file,
+        sep = "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+    saved_components <- read.delim(
+        components_file,
+        sep = "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+
+    expect_equal(nrow(saved_interactions), nrow(result$interactions))
+    expect_equal(nrow(saved_components), nrow(result$components))
+    expect_true(all(nzchar(saved_components$indices)))
+
+    unlink(c(interactions_file, components_file))
+})

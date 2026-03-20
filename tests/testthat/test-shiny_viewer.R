@@ -35,7 +35,7 @@ test_that("validateOutputPrefix warns about missing optional files", {
     )
     close(gz)
 
-    meta_file <- paste0(prefix, "_meta.rds")
+    meta_file <- paste0(prefix, ".meta.rds")
     saveRDS(list(
         pheno = data.frame(Sample_Name = c("S1", "S2"), Sample_Group = c("case", "control")),
         genome = "hg19",
@@ -60,4 +60,202 @@ test_that("Shiny module UI functions return tagList", {
     expect_s3_class(DMRsegal:::.manhattanUI("test"), "shiny.tag.list")
     expect_s3_class(DMRsegal:::.blockFormationUI("test"), "shiny.tag.list")
     expect_s3_class(DMRsegal:::.circosUI("test"), "shiny.tag.list")
+})
+
+test_that("Viewer UI includes a global busy overlay", {
+    ui_html <- as.character(DMRsegal:::.createViewerUI())
+
+    expect_match(ui_html, "dmrsegal-viewer-busy-overlay", fixed = TRUE)
+    expect_match(ui_html, "viewer_cancel_task", fixed = TRUE)
+})
+
+test_that("Viewer busy overlay script reconciles output completion events", {
+    script_path <- test_path("..", "..", "inst", "shiny", "DMRsegalViewer", "www", "busy-overlay.js")
+    script <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
+
+    expect_match(script, "shiny:value", fixed = TRUE)
+    expect_match(script, "attributeFilter", fixed = TRUE)
+    expect_match(script, "aria-hidden", fixed = TRUE)
+})
+
+test_that("Circos viewer falls back to lightweight interactive settings without precomputed interactions", {
+    params <- list(mode = "auto", method = "components")
+
+    sanitized <- DMRsegal:::.sanitizeViewerCircosParams(
+        params,
+        has_precomputed_interactions = FALSE
+    )
+
+    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(list()))
+    expect_equal(DMRsegal:::.circosViewerAutoMethodChoices(FALSE), c("blocks" = "blocks", "quick" = "quick"))
+    expect_equal(sanitized$method, "blocks")
+    expect_false(sanitized$query_components_with_jaspar)
+    expect_false(sanitized$use_precomputed_interactions)
+    expect_true(sanitized$method_fallback)
+})
+
+test_that("Circos viewer recognizes usable precomputed interaction caches", {
+    precomputed <- list(
+        components = data.frame(
+            component_id = 1L,
+            indices = I(list(1:2))
+        ),
+        interactions = data.frame(component_id = 1L, index1 = 1L, index2 = 2L)
+    )
+    empty_cache <- list(
+        components = data.frame(),
+        interactions = data.frame()
+    )
+    broken_components <- list(
+        components = data.frame(component_id = 1L, indices = NA_character_),
+        interactions = data.frame(component_id = 1L, index1 = 1L, index2 = 2L)
+    )
+
+    expect_true(DMRsegal:::.viewerHasUsableCircosComponents(precomputed$components))
+    expect_false(DMRsegal:::.viewerHasUsableCircosComponents(broken_components$components))
+    expect_true(DMRsegal:::.viewerHasPrecomputedCircosCache(precomputed))
+    expect_true(DMRsegal:::.viewerHasPrecomputedCircosCache(empty_cache))
+    expect_false(DMRsegal:::.viewerHasPrecomputedCircosCache(list()))
+    expect_true(DMRsegal:::.viewerHasPrecomputedCircosInteractions(precomputed))
+    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(empty_cache))
+    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(list()))
+    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(broken_components))
+
+    interaction_args <- DMRsegal:::.viewerCircosInteractionArgs(
+        list(),
+        has_precomputed_interactions = FALSE
+    )
+
+    expect_s3_class(interaction_args$components, "data.frame")
+    expect_s3_class(interaction_args$interactions, "data.frame")
+    expect_equal(nrow(interaction_args$components), 0)
+    expect_equal(nrow(interaction_args$interactions), 0)
+})
+
+test_that("Circos viewer status UI reflects cache availability and actions", {
+    missing_status <- DMRsegal:::.circosInteractionStatusUI(
+        ns = shiny::NS("test"),
+        has_precomputed_cache = FALSE,
+        has_precomputed_interactions = FALSE,
+        is_computing_interactions = FALSE
+    )
+    empty_status <- DMRsegal:::.circosInteractionStatusUI(
+        ns = shiny::NS("test"),
+        has_precomputed_cache = TRUE,
+        has_precomputed_interactions = FALSE,
+        is_computing_interactions = FALSE
+    )
+    ready_status <- DMRsegal:::.circosInteractionStatusUI(
+        ns = shiny::NS("test"),
+        has_precomputed_cache = TRUE,
+        has_precomputed_interactions = TRUE,
+        is_computing_interactions = FALSE
+    )
+
+    expect_match(as.character(missing_status), "Precomputed Circos cache not found or is incomplete.", fixed = TRUE)
+    expect_match(as.character(missing_status), "Compute Interactions", fixed = TRUE)
+    expect_match(as.character(empty_status), "Precomputed Circos cache loaded, but no interaction links are available.", fixed = TRUE)
+    expect_match(as.character(empty_status), "Recompute Interactions", fixed = TRUE)
+    expect_match(as.character(ready_status), "Precomputed Circos cache available.", fixed = TRUE)
+})
+
+test_that("loadViewerCircosCache treats blank cache files as empty tables", {
+    temp_dir <- tempdir()
+    prefix <- file.path(temp_dir, paste0("blank-circos-cache-", as.integer(Sys.time())))
+    interactions_file <- paste0(prefix, ".dmr_interactions.tsv")
+    components_file <- paste0(prefix, ".dmr_components.tsv")
+
+    writeLines("", interactions_file)
+    writeLines("", components_file)
+
+    cache <- DMRsegal:::.loadViewerCircosCache(prefix)
+
+    expect_s3_class(cache$interactions, "data.frame")
+    expect_s3_class(cache$components, "data.frame")
+    expect_equal(nrow(cache$interactions), 0)
+    expect_equal(nrow(cache$components), 0)
+})
+
+test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", {
+    beta <- matrix(
+        c(
+            0.5, 0.4,
+            0.6, 0.5,
+            0.7, 0.6
+        ),
+        nrow = 3,
+        byrow = TRUE,
+        dimnames = list(c("cg1", "cg2", "cg3"), c("S1", "S2"))
+    )
+    sorted_locs <- data.frame(
+        chr = c("chr1", "chr1", "chr1"),
+        start = c(100L, 200L, 300L),
+        end = c(100L, 200L, 300L),
+        row.names = c("cg1", "cg2", "cg3")
+    )
+    beta_handler <- DMRsegal::getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    pheno <- data.frame(
+        Sample_Group = c("case", "control"),
+        row.names = c("S1", "S2")
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100L, 200L), end = c(350L, 450L)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2,cg4", "cg2,cg3,cg5")
+
+    heatmap_data <- NULL
+    expect_warning(
+        heatmap_data <- DMRsegal:::.prepareCircosHeatmapData(
+            dmrs = dmrs,
+            beta_handler = beta_handler,
+            pheno = pheno,
+            sample_group_col = "Sample_Group",
+            max_num_samples_per_group = 0
+        ),
+        "Skipping 2 supporting CpGs absent from beta values"
+    )
+
+    expect_s3_class(heatmap_data$heatmap_df, "data.frame")
+    expect_equal(rownames(heatmap_data$heatmap_df), c("cg1", "cg2", "cg3"))
+    expect_true(all(stats::complete.cases(heatmap_data$heatmap_df[, c("chr", "start", "end")])))
+})
+
+test_that("plotDMR restores showtext auto hooks after drawing", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+
+    if (is.null(dmrs) || length(dmrs) == 0) {
+        skip("No DMRs available for testing")
+    }
+
+    orig_showtext_auto <- DMRsegal:::.isShowtextAutoEnabled()
+    orig_device <- grDevices::dev.cur()
+    on.exit({
+        showtext::showtext_auto(enable = orig_showtext_auto)
+        while (grDevices::dev.cur() > orig_device && grDevices::dev.cur() > 1) {
+            grDevices::dev.off()
+        }
+    }, add = TRUE)
+
+    showtext::showtext_auto(enable = FALSE)
+    expect_false(DMRsegal:::.isShowtextAutoEnabled())
+
+    expect_no_error(
+        plotDMR(
+            dmrs = dmrs[seq_len(min(2, length(dmrs)))],
+            dmr_index = 1,
+            beta = beta,
+            pheno = pheno,
+            array = array_type,
+            genome = "hg19",
+            max_cpgs = 20,
+            max_samples_per_group = 4
+        )
+    )
+
+    expect_false(DMRsegal:::.isShowtextAutoEnabled())
 })

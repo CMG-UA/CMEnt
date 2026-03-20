@@ -8,6 +8,35 @@ if (getRversion() >= "2.15.1") {
     ))
 }
 
+.resolveShowtextDpi <- function(default = 300) {
+    tryCatch({
+        px <- grDevices::dev.size("px")
+        inches <- grDevices::dev.size("in")
+
+        if (
+            length(px) != 2 ||
+            length(inches) != 2 ||
+            any(!is.finite(px)) ||
+            any(!is.finite(inches)) ||
+            any(inches <= 0)
+        ) {
+            return(default)
+        }
+
+        dpi <- stats::median(px / inches)
+        if (!is.finite(dpi) || dpi <= 0) {
+            return(default)
+        }
+
+        dpi
+    }, error = function(e) default)
+}
+
+.isShowtextAutoEnabled <- function() {
+    hooks <- getHook("plot.new")
+    any(vapply(hooks, inherits, logical(1), "showtext_hook"))
+}
+
 #' Plot DMR Structure with seeds and Extended CpGs
 #'
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
@@ -36,9 +65,6 @@ if (getRversion() >= "2.15.1") {
                               min_extension_bp = 50,
                               plot_title = TRUE,
                               .ret_details = FALSE) {
-    showtext::showtext_auto()
-
-
     # Validate input
     if (dmr_index < 1 || dmr_index > length(dmrs)) {
         stop("dmr_index must be between 1 and ", length(dmrs))
@@ -380,11 +406,13 @@ if (getRversion() >= "2.15.1") {
 
     # Create title if not provided
     title <- sprintf(
-        "DMR #%d: %s:%s-%s\n%d seeds (\u0394\u03b2=%.3f)",
+        "DMR #%d: %s:%s-%s\nScore: %.2f\nCV Accuracy: %.2f\n%d seeds (\u0394\u03b2=%.3f)",
         dmr_index,
         chr,
         format(dmr_start, big.mark = ",", scientific = FALSE),
         format(dmr_end, big.mark = ",", scientific = FALSE),
+        dmr_data$score,
+        dmr_data$cv_accuracy,
         dmr_data$seeds_num,
         dmr_data$delta_beta
     )
@@ -673,12 +701,10 @@ minmaxscale <- function(x) {
         ret$top_interactions <- top_tbl
     }
 
-    if (isTRUE(getOption("DMRsegal.plotDMR_query_jaspar", TRUE))) {
-        ret$jaspar <- tryCatch(
-            comparePWMToJaspar(list(target_pwm)),
-            error = function(e) data.frame()
-        )
-    }
+    ret$jaspar <- tryCatch(
+        comparePWMToJaspar(list(target_pwm)),
+        error = function(e) data.frame()
+    )
     ret
 }
 
@@ -884,7 +910,6 @@ plotDMRs <- function(dmrs,
             stop("Output file must have a .pdf extension.")
         }
     }
-    showtext::showtext_auto()
     if (!is.null(array)) {
         if (length(array) > 1) {
             array <- array[[1]]
@@ -1017,8 +1042,16 @@ plotDMR <- function(dmrs,
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
 
+    old_showtext_opts <- showtext::showtext_opts()
+    old_showtext_auto <- .isShowtextAutoEnabled()
+    on.exit({
+        showtext::showtext_opts(old_showtext_opts)
+        if (!old_showtext_auto) {
+            showtext::showtext_auto(enable = FALSE)
+        }
+    }, add = TRUE)
     showtext::showtext_auto(enable = TRUE)
-    showtext::showtext_opts(dpi = 300)
+    showtext::showtext_opts(dpi = if (!is.null(output_file) || .Device == "null device") 300 else .resolveShowtextDpi(300))
     if (!is.null(output_file)) {
         grDevices::cairo_pdf(output_file, width = width, height = height)
     }

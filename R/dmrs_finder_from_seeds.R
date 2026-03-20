@@ -2016,8 +2016,27 @@ findDMRsFromSeeds <- function(
         stop("At least two samples are required after applying ignored_sample_groups.")
     }
     pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
+    viewer_beta_output_file <- if (!is.null(output_prefix)) paste0(output_prefix, "seeds_beta.tsv.gz") else NULL
+    saveViewerBetaFile <- function(beta_values = NULL) {
+        if (is.null(viewer_beta_output_file)) {
+            return(invisible(NULL))
+        }
+        if (is.null(beta_values)) {
+            beta_values <- matrix(
+                numeric(0),
+                nrow = 0,
+                ncol = length(beta_col_names_detection),
+                dimnames = list(character(0), beta_col_names_detection)
+            )
+        }
+        .log_info("Saving viewer beta values to file: ", viewer_beta_output_file, " ...", level = 2)
+        gz <- gzfile(viewer_beta_output_file, "w")
+        on.exit(close(gz), add = TRUE)
+        write.table(beta_values, gz, sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
+        invisible(beta_values)
+    }
     if (!is.null(output_prefix_base)) {
-        viewer_meta_file <- paste0(output_prefix_base, "_meta.rds")
+        viewer_meta_file <- paste0(output_prefix_base, ".meta.rds")
         viewer_meta <- list(
             pheno = pheno_detection,
             genome = genome,
@@ -2096,16 +2115,6 @@ findDMRsFromSeeds <- function(
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
     seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
     rownames(seeds_beta) <- seeds
-    if (!is.null(output_prefix)) {
-        seeds_beta_output_file <- paste0(output_prefix, "seeds_beta.tsv.gz")
-    }
-
-    if (!is.null(output_prefix)) {
-        .log_info("Saving seeds beta to file: ", seeds_beta_output_file, " ...", level = 2)
-        gz <- gzfile(seeds_beta_output_file, "w")
-        write.table(seeds_beta, gz, sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
-        close(gz)
-    }
 
     if (nrow(seeds_locs) != nrow(seeds_beta)) {
         stop(
@@ -2246,6 +2255,7 @@ findDMRsFromSeeds <- function(
 
         if (nrow(dmrs) == 0) {
             .log_warn("No DMRs remain after filtering based on min_seeds.")
+            saveViewerBetaFile()
             if (!is.null(output_prefix)) {
                 for (f in c(".methylation.tsv.gz", ".tsv.gz")) {
                     gzfile <- gzfile(paste0(output_prefix, f), "w", compression = 2)
@@ -2638,6 +2648,7 @@ findDMRsFromSeeds <- function(
     }
     if (nrow(filtered_dmrs) == 0) {
         .log_warn("No DMRs passed the filtering step.")
+        saveViewerBetaFile()
         if (!is.null(output_prefix)) {
             for (f in c(".methylation.tsv.gz", ".tsv.gz")) {
                 gzfile <- gzfile(file.path(output_dir, paste0(output_prefix, f)), "w", compression = 2)
@@ -2762,6 +2773,9 @@ findDMRsFromSeeds <- function(
     .log_info("Final number of DMRs: ", nrow(final_dmrs), level = 1)
     .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(final_dmrs)), collapse = "\n\t"), level = 3)
     if (!is.null(output_prefix)) {
+        viewer_cpgs <- unique(unlist(lapply(S4Vectors::mcols(final_dmrs_granges)$cpgs, .splitCsvValues), use.names = FALSE))
+        viewer_beta <- all_selected_cpgs_beta[viewer_cpgs, beta_col_names_detection, drop = FALSE]
+        saveViewerBetaFile(viewer_beta)
         dmrs_file <- paste0(output_prefix, "dmrs.tsv.gz")
         .log_step("Saving DMRs to ", dmrs_file, "..", level = 2)
         encoded_dmrs <- .encodeNonTabularColumns(final_dmrs)

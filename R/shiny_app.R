@@ -5,7 +5,7 @@
 #'
 #' @param output_prefix Character. Prefix used when saving DMR analysis results.
 #'   The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
-#'   \code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}_meta.rds}.
+#'   \code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}.meta.rds}.
 #' @param launch_browser Logical. Whether to launch in browser (default: TRUE).
 #' @param port Integer. Port number for Shiny server (default: auto-assigned).
 #'
@@ -16,7 +16,6 @@
 #' \itemize{
 #'   \item \strong{Overview}: Summary statistics and filterable DMR table
 #'   \item \strong{Single DMR}: Detailed view of individual DMRs with heatmap and motif logo
-#'   \item \strong{Multi DMR}: Grid view of multiple DMRs
 #'   \item \strong{Manhattan}: Genome-wide scatter plot of DMR scores
 #'   \item \strong{Block Formation}: Diagnostic view of DMR block detection
 #'   \item \strong{Circos}: Circular genome plot with motif interactions
@@ -26,9 +25,9 @@
 #' \itemize{
 #'   \item \code{{output_prefix}.dmrs.tsv.gz} - Main DMR results (required)
 #'   \item \code{{output_prefix}.seeds_beta.tsv.gz} - Beta values for seeds (required)
-#'   \item \code{{output_prefix}_meta.rds} - Viewer metadata with phenotype, array, and genome information (required)
-#'   \item \code{{output_prefix}dmr_interactions.csv} - DMR interactions (optional)
-#'   \item \code{{output_prefix}dmr_components.csv} - Motif components (optional)
+#'   \item \code{{output_prefix}.meta.rds} - Viewer metadata with phenotype, array, and genome information (required)
+#'   \item \code{{output_prefix}dmr_interactions.tsv} - DMR interactions (optional)
+#'   \item \code{{output_prefix}dmr_components.tsv} - Motif components (optional)
 #' }
 #'
 #' @examples
@@ -75,10 +74,63 @@ launchDMRsegalViewer <- function(
     list(
         dmrs_file = paste0(output_prefix, ".dmrs.tsv.gz"),
         beta_file = paste0(output_prefix, ".seeds_beta.tsv.gz"),
-        meta_file = paste0(output_prefix, "_meta.rds"),
-        interactions_file = paste0(output_prefix, "dmr_interactions.csv"),
-        components_file = paste0(output_prefix, "dmr_components.csv")
+        meta_file = paste0(output_prefix, ".meta.rds"),
+        interactions_file = paste0(output_prefix, ".dmr_interactions.tsv"),
+        components_file = paste0(output_prefix, ".dmr_components.tsv")
     )
+}
+
+.readViewerTabularCache <- function(path, label) {
+    if (!file.exists(path)) {
+        return(NULL)
+    }
+
+    file_size <- file.info(path)$size
+    if (isTRUE(is.finite(file_size) && file_size <= 1)) {
+        .log_info("Loaded empty ", label, " cache from ", path, ".", level = 1)
+        return(data.frame())
+    }
+
+    tryCatch(
+        data.table::fread(path, sep = "\t", header = TRUE, data.table = FALSE),
+        error = function(e) {
+            .log_warn("Failed to load ", label, ": ", e$message, level = 1)
+            NULL
+        }
+    )
+}
+
+.loadViewerCircosCache <- function(output_prefix) {
+    files <- .viewerOutputFiles(output_prefix)
+
+    interactions <- NULL
+    if (file.exists(files$interactions_file)) {
+        .log_step("Loading interactions from ", files$interactions_file, "...", level = 1)
+        interactions <- .readViewerTabularCache(files$interactions_file, "interactions")
+    }
+
+    components <- NULL
+    if (file.exists(files$components_file)) {
+        .log_step("Loading components from ", files$components_file, "...", level = 1)
+        components <- .readViewerTabularCache(files$components_file, "components")
+    }
+
+    list(
+        interactions = interactions,
+        components = components
+    )
+}
+
+.reloadViewerCircosCache <- function(data) {
+    stopifnot(is.list(data))
+    if (is.null(data$output_prefix) || !nzchar(data$output_prefix)) {
+        return(data)
+    }
+
+    circos_cache <- .loadViewerCircosCache(data$output_prefix)
+    data$interactions <- circos_cache$interactions
+    data$components <- circos_cache$components
+    data
 }
 
 
@@ -109,7 +161,7 @@ launchDMRsegalViewer <- function(
             paste(
                 "Interactions file not found:",
                 files$interactions_file,
-                "- Circos interactions will be computed on-the-fly"
+                "- the Circos panel can precompute this cache on demand"
             )
         )
     }
@@ -119,7 +171,7 @@ launchDMRsegalViewer <- function(
             paste(
                 "Components file not found:",
                 files$components_file,
-                "- Circos components will be computed on-the-fly"
+                "- the Circos panel can precompute this cache on demand"
             )
         )
     }
@@ -220,37 +272,15 @@ launchDMRsegalViewer <- function(
         genome = genome
     )
 
-    interactions <- NULL
-    if (file.exists(files$interactions_file)) {
-        .log_step("Loading interactions from ", files$interactions_file, "...", level = 1)
-        interactions <- tryCatch(
-            data.table::fread(files$interactions_file, sep = "\t", header = TRUE, data.table = FALSE),
-            error = function(e) {
-                .log_warn("Failed to load interactions: ", e$message, level = 1)
-                NULL
-            }
-        )
-    }
-
-    components <- NULL
-    if (file.exists(files$components_file)) {
-        .log_step("Loading components from ", files$components_file, "...", level = 1)
-        components <- tryCatch(
-            data.table::fread(files$components_file, sep = "\t", header = TRUE, data.table = FALSE),
-            error = function(e) {
-                .log_warn("Failed to load components: ", e$message, level = 1)
-                NULL
-            }
-        )
-    }
+    circos_cache <- .loadViewerCircosCache(output_prefix)
 
     list(
         dmrs = dmrs,
         beta = beta,
         beta_handler = beta_handler,
         pheno = pheno,
-        interactions = interactions,
-        components = components,
+        interactions = circos_cache$interactions,
+        components = circos_cache$components,
         genome = genome,
         array = array,
         sample_group_col = sample_group_col,
@@ -304,6 +334,655 @@ launchDMRsegalViewer <- function(
     )
 }
 
+.viewerBusyOverlayUI <- function() {
+    shiny::tags$div(
+        id = "dmrsegal-viewer-busy-overlay",
+        class = "dmrsegal-viewer-busy-overlay",
+        hidden = "hidden",
+        `aria-hidden` = "true",
+        shiny::tags$div(
+            class = "dmrsegal-viewer-busy-card",
+            role = "status",
+            `aria-live` = "assertive",
+            `aria-atomic` = "true",
+            shiny::tags$div(
+                class = "spinner-border text-primary dmrsegal-viewer-busy-spinner",
+                role = "presentation"
+            ),
+            shiny::tags$div(
+                class = "dmrsegal-viewer-busy-message",
+                `data-role` = "message",
+                "Processing..."
+            ),
+            shiny::tags$div(
+                class = "dmrsegal-viewer-busy-detail",
+                `data-role` = "detail",
+                ""
+            ),
+            shiny::actionButton(
+                "viewer_cancel_task",
+                "Cancel",
+                class = "btn btn-outline-danger px-4",
+                `data-role` = "cancel"
+            )
+        )
+    )
+}
+
+.viewerTaskMessage <- function(task_type) {
+    switch(task_type,
+        single_dmr_plot = list(
+            message = "Generating DMR plot...",
+            detail = ""
+        ),
+        manhattan_plot = list(
+            message = "Generating Manhattan plot...",
+            detail = ""
+        ),
+        block_plot = list(
+            message = "Generating block formation plot...",
+            detail = ""
+        ),
+        circos_plot = list(
+            message = "Generating Circos plot...",
+            detail = ""
+        ),
+        circos_cache_compute = list(
+            message = "Computing precomputed Circos cache...",
+            detail = ""
+        ),
+        list(
+            message = "Processing...",
+            detail = ""
+        )
+    )
+}
+
+.viewerDevPackagePath <- function() {
+    ns_path <- tryCatch(getNamespaceInfo(asNamespace("DMRsegal"), "path"), error = function(e) NA_character_)
+    cwd_path <- tryCatch(normalizePath(getwd(), winslash = "/", mustWork = TRUE), error = function(e) NA_character_)
+    candidate_paths <- unique(c(ns_path, cwd_path))
+    candidate_paths <- candidate_paths[!is.na(candidate_paths) & nzchar(candidate_paths)]
+
+    for (path in candidate_paths) {
+        desc_file <- file.path(path, "DESCRIPTION")
+        if (!file.exists(desc_file)) {
+            next
+        }
+
+        pkg_name <- tryCatch(unname(as.character(read.dcf(desc_file, fields = "Package")[1, 1])), error = function(e) NA_character_)
+        if (!identical(pkg_name, "DMRsegal")) {
+            next
+        }
+
+        if (
+            file.exists(file.path(path, "R", "shiny_app.R")) &&
+            file.exists(file.path(path, "R", "shiny_modules.R"))
+        ) {
+            return(path)
+        }
+    }
+
+    NULL
+}
+
+.captureViewerRecordedPlot <- function(plot_fun) {
+    stopifnot(is.function(plot_fun))
+
+    grDevices::pdf(file = NULL)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    plot_fun()
+    grDevices::recordPlot()
+}
+
+.viewerRunBackgroundTaskFromData <- function(task_type, data, params) {
+    switch(task_type,
+        single_dmr_plot = list(
+            task_type = task_type,
+            plot = .captureViewerRecordedPlot(function() {
+                plotDMR(
+                    dmrs = data$dmrs,
+                    dmr_index = params$dmr_index,
+                    beta = data$beta_handler,
+                    pheno = data$pheno,
+                    genome = data$genome,
+                    array = data$array,
+                    sample_group_col = data$sample_group_col,
+                    max_cpgs = params$max_cpgs,
+                    max_samples_per_group = params$max_samples_per_group,
+                    plot_title = TRUE
+                )
+            })
+        ),
+        manhattan_plot = list(
+            task_type = task_type,
+            plot = .captureViewerRecordedPlot(function() {
+                plotDMRsManhattan(
+                    dmrs = data$dmrs,
+                    genome = data$genome,
+                    show_blocks = params$show_blocks,
+                    point_size = params$point_size,
+                    point_alpha = params$point_alpha
+                )
+            })
+        ),
+        block_plot = list(
+            task_type = task_type,
+            plot = .captureViewerRecordedPlot(function() {
+                plotDMRBlockFormation(
+                    dmrs = data$dmrs,
+                    chromosome = params$chromosome,
+                    genome = data$genome,
+                    k_neighbors = params$k_neighbors,
+                    block_gap_mode = params$block_gap_mode,
+                    block_gap_fixed_bp = if (identical(params$block_gap_mode, "fixed")) params$block_gap_fixed_bp else NULL
+                )
+            })
+        ),
+        circos_plot = {
+            prepared_plot_state <- NULL
+            plot <- .captureViewerRecordedPlot(function() {
+                prepared_plot_state <<- .runViewerCircosPlot(
+                    params,
+                    data,
+                    prepared_plot_state = params$prepared_plot_state
+                )
+            })
+            list(
+                task_type = task_type,
+                plot = plot,
+                prepared_plot_state = prepared_plot_state
+            )
+        },
+        circos_cache_compute = {
+            result <- computeDMRsInteraction(
+                dmrs = data$dmrs,
+                genome = data$genome,
+                array = data$array,
+                beta_locs = data$beta_handler$getBetaLocs(),
+                min_similarity = params$min_similarity,
+                output_prefix = data$output_prefix
+            )
+            cache <- .loadViewerCircosCache(data$output_prefix)
+            if (is.null(cache$interactions)) {
+                cache$interactions <- result$interactions
+            }
+            if (is.null(cache$components)) {
+                cache$components <- .serializeDMRInteractionComponentsForStorage(result$components)
+            }
+
+            list(
+                task_type = task_type,
+                cache = cache
+            )
+        },
+        stop("Unknown viewer background task: ", task_type, call. = FALSE)
+    )
+}
+
+.viewerRunBackgroundTask <- function(task_type, output_prefix, params) {
+    data <- .loadDMRsegalData(output_prefix)
+    .viewerRunBackgroundTaskFromData(
+        task_type = task_type,
+        data = data,
+        params = params
+    )
+}
+
+.launchViewerBackgroundTask <- function(task_type, output_prefix, params, dev_pkg_path = NULL) {
+    callr::r_bg(
+        func = function(task_type, output_prefix, params, dev_pkg_path) {
+            if (
+                !is.null(dev_pkg_path) &&
+                nzchar(dev_pkg_path) &&
+                file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                requireNamespace("pkgload", quietly = TRUE)
+            ) {
+                pkgload::load_all(
+                    dev_pkg_path,
+                    quiet = TRUE,
+                    export_all = FALSE,
+                    helpers = FALSE,
+                    attach_testthat = FALSE
+                )
+            } else {
+                base::suppressPackageStartupMessages(base::library(DMRsegal))
+            }
+
+            DMRsegal:::.viewerRunBackgroundTask(
+                task_type = task_type,
+                output_prefix = output_prefix,
+                params = params
+            )
+        },
+        args = list(
+            task_type = task_type,
+            output_prefix = output_prefix,
+            params = params,
+            dev_pkg_path = dev_pkg_path
+        ),
+        supervise = TRUE,
+        # Avoid pipe-buffer deadlocks from verbose worker logging.
+        stdout = NULL,
+        stderr = NULL
+    )
+}
+
+.createViewerWorkerSession <- function(output_prefix, dev_pkg_path = NULL) {
+    worker <- callr::r_session$new(wait = TRUE)
+    bootstrap_error <- tryCatch(
+        {
+            worker$run(
+                func = function(output_prefix, dev_pkg_path) {
+                    if (
+                        !is.null(dev_pkg_path) &&
+                        nzchar(dev_pkg_path) &&
+                        file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                        requireNamespace("pkgload", quietly = TRUE)
+                    ) {
+                        pkgload::load_all(
+                            dev_pkg_path,
+                            quiet = TRUE,
+                            export_all = FALSE,
+                            helpers = FALSE,
+                            attach_testthat = FALSE
+                        )
+                    } else {
+                        base::suppressPackageStartupMessages(base::library(DMRsegal))
+                    }
+
+                    assign(
+                        ".dmrsegal_viewer_worker_data",
+                        suppressMessages(
+                            DMRsegal:::.loadDMRsegalData(output_prefix)
+                        ),
+                        envir = .GlobalEnv
+                    )
+                    TRUE
+                },
+                args = list(
+                    output_prefix = output_prefix,
+                    dev_pkg_path = dev_pkg_path
+                )
+            )
+            NULL
+        },
+        error = function(e) e
+    )
+
+    if (inherits(bootstrap_error, "error")) {
+        try(worker$close(), silent = TRUE)
+        stop(bootstrap_error)
+    }
+
+    worker
+}
+
+.createViewerTaskController <- function(session, data) {
+    use_fork_backend <- identical(.Platform$OS.type, "unix")
+    active_task <- shiny::reactiveVal(NULL)
+    task_state <- shiny::reactiveVal(list(
+        active = FALSE,
+        task_type = NULL,
+        message = NULL,
+        detail = NULL,
+        cancelable = FALSE
+    ))
+    worker_session <- NULL
+    worker_dev_pkg_path <- .viewerDevPackagePath()
+
+    set_task_state <- function(
+        active = FALSE,
+        task_type = NULL,
+        message = NULL,
+        detail = NULL,
+        cancelable = FALSE
+    ) {
+        task_state(list(
+            active = active,
+            task_type = task_type,
+            message = message,
+            detail = detail,
+            cancelable = cancelable
+        ))
+    }
+
+    get_active_task <- function() {
+        shiny::isolate(active_task())
+    }
+
+    close_worker <- function() {
+        if (!is.null(worker_session)) {
+            try(worker_session$close(), silent = TRUE)
+            worker_session <<- NULL
+        }
+        invisible(TRUE)
+    }
+
+    ensure_worker <- function() {
+        if (!is.null(worker_session)) {
+            worker_state <- tryCatch(worker_session$get_state(), error = function(e) "finished")
+            if (
+                identical(worker_state, "idle") &&
+                isTRUE(tryCatch(worker_session$is_alive(), error = function(e) FALSE))
+            ) {
+                return(worker_session)
+            }
+            close_worker()
+        }
+
+        worker_session <<- .createViewerWorkerSession(
+            output_prefix = data$output_prefix,
+            dev_pkg_path = worker_dev_pkg_path
+        )
+        worker_session
+    }
+
+    cancel <- function() {
+        current <- get_active_task()
+        if (is.null(current)) {
+            return(FALSE)
+        }
+
+        callback <- current$on_cancel
+        set_task_state(
+            active = TRUE,
+            task_type = current$task_type,
+            message = current$message,
+            detail = "Stopping background process...",
+            cancelable = FALSE
+        )
+        if (identical(current$backend, "fork")) {
+            try(tools::pskill(current$job$pid), silent = TRUE)
+            try(parallel::mccollect(current$job, wait = FALSE, timeout = 0), silent = TRUE)
+        } else {
+            close_worker()
+        }
+        active_task(NULL)
+        set_task_state()
+        if (is.function(callback)) {
+            callback()
+        }
+        TRUE
+    }
+
+    shutdown <- function() {
+        current <- get_active_task()
+        if (!is.null(current) && identical(current$backend, "fork")) {
+            try(tools::pskill(current$job$pid), silent = TRUE)
+            try(parallel::mccollect(current$job, wait = FALSE, timeout = 0), silent = TRUE)
+        }
+        active_task(NULL)
+        set_task_state()
+        close_worker()
+        TRUE
+    }
+
+    start <- function(
+        task_type,
+        params,
+        on_success = NULL,
+        on_error = NULL,
+        on_cancel = NULL
+    ) {
+        current <- get_active_task()
+        if (!is.null(current)) {
+            shiny::showNotification(
+                "A viewer task is already running. Cancel it before starting a new one.",
+                type = "warning",
+                duration = 5
+            )
+            return(FALSE)
+        }
+
+        descriptor <- .viewerTaskMessage(task_type)
+        if (isTRUE(use_fork_backend)) {
+            job <- tryCatch(
+                parallel::mcparallel(
+                    {
+                        suppressMessages(
+                            DMRsegal:::.viewerRunBackgroundTaskFromData(
+                                task_type = task_type,
+                                data = data,
+                                params = params
+                            )
+                        )
+                    },
+                    silent = TRUE
+                ),
+                error = function(e) e
+            )
+
+            if (inherits(job, "error")) {
+                if (is.function(on_error)) {
+                    on_error(job)
+                } else {
+                    shiny::showNotification(
+                        paste0("Unable to start viewer task: ", job$message),
+                        type = "error",
+                        duration = NULL
+                    )
+                }
+                return(FALSE)
+            }
+
+            active_task(list(
+                backend = "fork",
+                job = job,
+                task_type = task_type,
+                message = descriptor$message,
+                detail = descriptor$detail,
+                cancelable = TRUE,
+                on_success = on_success,
+                on_error = on_error,
+                on_cancel = on_cancel
+            ))
+            set_task_state(
+                active = TRUE,
+                task_type = task_type,
+                message = descriptor$message,
+                detail = descriptor$detail,
+                cancelable = TRUE
+            )
+            return(TRUE)
+        }
+
+        worker <- tryCatch(
+            ensure_worker(),
+            error = function(e) e
+        )
+
+        if (inherits(worker, "error")) {
+            if (is.function(on_error)) {
+                on_error(worker)
+            } else {
+                shiny::showNotification(
+                    paste0("Unable to start viewer task: ", worker$message),
+                    type = "error",
+                    duration = NULL
+                )
+            }
+            return(FALSE)
+        }
+
+        launch_error <- tryCatch(
+            {
+                worker$call(
+                    func = function(task_type, params) {
+                        suppressMessages({
+                            if (!exists(".dmrsegal_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
+                                stop("Viewer worker data is not initialized.", call. = FALSE)
+                            }
+
+                            data <- get(".dmrsegal_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
+                            result <- DMRsegal:::.viewerRunBackgroundTaskFromData(
+                                task_type = task_type,
+                                data = data,
+                                params = params
+                            )
+
+                            if (identical(task_type, "circos_cache_compute") && is.list(result$cache)) {
+                                data$interactions <- result$cache$interactions
+                                data$components <- result$cache$components
+                                assign(".dmrsegal_viewer_worker_data", data, envir = .GlobalEnv)
+                            }
+
+                            result
+                        })
+                    },
+                    args = list(
+                        task_type = task_type,
+                        params = params
+                    )
+                )
+                NULL
+            },
+            error = function(e) e
+        )
+
+        if (inherits(launch_error, "error")) {
+            close_worker()
+            if (is.function(on_error)) {
+                on_error(launch_error)
+            } else {
+                shiny::showNotification(
+                    paste0("Unable to start viewer task: ", launch_error$message),
+                    type = "error",
+                    duration = NULL
+                )
+            }
+            return(FALSE)
+        }
+
+        active_task(list(
+            backend = "session",
+            worker = worker,
+            task_type = task_type,
+            message = descriptor$message,
+            detail = descriptor$detail,
+            cancelable = TRUE,
+            on_success = on_success,
+            on_error = on_error,
+            on_cancel = on_cancel
+        ))
+        set_task_state(
+            active = TRUE,
+            task_type = task_type,
+            message = descriptor$message,
+            detail = descriptor$detail,
+            cancelable = TRUE
+        )
+        TRUE
+    }
+
+    shiny::observe({
+        current <- active_task()
+        if (is.null(current)) {
+            return()
+        }
+
+        shiny::invalidateLater(250, session)
+        if (identical(current$backend, "fork")) {
+            fork_result <- tryCatch(
+                parallel::mccollect(current$job, wait = FALSE, timeout = 0),
+                error = function(e) e
+            )
+            if (inherits(fork_result, "error")) {
+                task_error <- fork_result
+                task_result <- NULL
+            } else if (is.null(fork_result)) {
+                return()
+            } else {
+                task_error <- NULL
+                task_result <- unname(fork_result)[[1]]
+                if (is.null(task_result)) {
+                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+                }
+            }
+        } else {
+            worker <- current$worker
+            worker_state <- tryCatch(worker$get_state(), error = function(e) "finished")
+            if (worker_state %in% c("starting", "busy")) {
+                return()
+            }
+
+            task_error <- NULL
+            task_result <- NULL
+
+            repeat {
+                next_event <- tryCatch(worker$read(), error = function(e) e)
+                if (inherits(next_event, "error")) {
+                    task_error <- next_event
+                    break
+                }
+                if (is.null(next_event)) {
+                    break
+                }
+
+                if (identical(next_event$code, worker$status$MSG)) {
+                    next
+                }
+
+                if (identical(next_event$code, worker$status$DONE)) {
+                    task_result <- next_event$result
+                    task_error <- next_event$error
+                    break
+                }
+
+                if (next_event$code %in% c(worker$status$EXITED, worker$status$CRASHED, worker$status$CLOSED)) {
+                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+                    close_worker()
+                    break
+                }
+            }
+
+            if (is.null(task_result) && is.null(task_error)) {
+                if (identical(worker_state, "finished")) {
+                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+                    close_worker()
+                } else {
+                    return()
+                }
+            }
+        }
+
+        active_task(NULL)
+        set_task_state()
+
+        if (!is.null(task_error)) {
+            if (is.function(current$on_error)) {
+                current$on_error(task_error)
+            } else {
+                shiny::showNotification(
+                    paste0("Viewer task failed: ", task_error$message),
+                    type = "error",
+                    duration = NULL
+                )
+            }
+            return()
+        }
+
+        if (is.function(current$on_success)) {
+            current$on_success(task_result)
+        }
+    })
+
+    list(
+        initialize = function() {
+            if (isTRUE(use_fork_backend)) {
+                return(invisible(TRUE))
+            }
+            invisible(try(ensure_worker(), silent = TRUE))
+        },
+        start = start,
+        cancel = cancel,
+        shutdown = shutdown,
+        state = shiny::reactive({
+            task_state()
+        })
+    )
+}
+
 .createViewerUI <- function() {
     asset_dir <- .registerViewerAssets()
     asset_head <- if (!is.null(asset_dir)) {
@@ -312,6 +991,10 @@ launchDMRsegalViewer <- function(
                 rel = "stylesheet",
                 type = "text/css",
                 href = .viewerAssetHref("custom.css")
+            ),
+            shiny::tags$script(
+                src = .viewerAssetHref("busy-overlay.js"),
+                defer = "defer"
             )
         )
     }
@@ -323,6 +1006,7 @@ launchDMRsegalViewer <- function(
             id = "navbar",
             theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
             fillable = TRUE,
+            footer = .viewerBusyOverlayUI(),
             bslib::nav_panel(
                 title = "Overview",
                 icon = shiny::icon("table"),
@@ -332,11 +1016,6 @@ launchDMRsegalViewer <- function(
                 title = "Single DMR",
                 icon = shiny::icon("dna"),
                 .plotDMRUI("single_dmr")
-            ),
-            bslib::nav_panel(
-                title = "Multi DMR",
-                icon = shiny::icon("grip"),
-                .plotDMRsUI("multi_dmr")
             ),
             bslib::nav_panel(
                 title = "Manhattan",
@@ -361,12 +1040,31 @@ launchDMRsegalViewer <- function(
 
 .createViewerServer <- function(data) {
     function(input, output, session) {
+        task_controller <- .createViewerTaskController(session, data)
+        task_controller$initialize()
+
+        shiny::observe({
+            state <- task_controller$state()
+            session$sendCustomMessage(
+                "dmrsegal-viewer-busy",
+                list(
+                    active = isTRUE(state$active),
+                    message = if (is.null(state$message)) "" else state$message,
+                    detail = if (is.null(state$detail)) "" else state$detail,
+                    cancelable = isTRUE(state$cancelable)
+                )
+            )
+        })
+
+        shiny::observeEvent(input$viewer_cancel_task, {
+            task_controller$cancel()
+        }, ignoreInit = TRUE)
+
         selected_dmr_id <- .overviewServer("overview", data)
-        .plotDMRServer("single_dmr", data)
-        .plotDMRsServer("multi_dmr", data)
-        .manhattanServer("manhattan", data)
-        .blockFormationServer("block_formation", data)
-        .circosServer("circos", data)
+        .plotDMRServer("single_dmr", data, task_controller)
+        .manhattanServer("manhattan", data, task_controller)
+        .blockFormationServer("block_formation", data, task_controller)
+        .circosServer("circos", data, task_controller)
 
         shiny::observe({
             dmr_id <- selected_dmr_id()
@@ -380,6 +1078,7 @@ launchDMRsegalViewer <- function(
         })
 
         session$onSessionEnded(function() {
+            try(task_controller$shutdown(), silent = TRUE)
             .log_info("DMRsegal Viewer session ended.", level = 1)
         })
     }

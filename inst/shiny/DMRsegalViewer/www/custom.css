@@ -59,3 +59,77 @@
     font-weight: 700;
     letter-spacing: 0.02em;
 }
+
+#dmrsegal-viewer-busy-overlay[hidden] {
+    display: none !important;
+}
+
+.dmrsegal-viewer-busy-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(248, 250, 252, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: auto;
+}
+
+.dmrsegal-viewer-busy-card {
+    width: min(100%, 32rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+    padding: 1.75rem 1.75rem 1.5rem;
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.16);
+}
+
+.dmrsegal-viewer-busy-spinner {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.3rem;
+}
+
+.dmrsegal-viewer-busy-message {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.3;
+    color: #0f172a;
+}
+
+.dmrsegal-viewer-busy-detail {
+    max-width: 28rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: #475569;
+}
+
+.dmrsegal-viewer-busy-card [data-role="cancel"][hidden] {
+    display: none !important;
+}
+
+.dmrsegal-viewer-busy-card [data-role="cancel"] {
+    margin-top: 0.25rem;
+}
+
+html.dmrsegal-viewer-overlay-active,
+html.dmrsegal-viewer-overlay-active body {
+    cursor: wait;
+}
+
+html.dmrsegal-viewer-overlay-active body {
+    overflow: hidden;
+}
+
+html.dmrsegal-viewer-progress-active #shiny-notification-panel {
+    opacity: 0;
+    pointer-events: none;
+}

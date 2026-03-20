@@ -14,7 +14,7 @@ launchDMRsegalViewer(
 \arguments{
 \item{output_prefix}{Character. Prefix used when saving DMR analysis results.
 The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
-\code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}_meta.rds}.}
+\code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}.meta.rds}.}
 
 \item{launch_browser}{Logical. Whether to launch in browser (default: TRUE).}
 
@@ -23,7 +23,7 @@ The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
 \item{...}{Additional arguments passed to \code{\link[shiny]{runApp}}.
 Deprecated viewer data arguments (\code{pheno}, \code{genome}, \code{array},
 \code{sample_group_col}) are ignored because the viewer now loads them from
-\code{{output_prefix}_meta.rds}.}
+\code{{output_prefix}.meta.rds}.}
 }
 \value{
 Invisibly returns the Shiny app object.
@@ -37,7 +37,6 @@ The viewer provides interactive access to all visualization functions in the pac
 \itemize{
 \item \strong{Overview}: Summary statistics and filterable DMR table
 \item \strong{Single DMR}: Detailed view of individual DMRs with heatmap and motif logo
-\item \strong{Multi DMR}: Grid view of multiple DMRs
 \item \strong{Manhattan}: Genome-wide scatter plot of DMR scores
 \item \strong{Block Formation}: Diagnostic view of DMR block detection
 \item \strong{Circos}: Circular genome plot with motif interactions
@@ -47,9 +46,9 @@ The function expects the following output files from \code{findDMRsFromSeeds}:
 \itemize{
 \item \code{{output_prefix}.dmrs.tsv.gz} - Main DMR results (required)
 \item \code{{output_prefix}.seeds_beta.tsv.gz} - Beta values for seeds (required)
-\item \code{{output_prefix}_meta.rds} - Viewer metadata with phenotype, array, and genome information (required)
-\item \code{{output_prefix}dmr_interactions.csv} - DMR interactions (optional)
-\item \code{{output_prefix}dmr_components.csv} - Motif components (optional)
+\item \code{{output_prefix}.meta.rds} - Viewer metadata with phenotype, array, and genome information (required)
+\item \code{{output_prefix}dmr_interactions.tsv} - DMR interactions (optional)
+\item \code{{output_prefix}dmr_components.tsv} - Motif components (optional)
 }
 }
 \examples{

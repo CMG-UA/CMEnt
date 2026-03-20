@@ -146,7 +146,11 @@ NULL
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
-                        shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        shiny::conditionalPanel(
+                            condition = "output.has_plot",
+                            ns = ns,
+                            shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        )
                     )
                 )
             ),
@@ -171,8 +175,12 @@ NULL
     )
 }
 
-.plotDMRServer <- function(id, data) {
+.plotDMRServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        plot_request <- shiny::reactiveVal(0L)
+        plot_params <- shiny::reactiveVal(NULL)
+        requested_params <- shiny::reactiveVal(NULL)
+
         shiny::observe({
             shiny::req(data$dmrs)
             shiny::updateNumericInput(session, "dmr_index",
@@ -181,49 +189,64 @@ NULL
             )
         })
 
-        plot_data <- shiny::eventReactive(input$generate_plot, {
+        shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs, input$dmr_index)
             shiny::validate(
                 shiny::need(input$dmr_index >= 1 && input$dmr_index <= length(data$dmrs),
                     "Invalid DMR index")
             )
-            list(
+            params <- list(
                 dmr_index = input$dmr_index,
                 max_cpgs = input$max_cpgs,
                 max_samples_per_group = input$max_samples_per_group
             )
-        })
+            requested_params(params)
+            plot_request(plot_request() + 1L)
+        }, ignoreInit = TRUE)
 
         output$has_plot <- shiny::reactive({
-            !is.null(plot_data())
+            !is.null(plot_params())
         })
         shiny::outputOptions(output, "has_plot", suspendWhenHidden = FALSE)
 
         output$dmr_plot <- shiny::renderPlot({
-            shiny::req(plot_data())
-            params <- plot_data()
-            shiny::withProgress(message = "Generating DMR plot...", value = 0.5, {
-                plotDMR(
-                    dmrs = data$dmrs,
-                    dmr_index = params$dmr_index,
-                    beta = data$beta_handler,
-                    pheno = data$pheno,
-                    genome = data$genome,
-                    array = data$array,
-                    sample_group_col = data$sample_group_col,
-                    max_cpgs = params$max_cpgs,
-                    max_samples_per_group = params$max_samples_per_group,
-                    plot_title = TRUE
-                )
-            })
-        }, res = 100)
+            shiny::req(plot_request() > 0L, requested_params())
+            params <- requested_params()
+            tryCatch(
+                {
+                    shiny::withProgress(message = "Generating DMR plot...", value = NULL, {
+                        plotDMR(
+                            dmrs = data$dmrs,
+                            dmr_index = params$dmr_index,
+                            beta = data$beta_handler,
+                            pheno = data$pheno,
+                            genome = data$genome,
+                            array = data$array,
+                            sample_group_col = data$sample_group_col,
+                            max_cpgs = params$max_cpgs,
+                            max_samples_per_group = params$max_samples_per_group,
+                            plot_title = TRUE
+                        )
+                        shiny::isolate(plot_params(params))
+                    })
+                },
+                error = function(e) {
+                    shiny::showNotification(
+                        paste0("DMR plot failed: ", conditionMessage(e)),
+                        type = "error",
+                        duration = NULL
+                    )
+                    stop(e)
+                }
+            )
+        }, res = 100, execOnResize = FALSE)
 
         output$download_plot <- shiny::downloadHandler(
             filename = function() {
                 paste0("DMR_", input$dmr_index, "_", Sys.Date(), ".pdf")
             },
             content = function(file) {
-                params <- plot_data()
+                params <- plot_params()
                 shiny::req(params)
                 plotDMR(
                     dmrs = data$dmrs,
@@ -272,72 +295,6 @@ NULL
     )
 }
 
-.plotDMRsServer <- function(id, data) {
-    shiny::moduleServer(id, function(input, output, session) {
-        parsed_indices <- shiny::reactive({
-            idx_str <- trimws(input$dmr_indices)
-            if (is.null(idx_str) || idx_str == "") return(NULL)
-            idx <- tryCatch({
-                as.integer(strsplit(idx_str, ",")[[1]])
-            }, error = function(e) NULL)
-            if (is.null(idx) || any(is.na(idx))) return(NULL)
-            idx[idx >= 1 & idx <= length(data$dmrs)]
-        })
-
-        plot_data <- shiny::eventReactive(input$generate_plot, {
-            shiny::req(data$dmrs)
-            idx <- parsed_indices()
-            list(
-                dmr_indices = idx,
-                top_n = input$top_n,
-                ncol = input$ncol
-            )
-        })
-
-        output$dmrs_plot <- shiny::renderPlot({
-            shiny::req(plot_data())
-            params <- plot_data()
-            shiny::withProgress(message = "Generating DMR grid...", value = 0.5, {
-                plotDMRs(
-                    dmrs = data$dmrs,
-                    dmr_indices = params$dmr_indices,
-                    top_n = params$top_n,
-                    beta = data$beta_handler,
-                    pheno = data$pheno,
-                    sample_group_col = data$sample_group_col,
-                    genome = data$genome,
-                    array = data$array,
-                    ncol = params$ncol
-                )
-            })
-        }, res = 100)
-
-        output$download_plot <- shiny::downloadHandler(
-            filename = function() {
-                paste0("DMRs_grid_", Sys.Date(), ".pdf")
-            },
-            content = function(file) {
-                params <- plot_data()
-                shiny::req(params)
-                plotDMRs(
-                    dmrs = data$dmrs,
-                    dmr_indices = params$dmr_indices,
-                    top_n = params$top_n,
-                    beta = data$beta_handler,
-                    pheno = data$pheno,
-                    sample_group_col = data$sample_group_col,
-                    genome = data$genome,
-                    array = data$array,
-                    ncol = params$ncol,
-                    output_file = file,
-                    width = 10,
-                    height = 14
-                )
-            }
-        )
-    })
-}
-
 .manhattanUI <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
@@ -352,7 +309,11 @@ NULL
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
-                        shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        shiny::conditionalPanel(
+                            condition = "output.has_plot",
+                            ns = ns,
+                            shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        )
                     )
                 )
             ),
@@ -368,41 +329,67 @@ NULL
     )
 }
 
-.manhattanServer <- function(id, data) {
+.manhattanServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        plot_request <- shiny::reactiveVal(0L)
+        plot_params <- shiny::reactiveVal(NULL)
+        requested_params <- shiny::reactiveVal(NULL)
+
         shiny::observe({
             shiny::req(data$dmrs)
         })
 
-        plot_data <- shiny::eventReactive(input$generate_plot, {
+        shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs)
-            list(
+            params <- list(
                 show_blocks = input$show_blocks,
                 point_size = input$point_size,
                 point_alpha = input$point_alpha
             )
+            requested_params(params)
+            plot_request(plot_request() + 1L)
+        }, ignoreInit = TRUE)
+
+        output$has_plot <- shiny::reactive({
+            !is.null(plot_params())
         })
+        shiny::outputOptions(output, "has_plot", suspendWhenHidden = FALSE)
 
         output$manhattan_plot <- shiny::renderPlot({
-            shiny::req(plot_data())
-            params <- plot_data()
-            shiny::withProgress(message = "Generating Manhattan plot...", value = 0.5, {
-                plotDMRsManhattan(
-                    dmrs = data$dmrs,
-                    genome = data$genome,
-                    show_blocks = params$show_blocks,
-                    point_size = params$point_size,
-                    point_alpha = params$point_alpha
-                )
-            })
-        }, res = 100)
+            shiny::req(plot_request() > 0L, requested_params())
+            params <- requested_params()
+            tryCatch(
+                {
+                    shiny::withProgress(message = "Generating Manhattan plot...", value = NULL, {
+                        plot_obj <- plotDMRsManhattan(
+                            dmrs = data$dmrs,
+                            genome = data$genome,
+                            show_blocks = params$show_blocks,
+                            point_size = params$point_size,
+                            point_alpha = params$point_alpha
+                        )
+                        shiny::isolate(plot_params(params))
+                        print(plot_obj)
+                        invisible(plot_obj)
+                    })
+                },
+                error = function(e) {
+                    shiny::showNotification(
+                        paste0("Manhattan plot failed: ", conditionMessage(e)),
+                        type = "error",
+                        duration = NULL
+                    )
+                    stop(e)
+                }
+            )
+        }, res = 100, execOnResize = FALSE)
 
         output$download_plot <- shiny::downloadHandler(
             filename = function() {
                 paste0("Manhattan_", Sys.Date(), ".pdf")
             },
             content = function(file) {
-                params <- plot_data()
+                params <- plot_params()
                 shiny::req(params)
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
@@ -457,8 +444,11 @@ NULL
     )
 }
 
-.blockFormationServer <- function(id, data) {
+.blockFormationServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        plot_request <- shiny::reactiveVal(0L)
+        plot_params <- shiny::reactiveVal(NULL)
+
         shiny::observe({
             shiny::req(data$dmrs)
             chrs <- unique(as.character(GenomicRanges::seqnames(data$dmrs)))
@@ -466,31 +456,254 @@ NULL
             shiny::updateSelectInput(session, "chromosome", choices = chrs)
         })
 
-        plot_data <- shiny::eventReactive(input$generate_plot, {
+        shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs, input$chromosome)
-            list(
+            params <- list(
                 chromosome = input$chromosome,
                 block_gap_mode = input$block_gap_mode,
                 block_gap_fixed_bp = input$block_gap_fixed_bp,
                 k_neighbors = input$k_neighbors
             )
-        })
+            plot_params(params)
+            plot_request(plot_request() + 1L)
+        }, ignoreInit = TRUE)
 
         output$block_plot <- shiny::renderPlot({
-            shiny::req(plot_data())
-            params <- plot_data()
-            shiny::withProgress(message = "Generating block formation plot...", value = 0.5, {
-                plotDMRBlockFormation(
-                    dmrs = data$dmrs,
-                    chromosome = params$chromosome,
-                    genome = data$genome,
-                    k_neighbors = params$k_neighbors,
-                    block_gap_mode = params$block_gap_mode,
-                    block_gap_fixed_bp = if (params$block_gap_mode == "fixed") params$block_gap_fixed_bp else NULL
-                )
-            })
-        }, res = 100)
+            shiny::req(plot_request() > 0L, plot_params())
+            params <- plot_params()
+            tryCatch(
+                {
+                    shiny::withProgress(message = "Generating block formation plot...", value = NULL, {
+                        plot_obj <- plotDMRBlockFormation(
+                            dmrs = data$dmrs,
+                            chromosome = params$chromosome,
+                            genome = data$genome,
+                            k_neighbors = params$k_neighbors,
+                            block_gap_mode = params$block_gap_mode,
+                            block_gap_fixed_bp = if (identical(params$block_gap_mode, "fixed")) params$block_gap_fixed_bp else NULL
+                        )
+                        print(plot_obj)
+                        invisible(plot_obj)
+                    })
+                },
+                error = function(e) {
+                    shiny::showNotification(
+                        paste0("Block formation plot failed: ", conditionMessage(e)),
+                        type = "error",
+                        duration = NULL
+                    )
+                    stop(e)
+                }
+            )
+        }, res = 100, execOnResize = FALSE)
     })
+}
+
+.viewerHasUsableCircosComponents <- function(components) {
+    is.data.frame(components) &&
+        nrow(components) > 0 &&
+        "component_id" %in% colnames(components) &&
+        "indices" %in% colnames(components) &&
+        any(vapply(seq_len(nrow(components)), function(i) {
+            length(.parseDMRComponentIndices(components$indices[[i]])) > 0
+        }, logical(1)))
+}
+
+.resolveViewerModuleData <- function(data) {
+    if (is.function(data)) {
+        data()
+    } else {
+        data
+    }
+}
+
+.viewerHasPrecomputedCircosCache <- function(data) {
+    data <- .resolveViewerModuleData(data)
+    is.list(data) &&
+        is.data.frame(data$components) &&
+        is.data.frame(data$interactions)
+}
+
+.viewerHasPrecomputedCircosInteractions <- function(data) {
+    data <- .resolveViewerModuleData(data)
+    is.list(data) &&
+        .viewerHasUsableCircosComponents(data$components) &&
+        is.data.frame(data$interactions) &&
+        nrow(data$interactions) > 0
+}
+
+.mergeViewerCircosCache <- function(data, circos_cache = NULL) {
+    if (!is.list(data) || is.null(circos_cache)) {
+        return(data)
+    }
+    if (!is.null(circos_cache$interactions)) {
+        data$interactions <- circos_cache$interactions
+    }
+    if (!is.null(circos_cache$components)) {
+        data$components <- circos_cache$components
+    }
+    data
+}
+
+.circosInteractionStatusUI <- function(
+    ns,
+    has_precomputed_cache = FALSE,
+    has_precomputed_interactions = FALSE,
+    is_computing_interactions = FALSE
+) {
+    if (isTRUE(has_precomputed_interactions)) {
+        return(
+            shiny::div(
+                class = "alert alert-success py-2 small",
+                shiny::tags$strong("Precomputed Circos cache available. "),
+                "Component-aware and hybrid auto-selection are ready to use."
+            )
+        )
+    }
+
+    button_label <- if (isTRUE(has_precomputed_cache)) {
+        "Recompute Interactions"
+    } else {
+        "Compute Interactions"
+    }
+    waiting_message <- if (isTRUE(is_computing_interactions)) {
+        shiny::tags$div(
+            class = "mt-2 text-muted",
+            "Computing interactions now. The cache will reload automatically when ready."
+        )
+    } else {
+        shiny::tags$div(
+            class = "mt-2",
+            shiny::actionButton(
+                ns("compute_interactions"),
+                button_label,
+                class = "btn-outline-primary btn-sm w-100"
+            )
+        )
+    }
+
+    if (isTRUE(has_precomputed_cache)) {
+        return(
+            shiny::div(
+                class = "alert alert-info py-2 small",
+                shiny::tags$strong("Precomputed Circos cache loaded, but no interaction links are available. "),
+                "The viewer is staying in lightweight mode until a usable interaction cache is available.",
+                waiting_message
+            )
+        )
+    }
+
+    shiny::div(
+        class = "alert alert-secondary py-2 small",
+        shiny::tags$strong("Precomputed Circos cache not found or is incomplete. "),
+        "The viewer is staying in lightweight mode, so only block-based and quick auto-selection are available.",
+        waiting_message
+    )
+}
+
+.viewerCircosInteractionArgs <- function(data, has_precomputed_interactions = TRUE) {
+    if (isTRUE(has_precomputed_interactions)) {
+        list(components = data$components, interactions = data$interactions)
+    } else {
+        list(components = data.frame(), interactions = data.frame())
+    }
+}
+
+.circosViewerAutoMethodChoices <- function(has_precomputed_interactions = TRUE) {
+    if (isTRUE(has_precomputed_interactions)) {
+        c("blocks" = "blocks", "components" = "components", "hybrid" = "hybrid", "quick" = "quick")
+    } else {
+        c("blocks" = "blocks", "quick" = "quick")
+    }
+}
+
+.sanitizeViewerCircosParams <- function(params, has_precomputed_interactions = TRUE) {
+    ret <- params
+    ret$use_precomputed_interactions <- isTRUE(has_precomputed_interactions)
+    ret$query_components_with_jaspar <- isTRUE(has_precomputed_interactions)
+    ret$method_fallback <- FALSE
+    if (
+        !ret$use_precomputed_interactions &&
+        identical(ret$mode, "auto") &&
+        ret$method %in% c("components", "hybrid")
+    ) {
+        ret$method <- "blocks"
+        ret$method_fallback <- TRUE
+    }
+    ret
+}
+
+.viewerCircosPreparedStateKey <- function(params) {
+    paste(
+        c(
+            paste0("precomputed=", isTRUE(params$use_precomputed_interactions)),
+            paste0("jaspar=", isTRUE(params$query_components_with_jaspar)),
+            paste0("min_similarity=", format(params$min_similarity, trim = TRUE, scientific = FALSE)),
+            paste0("max_dmrs_per_chr=", params$max_dmrs_per_chr),
+            paste0("max_cpgs_per_dmr=", params$max_cpgs_per_dmr)
+        ),
+        collapse = "::"
+    )
+}
+
+.buildViewerCircosPreparedState <- function(params, data) {
+    interaction_args <- .viewerCircosInteractionArgs(
+        data,
+        has_precomputed_interactions = params$use_precomputed_interactions
+    )
+
+    do.call(
+        .prepareCircosPlotState,
+        c(
+            list(
+                dmrs = data$dmrs,
+                beta = data$beta_handler,
+                pheno = data$pheno,
+                genome = data$genome,
+                array = data$array,
+                sample_group_col = data$sample_group_col,
+                min_similarity = params$min_similarity,
+                max_dmrs_per_chr = params$max_dmrs_per_chr,
+                max_cpgs_per_dmr = params$max_cpgs_per_dmr,
+                query_components_with_jaspar = params$query_components_with_jaspar
+            ),
+            interaction_args
+        )
+    )
+}
+
+.runViewerCircosPlot <- function(params, data, output_file = NULL, prepared_plot_state = NULL) {
+    if (is.null(prepared_plot_state)) {
+        prepared_plot_state <- .buildViewerCircosPreparedState(params, data)
+    }
+
+    if (params$mode == "auto") {
+        region_df <- .selectCircosRegions(
+            dmrs = prepared_plot_state$dmrs,
+            method = params$method,
+            n_regions = params$n_regions,
+            components = prepared_plot_state$components
+        )
+        .log_info(
+            "Automatically selected Circos regions (", params$method, "): ",
+            .formatCircosRegionSelection(region_df),
+            level = 2
+        )
+        .plotDMRsCircosFromPreparedState(
+            prepared_state = prepared_plot_state,
+            region = region_df,
+            output_file = output_file
+        )
+    } else {
+        .plotDMRsCircosFromPreparedState(
+            prepared_state = prepared_plot_state,
+            region = params$region,
+            chromosomes = params$chromosomes,
+            output_file = output_file
+        )
+    }
+
+    invisible(prepared_plot_state)
 }
 
 .circosUI <- function(id) {
@@ -501,6 +714,7 @@ NULL
                 bslib::card(
                     bslib::card_header("Circos Plot Settings"),
                     bslib::card_body(
+                        shiny::uiOutput(ns("interaction_status")),
                         shiny::radioButtons(ns("mode"), "Mode",
                             choices = c("Auto Selection" = "auto", "Manual Region" = "manual"),
                             selected = "auto", inline = TRUE
@@ -531,7 +745,11 @@ NULL
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
-                        shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        shiny::conditionalPanel(
+                            condition = "output.has_plot",
+                            ns = ns,
+                            shiny::downloadButton(ns("download_plot"), "Download PDF", class = "w-100")
+                        )
                     )
                 )
             ),
@@ -550,111 +768,199 @@ NULL
     )
 }
 
-.circosServer <- function(id, data) {
+.circosServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        circos_cache_override <- shiny::reactiveVal(NULL)
+        circos_prepared_state <- shiny::reactiveVal(NULL)
+        plot_request <- shiny::reactiveVal(0L)
+        plot_params <- shiny::reactiveVal(NULL)
+        requested_params <- shiny::reactiveVal(NULL)
+        viewer_data <- shiny::reactive({
+            .mergeViewerCircosCache(
+                .resolveViewerModuleData(data),
+                circos_cache_override()
+            )
+        })
+        is_computing_interactions <- shiny::reactive({
+            state <- task_controller$state()
+            isTRUE(state$active) && identical(state$task_type, "circos_cache_compute")
+        })
+        has_precomputed_cache <- shiny::reactive({
+            .viewerHasPrecomputedCircosCache(viewer_data())
+        })
+        has_precomputed_interactions <- shiny::reactive({
+            .viewerHasPrecomputedCircosInteractions(viewer_data())
+        })
+
         shiny::observe({
-            shiny::req(data$dmrs)
-            chrs <- unique(as.character(GenomicRanges::seqnames(data$dmrs)))
+            shiny::req(viewer_data()$dmrs)
+            chrs <- unique(as.character(GenomicRanges::seqnames(viewer_data()$dmrs)))
             chrs <- chrs[order(suppressWarnings(as.numeric(gsub("chr", "", chrs, ignore.case = TRUE))))]
             shiny::updateSelectizeInput(session, "chromosomes", choices = chrs, server = TRUE)
         })
 
-        plot_data <- shiny::eventReactive(input$generate_plot, {
-            shiny::req(data$dmrs, data$beta_handler, data$pheno)
-            list(
-                mode = input$mode,
-                method = input$method,
-                n_regions = input$n_regions,
-                region = if (input$mode == "manual" && nzchar(trimws(input$region))) input$region else NULL,
-                chromosomes = if (input$mode == "manual" && length(input$chromosomes) > 0) input$chromosomes else NULL,
-                max_dmrs_per_chr = input$max_dmrs_per_chr,
-                max_cpgs_per_dmr = input$max_cpgs_per_dmr,
-                min_similarity = input$min_similarity
+        output$interaction_status <- shiny::renderUI({
+            .circosInteractionStatusUI(
+                ns = session$ns,
+                has_precomputed_cache = has_precomputed_cache(),
+                has_precomputed_interactions = has_precomputed_interactions(),
+                is_computing_interactions = is_computing_interactions()
             )
         })
 
-        output$circos_plot <- shiny::renderPlot({
-            shiny::req(plot_data())
-            params <- plot_data()
-            shiny::withProgress(message = "Generating Circos plot...", value = 0.5, {
-                if (params$mode == "auto") {
-                    plotAutoDMRsCircos(
-                        dmrs = data$dmrs,
-                        beta = data$beta_handler,
-                        pheno = data$pheno,
-                        method = params$method,
-                        n_regions = params$n_regions,
-                        genome = data$genome,
-                        array = data$array,
-                        components = data$components,
-                        interactions = data$interactions,
-                        min_similarity = params$min_similarity,
-                        max_dmrs_per_chr = params$max_dmrs_per_chr,
-                        max_cpgs_per_dmr = params$max_cpgs_per_dmr,
-                        sample_group_col = data$sample_group_col
+        shiny::observe({
+            choices <- .circosViewerAutoMethodChoices(has_precomputed_interactions())
+            selected <- if (!is.null(input$method) && input$method %in% choices) input$method else "blocks"
+            shiny::updateSelectInput(session, "method", choices = choices, selected = selected)
+        })
+
+        shiny::observeEvent(input$compute_interactions, {
+            current_data <- viewer_data()
+            shiny::req(
+                current_data$dmrs,
+                current_data$beta_handler,
+                current_data$output_prefix
+            )
+
+            shiny::removeNotification(id = session$ns("circos_cache_status"))
+            task_controller$start(
+                task_type = "circos_cache_compute",
+                params = list(min_similarity = input$min_similarity),
+                on_success = function(result) {
+                    computed_cache <- result$cache
+                    circos_cache_override(computed_cache)
+                    circos_prepared_state(NULL)
+                    updated_data <- .mergeViewerCircosCache(current_data, computed_cache)
+                    notification_text <- if (.viewerHasPrecomputedCircosInteractions(updated_data)) {
+                        "Precomputed Circos cache reloaded."
+                    } else {
+                        "Precomputed Circos cache reloaded, but no usable interaction links were found for the current settings."
+                    }
+                    notification_type <- if (.viewerHasPrecomputedCircosInteractions(updated_data)) {
+                        "message"
+                    } else {
+                        "warning"
+                    }
+                    shiny::showNotification(
+                        notification_text,
+                        type = notification_type,
+                        duration = 6,
+                        id = session$ns("circos_cache_status")
                     )
-                } else {
-                    plotDMRsCircos(
-                        dmrs = data$dmrs,
-                        beta = data$beta_handler,
-                        pheno = data$pheno,
-                        genome = data$genome,
-                        array = data$array,
-                        region = params$region,
-                        chromosomes = params$chromosomes,
-                        components = data$components,
-                        interactions = data$interactions,
-                        min_similarity = params$min_similarity,
-                        max_dmrs_per_chr = params$max_dmrs_per_chr,
-                        max_cpgs_per_dmr = params$max_cpgs_per_dmr,
-                        sample_group_col = data$sample_group_col
+                },
+                on_error = function(e) {
+                    .log_warn("Failed to compute precomputed Circos cache in viewer: ", conditionMessage(e), level = 1)
+                    shiny::showNotification(
+                        paste0("Computing interactions failed: ", conditionMessage(e)),
+                        type = "error",
+                        duration = NULL,
+                        id = session$ns("circos_cache_status")
+                    )
+                },
+                on_cancel = function() {
+                    shiny::showNotification(
+                        "Computing interactions canceled.",
+                        type = "message",
+                        duration = 4,
+                        id = session$ns("circos_cache_status")
                     )
                 }
-            })
-        }, res = 100)
+            )
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$generate_plot, {
+            shiny::req(viewer_data()$dmrs, viewer_data()$beta_handler, viewer_data()$pheno)
+            params <- .sanitizeViewerCircosParams(
+                list(
+                    mode = input$mode,
+                    method = input$method,
+                    n_regions = input$n_regions,
+                    region = if (input$mode == "manual" && nzchar(trimws(input$region))) input$region else NULL,
+                    chromosomes = if (input$mode == "manual" && length(input$chromosomes) > 0) input$chromosomes else NULL,
+                    max_dmrs_per_chr = input$max_dmrs_per_chr,
+                    max_cpgs_per_dmr = input$max_cpgs_per_dmr,
+                    min_similarity = input$min_similarity
+                ),
+                has_precomputed_interactions = has_precomputed_interactions()
+            )
+            prepared_state_key <- .viewerCircosPreparedStateKey(params)
+            cached_prepared_state <- circos_prepared_state()
+            if (
+                is.list(cached_prepared_state) &&
+                identical(cached_prepared_state$key, prepared_state_key) &&
+                !is.null(cached_prepared_state$state)
+            ) {
+                params$prepared_plot_state <- cached_prepared_state$state
+            }
+
+            shiny::removeNotification(id = session$ns("circos_error"))
+            requested_params(params)
+            plot_request(plot_request() + 1L)
+        }, ignoreInit = TRUE)
+
+        output$has_plot <- shiny::reactive({
+            !is.null(plot_params())
+        })
+        shiny::outputOptions(output, "has_plot", suspendWhenHidden = FALSE)
+
+        output$circos_plot <- shiny::renderPlot({
+            shiny::req(plot_request() > 0L, requested_params())
+            params <- requested_params()
+            prepared_state_key <- .viewerCircosPreparedStateKey(params)
+            tryCatch(
+                {
+                    shiny::withProgress(message = "Generating Circos plot...", value = NULL, {
+                        prepared_plot_state <- .runViewerCircosPlot(
+                            params,
+                            viewer_data(),
+                            prepared_plot_state = params$prepared_plot_state
+                        )
+                        shiny::isolate(plot_params(params))
+                        if (!is.null(prepared_plot_state)) {
+                            shiny::isolate(circos_prepared_state(list(
+                                key = prepared_state_key,
+                                state = prepared_plot_state
+                            )))
+                        }
+                        shiny::removeNotification(id = session$ns("circos_error"))
+                    })
+                },
+                error = function(e) {
+                    .log_warn("Failed to generate Circos plot in viewer: ", conditionMessage(e), level = 1)
+                    shiny::showNotification(
+                        paste0("Circos plot failed: ", conditionMessage(e)),
+                        type = "error",
+                        duration = NULL,
+                        id = session$ns("circos_error")
+                    )
+                    stop(e)
+                }
+            )
+        },
+        res = 100,
+        execOnResize = FALSE)
 
         output$download_plot <- shiny::downloadHandler(
             filename = function() {
                 paste0("Circos_", Sys.Date(), ".pdf")
             },
             content = function(file) {
-                params <- plot_data()
+                params <- plot_params()
                 shiny::req(params)
-                if (params$mode == "auto") {
-                    plotAutoDMRsCircos(
-                        dmrs = data$dmrs,
-                        beta = data$beta_handler,
-                        pheno = data$pheno,
-                        method = params$method,
-                        n_regions = params$n_regions,
-                        genome = data$genome,
-                        array = data$array,
-                        components = data$components,
-                        interactions = data$interactions,
-                        min_similarity = params$min_similarity,
-                        max_dmrs_per_chr = params$max_dmrs_per_chr,
-                        max_cpgs_per_dmr = params$max_cpgs_per_dmr,
-                        sample_group_col = data$sample_group_col,
-                        output_file = file
-                    )
-                } else {
-                    plotDMRsCircos(
-                        dmrs = data$dmrs,
-                        beta = data$beta_handler,
-                        pheno = data$pheno,
-                        genome = data$genome,
-                        array = data$array,
-                        region = params$region,
-                        chromosomes = params$chromosomes,
-                        components = data$components,
-                        interactions = data$interactions,
-                        min_similarity = params$min_similarity,
-                        max_dmrs_per_chr = params$max_dmrs_per_chr,
-                        max_cpgs_per_dmr = params$max_cpgs_per_dmr,
-                        sample_group_col = data$sample_group_col,
-                        output_file = file
-                    )
+                cached_prepared_state <- circos_prepared_state()
+                prepared_state <- NULL
+                if (
+                    is.list(cached_prepared_state) &&
+                    identical(cached_prepared_state$key, .viewerCircosPreparedStateKey(params))
+                ) {
+                    prepared_state <- cached_prepared_state$state
                 }
+                .runViewerCircosPlot(
+                    params,
+                    viewer_data(),
+                    output_file = file,
+                    prepared_plot_state = prepared_state
+                )
             }
         )
     })

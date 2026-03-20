@@ -41,6 +41,7 @@ Imports:
     BSgenome,
     bslib (>= 0.5.0),
     bsseq,
+    callr,
     circlize,
     cli,
     colorspace,

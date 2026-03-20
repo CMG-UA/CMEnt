@@ -38,6 +38,84 @@
     })
 }
 
+.parseDMRComponentIndices <- function(x) {
+    if (is.null(x) || length(x) == 0) {
+        return(integer())
+    }
+    values <- if (is.list(x) && !is.data.frame(x)) {
+        unlist(x, recursive = TRUE, use.names = FALSE)
+    } else {
+        x
+    }
+    if (is.character(values)) {
+        values <- trimws(unlist(strsplit(values, ",", fixed = TRUE), use.names = FALSE))
+        values <- values[nzchar(values)]
+    }
+    idxs <- suppressWarnings(as.integer(values))
+    idxs[!is.na(idxs)]
+}
+
+.serializeDMRInteractionComponentsForStorage <- function(components_df) {
+    if (!is.data.frame(components_df) || nrow(components_df) == 0) {
+        return(components_df)
+    }
+    ret <- components_df
+    if ("avg_pwm" %in% colnames(ret)) {
+        ret$avg_pwm <- NULL
+    }
+    if ("indices" %in% colnames(ret)) {
+        ret$indices <- vapply(ret$indices, function(x) {
+            idxs <- .parseDMRComponentIndices(x)
+            if (length(idxs) == 0) {
+                NA_character_
+            } else {
+                paste(idxs, collapse = ",")
+            }
+        }, character(1))
+    }
+    list_cols <- vapply(ret, is.list, logical(1))
+    for (col in names(ret)[list_cols]) {
+        ret[[col]] <- vapply(ret[[col]], function(x) {
+            if (is.null(x) || length(x) == 0) {
+                NA_character_
+            } else {
+                paste(as.character(unlist(x, recursive = TRUE, use.names = FALSE)), collapse = ",")
+            }
+        }, character(1))
+    }
+    ret
+}
+
+.writeTabularOutputAtomic <- function(x, path, sep = "\t", quote = FALSE, row.names = FALSE) {
+    dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+    tmp_path <- tempfile(
+        pattern = paste0(".", basename(path), "-"),
+        tmpdir = dirname(path)
+    )
+    on.exit({
+        if (file.exists(tmp_path)) {
+            unlink(tmp_path)
+        }
+    }, add = TRUE)
+
+    write.table(
+        x,
+        tmp_path,
+        sep = sep,
+        quote = quote,
+        row.names = row.names
+    )
+
+    if (!file.rename(tmp_path, path)) {
+        copied <- file.copy(tmp_path, path, overwrite = TRUE, copy.mode = TRUE)
+        if (!copied) {
+            stop("Failed to move temporary output into place: ", path, call. = FALSE)
+        }
+        unlink(tmp_path)
+    }
+
+    invisible(path)
+}
 
 comparePWMToJaspar <- function(pwm_queries) {
     cache <- getOption(
@@ -361,7 +439,7 @@ computeDMRsInteraction <- function(
     motif_cpg_flank_size = 5,
     find_components = TRUE,
     min_component_size = 2,
-    query_components_with_jaspar = TRUE, 
+    query_components_with_jaspar = TRUE,
     plot_dir = NULL,
     output_prefix = NULL
 ) {
@@ -525,8 +603,14 @@ computeDMRsInteraction <- function(
         interactions_df$component_id <- membership_to_component[interactions_df$index1]
     }
     if (!is.null(output_prefix)) {
-        write.table(interactions_df, paste0(output_prefix, "dmr_interactions.csv"), row.names = FALSE, quote = FALSE, sep="\t")
-        write.table(components_df, paste0(output_prefix, "dmr_components.csv"), row.names = FALSE, quote = FALSE, sep="\t")
+        .writeTabularOutputAtomic(
+            interactions_df,
+            paste0(output_prefix, ".dmr_interactions.tsv")
+        )
+        .writeTabularOutputAtomic(
+            .serializeDMRInteractionComponentsForStorage(components_df),
+            paste0(output_prefix, ".dmr_components.tsv")
+        )
     }
     list(
         interactions = interactions_df,

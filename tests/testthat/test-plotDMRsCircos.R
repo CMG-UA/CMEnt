@@ -183,6 +183,160 @@ test_that("plotDMRsCircos supports chromosome and region filters", {
     )
 })
 
+test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
+    skip_if_not_installed("mockery")
+    library(mockery)
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(100L, 1000L), width = c(80L, 80L)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$delta_beta <- c(0.3, -0.2)
+    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2", "cg3,cg4")
+    S4Vectors::mcols(dmrs)$seeds <- c("cg1,cg2", "cg3,cg4")
+
+    beta <- matrix(
+        c(0.4, 0.5, 0.6, 0.7),
+        ncol = 1,
+        dimnames = list(c("cg1", "cg2", "cg3", "cg4"), "S1")
+    )
+    sorted_locs <- data.frame(
+        chr = c("chr1", "chr1", "chr2", "chr2"),
+        start = c(100L, 140L, 1000L, 1040L),
+        end = c(100L, 140L, 1000L, 1040L),
+        row.names = c("cg1", "cg2", "cg3", "cg4")
+    )
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    pheno <- data.frame(Sample_Group = "case", row.names = "S1")
+
+    extracted_n <- NA_integer_
+    stub(
+        plotDMRsCircos,
+        "extractDMRMotifs",
+        function(dmrs, ...) {
+            extracted_n <<- length(dmrs)
+            S4Vectors::mcols(dmrs)$pwm <- replicate(
+                length(dmrs),
+                matrix(0.25, nrow = 4, ncol = 10),
+                simplify = FALSE
+            )
+            dmrs
+        }
+    )
+    stub(plotDMRsCircos, ".prepareCircosLinkData", function(...) NULL)
+    stub(
+        plotDMRsCircos,
+        ".getCytobandData",
+        function(genome) {
+            data.frame(
+                V1 = c("chr1", "chr2"),
+                V2 = c(1L, 1L),
+                V3 = c(1e6L, 1e6L),
+                V4 = c("p", "p"),
+                V5 = c("gneg", "gneg")
+            )
+        }
+    )
+
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            region = "chr1:50-250"
+        )
+    )
+    expect_equal(extracted_n, 1L)
+})
+
+test_that("plotDMRsCircos reuses precomputed interactions without extracting motifs again", {
+    skip_if_not_installed("mockery")
+    library(mockery)
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100L, 1000L), width = c(80L, 80L)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$delta_beta <- c(0.3, -0.2)
+    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2", "cg3,cg4")
+    S4Vectors::mcols(dmrs)$seeds <- c("cg1,cg2", "cg3,cg4")
+
+    beta <- matrix(
+        c(0.4, 0.5, 0.6, 0.7),
+        ncol = 1,
+        dimnames = list(c("cg1", "cg2", "cg3", "cg4"), "S1")
+    )
+    sorted_locs <- data.frame(
+        chr = c("chr1", "chr1", "chr1", "chr1"),
+        start = c(100L, 140L, 1000L, 1040L),
+        end = c(100L, 140L, 1000L, 1040L),
+        row.names = c("cg1", "cg2", "cg3", "cg4")
+    )
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    pheno <- data.frame(Sample_Group = "case", row.names = "S1")
+
+    extracted_motifs <- FALSE
+    stub(
+        plotDMRsCircos,
+        "extractDMRMotifs",
+        function(...) {
+            extracted_motifs <<- TRUE
+            stop("extractDMRMotifs should not run when precomputed interactions are supplied")
+        }
+    )
+    stub(
+        plotDMRsCircos,
+        ".getCytobandData",
+        function(genome) {
+            data.frame(
+                V1 = "chr1",
+                V2 = 1L,
+                V3 = 2e6L,
+                V4 = "p",
+                V5 = "gneg"
+            )
+        }
+    )
+
+    components <- data.frame(
+        component_id = 1L,
+        size = 2L,
+        indices = "1,2",
+        stringsAsFactors = FALSE
+    )
+    interactions <- data.frame(
+        index1 = 1L,
+        chr1 = "chr1",
+        start1 = 100L,
+        end1 = 180L,
+        index2 = 2L,
+        chr2 = "chr1",
+        start2 = 1000L,
+        end2 = 1080L,
+        sim = 0.95,
+        component_id = 1L,
+        stringsAsFactors = FALSE
+    )
+
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            components = components,
+            interactions = interactions,
+            query_components_with_jaspar = FALSE
+        )
+    )
+    expect_false(extracted_motifs)
+})
+
 test_that(".selectCircosRegions respects region caps and block priority", {
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr1", "chr1", "chr2", "chr2", "chr3"),
@@ -257,6 +411,40 @@ test_that(".selectCircosRegions supports component and hybrid candidate selectio
     expect_s3_class(selected_hybrid, "data.frame")
     expect_true(nrow(selected_hybrid) >= 1)
     expect_true(any(selected_hybrid$chr %in% c("chr1", "chr3")))
+})
+
+test_that(".selectCircosRegions accepts serialized component index strings", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr2"),
+        ranges = IRanges::IRanges(
+            start = c(100, 400, 150),
+            width = c(50, 50, 60)
+        ),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$score <- c(1, 2, 3)
+    S4Vectors::mcols(dmrs)$delta_beta <- c(0.45, 0.41, 0.3)
+
+    components <- data.frame(
+        component_id = 1L,
+        size = 3L,
+        indices = "1,3",
+        stringsAsFactors = FALSE
+    )
+
+    selected <- DMRsegal:::.selectCircosRegions(
+        dmrs = dmrs,
+        method = "components",
+        n_regions = 2,
+        region_flank_bp = 100,
+        max_regions_per_chr = 2,
+        min_inter_region_bp = 1000,
+        components = components
+    )
+
+    expect_s3_class(selected, "data.frame")
+    expect_true(nrow(selected) >= 1)
+    expect_true(any(selected$chr %in% c("chr1", "chr2")))
 })
 
 test_that("plotAutoDMRsCircos returns selected regions invisibly", {
