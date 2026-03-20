@@ -62,7 +62,7 @@ jobs:
           export BACKEND=BSPM
           ./run.sh bootstrap
           ./run.sh install_deps
-          ./run.sh install_r covr xml2 rcmdcheck IlluminaHumanMethylation450kanno.ilmn12.hg19 IlluminaHumanMethylationEPICanno.ilm10b4.hg19 BSgenome.Hsapiens.UCSC.hg19 mockery
+          ./run.sh install_r knitr rmarkdown BiocStyle rcmdcheck
         shell: bash
 
       - uses: r-lib/actions/setup-pandoc@v2
@@ -71,22 +71,6 @@ jobs:
         with:
           r-version: ${{ matrix.config.r }}
           use-public-rspm: true
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          dependencies: '"hard"'
-          extra-packages: |
-            any::rcmdcheck
-            any::IlluminaHumanMethylation450kanno.ilmn12.hg19
-            any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19
-            any::knitr
-            any::rmarkdown
-            any::BiocStyle
-            any::DMRcate
-            any::bumphunter
-            any::doParallel
-            any::magick
-          needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
