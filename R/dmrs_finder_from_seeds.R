@@ -37,7 +37,7 @@
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
@@ -1695,7 +1695,7 @@
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
 #' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
@@ -1738,7 +1738,7 @@ findDMRsFromSeeds <- function(
     max_bridge_extension_gaps = 1L,
     min_seeds = 2,
     min_adj_seeds = 2,
-    min_cpgs = 50,
+    min_cpgs = 3,
     aggfun = c("median", "mean"),
     ignored_sample_groups = NULL,
     output_prefix = NULL,
