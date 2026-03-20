@@ -183,6 +183,29 @@ test_that("plotDMRsCircos supports chromosome and region filters", {
     )
 })
 
+test_that(".filterDMRsByScopeForCircos preserves GRanges when some regions are empty", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(100L, 1000L), width = c(80L, 80L))
+    )
+
+    scoped <- DMRsegal:::.filterDMRsByScopeForCircos(
+        dmrs,
+        region_df = data.frame(
+            chr = c("chr3", "chr1"),
+            start = c(1L, 90L),
+            end = c(100L, 200L),
+            stringsAsFactors = FALSE
+        )
+    )
+
+    expect_s4_class(scoped, "GRanges")
+    expect_length(scoped, 1L)
+    expect_equal(as.character(GenomicRanges::seqnames(scoped)), "chr1:90-200")
+    expect_equal(GenomicRanges::start(scoped), 100L)
+    expect_equal(GenomicRanges::end(scoped), 179L)
+})
+
 test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
     skip_if_not_installed("mockery")
     library(mockery)
@@ -250,6 +273,68 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
         )
     )
     expect_equal(extracted_n, 1L)
+})
+
+test_that("plotDMRsCircos skips non-drawable gneg-only ideograms without warning", {
+    skip_if_not_installed("mockery")
+    library(mockery)
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(start = 100L, width = 80L),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$delta_beta <- 0.3
+    S4Vectors::mcols(dmrs)$cpgs <- "cg1,cg2"
+    S4Vectors::mcols(dmrs)$seeds <- "cg1,cg2"
+
+    beta <- matrix(
+        c(0.4, 0.5),
+        ncol = 1,
+        dimnames = list(c("cg1", "cg2"), "S1")
+    )
+    sorted_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(100L, 140L),
+        end = c(100L, 140L),
+        row.names = c("cg1", "cg2")
+    )
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    pheno <- data.frame(Sample_Group = "case", row.names = "S1")
+
+    stub(
+        plotDMRsCircos,
+        "extractDMRMotifs",
+        function(dmrs, ...) {
+            S4Vectors::mcols(dmrs)$pwm <- list(matrix(0.25, nrow = 4, ncol = 10))
+            dmrs
+        }
+    )
+    stub(plotDMRsCircos, ".prepareCircosLinkData", function(...) NULL)
+    stub(
+        plotDMRsCircos,
+        ".getCytobandData",
+        function(genome) {
+            data.frame(
+                V1 = "chr1",
+                V2 = 1L,
+                V3 = 1e6L,
+                V4 = "p",
+                V5 = "gneg"
+            )
+        }
+    )
+
+    expect_no_warning(
+        plotDMRsCircos(
+            dmrs = dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            region = "chr1:50-250"
+        )
+    )
 })
 
 test_that("plotDMRsCircos reuses precomputed interactions without extracting motifs again", {

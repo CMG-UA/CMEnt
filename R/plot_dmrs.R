@@ -134,6 +134,17 @@ if (getRversion() >= "2.15.1") {
                               min_extension_bp = 50,
                               plot_title = TRUE,
                               .ret_details = FALSE) {
+    .locsToDf <- function(gr_subset) {
+        df <- as.data.frame(gr_subset)
+        if (nrow(df) > 0) {
+            df$cpg_id <- rownames(gr_subset)
+        } else {
+            df$cpg_id <- character(0)
+        }
+        rownames(df) <- NULL
+        df
+    }
+
     # Validate input
     if (dmr_index < 1 || dmr_index > length(dmrs)) {
         stop("dmr_index must be between 1 and ", length(dmrs))
@@ -154,10 +165,10 @@ if (getRversion() >= "2.15.1") {
     cpgs <- strsplit(dmr_data$cpgs, split = ",")[[1]]
     downstream_sup_cpgs <- strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
     downstream_sup_cpgs <- setdiff(downstream_sup_cpgs, seeds)
-    downstream_sup_cpgs_locs <- as.data.frame(beta_locs[downstream_sup_cpgs, , drop = FALSE])
+    downstream_sup_cpgs_locs <- .locsToDf(beta_locs[downstream_sup_cpgs, , drop = FALSE])
     upstream_sup_cpgs <- strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
     upstream_sup_cpgs <- setdiff(upstream_sup_cpgs, seeds)
-    upstream_sup_cpgs_locs <- as.data.frame(beta_locs[upstream_sup_cpgs, , drop = FALSE])
+    upstream_sup_cpgs_locs <- .locsToDf(beta_locs[upstream_sup_cpgs, , drop = FALSE])
     if (length(upstream_sup_cpgs) == 0) {
         start_cpg <- seeds[[1]]
     } else {
@@ -173,7 +184,7 @@ if (getRversion() >= "2.15.1") {
     dmr_locs <- beta_locs[match(start_cpg, beta_locs_rownames):match(end_cpg, beta_locs_rownames), , drop = FALSE]
 
     nsup_cpgs <- setdiff(rownames(dmr_locs), cpgs)
-    nsup_cpgs_locs <- as.data.frame(dmr_locs[nsup_cpgs, , drop = FALSE])
+    nsup_cpgs_locs <- .locsToDf(dmr_locs[nsup_cpgs, , drop = FALSE])
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     dmr_start <- GenomicRanges::start(dmr)
@@ -198,8 +209,8 @@ if (getRversion() >= "2.15.1") {
     plot_start <- max(1, start_cpg_pos - ext)
     plot_end <- end_cpg_pos + ext
 
-    downstream_nsup_cpgs_locs <- as.data.frame(dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE])
-    upstream_nsup_cpgs_locs <- as.data.frame(dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE])
+    downstream_nsup_cpgs_locs <- .locsToDf(dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE])
+    upstream_nsup_cpgs_locs <- .locsToDf(dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE])
     extended_nsup_cpgs_locs <- rbind(
         nsup_cpgs_locs,
         upstream_nsup_cpgs_locs,
@@ -560,19 +571,14 @@ if (getRversion() >= "2.15.1") {
 
     if (.ret_details) {
         nsup_df <- extended_nsup_cpgs_locs
-        if (nrow(nsup_df) > 0) {
-            nsup_df$cpg_id <- rownames(nsup_df)
-        } else {
+        if (!"cpg_id" %in% colnames(nsup_df)) {
             nsup_df$cpg_id <- character(0)
         }
         sup_df <- extended_sup_cpgs_locs
-        if (nrow(sup_df) > 0) {
-            sup_df$cpg_id <- rownames(sup_df)
-        } else {
+        if (!"cpg_id" %in% colnames(sup_df)) {
             sup_df$cpg_id <- character(0)
         }
-        seed_df <- as.data.frame(dmr_locs[seeds, , drop = FALSE])
-        seed_df$cpg_id <- rownames(seed_df)
+        seed_df <- .locsToDf(dmr_locs[seeds, , drop = FALSE])
         total_shown_positions <- rbind(nsup_df, sup_df, seed_df)
         total_shown_positions <- total_shown_positions[!duplicated(total_shown_positions$cpg_id), , drop = FALSE]
         rownames(total_shown_positions) <- total_shown_positions$cpg_id

@@ -69,8 +69,8 @@
     matched <- do.call(rbind, matched)
     data.frame(
         chr = matched[, 1],
-        start = as.numeric(matched[, 2]),
-        end = as.numeric(matched[, 3]),
+        start = pmax(1, as.numeric(matched[, 2])),
+        end = pmax(1, as.numeric(matched[, 3])),
         stringsAsFactors = FALSE
     )
 }
@@ -156,6 +156,7 @@
         ret <- ret[keep_chr]
     }
     if (!is.null(region_df) && nrow(region_df) > 0) {
+        empty_ret <- ret[0]
         ret <- lapply(seq_len(nrow(region_df)), function(i) {
             chr <- region_df$chr[i]
             reg_start <- region_df$start[i]
@@ -183,6 +184,10 @@
             names(new_seqlevel) <- chr
             GenomeInfoDb::renameSeqlevels(overlap, new_seqlevel)
         })
+        ret <- Filter(function(x) !is.null(x) && length(x) > 0, ret)
+        if (length(ret) == 0) {
+            return(empty_ret)
+        }
         ret <- suppressWarnings(do.call(c, ret))
     }
     ret
@@ -259,6 +264,37 @@
         return(NULL)
     }
     cb
+}
+
+.hasDrawableCircosCytobands <- function(cytoband) {
+    if (is.null(cytoband) || nrow(cytoband) == 0 || !"V5" %in% colnames(cytoband)) {
+        return(FALSE)
+    }
+    drawable_stains <- c(
+        "gpos100", "gpos", "gpos75", "gpos66", "gpos50",
+        "gpos33", "gpos25", "gvar", "acen", "stalk"
+    )
+    stains <- trimws(tolower(as.character(cytoband$V5)))
+    any(!is.na(stains) & nzchar(stains) & stains %in% drawable_stains)
+}
+
+.addCircosIdeogramIfAvailable <- function(cytoband_subset, genome, use_manual_init = FALSE) {
+    if (isTRUE(use_manual_init)) {
+        return(invisible(FALSE))
+    }
+    if (!is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
+        if (.hasDrawableCircosCytobands(cytoband_subset)) {
+            circlize::circos.genomicIdeogram(cytoband = cytoband_subset)
+            return(invisible(TRUE))
+        }
+        .log_info(
+            "Skipping ideogram track because the selected cytobands only contain gneg/unknown stains.",
+            level = 2
+        )
+        return(invisible(FALSE))
+    }
+    circlize::circos.genomicIdeogram(species = genome)
+    invisible(TRUE)
 }
 
 .scopeCircosRangesDf <- function(df,
@@ -732,11 +768,11 @@
         }
     }
 
-    if (!use_manual_init && !is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
-        circlize::circos.genomicIdeogram(cytoband = cytoband_subset)
-    } else if (!use_manual_init) {
-        circlize::circos.genomicIdeogram(species = prepared_state$genome)
-    }
+    .addCircosIdeogramIfAvailable(
+        cytoband_subset = cytoband_subset,
+        genome = prepared_state$genome,
+        use_manual_init = use_manual_init
+    )
 
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)
@@ -1867,11 +1903,11 @@ plotDMRsCircos <- function(dmrs,
         }
     }
 
-    if (!use_manual_init && !is.null(cytoband_subset) && nrow(cytoband_subset) > 0) {
-        circlize::circos.genomicIdeogram(cytoband = cytoband_subset)
-    } else if (!use_manual_init) {
-        circlize::circos.genomicIdeogram(species = genome)
-    }
+    .addCircosIdeogramIfAvailable(
+        cytoband_subset = cytoband_subset,
+        genome = genome,
+        use_manual_init = use_manual_init
+    )
 
     if (!is.null(arc_data)) {
         .log_step("Adding DMR arc track...", level = 2)

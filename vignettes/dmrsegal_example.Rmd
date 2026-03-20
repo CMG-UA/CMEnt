@@ -100,6 +100,7 @@ dmrs <- findDMRsFromSeeds(
     casecontrol_col = "case_control", # The column in the phenotype data that contains the binary case-control labels for the samples, which will be used for the SVM-based scoring of the DMRs. It should be a logical or factor column with two levels, where one level is considered as "case" and the other as "control". If not provided, the first level of the sample group column will be considered as "control" and the second level as "case".
     sample_group_col = "Sample_Group", # The column in the phenotype data that contains the sample group labels for the SVM-based scoring.
     covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
+    entanglement = "weak", # The entanglement strategy to use, either demand at least a  single group seeds to be correlated ("weak", slower), or demand that all groups  seeds are correlated ("strong", the default, quicker).
     genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
     array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
     output_prefix = "tmp/DMRsegal_example" # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
@@ -252,7 +253,7 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
-A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 16 to 22. 
+A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 17 to 19. 
 The information includes:
 
 - The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
@@ -278,7 +279,7 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            chromosomes = paste0("chr", 16:22),
+            chromosomes = paste0("chr", 17:20),
             degenerate_resolution = 1e6,
             verbose = 1
         )
@@ -294,7 +295,7 @@ if (!circos_summary_plotted) {
     text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
 }
 ```
-It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr19:14700kb-16100kb and for chr20:61600kb-63000kb, which are regions that in the earlier plot were shown to interact:
+It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr17:72Mb-83Mb, chr19:1Mb-12Mb and chr17:0Mb-3Mb, which are regions that in the earlier plot were shown to interact:
 ```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_region_plotted <- FALSE
 
@@ -313,7 +314,7 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_cpgs_per_dmr = 5,
             max_components = 120,
-            region = "chr19:14700kb-16100kb, chr20:61600kb-63000kb",
+            region = "chr17:72Mb-83Mb, chr19:1Mb-12Mb, chr17:0Mb-3Mb",
             degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
             verbose = 1
         )

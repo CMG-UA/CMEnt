@@ -133,6 +133,82 @@ test_that("plotDMR handles DMRs with multiple seeds", {
     }
 })
 
+test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangling", {
+    skip_if_not_installed("ggplot2")
+
+    cpg_ids <- sprintf("cg%08d", 1:5)
+    beta <- matrix(
+        c(
+            0.1, 0.9,
+            0.2, 0.8,
+            0.3, 0.7,
+            0.4, 0.6,
+            0.5, 0.5
+        ),
+        nrow = length(cpg_ids),
+        byrow = TRUE,
+        dimnames = list(cpg_ids, c("S1", "S2"))
+    )
+    sorted_locs <- data.frame(
+        chr = rep("chr1", length(cpg_ids)),
+        start = seq(100L, 140L, by = 10L),
+        end = seq(100L, 140L, by = 10L),
+        row.names = cpg_ids,
+        stringsAsFactors = FALSE
+    )
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+
+    pheno <- data.frame(
+        Sample_Group = c("case", "control"),
+        row.names = c("S1", "S2"),
+        stringsAsFactors = FALSE
+    )
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(start = 100L, end = 140L),
+        seqinfo = GenomeInfoDb::Seqinfo(seqnames = "chr1", genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$seeds <- "cg00000002,cg00000004"
+    S4Vectors::mcols(dmrs)$cpgs <- paste(cpg_ids, collapse = ",")
+    S4Vectors::mcols(dmrs)$upstream_cpgs <- "cg00000001,cg00000002,cg00000003"
+    S4Vectors::mcols(dmrs)$downstream_cpgs <- "cg00000003,cg00000004,cg00000005"
+    S4Vectors::mcols(dmrs)$start_seed_pos <- 110L
+    S4Vectors::mcols(dmrs)$end_seed_pos <- 130L
+    S4Vectors::mcols(dmrs)$score <- 0.75
+    S4Vectors::mcols(dmrs)$cv_accuracy <- 0.8
+    S4Vectors::mcols(dmrs)$seeds_num <- 2L
+    S4Vectors::mcols(dmrs)$delta_beta <- 0.3
+    S4Vectors::mcols(dmrs)$in_promoter_of <- NA_character_
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- NA_character_
+
+    ret <- DMRsegal:::.plotDMRStructure(
+        dmrs = dmrs,
+        dmr_index = 1,
+        beta_locs = sorted_locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
+
+    expect_true("cg00000003" %in% rownames(ret$total_locs))
+    expect_false("cg000000031" %in% rownames(ret$total_locs))
+    expect_setequal(rownames(ret$total_locs), cpg_ids)
+
+    expect_no_error(
+        suppressWarnings(plotDMR(
+            dmrs = dmrs,
+            dmr_index = 1,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = "hg19",
+            array = NULL,
+            sample_group_col = "Sample_Group",
+            plot_motif = FALSE,
+            plot_title = FALSE
+        ))
+    )
+})
+
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
