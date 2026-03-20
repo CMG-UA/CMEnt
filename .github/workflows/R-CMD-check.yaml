@@ -61,6 +61,8 @@ jobs:
           chmod 0755 run.sh
           export BACKEND=BSPM
           ./run.sh bootstrap
+          ./run.sh install_deps
+          ./run.sh install_r any::covr any::xml2 any::rcmdcheck any::IlluminaHumanMethylation450kanno.ilmn12.hg19 any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19 any::BSgenome.Hsapiens.UCSC.hg19 any::mockery
         shell: bash
 
       - uses: r-lib/actions/setup-pandoc@v2
