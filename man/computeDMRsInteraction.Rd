@@ -6,53 +6,59 @@
 \usage{
 computeDMRsInteraction(
   dmrs,
-  genome = "hg19",
+  genome = "hg38",
   array = "450K",
-  min_sim = 0.8,
+  min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
   beta_locs = NULL,
-  flank_size = 5,
+  motif_cpg_flank_size = 5,
   find_components = TRUE,
   min_component_size = 2,
   query_components_with_jaspar = TRUE,
-  plot.dir = NULL
+  plot_dir = NULL,
+  output_prefix = NULL
 )
 }
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and motif information}
 
-\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg19")}
+\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg38")}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC") (default: "450K")}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
 
-\item{min_sim}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.7).}
+\item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
-\item{flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+\item{motif_cpg_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
 
 \item{find_components}{Logical. Whether to identify connected components of interacting DMRs (default: TRUE)}
 
 \item{min_component_size}{Integer. Minimum size of connected components to consider (default: 2)}
 
 \item{query_components_with_jaspar}{Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)}
+
+\item{plot_dir}{Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)}
+
+\item{output_prefix}{Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)}
 }
 \value{
-Data frame of motif-based DMR interactions with columns:
+A list with:
 \itemize{
-\item start_chr: Chromosome of the start DMR
-\item start: Start position of the start DMR
-\item end: End position of the start DMR
-\item end_chr: Chromosome of the end DMR
-\item end: Start position of the end DMR
-\item end_end: End position of the end DMR
-\item sim: Similarity value of the motif PWMs between the DMRs
+\item interactions: Data frame of motif-based DMR interactions with columns
+\code{chr1}, \code{start1}, \code{end1}, \code{chr2}, \code{start2},
+\code{end2}, \code{sim}, and when components are requested,
+\code{component_id}
+\item components: Data frame of discovered motif components
+\item dmrs: The input DMRs in the same class as provided, with an added
+\code{component_ids} column containing comma-separated component IDs for
+each DMR (or \code{NA} when the DMR is not part of a retained component)
 }
 }
 \description{
 Computes motif-based interactions between DMRs based on their
 motif similarity. Identifies pairs of DMRs with significant motif similarity
-and returns a data frame of interactions.
+and returns a data frame of interactions. Assigns directionality based on scoring, if available.
 }
 \examples{
 # Compute motif-based interactions for DMRs
@@ -63,10 +69,10 @@ dmrs <- data.frame(
     start_cpg = c("cg00000029", "cg00000108"),
     end_cpg = c("cg13426503", "cg08730726")
 )
-dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
+dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 interactions <- computeDMRsInteraction(
     dmrs_with_motifs,
-    genome = "hg19",
+    genome = "hg38",
     array = "450K",
 )
 }

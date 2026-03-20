@@ -11,10 +11,13 @@ plotDMRs(
   beta = NULL,
   pheno = NULL,
   sample_group_col = "Sample_Group",
-  genome = "hg19",
+  genome = "hg38",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   beta_locs = NULL,
   ncol = 1,
+  output_file = NULL,
+  width = 8,
+  height = 12,
   ...
 )
 }
@@ -31,13 +34,19 @@ plotDMRs(
 
 \item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
 
-\item{genome}{Character. Genome version (default: "hg19").}
+\item{genome}{Character. Genome version (default: "hg38").}
 
 \item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
 \item{ncol}{Integer. Number of columns in the grid (default: 1).}
+
+\item{output_file}{Character. Path to save the combined plot as PDF (optional). If NULL, the plot is not saved to file.}
+
+\item{width}{Numeric. Width of the output PDF in inches (default: 8).}
+
+\item{height}{Numeric. Height of the output PDF in inches (default: 12).}
 
 \item{...}{Additional arguments passed to plotDMR.}
 }

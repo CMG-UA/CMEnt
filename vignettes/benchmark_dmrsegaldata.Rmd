@@ -1,0 +1,1225 @@
+---
+title: "DMRsegal vs comb-p, probeLasso, DMRcate, and Bumphunter"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output: 
+    BiocStyle::html_document:
+        code_folding: hide
+vignette: >
+  %\VignetteIndexEntry{DMRsegal vs comb-p, probeLasso, DMRcate, and Bumphunter}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    results = "asis",
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 12,
+    fig.height = 8,
+    dpi = 300
+)
+```
+
+## Introduction
+
+This vignette provides an extended benchmark comparing DMRsegal against multiple popular DMR detection methods:
+
+- **DMRsegal**: Correlation-based seed-guided assembly approach
+- **comb-p**: Combines adjacent p-values using Stouffer-Liptak-Kechris correction
+- **probeLasso**: Lasso-based feature selection for DMR detection
+- **DMRcate**: Gaussian kernel smoothing approach
+- **Bumphunter**: Permutation-based regional testing
+
+We evaluate these methods on:
+
+- Number and size distribution of DMRs
+- Overlap and concordance between methods
+- Biological relevance of detected regions
+
+The dataset used is DMRsegaldata, which contains methylation profiles for 5 cancer vs 5 normal samples.
+
+## Setup and Dependencies
+
+```{r, message=FALSE}
+devtools::load_all()
+library(minfi)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(GenomicRanges)
+library(progressr)
+
+progressr::handlers("cli")
+options(progressr.enable = TRUE)
+output_dir <- "dmrsegaldata"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+```
+
+### Install External Dependencies
+
+```{r, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+
+if (!requireNamespace("DMRcate", quietly = TRUE)) {
+    BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("bumphunter", quietly = TRUE)) {
+    BiocManager::install("bumphunter", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("doParallel", quietly = TRUE)) {
+    install.packages("doParallel")
+}
+
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+    install.packages("tidyr")
+}
+
+if (!requireNamespace("reticulate", quietly = TRUE)) {
+    install.packages("reticulate")
+}
+
+if (!requireNamespace("ChAMP", quietly = TRUE)) {
+    BiocManager::install("ChAMP", update = FALSE, ask = FALSE)
+}
+```
+
+### Setup comb-p (conda required)
+
+**Note:** comb-p requires both the tool itself and bedtools. Install via conda:
+
+```bash
+# Install comb-p and bedtools
+conda install -yc bioconda combined-pvalues bedtools
+
+# Or create a dedicated environment
+conda create -n combp python=3.9
+conda activate combp
+conda install -yc bioconda combined-pvalues bedtools
+```
+
+```{r, eval=FALSE}
+# Check if comb-p and bedtools are available
+if (Sys.which("comb-p") == "") {
+    warning("comb-p not found. Install with: conda install -yc bioconda combined-pvalues")
+}
+
+if (Sys.which("bedtools") == "") {
+    warning("bedtools not found. Install with: conda install -yc bioconda bedtools")
+}
+```
+
+## Load Example Data
+
+```{r}
+beta <- loadExampleInputData("beta")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
+genome <- "hg19"
+
+beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
+beta_mat <- as.matrix(beta_handler$getBeta())
+locs <- beta_handler$getBetaLocs()
+mvalues <- minfi::logit2(beta_mat)
+pheno$casecontrol <- pheno$Sample_Group == "cancer"
+```
+
+## Find Differentially Methylated Positions
+
+```{r}
+dmps <- suppressWarnings(dmpFinder(mvalues,
+    pheno = pheno$casecontrol,
+    type = "categorical",
+    shrinkVar = TRUE
+))
+# sort DMPs by location
+dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
+dmps <- dmps[rownames(dmp_locs), , drop = FALSE]
+dmps <- dmps[!is.na(dmps$pval), ]
+dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
+
+case_idx <- which(pheno$casecontrol)
+ctrl_idx <- which(!pheno$casecontrol)
+dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
+    rowMeans(beta_mat[rownames(dmps), ctrl_idx, drop = FALSE])
+
+sig_dmps <- dmps[dmps$pval_adj < 0.01 & abs(dmps$delta_beta) >= 0.05, ]
+cat(sprintf("Found %d significant DMPs (FDR < 0.01, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
+dmps_gr <- makeGRangesFromDataFrame(
+    data.frame(
+        chr = locs$chr,
+        start = locs$start,
+        end = locs$end,
+        pval = dmps$pval,
+        qval = dmps$pval_adj,
+        stat = dmps$qval
+    ),
+    keep.extra.columns = TRUE
+)
+names(dmps_gr) <- rownames(dmps)
+```
+
+## Method 1: DMRsegal
+
+```{r DMRsegal}
+dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
+if (!file.exists(dmrsegal_file)) {
+    dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.njobs" = dmrsegal_njobs)
+    cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
+    cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
+    cat("Starting DMRsegal::findDMRsFromSeeds()...\n")
+    flush.console()
+    start_time <- Sys.time()
+    dmrs_dmrsegal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
+        beta = beta_handler,
+        seeds = sig_dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        covariates = c("Age", "Gender"),
+        max_bridge_seeds_gaps  = 0,
+        max_bridge_extension_gaps = 3,
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        max_pval = 0.05,
+        entanglement = "weak",
+        .score_dmrs = TRUE,
+        chunk_size = 1e5,
+        njobs = dmrsegal_njobs,
+        verbose = 3
+    ))
+    end_time <- Sys.time()
+    time_dmrsegal <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrsegal, time = time_dmrsegal), dmrsegal_file)
+    rm(beta_handler)
+} else {
+    cat(sprintf("Using cached DMRsegal result: %s\n", dmrsegal_file))
+    flush.console()
+    ret <- readRDS(dmrsegal_file)
+    dmrs_dmrsegal <- ret$dmrs
+    time_dmrsegal <- ret$time
+}
+
+cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_dmrsegal), round(as.numeric(time_dmrsegal, units = "secs"))))
+```
+
+## Method 2: comb-p
+
+```{r comb-p}
+combp_file <- file.path(output_dir, "dmrs.combp.rds")
+
+run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
+    if (Sys.which("bedtools") == "") {
+        warning("bedtools not found in PATH. comb-p requires bedtools to be installed.")
+        warning("Install with: conda install -yc bioconda bedtools")
+        return(GRanges())
+    }
+
+    if (Sys.which("comb-p") == "") {
+        warning("comb-p not found in PATH.")
+        warning("Install with: conda install -yc bioconda combined-pvalues")
+        return(GRanges())
+    }
+
+    bed_file <- file.path(output_dir, "dmps_for_combp.bed")
+    bed_df <- data.frame(
+        chrom = as.character(seqnames(dmps_gr)),
+        start = start(dmps_gr) - 1,
+        end = end(dmps_gr),
+        pval = mcols(dmps_gr)$pval
+    )
+    bed_df <- bed_df[order(bed_df$chrom, bed_df$start), ]
+
+    write.table(bed_df, bed_file,
+        quote = FALSE, sep = "\t",
+        row.names = FALSE, col.names = TRUE
+    )
+
+    output_prefix <- file.path(output_dir, "combp_output")
+    cmd <- sprintf(
+        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.01 --region-filter-n 3 %s",
+        seed, dist, output_prefix, bed_file
+    )
+
+    tryCatch(
+        {
+            exit_code <- system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE)
+
+            if (exit_code != 0) {
+                warning(sprintf("comb-p exited with code %d", exit_code))
+                return(GRanges())
+            }
+
+            regions_file <- paste0(output_prefix, ".regions-p.bed.gz")
+            if (file.exists(regions_file)) {
+                regions <- fread(cmd = sprintf("zcat %s", regions_file))
+                colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
+
+                regions <- regions[regions$z_sidak_p < 0.05 & regions$n_probes >= 3, ]
+
+                dmrs_combp <- makeGRangesFromDataFrame(regions,
+                    seqnames.field = "chr",
+                    start.field = "start",
+                    end.field = "end",
+                    keep.extra.columns = TRUE
+                )
+                return(dmrs_combp)
+            } else {
+                warning("comb-p did not produce output file")
+                return(GRanges())
+            }
+        },
+        error = function(e) {
+            warning(sprintf("comb-p failed: %s", e$message))
+            GRanges()
+        }
+    )
+}
+
+if (!file.exists(combp_file)) {
+    start_time <- Sys.time()
+    dmrs_combp <- run_combp(dmps_gr, output_dir)
+    end_time <- Sys.time()
+    time_combp <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_combp, time = time_combp), combp_file)
+} else {
+    ret <- readRDS(combp_file)
+    dmrs_combp <- ret$dmrs
+    time_combp <- ret$time
+}
+
+cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(as.numeric(time_combp, units = "secs"))))
+```
+
+## Method 3: probeLasso
+```{r probeLasso}
+probelasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
+
+run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
+    if (!requireNamespace("ChAMP", quietly = TRUE)) {
+        warning("ChAMP not installed. probeLasso requires ChAMP.")
+        warning("Install with: BiocManager::install('ChAMP')")
+        return(GRanges())
+    }
+
+    library(ChAMP)
+
+    tryCatch(
+        {
+            result <- champ.DMR(
+                beta = beta_mat,
+                pheno = pheno$Sample_Group,
+                arraytype = array_type,
+                method = "ProbeLasso",
+                minProbes = 3,
+                adjPvalDmr = 0.05,
+                adjPvalProbe = 0.1,
+                meanLassoRadius = 500,
+                minDmrSep = 500,
+                minDmrSize = 50,
+                PDFplot = FALSE,
+                Rplot = FALSE,
+                resultsDir = file.path(tempdir(), "champ_probelasso")
+            )
+
+            pl_dmr <- result$ProbeLassoDMR
+            if (is.null(pl_dmr) || nrow(pl_dmr) == 0) {
+                return(GRanges())
+            }
+
+            # ChAMP output column names can differ by version.
+            if (!"seqnames" %in% names(pl_dmr) && "dmrChrom" %in% names(pl_dmr)) {
+                pl_dmr$seqnames <- pl_dmr$dmrChrom
+            }
+            if (!"start" %in% names(pl_dmr) && "dmrStart" %in% names(pl_dmr)) {
+                pl_dmr$start <- pl_dmr$dmrStart
+            }
+            if (!"end" %in% names(pl_dmr) && "dmrEnd" %in% names(pl_dmr)) {
+                pl_dmr$end <- pl_dmr$dmrEnd
+            }
+
+            return(makeGRangesFromDataFrame(pl_dmr,
+                seqnames.field = "seqnames",
+                start.field = "start",
+                end.field = "end",
+                keep.extra.columns = TRUE
+            ))
+        },
+        error = function(e) {
+            warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
+            GRanges()
+        }
+    )
+}
+
+if (!file.exists(probelasso_file)) {
+    start_time <- Sys.time()
+    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K")
+    end_time <- Sys.time()
+    time_probelasso <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_probelasso, time = time_probelasso), probelasso_file)
+} else {
+    ret <- readRDS(probelasso_file)
+    dmrs_probelasso <- ret$dmrs
+    time_probelasso <- ret$time
+}
+
+cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso), round(as.numeric(time_probelasso, units = "secs"))))
+```
+
+## Method 4: DMRcate
+
+```{r dmrcate}
+dmrcate_file <- file.path(output_dir, "dmrs.dmrcate.rds")
+if (!file.exists(dmrcate_file)) {
+    library(DMRcate)
+    start_time <- Sys.time()
+    design <- model.matrix(~Sample_Group, data = pheno)
+    colnames(design) <- c("(Intercept)", "cancer_vs_normal")
+
+    myannotation <- cpg.annotate("array", mvalues,
+        what = "M", arraytype = "450K",
+        analysis.type = "differential", design = design,
+        coef = 2, fdr = 0.05
+    )
+
+    dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
+    dmrs_dmrcate <- extractRanges(dmrcate_results, genome = "hg19")
+    end_time <- Sys.time()
+    time_dmrcate <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
+} else {
+    ret <- readRDS(dmrcate_file)
+    dmrs_dmrcate <- ret$dmrs
+    time_dmrcate <- ret$time
+}
+
+cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
+```
+
+## Method 5: Bumphunter
+
+```{r bumphunter}
+bumphunter_file <- file.path(output_dir, "dmrs.bumphunter.rds")
+if (!file.exists(bumphunter_file)) {
+    library(bumphunter)
+    library(doParallel)
+    start_time <- Sys.time()
+    # Safer defaults for local/WSL rendering; override via options().
+    bh_cores <- 1
+    bh_b <- 100L
+    bh_max_dmrs <- 1000000L
+    bh_max_gap <- 2000L
+    bh_min_l <- 2L
+
+    doParallel::registerDoParallel(cores = bh_cores)
+    on.exit({
+        try(doParallel::stopImplicitCluster(), silent = TRUE)
+        gc()
+    }, add = TRUE)
+
+    design <- model.matrix(~Sample_Group, data = pheno)
+    max_gap <- bh_max_gap
+    dmrs_cutoff <- 0.1
+    dmrs_cnt <- Inf
+    iter <- 0L
+    max_iter <- 10L
+    while (dmrs_cnt > bh_max_dmrs && iter < max_iter) {
+        iter <- iter + 1L
+        dmrs <- bumphunter(beta_mat,
+            design = design,
+            cutoff = dmrs_cutoff,
+            chr = as.character(locs$chr),
+            pos = locs$start,
+            maxGap = max_gap,
+            nullMethod = "bootstrap",
+            B = 0,
+            type = "Beta",
+            coef = 2
+        )
+        dmrs_cnt <- nrow(dmrs$table)
+        dmrs_cutoff <- dmrs_cutoff * 1.2
+        rm(dmrs)
+        gc()
+    }
+    final_cutoff <- dmrs_cutoff / 1.2
+    cat(sprintf(
+        "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
+        final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_b
+    ))
+    bumphunter_results <- bumphunter(beta_mat,
+        design = design,
+        chr = as.character(locs$chr),
+        pos = locs$start,
+        cutoff = final_cutoff,
+        maxGap = max_gap,
+        nullMethod = "bootstrap",
+        B = bh_b,
+        type = "Beta",
+        coef = 2
+    )
+
+    dmr_table <- bumphunter_results$table
+    dmr_table$p.adj <- p.adjust(dmr_table$p.value, method = "BH")
+    dmr_table <- dmr_table[dmr_table$L >= bh_min_l & dmr_table$p.adj <= 0.05, ]
+
+    dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
+        seqnames.field = "chr",
+        start.field = "start",
+        end.field = "end",
+        keep.extra.columns = TRUE
+    )
+    end_time <- Sys.time()
+    time_bumphunter <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_bumphunter, time = time_bumphunter), bumphunter_file)
+} else {
+    ret <- readRDS(bumphunter_file)
+    dmrs_bumphunter <- ret$dmrs
+    time_bumphunter <- ret$time
+}
+
+cat(sprintf("Bumphunter: Found %d DMRs in %d seconds\n", length(dmrs_bumphunter), round(as.numeric(time_bumphunter, units = "secs"))))
+```
+
+## Comparative Analysis
+
+### Basic Statistics
+
+```{r}
+get_dmr_stats <- function(dmrs, method) {
+    if (length(dmrs) == 0) {
+        return(data.frame(
+            Method = method,
+            `Number of DMRs` = 0,
+            `Mean DMR Width` = NA,
+            `Median DMR Width` = NA,
+            `Total Coverage bp` = 0,
+            `Min Width` = NA,
+            `Max Width` = NA
+        ))
+    }
+
+    data.frame(
+        Method = method,
+        `Number of DMRs` = length(dmrs),
+        `Mean DMR Width` = round(mean(width(dmrs)), 1),
+        `Median DMR Width` = median(width(dmrs)),
+        `Total Coverage bp` = sum(width(dmrs)),
+        `Min Width` = min(width(dmrs)),
+        `Max Width` = max(width(dmrs))
+    )
+}
+
+stats_list <- list(
+    get_dmr_stats(dmrs_dmrsegal, "DMRsegal"),
+    get_dmr_stats(dmrs_combp, "comb-p"),
+    get_dmr_stats(dmrs_probelasso, "probeLasso"),
+    get_dmr_stats(dmrs_dmrcate, "DMRcate"),
+    get_dmr_stats(dmrs_bumphunter, "Bumphunter")
+)
+
+results_comparison <- do.call(rbind, stats_list)
+knitr::kable(results_comparison, digits = 2, caption = "Basic DMR Statistics Across Methods")
+```
+
+### Pairwise Overlap Analysis
+
+```{r, results='asis'}
+methods_list <- list(
+    DMRsegal = dmrs_dmrsegal,
+    `comb-p` = dmrs_combp,
+    probeLasso = dmrs_probelasso,
+    DMRcate = dmrs_dmrcate,
+    Bumphunter = dmrs_bumphunter
+)
+
+methods_list <- methods_list[sapply(methods_list, length) > 0]
+
+calculate_overlap <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(list(count = 0, percentage = 0))
+    }
+    overlap_count <- length(subsetByOverlaps(gr1, gr2))
+    pct <- (overlap_count / length(gr1)) * 100
+    list(count = overlap_count, percentage = pct)
+}
+
+overlap_matrix <- matrix(0, nrow = length(methods_list), ncol = length(methods_list))
+pct_matrix <- matrix(0, nrow = length(methods_list), ncol = length(methods_list))
+rownames(overlap_matrix) <- colnames(overlap_matrix) <- names(methods_list)
+rownames(pct_matrix) <- colnames(pct_matrix) <- names(methods_list)
+
+for (i in seq_along(methods_list)) {
+    for (j in seq_along(methods_list)) {
+        if (i != j) {
+            overlap_result <- calculate_overlap(methods_list[[i]], methods_list[[j]])
+            overlap_matrix[i, j] <- overlap_result$count
+            pct_matrix[i, j] <- overlap_result$percentage
+        }
+    }
+}
+
+cat("\n#### Overlap Counts (rows overlap with columns)\n")
+knitr::kable(overlap_matrix, digits = 0, caption = "Number of DMRs from Method A (rows) overlapping with Method B (columns)")
+
+cat("\n#### Overlap Percentages\n")
+knitr::kable(pct_matrix, digits = 2, caption = "Percentage of DMRs from Method A (rows) overlapping with Method B (columns)")
+```
+
+### Jaccard Index and IoU
+
+```{r}
+jaccard_index <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(0)
+    }
+    overlap_count <- length(subsetByOverlaps(gr1, gr2))
+    total_unique <- length(unique(c(gr1, gr2)))
+    if (total_unique == 0) {
+        return(0)
+    }
+    overlap_count / total_unique
+}
+
+iou <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(0)
+    }
+    intersection <- sum(width(GenomicRanges::intersect(gr1, gr2)))
+    union <- sum(width(GenomicRanges::union(gr1, gr2)))
+    if (union == 0) {
+        return(0)
+    }
+    intersection / union
+}
+
+jaccard_matrix <- matrix(0, nrow = length(methods_list), ncol = length(methods_list))
+iou_matrix <- matrix(0, nrow = length(methods_list), ncol = length(methods_list))
+rownames(jaccard_matrix) <- colnames(jaccard_matrix) <- names(methods_list)
+rownames(iou_matrix) <- colnames(iou_matrix) <- names(methods_list)
+
+for (i in seq_along(methods_list)) {
+    for (j in seq_along(methods_list)) {
+        if (i < j) {
+            jaccard_matrix[i, j] <- jaccard_matrix[j, i] <- jaccard_index(methods_list[[i]], methods_list[[j]])
+            iou_matrix[i, j] <- iou_matrix[j, i] <- iou(methods_list[[i]], methods_list[[j]])
+        } else if (i == j) {
+            jaccard_matrix[i, j] <- 1
+            iou_matrix[i, j] <- 1
+        }
+    }
+}
+
+cat("\n#### Jaccard Index\n")
+knitr::kable(jaccard_matrix, digits = 4, caption = "Jaccard Index (region count-based similarity)")
+
+cat("\n#### Intersection over Union (IoU)\n")
+knitr::kable(iou_matrix, digits = 4, caption = "IoU (genomic coverage-based similarity)")
+```
+
+## Visualizations
+
+### DMR Count and Coverage Comparison
+
+```{r, fig.width=10, fig.height=5}
+viz_data <- results_comparison |>
+    dplyr::select(Method, Number_of_DMRs, Total_Coverage_bp) |>
+    tidyr::pivot_longer(
+        cols = c(Number_of_DMRs, Total_Coverage_bp),
+        names_to = "Metric", values_to = "Value"
+    )
+
+viz_data$Metric <- ifelse(viz_data$Metric == "Number_of_DMRs",
+    "Number of DMRs",
+    "Total Coverage (bp)"
+)
+
+p1 <- ggplot(viz_data, aes(x = Method, y = Value, fill = Method)) +
+    geom_bar(stat = "identity") +
+    facet_wrap(~Metric, scales = "free_y") +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        panel.grid.major.x = element_blank()
+    ) +
+    labs(
+        title = "DMR Detection: Count and Coverage Comparison",
+        y = "Value", x = ""
+    )
+
+print(p1)
+```
+
+### DMR Width Distribution
+
+```{r, fig.width=10, fig.height=6}
+width_data <- do.call(rbind, lapply(names(methods_list), function(method) {
+    if (length(methods_list[[method]]) > 0) {
+        data.frame(
+            Method = method,
+            Width = width(methods_list[[method]])
+        )
+    }
+}))
+
+p2 <- ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
+    geom_violin(alpha = 0.7) +
+    geom_boxplot(width = 0.2, alpha = 0.5, outlier.size = 0.5) +
+    scale_y_log10(labels = scales::comma) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    labs(
+        title = "Distribution of DMR Widths",
+        y = "Width (bp, log scale)", x = ""
+    )
+
+print(p2)
+```
+
+### Overlap Heatmap
+
+```{r, fig.width=8, fig.height=6}
+library(reshape2)
+
+overlap_df <- melt(pct_matrix)
+colnames(overlap_df) <- c("Method1", "Method2", "Percentage")
+
+p3 <- ggplot(overlap_df, aes(x = Method2, y = Method1, fill = Percentage)) +
+    geom_tile() +
+    geom_text(aes(label = sprintf("%.1f%%", Percentage)), size = 3) +
+    scale_fill_gradient2(
+        low = "white", mid = "lightblue", high = "darkblue",
+        midpoint = 50, limits = c(0, 100)
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(
+        title = "DMR Overlap Matrix",
+        subtitle = "% of row method's DMRs overlapping with column method",
+        x = "", y = "", fill = "Overlap %"
+    )
+
+print(p3)
+```
+
+### Similarity Matrix (IoU)
+
+```{r, fig.width=8, fig.height=6}
+iou_df <- melt(iou_matrix)
+colnames(iou_df) <- c("Method1", "Method2", "IoU")
+
+p4 <- ggplot(iou_df, aes(x = Method2, y = Method1, fill = IoU)) +
+    geom_tile() +
+    geom_text(aes(label = sprintf("%.3f", IoU)), size = 3) +
+    scale_fill_gradient2(
+        low = "white", mid = "yellow", high = "red",
+        midpoint = 0.5, limits = c(0, 1)
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(
+        title = "Method Similarity Matrix (IoU)",
+        subtitle = "Intersection over Union of genomic coverage",
+        x = "", y = "", fill = "IoU"
+    )
+
+print(p4)
+```
+
+## Biological Validation
+
+### Effect Size Analysis (Delta Beta)
+
+```{r, results='asis'}
+calculate_mean_delta_beta <- function(dmrs, beta_mat, pheno, locs, group_col = "Sample_Group", max_dmrs = 5000) {
+    if (length(dmrs) == 0) {
+        return(NA)
+    }
+
+    if (length(dmrs) > max_dmrs) {
+        set.seed(42)
+        dmrs <- dmrs[sample(length(dmrs), max_dmrs)]
+    }
+
+    case_samples <- colnames(beta_mat)[pheno[[group_col]] == "cancer"]
+    control_samples <- colnames(beta_mat)[pheno[[group_col]] == "normal"]
+
+    cpg_gr <- makeGRangesFromDataFrame(locs)
+    names(cpg_gr) <- rownames(beta_mat)
+
+    hits <- findOverlaps(cpg_gr, dmrs)
+    if (length(hits) == 0) {
+        return(NA)
+    }
+
+    cpg_idx <- queryHits(hits)
+    dmr_idx <- subjectHits(hits)
+
+    case_means <- rowMeans(beta_mat[cpg_idx, case_samples, drop = FALSE], na.rm = TRUE)
+    control_means <- rowMeans(beta_mat[cpg_idx, control_samples, drop = FALSE], na.rm = TRUE)
+    delta_per_cpg <- abs(case_means - control_means)
+
+    dmr_deltas <- tapply(delta_per_cpg, dmr_idx, mean, na.rm = TRUE)
+    mean(dmr_deltas, na.rm = TRUE)
+}
+
+effect_size_list <- lapply(names(methods_list), function(method) {
+    data.frame(
+        Method = method,
+        Mean_Delta_Beta = calculate_mean_delta_beta(methods_list[[method]], beta_mat, pheno, locs)
+    )
+})
+
+effect_size_df <- do.call(rbind, effect_size_list)
+knitr::kable(effect_size_df, digits = 4, caption = "Mean Effect Size (Delta Beta) per Method")
+
+ggplot(effect_size_df, aes(x = reorder(Method, -Mean_Delta_Beta), y = Mean_Delta_Beta, fill = Method)) +
+    geom_bar(stat = "identity") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+    labs(title = "Mean Effect Size by Method", x = "", y = "Mean |Delta Beta|")
+```
+
+### Gene Annotation Analysis
+
+```{r}
+if (requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
+    library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+    txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+
+    promoters_gr <- promoters(txdb, upstream = 2000, downstream = 500)
+    genes_gr <- genes(txdb)
+
+    annotate_dmrs <- function(dmrs, method_name) {
+        if (length(dmrs) == 0) {
+            return(data.frame(
+                Method = method_name,
+                Total_DMRs = 0,
+                In_Promoters = 0,
+                In_Gene_Bodies = 0,
+                Intergenic = 0,
+                Pct_Promoters = 0,
+                Pct_Gene_Bodies = 0,
+                Pct_Intergenic = 0
+            ))
+        }
+
+        in_promoters <- sum(overlapsAny(dmrs, promoters_gr))
+        in_genes <- sum(overlapsAny(dmrs, genes_gr))
+        intergenic <- length(dmrs) - sum(overlapsAny(dmrs, c(promoters_gr, genes_gr)))
+
+        data.frame(
+            Method = method_name,
+            Total_DMRs = length(dmrs),
+            In_Promoters = in_promoters,
+            In_Gene_Bodies = in_genes,
+            Intergenic = intergenic,
+            Pct_Promoters = round(100 * in_promoters / length(dmrs), 1),
+            Pct_Gene_Bodies = round(100 * in_genes / length(dmrs), 1),
+            Pct_Intergenic = round(100 * intergenic / length(dmrs), 1)
+        )
+    }
+
+    gene_annotation_list <- lapply(names(methods_list), function(method) {
+        annotate_dmrs(methods_list[[method]], method)
+    })
+
+    gene_annotation_df <- do.call(rbind, gene_annotation_list)
+    knitr::kable(gene_annotation_df, caption = "DMR Gene Context Annotation")
+
+    gene_plot_data <- gene_annotation_df |>
+        dplyr::select(Method, Pct_Promoters, Pct_Gene_Bodies, Pct_Intergenic) |>
+        tidyr::pivot_longer(cols = -Method, names_to = "Context", values_to = "Percentage")
+
+    gene_plot_data$Context <- gsub("Pct_", "", gene_plot_data$Context)
+    gene_plot_data$Context <- gsub("_", " ", gene_plot_data$Context)
+
+    ggplot(gene_plot_data, aes(x = Method, y = Percentage, fill = Context)) +
+        geom_bar(stat = "identity", position = "dodge") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        labs(title = "DMR Distribution by Gene Context", x = "", y = "Percentage of DMRs")
+}
+```
+
+### CpG Context Distribution
+
+```{r}
+if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
+    library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+    anno <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+
+    cpg_context_gr <- makeGRangesFromDataFrame(
+        data.frame(
+            chr = anno$chr,
+            start = anno$pos,
+            end = anno$pos,
+            context = anno$Relation_to_Island
+        ),
+        keep.extra.columns = TRUE
+    )
+    names(cpg_context_gr) <- rownames(anno)
+
+    get_cpg_context_distribution <- function(dmrs, method_name) {
+        if (length(dmrs) == 0) {
+            return(data.frame(Method = method_name, Context = NA, Count = 0, Percentage = 0))
+        }
+
+        overlapping <- subsetByOverlaps(cpg_context_gr, dmrs)
+        context_counts <- table(mcols(overlapping)$context)
+
+        data.frame(
+            Method = method_name,
+            Context = names(context_counts),
+            Count = as.vector(context_counts),
+            Percentage = round(100 * as.vector(context_counts) / sum(context_counts), 1)
+        )
+    }
+
+    cpg_context_list <- lapply(names(methods_list), function(method) {
+        get_cpg_context_distribution(methods_list[[method]], method)
+    })
+
+    cpg_context_df <- do.call(rbind, cpg_context_list)
+    cpg_context_df <- cpg_context_df[!is.na(cpg_context_df$Context), ]
+
+    ggplot(cpg_context_df, aes(x = Method, y = Percentage, fill = Context)) +
+        geom_bar(stat = "identity", position = "stack") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        scale_fill_brewer(palette = "Set2") +
+        labs(
+            title = "CpG Context Distribution (Island/Shore/Shelf/OpenSea)",
+            x = "", y = "Percentage of CpGs in DMRs"
+        )
+}
+```
+
+## Consensus Analysis
+
+### UpSet Plot of Method Intersections
+
+```{r, fig.width=12, fig.height=7}
+if (requireNamespace("UpSetR", quietly = TRUE) && length(methods_list) >= 2) {
+    library(UpSetR)
+
+    all_dmrs_reduced <- GenomicRanges::reduce(do.call(c, unname(methods_list)))
+
+    membership_matrix <- sapply(methods_list, function(method_dmrs) {
+        as.integer(overlapsAny(all_dmrs_reduced, method_dmrs))
+    })
+
+    membership_df <- as.data.frame(membership_matrix)
+    colnames(membership_df) <- names(methods_list)
+
+    upset(membership_df,
+        sets = names(methods_list),
+        order.by = "freq",
+        main.bar.color = "steelblue",
+        sets.bar.color = "darkgreen",
+        text.scale = 1.3,
+        point.size = 3,
+        line.size = 1
+    )
+}
+```
+
+### Consensus DMR Analysis
+
+```{r}
+find_consensus <- function(methods_list, min_methods = 2) {
+    all_dmrs <- do.call(c, unname(methods_list))
+    all_dmrs <- GenomicRanges::reduce(all_dmrs)
+
+    overlap_matrix <- sapply(methods_list, function(method_dmrs) {
+        overlapsAny(all_dmrs, method_dmrs)
+    })
+    consensus_counts <- rowSums(overlap_matrix)
+
+    consensus_dmrs <- all_dmrs[consensus_counts >= min_methods]
+    mcols(consensus_dmrs)$n_methods <- consensus_counts[consensus_counts >= min_methods]
+    consensus_dmrs
+}
+
+consensus_2plus <- find_consensus(methods_list, min_methods = 2)
+consensus_3plus <- find_consensus(methods_list, min_methods = 3)
+consensus_4plus <- find_consensus(methods_list, min_methods = 4)
+cat(sprintf("- Consensus DMRs (2+ methods): %d\n", length(consensus_2plus)))
+cat(sprintf("- Consensus DMRs (3+ methods): %d\n", length(consensus_3plus)))
+cat(sprintf("- Consensus DMRs (4+ methods): %d\n", length(consensus_4plus)))
+
+capture_rate <- sapply(names(methods_list), function(method) {
+    if (length(consensus_3plus) == 0) {
+        return(0)
+    }
+    sum(overlapsAny(consensus_3plus, methods_list[[method]])) / length(consensus_3plus) * 100
+})
+
+capture_df <- data.frame(
+    Method = names(capture_rate),
+    Capture_Rate_Pct = capture_rate
+)
+capture_df <- capture_df[order(-capture_df$Capture_Rate_Pct), ]
+
+knitr::kable(capture_df,
+    digits = 1, row.names = FALSE,
+    caption = "% of High-Confidence (3+ methods) DMRs Captured by Each Method"
+)
+
+ggplot(capture_df, aes(x = reorder(Method, Capture_Rate_Pct), y = Capture_Rate_Pct, fill = Method)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    theme_minimal() +
+    theme(legend.position = "none") +
+    geom_hline(yintercept = 100, linetype = "dashed", color = "red") +
+    labs(
+        title = "Capture Rate of High-Confidence DMRs",
+        subtitle = "% of consensus (3+ methods) DMRs detected by each method",
+        x = "", y = "Capture Rate (%)"
+    )
+```
+
+### Method-Specific vs Consensus DMRs
+
+```{r}
+find_specific_dmrs <- function(target_method, methods_list) {
+    target_dmrs <- methods_list[[target_method]]
+    if (length(target_dmrs) == 0) {
+        return(GRanges())
+    }
+
+    other_methods <- methods_list[names(methods_list) != target_method]
+    all_others <- do.call(c, unname(other_methods))
+
+    if (length(all_others) == 0) {
+        return(target_dmrs)
+    }
+
+    specific <- target_dmrs[countOverlaps(target_dmrs, all_others) == 0]
+    specific
+}
+
+specificity_df <- do.call(rbind, lapply(names(methods_list), function(method) {
+    specific <- find_specific_dmrs(method, methods_list)
+    shared_2plus <- methods_list[[method]][overlapsAny(methods_list[[method]], consensus_2plus)]
+    shared_3plus <- methods_list[[method]][overlapsAny(methods_list[[method]], consensus_3plus)]
+
+    data.frame(
+        Method = method,
+        Total_DMRs = length(methods_list[[method]]),
+        Method_Specific = length(specific),
+        Shared_2plus = length(shared_2plus),
+        Shared_3plus = length(shared_3plus),
+        Pct_Specific = round(100 * length(specific) / max(1, length(methods_list[[method]])), 1),
+        Pct_Shared_2plus = round(100 * length(shared_2plus) / max(1, length(methods_list[[method]])), 1),
+        Pct_Shared_3plus = round(100 * length(shared_3plus) / max(1, length(methods_list[[method]])), 1)
+    )
+}))
+
+knitr::kable(specificity_df, caption = "Method-Specific vs Shared DMRs")
+
+specificity_plot_data <- specificity_df |>
+    dplyr::select(Method, Pct_Specific, Pct_Shared_2plus) |>
+    tidyr::pivot_longer(cols = -Method, names_to = "Type", values_to = "Percentage")
+
+specificity_plot_data$Type <- ifelse(specificity_plot_data$Type == "Pct_Specific",
+    "Method-Specific", "Shared (2+ methods)"
+)
+
+ggplot(specificity_plot_data, aes(x = Method, y = Percentage, fill = Type)) +
+    geom_bar(stat = "identity", position = "stack") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_manual(values = c("Method-Specific" = "#E41A1C", "Shared (2+ methods)" = "#377EB8")) +
+    labs(title = "Method-Specific vs Shared DMRs", x = "", y = "Percentage of DMRs", fill = "")
+```
+
+## Example DMR Locus Visualization
+
+```{r, fig.width=12, fig.height=8}
+if (length(consensus_3plus) > 0) {
+    top_consensus <- consensus_3plus[order(-mcols(consensus_3plus)$n_methods)][1]
+
+    extended_region <- GRanges(
+        seqnames = seqnames(top_consensus),
+        ranges = IRanges(
+            start = max(1, start(top_consensus) - 2000),
+            end = end(top_consensus) + 2000
+        )
+    )
+
+    cat(sprintf(
+        "\nExample locus: %s:%d-%d (detected by %d methods)\n",
+        as.character(seqnames(top_consensus)),
+        start(top_consensus), end(top_consensus),
+        mcols(top_consensus)$n_methods
+    ))
+
+    method_colors <- c(
+        "DMRsegal" = "#E41A1C", "comb-p" = "#377EB8",
+        "probeLasso" = "#4DAF4A", "DMRcate" = "#984EA3",
+        "Bumphunter" = "#FF7F00"
+    )
+
+    plot_data <- do.call(rbind, lapply(names(methods_list), function(method) {
+        overlapping <- subsetByOverlaps(methods_list[[method]], extended_region)
+        if (length(overlapping) > 0) {
+            data.frame(
+                Method = method,
+                start = start(overlapping),
+                end = end(overlapping),
+                y = which(names(methods_list) == method)
+            )
+        } else {
+            NULL
+        }
+    }))
+
+    if (!is.null(plot_data) && nrow(plot_data) > 0) {
+        p_locus <- ggplot(plot_data) +
+            geom_rect(aes(
+                xmin = start, xmax = end,
+                ymin = y - 0.4, ymax = y + 0.4,
+                fill = Method
+            ), alpha = 0.7) +
+            geom_vline(
+                xintercept = c(start(top_consensus), end(top_consensus)),
+                linetype = "dashed", color = "gray40"
+            ) +
+            scale_y_continuous(
+                breaks = seq_along(methods_list),
+                labels = names(methods_list)
+            ) +
+            scale_fill_manual(values = method_colors) +
+            theme_minimal() +
+            theme(
+                legend.position = "none",
+                panel.grid.minor = element_blank()
+            ) +
+            labs(
+                title = sprintf(
+                    "Example Consensus DMR: %s:%d-%d",
+                    as.character(seqnames(top_consensus)),
+                    start(top_consensus), end(top_consensus)
+                ),
+                subtitle = sprintf("Detected by %d methods", mcols(top_consensus)$n_methods),
+                x = "Genomic Position", y = ""
+            )
+
+        print(p_locus)
+    }
+}
+```
+
+## DMRsegal scoring Quality Assessment
+
+```{r}
+if ("score" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
+    dmrs_segal_scored <- dmrs_dmrsegal[order(mcols(dmrs_dmrsegal)$score, decreasing = TRUE)]
+
+    n_bins <- min(10, floor(length(dmrs_segal_scored) / 5))
+    bin_size <- ceiling(length(dmrs_segal_scored) / n_bins)
+
+    scoring_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
+        start_idx <- (i - 1) * bin_size + 1
+        end_idx <- min(i * bin_size, length(dmrs_segal_scored))
+        bin_dmrs <- dmrs_segal_scored[start_idx:end_idx]
+
+        in_consensus <- sum(overlapsAny(bin_dmrs, consensus_3plus))
+
+        data.frame(
+            Score_Bin = sprintf("Top %d%%", i * 10),
+            Bin_Order = i,
+            N_DMRs = length(bin_dmrs),
+            In_Consensus = in_consensus,
+            Pct_In_Consensus = round(100 * in_consensus / length(bin_dmrs), 1)
+        )
+    }))
+
+    knitr::kable(scoring_quality, caption = "DMRsegal Scoring Quality: Consensus Overlap by Score Decile")
+
+    ggplot(scoring_quality, aes(x = reorder(Score_Bin, Bin_Order), y = Pct_In_Consensus)) +
+        geom_bar(stat = "identity", fill = "steelblue") +
+        geom_line(aes(group = 1), color = "red", size = 1) +
+        geom_point(color = "red", size = 3) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+        labs(
+            title = "DMRsegal Scoring Quality Assessment",
+            subtitle = "Higher-scoring DMRs should have higher consensus overlap",
+            x = "Score Decile", y = "% in Consensus (3+ methods)"
+        )
+}
+```
+
+## Summary Statistics
+
+```{r}
+summary_table <- results_comparison |>
+    left_join(effect_size_df, by = "Method") |>
+    left_join(capture_df, by = "Method") |>
+    left_join(specificity_df |> dplyr::select(Method, Pct_Specific, Pct_Shared_2plus, Pct_Shared_3plus), by = "Method")
+
+knitr::kable(summary_table, digits = 2, caption = "Comprehensive Method Comparison Summary")
+```
+
+```{r}
+cat("\n## Key Findings\n\n")
+
+if (nrow(results_comparison) > 0) {
+    max_dmrs <- results_comparison[which.max(results_comparison$Number_of_DMRs), ]
+    min_dmrs <- results_comparison[which.min(results_comparison$Number_of_DMRs), ]
+
+    cat(sprintf(
+        "- **%s** detected the most DMRs (%d regions)\n",
+        max_dmrs$Method, max_dmrs$Number_of_DMRs
+    ))
+    cat(sprintf(
+        "- **%s** was most selective (%d regions)\n",
+        min_dmrs$Method, min_dmrs$Number_of_DMRs
+    ))
+
+    if (exists("capture_df") && nrow(capture_df) > 0) {
+        best_capture <- capture_df[which.max(capture_df$Capture_Rate_Pct), ]
+        cat(sprintf(
+            "- **%s** captured %.1f%% of high-confidence (3+ methods) DMRs\n",
+            best_capture$Method, best_capture$Capture_Rate_Pct
+        ))
+    }
+
+    if (exists("effect_size_df") && nrow(effect_size_df) > 0) {
+        best_effect <- effect_size_df[which.max(effect_size_df$Mean_Delta_Beta), ]
+        cat(sprintf(
+            "- **%s** had the highest mean effect size (delta beta = %.4f)\n",
+            best_effect$Method, best_effect$Mean_Delta_Beta
+        ))
+    }
+
+    if (exists("specificity_df") && "DMRsegal" %in% specificity_df$Method) {
+        segal_row <- specificity_df[specificity_df$Method == "DMRsegal", ]
+        cat(sprintf(
+            "- **DMRsegal**: %.1f%% method-specific, %.1f%% shared with at least 2 methods, %.1f%% shared with at least 3 methods\n",
+            segal_row$Pct_Specific, segal_row$Pct_Shared_2plus, segal_row$Pct_Shared_3plus
+        ))
+    }
+}
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

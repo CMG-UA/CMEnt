@@ -17,7 +17,9 @@
 .Renviron
 
 # data folders ----
-benchmark_data
+dmrsegaldata
+dmrcatedata
+
 debug
 
 
@@ -35,3 +37,13 @@ vignettes/*.html
 README.html
 Rd2.tex
 
+.github/copilot-instructions.md
+*.bak
+*_cache/
+data/sim_bs_1000.rds
+*.log
+figure-html
+simulated_ont/*
+reports/*
+simulated_ont
+.vscode

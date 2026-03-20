@@ -6,7 +6,7 @@
 \usage{
 annotateDMRsWithGenes(
   dmrs,
-  genome = "hg19",
+  genome = "hg38",
   promoter_upstream = 2000,
   promoter_downstream = 200
 )
@@ -14,7 +14,7 @@ annotateDMRsWithGenes(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates}
 
-\item{genome}{Character. Genome version to use for gene annotation. (default: "hg19")}
+\item{genome}{Character. Genome version to use for gene annotation. (default: "hg38")}
 
 \item{promoter_upstream}{Integer. Number of base pairs upstream of TSS to
 define promoter region (default: 2000)}
@@ -35,7 +35,8 @@ using TxDb annotations. For each DMR, identifies genes whose promoters or
 gene bodies overlap with the DMR coordinates.
 }
 \details{
-The function uses genome-appropriate TxDb packages.
+The function uses genome-appropriate TxDb packages. For \code{hs1}, DMRsegal
+uses hg38 gene models and lifts them to \code{hs1} before computing overlaps.
 Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.
 }
@@ -46,7 +47,7 @@ dmrs <- data.frame(
     start = c(1000000, 2000000),
     end = c(1001000, 2001000)
 )
-dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
+dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
 
 # Use custom promoter definition
 dmrs_annotated <- annotateDMRsWithGenes(

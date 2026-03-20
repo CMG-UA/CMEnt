@@ -8,7 +8,7 @@ sortBetaFileByCoordinates(
   beta_file,
   output_file = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  genome = "hg38",
   genomic_locs = NULL,
   overwrite = FALSE
 )
@@ -20,7 +20,7 @@ sortBetaFileByCoordinates(
 
 \item{array}{Character. Array platform type (default: "450K")}
 
-\item{genome}{Character. Genome version (default: "hg19")}
+\item{genome}{Character. Genome version (default: "hg38")}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)}
 

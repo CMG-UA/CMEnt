@@ -9,13 +9,15 @@ getDMRSequences(
   genome,
   use_online = FALSE,
   uflank_size = 0,
-  dflank_size = 0
+  dflank_size = 0,
+  batch_size = 100,
+  njobs = 1
 )
 }
 \arguments{
 \item{dmrs}{GRanges object containing genomic coordinates of DMRs}
 
-\item{genome}{Character. Genome version to use for sequence extraction, .e.g. "hg19".}
+\item{genome}{Character. Genome version to use for sequence extraction, .e.g. "hg38" or "hs1".}
 
 \item{use_online}{Logical. If TRUE, forces use of online UCSC API instead of
 BSgenome packages. If FALSE (default), uses BSgenome packages with online
@@ -26,6 +28,10 @@ upstream of each DMR (default: 0)}
 
 \item{dflank_size}{Integer. Number of base pairs to add as flanking regions
 downstream of each DMR (default: 0)}
+
+\item{batch_size}{Integer. For online API, number of regions to process per batch (default: 100)}
+
+\item{njobs}{Integer. For online API, number of cores for parallel processing (default: 1)}
 }
 \value{
 A Character vector containing DNA sequences for each DMR
@@ -41,6 +47,7 @@ The function first attempts to use genome-appropriate BSgenome packages:
 \itemize{
 \item hg19: BSgenome.Hsapiens.UCSC.hg19
 \item hg38: BSgenome.Hsapiens.UCSC.hg38
+\item hs1: BSgenome.Hsapiens.UCSC.hs1
 \item mm10: BSgenome.Mmusculus.UCSC.mm10
 \item mm39: BSgenome.Mmusculus.UCSC.mm39
 }
@@ -48,14 +55,18 @@ The function first attempts to use genome-appropriate BSgenome packages:
 If the required BSgenome package is not installed and installation fails,
 the function will automatically fall back to querying sequences from the
 UCSC Genome Browser REST API. The online method processes sequences in
-batches to avoid overwhelming the API.
+batches with optional parallel processing for improved performance with large datasets.
+
+For large numbers of DMRs (>10k), consider using parallel processing by setting
+njobs > 1 when using the online API, or install the appropriate BSgenome package
+for much faster local sequence retrieval.
 }
 \examples{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
-# Force use of online UCSC API
-sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
+# Force use of online UCSC API with parallel processing
+sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 
 # Calculate GC content
 gc_content <- sapply(sequences, function(s) {

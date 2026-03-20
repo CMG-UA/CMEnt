@@ -26,62 +26,14 @@ create_seeds_without_chr_prefix <- function(seeds, beta_mat, locs) { # nolint
 }
 
 
-test_that("findDMRsFromSeeds works with minimal bed file", {
-    skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
-    bed_file <- tempfile(fileext = ".bed")
-    withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
-
-    bed_data <- data.frame(
-        chrom = as.character(locs$chr),
-        start = locs$start,
-        stringsAsFactors = FALSE
-    )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-
-    dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
-    dmrs <- findDMRsFromSeeds(
-        beta = bed_file,
-        seeds = dmps_with_chr_pos,
-        seeds_id_col = "ID",
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        bed_provided = TRUE,
-        bed_chrom_col = "chrom",
-        bed_start_col = "start",
-        min_seeds = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        memory_threshold_mb = 500,
-        verbose = 2
-    )
-
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
-})
 
 test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
     skip_on_ci()
 
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -109,6 +61,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -121,8 +74,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
-        verbose = 2
+        verbose = 3
     )
 
 
@@ -134,10 +86,10 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
 
 test_that("findDMRsFromSeeds detects bed file by extension", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -161,6 +113,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -172,7 +125,6 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -185,10 +137,10 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
 
 test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format with bed file", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -211,6 +163,7 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
 
     expect_error(
         findDMRsFromSeeds(
+            .score_dmrs = FALSE,
             beta = bed_file,
             seeds = dmps,
             pheno = pheno,
@@ -230,10 +183,10 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
 
 test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosome names", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -257,6 +210,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
     dmps_with_chr_pos <- create_seeds_without_chr_prefix(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -269,7 +223,6 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 
@@ -282,10 +235,10 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
 
 test_that("findDMRsFromSeeds works with bed file and custom column names", {
     skip_on_ci()
-    beta <- loadExampleInputData("beta")
-    dmps <- loadExampleInputData("dmps")
-    pheno <- loadExampleInputData("pheno")
-    array_type <- loadExampleInputData("array_type")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    array_type <- loadExampleInputDataChr5And11("array_type")
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -310,6 +263,7 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
 
     dmrs <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -322,7 +276,6 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         njobs = 1,
-        memory_threshold_mb = 500,
         verbose = 2
     )
 

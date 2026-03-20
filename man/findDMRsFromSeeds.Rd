@@ -2,76 +2,52 @@
 % Please edit documentation in R/dmrs_finder_from_seeds.R
 \name{findDMRsFromSeeds}
 \alias{findDMRsFromSeeds}
-\alias{.buildConnectivityArray}
-\title{Find Differentially Methylated Regions (DMRs) from Pre-computed seeds}
+\title{Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)}
 \usage{
-.buildConnectivityArray(
-  beta_handler,
-  group_inds,
-  max_pval = 0.05,
-  min_delta_beta = 0,
-  casecontrol = NULL,
-  max_lookup_dist = 1000,
-  chunk_size = 1000,
-  aggfun = median,
-  empirical_strategy = "auto",
-  pval_mode = "empirical",
-  ntries = 500,
-  mid_p = TRUE,
-  njobs = 1
-)
-
 findDMRsFromSeeds(
-  beta = NULL,
-  seeds = NULL,
-  pheno = NULL,
+  beta,
+  seeds,
+  pheno,
   seeds_id_col = NULL,
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
-  min_cpg_delta_beta = 0,
+  covariates = NULL,
+  min_cpg_delta_beta = 0.1,
+  adaptive_min_cpg_delta_beta = TRUE,
   expansion_step = 500,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+  genome = NULL,
   max_pval = 0.05,
-  pval_mode = c("parametric", "empirical"),
+  entanglement = c("strong", "weak"),
+  pval_mode = c("auto", "parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
   mid_p = FALSE,
   max_lookup_dist = 10000,
-  min_seeds = 1,
-  min_adj_seeds = 1,
+  expansion_window = "auto",
+  max_bridge_seeds_gaps = 1L,
+  max_bridge_extension_gaps = 1L,
+  min_seeds = 2,
+  min_adj_seeds = 2,
   min_cpgs = 50,
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  memory_threshold_mb = 500,
+  chunk_size = getOption("DMRsegal.chunk_size", 10000),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
+  .score_dmrs = TRUE,
+  extract_motifs = TRUE,
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
-  chr_levels = NULL,
-  verbose = NULL,
+  verbose = getOption("DMRsegal.verbose", 1),
   .load_debug = FALSE
 )
 }
 \arguments{
-\item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
-
-\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR. Default is 10000.}
-
-\item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
-
-\item{empirical_strategy}{Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
-
-\item{pval_mode}{Character. "parametric" (default) to use t-based correlation p-values during connectivity testing, or "empirical" to use permutation-based p-values.}
-
-\item{ntries}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
-
-\item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
-
-\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a bigmemmory::big.matrix.}
+\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.}
 
 \item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.}
 
@@ -83,29 +59,59 @@ findDMRsFromSeeds(
 
 \item{casecontrol_col}{Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
 
-\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.}
+\item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
-\item{expansion_step}{Numeric. Step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
+\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.1.}
+
+\item{adaptive_min_cpg_delta_beta}{Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.}
+
+\item{expansion_step}{Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
-\item{genome}{Character. Genome version. Default is "hg19".}
+\item{genome}{Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".}
 
-\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Default is 1.}
+\item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 
-\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by CpG density, in a DMR after extension. Default is 1.}
+\item{entanglement}{Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.}
 
-\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension. Default is 50.}
+\item{pval_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.}
 
-\item{ignored_sample_groups}{Character vector. Sample groups to ignore, separated by commas. Default is NULL.}
+\item{empirical_strategy}{Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
+
+\item{ntries}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
+
+\item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).}
+
+\item{expansion_window}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.}
+
+\item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
+
+\item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).}
+
+\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.}
+
+\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.}
+
+\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 50.}
+
+\item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
+
+\item{ignored_sample_groups}{Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.}
 
 \item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
 
-\item{memory_threshold_mb}{Numeric. Memory threshold in MB for loading beta files. Default is 500.}
+\item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
+
+\item{chunk_size}{Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".}
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
+
+\item{.score_dmrs}{Logical. Whether to score DMRs based on significance and effect size. Default is TRUE.}
+
+\item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 
 \item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.}
 
@@ -113,71 +119,13 @@ findDMRsFromSeeds(
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
 
-\item{chr_levels}{Character vector. Custom chromosome levels to use. Default is NULL.}
-
 \item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".}
 
 \item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 }
 \value{
-A GRanges object containing identified DMRs with metadata columns:
-\itemize{
-\item cpgs_num: Number of CpGs in the region
-\item seeds_num: Number of seeds in the region
-\item delta_beta: Aggregated methylation difference (using the specified aggregation function)
-\item delta_beta_min: Minimum methylation difference
-\item delta_beta_max: Maximum methylation difference
-\item delta_beta_sd: Standard deviation of methylation differences
-\item cases_beta: Mean beta value in cases
-\item controls_beta: Mean beta value in controls
-\item start_seed: ID of the first Seed in the region
-\item end_seed: ID of the last Seed in the region
-\item start_seed_pos: Genomic position of the first Seed in the region
-\item end_seed_pos: Genomic position of the last Seed in the region
-\item seeds: Comma-separated list of Seed IDs in the region
-\item connection_corr_pval: Aggregated correlation p-value of connected seeds
-\item stop_connection_reason: Reasons for stopping the connection of seeds
-\item start_cpg: ID of the starting CpG after expansion
-\item end_cpg: ID of the ending CpG after expansion
-\item upstream_cpg_expansion: Number of CpGs expanded upstream
-\item upstream_cpg_expansion_stop_reason: Reason for stopping upstream expansion
-\item downstream_cpg_expansion: Number of CpGs expanded downstream
-\item downstream_cpg_expansion_stop_reason: Reason for stopping downstream expansion
-\item merged_dmrs_num: Number of merged DMRs
-}
-
 Data frame of identified DMRs.
 }
 \description{
-This function identifies Differentially Methylated Regions (DMRs) from pre-computed
-Differentially Methylated Positions (seeds) using a correlation-based approach. It expands
-significant seeds into regions, considering both statistical significance and biological
-relevance of methylation changes.
-
 This function identifies DMRs from a given set of seeds and a beta value file.
-}
-\section{Important Note on Input Data}{
-
-Do not apply heavy filtering to your seeds prior to using this function, particularly based on
-beta values or effect sizes. The function works by expanding regions around significant seeds
-and connecting nearby CpGs into larger regions. Filtering out seeds with smaller effect sizes
-may remove important CpGs that could serve as "bridges" to connect more significant seeds into
-larger, biologically meaningful DMRs. For optimal results, include all statistically
-significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
-and filtering internally using the min_cpg_delta_beta parameter if needed.
-}
-
-\examples{
-# Load example data
-beta <- loadExampleInputData("beta")
-dmps <- loadExampleInputData("dmps")
-pheno <- loadExampleInputData("pheno")
-# Find DMRs
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno
-)
-
-
 }

@@ -5,13 +5,13 @@
 \title{Beta Handler Class}
 \description{
 An R6 class to handle methylation beta value files efficiently,
-with support for in-memory loading, tabix indexing, and various file formats.
+with support for in-memory loading, tabix indexing, BSseq objects, and various file formats.
 }
 \keyword{internal}
 \section{Public fields}{
 \if{html}{\out{<div class="r6-fields">}}
 \describe{
-\item{\code{beta}}{Path to beta values file, or a tabix file, or in-memory beta matrix}
+\item{\code{beta}}{Path to beta values file, or a tabix file, or in-memory beta matrix, or BSseq object}
 
 \item{\code{genome}}{Reference genome}
 
@@ -21,9 +21,9 @@ with support for in-memory loading, tabix indexing, and various file formats.
 
 \item{\code{sorted_locs}}{Sorted genomic locations}
 
-\item{\code{memory_threshold_mb}}{Memory threshold in MB}
-
 \item{\code{njobs}}{Number of parallel jobs}
+
+\item{\code{beta_chunk_size}}{Chunk size for subsetting beta values}
 }
 \if{html}{\out{</div>}}
 }
@@ -37,6 +37,8 @@ with support for in-memory loading, tabix indexing, and various file formats.
 \item \href{#method-BetaHandler-getBetaColNames}{\code{BetaHandler$getBetaColNames()}}
 \item \href{#method-BetaHandler-validate}{\code{BetaHandler$validate()}}
 \item \href{#method-BetaHandler-getBetaLocs}{\code{BetaHandler$getBetaLocs()}}
+\item \href{#method-BetaHandler-getBetaChunkSize}{\code{BetaHandler$getBetaChunkSize()}}
+\item \href{#method-BetaHandler-isArrayBased}{\code{BetaHandler$isArrayBased()}}
 \item \href{#method-BetaHandler-getBeta}{\code{BetaHandler$getBeta()}}
 \item \href{#method-BetaHandler-clone}{\code{BetaHandler$clone()}}
 }
@@ -50,10 +52,11 @@ Create a new BetaHandler object
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$new(
   beta = NULL,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  genome = "hg38",
   beta_row_names_file = NULL,
   sorted_locs = NULL,
-  memory_threshold_mb = 500,
+  chrom_col = "#chrom",
+  start_col = "start",
   njobs = 1
 )}\if{html}{\out{</div>}}
 }
@@ -61,17 +64,19 @@ Create a new BetaHandler object
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix}
+\item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix, or a BSseq object}
 
-\item{\code{array}}{Array platform type. Ignored if sorted_locs, or a tabix file have been provided.}
+\item{\code{array}}{Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
-\item{\code{genome}}{Reference genome version, eg. hg19. Only human and mouse genomes are supported. Ignored if sorted_locs, or a tabix file have been provided.}
+\item{\code{genome}}{Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
 
 \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
 
-\item{\code{sorted_locs}}{Sorted genomic locations data frame. If NULL, will be retrieved automatically}
+\item{\code{sorted_locs}}{Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically}
 
-\item{\code{memory_threshold_mb}}{Memory threshold in MB}
+\item{\code{chrom_col}}{Chromosome column name in tabix file}
+
+\item{\code{start_col}}{Start position column name in tabix file}
 
 \item{\code{njobs}}{Number of parallel jobs}
 }
@@ -160,12 +165,43 @@ Data frame of genomic locations
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-getBetaChunkSize"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-getBetaChunkSize}{}}}
+\subsection{Method \code{getBetaChunkSize()}}{
+Get the chunk size used for beta subsetting
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBetaChunkSize()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+Integer chunk size
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-isArrayBased"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-isArrayBased}{}}}
+\subsection{Method \code{isArrayBased()}}{
+Check if the beta data is array-based (i.e. does not have row names in 'chr:pos' format)
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$isArrayBased()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+Logical indicating if the beta data is array-based
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-BetaHandler-getBeta"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-getBeta}{}}}
 \subsection{Method \code{getBeta()}}{
 Extract beta values for specific CpG sites and samples
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(row_names = NULL, col_names = NULL, allow_missing = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(
+  row_names = NULL,
+  col_names = NULL,
+  allow_missing = FALSE,
+  chr = NULL
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -176,6 +212,8 @@ Extract beta values for specific CpG sites and samples
 \item{\code{col_names}}{Character vector of sample IDs to extract (default: NULL for all)}
 
 \item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
+
+\item{\code{chr}}{Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)}
 }
 \if{html}{\out{</div>}}
 }

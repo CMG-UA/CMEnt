@@ -7,7 +7,7 @@
 ^README\.html$
 ^\.here$
 ^\.lintr$
-^benchmark_data$
+^dmrsegaldata$
 ^data-raw$
 ^debug$
 ^examples$

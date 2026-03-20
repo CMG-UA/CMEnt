@@ -1,0 +1,361 @@
+---
+title: "DMRsegal Downstream Capabilities"
+author: "DMRsegal Package"
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+vignette: >
+  %\VignetteIndexEntry{DMRsegal Downstream Capabilities}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 12,
+    fig.height = 8,
+    dpi = 300,
+    fig.retina = 2
+)
+```
+
+```{r html_styles, echo=FALSE, results='asis'}
+cat("
+<style>
+.main-container {
+  max-width: 98vw !important;
+  width: 98vw !important;
+}
+.container-fluid {
+  max-width: 98vw !important;
+}
+</style>
+")
+```
+
+## Goal
+
+This notebook showcases additional DMRsegal capabilities beyond DMR discovery, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. We use the example DMRs from `DMRsegaldata` as a benchmark to demonstrate these downstream analyses.
+
+## Setup
+
+```{r setup}
+if (requireNamespace("devtools", quietly = TRUE)) {
+    devtools::load_all(quiet = TRUE)
+}
+
+library(DMRsegal)
+library(GenomicRanges)
+library(dplyr)
+library(ggplot2)
+
+genome <- "hg19"
+```
+
+## Load Example Inputs and Benchmark DMRs
+
+```{r load_inputs_and_dmrs}
+beta <- loadExampleInputData("beta")
+pheno <- loadExampleInputData("pheno")
+array_type <- loadExampleInputData("array_type")
+dmps <- loadExampleInputData("dmps")
+
+beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
+
+dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
+cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
+```
+
+## DMR Summary and scoring
+The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, score, and block ID of each DMR.
+```{r}
+stopifnot(length(dmrs) > 0)
+
+if (!all(c("score", "cv_accuracy") %in% colnames(mcols(dmrs)))) {
+    options(DMRsegal.scoring_nfold = 3)
+    dmrs <- scoreDMRs(
+        dmrs = dmrs,
+        beta = beta_handler,
+        pheno = pheno,
+        genome = genome,
+        array = array_type,
+        sample_group_col = "Sample_Group"
+    )
+}
+
+summary_tbl <- data.frame(
+    chr = as.character(seqnames(dmrs)),
+    start = start(dmrs),
+    end = end(dmrs),
+    width = width(dmrs),
+    seeds_num = mcols(dmrs)$seeds_num,
+    cpgs_num = mcols(dmrs)$cpgs_num,
+    delta_beta = round(mcols(dmrs)$delta_beta, 4),
+    score = round(mcols(dmrs)$score, 4),
+    cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
+    block_id = mcols(dmrs)$block_id
+)
+summary_tbl <- summary_tbl[order(summary_tbl$score, decreasing = TRUE), ]
+knitr::kable(head(summary_tbl, 5), caption = "Top 5 scoring DMRs (margin-sensitive score + raw CV accuracy)")
+```
+
+## Motif Discovery
+Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function. The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
+```{r}
+motif_dmrs <- extractDMRMotifs(
+    dmrs = dmrs,
+    genome = genome,
+    array = array_type,
+    motif_cpg_flank_size = 5
+)
+
+n_motif_consensus <- sum(!is.na(mcols(motif_dmrs)$consensus_seq))
+n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(motif_dmrs)$consensus_seq)))
+cat(sprintf("Motifs extracted for %d/%d DMRs.\n", n_motif_consensus, length(motif_dmrs)))
+cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
+```
+
+## Motif-Based DMR Interactions
+Once motifs are extracted, the `computeDMRsInteraction` function identifies "interactions" between DMRs based on motif similarity. 
+The rationale is that DMRs with similar motifs may be co-regulated or functionally related, even if they are not in close genomic proximity.
+The function computes pairwise similarities between the PWMs of the extracted motifs,
+excluding the center CpG positions, corrects for microarray design biases,
+applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
+The resulting components are annotated with JASPAR motifs if available.
+The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
+```{r}
+interaction_results <- computeDMRsInteraction(
+    dmrs = motif_dmrs,
+    genome = genome,
+    array = array_type,
+    min_similarity = 0.8,
+    motif_cpg_flank_size = 5,
+    min_component_size = 2,
+    query_components_with_jaspar = TRUE
+)
+
+interaction_tbl <- interaction_results$interactions
+component_tbl <- interaction_results$components
+
+cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
+cat(sprintf("Components found: %d\n", nrow(component_tbl)))
+if (nrow(component_tbl) > 0) {
+    largest_component <- max(component_tbl$size, na.rm = TRUE)
+    cat(
+        sprintf(
+            "Largest component size: %d / %d DMRs (%.2f%%)\n",
+            largest_component, length(motif_dmrs), 100 * largest_component / length(motif_dmrs)
+        )
+    )
+}
+annotated_components_m <- !is.na(component_tbl$jaspar_names) & nzchar(component_tbl$jaspar_names)
+annotated_components <- sum(annotated_components_m)
+cat(sprintf("Components with JASPAR annotation: %d / %d\n", annotated_components, nrow(component_tbl)))
+
+if (nrow(interaction_tbl) > 5) {
+    knitr::kable(
+        head(interaction_tbl[order(-interaction_tbl$sim), ], 5),
+        caption = "Top 5 motif-similarity DMR interactions"
+    )
+}
+
+if (annotated_components > 0) {
+    components_tbl <- component_tbl[annotated_components_m, ] |>
+        dplyr::select(component_id, size, consensus_seq, jaspar_names) |>
+        dplyr::arrange(dplyr::desc(size))
+    if (nrow(components_tbl) > 0) {
+        knitr::kable(
+            components_tbl,
+            caption = "Motif interaction components with JASPAR annotation"
+        )
+    }
+}
+```
+
+## Visualizations
+
+### DMR Score Manhattan Plot
+
+A manhattan plot of the DMRs is drawn, showing their scores, produced by the SVM CV prediction strategy,
+their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the scoring block extension. The DMRs that belong to both promoter and gene body are omitted.
+```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
+plotDMRsManhattan(
+    dmrs = dmrs,
+    promoter_col = "in_promoter_of",
+    gene_body_col = "in_gene_body_of"
+)
+```
+
+### DMR Block Formation Diagnostics
+To inspect how block IDs are formed, we plot one chromosome-level diagnostic view.
+We pick the chromosome of the widest called block and overlay the raw scores, smoothed curve,
+PELT segments, candidate A-B-C spans, split points from the distance rule, and final accepted blocks.
+```{r block_formation_diagnostics, fig.height=7, fig.width=14, dpi=150}
+block_ids <- as.character(mcols(dmrs)$block_id)
+midpoints <- floor((start(dmrs) + end(dmrs)) / 2)
+block_df <- data.frame(
+    chr = as.character(seqnames(dmrs)),
+    midpoint = midpoints,
+    block_id = block_ids,
+    stringsAsFactors = FALSE
+)
+block_df <- block_df[!is.na(block_df$block_id) & nzchar(block_df$block_id), , drop = FALSE]
+if (nrow(block_df) > 0) {
+    block_span <- aggregate(midpoint ~ block_id + chr, data = block_df, FUN = function(x) max(x) - min(x))
+    target_chr <- as.character(block_span$chr[which.max(block_span$midpoint)])
+    cat(sprintf("Diagnostics chromosome selected: %s\n", target_chr))
+    tryCatch(
+        {
+            plotDMRBlockFormation(
+                dmrs = dmrs,
+                chromosome = target_chr
+            )
+        },
+        error = function(e) {
+            message("Block formation diagnostics failed: ", conditionMessage(e))
+            NULL
+        }
+    )
+} else {
+    cat("No block IDs available for diagnostics.\n")
+}
+```
+
+### Single DMR Plot
+Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the CpGs in the DMR, the seeds, and the motif-based interactions with other DMRs, 
+along with JASPAR annotations if existing.
+Here we select a DMR that has more than one merged DMR and has an extension beyond the seed region, in both sides.
+
+```{r single_dmr_plot, fig.height=10}
+merged_counts <- suppressWarnings(as.numeric(as.character(mcols(dmrs)$merged_dmrs_num)))
+has_extension <- (mcols(dmrs)$start_seed != mcols(dmrs)$start_cpg) &
+    (mcols(dmrs)$end_seed != mcols(dmrs)$end_cpg)
+
+complex_candidates <- which(is.finite(merged_counts) & merged_counts > 1 & has_extension)
+if (length(complex_candidates) == 0) {
+    complex_candidates <- which(has_extension)
+}
+if (length(complex_candidates) == 0) {
+    complex_candidates <- 1L
+}
+
+selected_dmr_idx <- complex_candidates[1]
+cat(
+    sprintf(
+        "Selected DMR index %d (score=%s, seeds_num=%s, cpgs_num=%s)\n",
+        selected_dmr_idx,
+        as.character(mcols(dmrs)$score[selected_dmr_idx]),
+        as.character(mcols(dmrs)$seeds_num[selected_dmr_idx]),
+        as.character(mcols(dmrs)$cpgs_num[selected_dmr_idx])
+    )
+)
+
+tryCatch(
+    {
+        plotDMR(
+            dmrs = dmrs,
+            dmr_index = selected_dmr_idx,
+            beta = beta_handler,
+            pheno = pheno,
+            sample_group_col = "Sample_Group",
+            genome = genome,
+            array = array_type,
+            motif_cpg_flank_size = 5
+        )
+    },
+    error = function(e) {
+        message("Single DMR plot generation failed: ", conditionMessage(e))
+        NULL
+    }
+)
+```
+
+### Summary Circos Plot
+A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 16 to 22. 
+The information includes:
+
+- The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
+- Selected beta values of the DMRs (at most 5 CpGs per DMR, scoring by absolute delta-beta, are shown)
+- The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
+- The JASPAR annotation of the motif-based groups, if available, on the legend.
+```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+circos_dmrs <- motif_dmrs
+circos_summary_plotted <- FALSE
+
+tryCatch(
+    {
+        plotDMRsCircos(
+            dmrs = circos_dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = genome,
+            array = array_type,
+            sample_group_col = "Sample_Group",
+            min_similarity = 0.8,
+            motif_cpg_flank_size = 5,
+            max_num_samples_per_group = 5,
+            max_dmrs_per_chr = 40,
+            max_cpgs_per_dmr = 5,
+            max_components = 120,
+            chromosomes = paste0("chr", 16:22),
+            degenerate_resolution = 1e6,
+            verbose = 1
+        )
+        circos_summary_plotted <- TRUE
+    },
+    error = function(e) {
+        message("Circos plot generation failed: ", conditionMessage(e))
+        NULL
+    }
+)
+if (!circos_summary_plotted) {
+    plot.new()
+    text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
+}
+```
+It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr19:14700kb-16100kb and for chr20:61600kb-63000kb, which are regions that in the earlier plot were shown to interact:
+```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
+circos_region_plotted <- FALSE
+
+tryCatch(
+    {
+        plotDMRsCircos(
+            dmrs = circos_dmrs,
+            beta = beta_handler,
+            pheno = pheno,
+            genome = genome,
+            array = array_type,
+            sample_group_col = "Sample_Group",
+            min_similarity = 0.8,
+            motif_cpg_flank_size = 5,
+            max_num_samples_per_group = 5,
+            max_dmrs_per_chr = 40,
+            max_cpgs_per_dmr = 5,
+            max_components = 120,
+            region = "chr19:14700kb-16100kb, chr20:61600kb-63000kb",
+            degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
+            verbose = 1
+        )
+        circos_region_plotted <- TRUE
+    },
+    error = function(e) {
+        message("Circos plot generation failed: ", conditionMessage(e))
+        NULL
+    }
+)
+if (!circos_region_plotted) {
+    plot.new()
+    text(0.5, 0.5, "Circos region plot unavailable for selected regions.", cex = 1.1)
+}
+```
+
+
+## Session Info
+
+```{r session_info}
+sessionInfo()
+```

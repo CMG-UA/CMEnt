@@ -8,7 +8,7 @@
   dmrs,
   dmr_index = 1,
   array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg19",
+  genome = "hg38",
   beta_locs = NULL,
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
@@ -23,7 +23,7 @@
 
 \item{array}{Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.}
 
-\item{genome}{Character. Genome version (default: "hg19"). Ignored if beta_locs is provided.}
+\item{genome}{Character. Genome version (default: "hg38"). Ignored if beta_locs is provided.}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 

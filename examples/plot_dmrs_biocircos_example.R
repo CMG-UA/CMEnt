@@ -29,7 +29,7 @@ if (length(dmrs) > 0) {
         sample_group_col = "Sample_Group",
         max_cpgs_per_dmr = 0
     )
-    
+
 } else {
     cat("No DMRs found in the example data.\n")
 }

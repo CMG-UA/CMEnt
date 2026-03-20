@@ -9,15 +9,16 @@ plotDMR(
   dmr_index,
   beta = NULL,
   pheno = NULL,
-  genome = "hg19",
+  genome = "hg38",
   array = c("450K", "27K", "EPIC", "EPICv2"),
   beta_locs = NULL,
   sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
   max_cpgs = 100,
+  max_samples_per_group = 10,
   plot_motif = TRUE,
-  motif_flank_size = 5,
+  motif_cpg_flank_size = 5,
   plot_title = TRUE,
   output_file = NULL,
   width = 8,
@@ -34,9 +35,9 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{genome}{Character. Genome version (default: "hg19").}
+\item{genome}{Character. Genome version (default: "hg38").}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
+\item{array}{Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional).}
 
@@ -48,9 +49,11 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
 
+\item{max_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 10).}
+
 \item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
 
-\item{motif_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
+\item{motif_cpg_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
 
 \item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 
@@ -70,7 +73,7 @@ plot is added showing the nucleotide composition and information content around 
 }
 \examples{
 # Using BetaHandler
-beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg19")
+beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg38")
 plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
 
 # Using a file path (handler created automatically)
@@ -80,7 +83,7 @@ plotDMR(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
 plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 
 # With custom flank size for motif extraction
-plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_flank_size = 10)
+plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_cpg_flank_size = 10)
 
 # Without motif plot
 plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)

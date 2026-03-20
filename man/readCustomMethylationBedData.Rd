@@ -7,12 +7,11 @@
 readCustomMethylationBedData(
   bed_file,
   pheno,
-  genome = "hg19",
+  genome = "hg38",
   chrom_col = "#chrom",
   start_col = "start",
   output_dir = NULL,
-  chunk_size = 50000,
-  chr_levels = NULL
+  chunk_size = 50000
 )
 }
 \arguments{
@@ -23,7 +22,7 @@ methylation values. Can be gzipped (default: NULL)}
 \item{pheno}{Data frame. Phenotype data with sample IDs as rownames. Only samples
 present in both the pheno rownames and BED file header will be processed}
 
-\item{genome}{Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")}
+\item{genome}{Character. Genome version to use (e.g., "hg38", "hg19", "hs1") (default: "hg38")}
 
 \item{chrom_col}{Character. Name of the chromosome column in the BED file
 (default: "#chrom")}
@@ -32,12 +31,10 @@ present in both the pheno rownames and BED file header will be processed}
 (default: "start")}
 
 \item{output_dir}{Character. Directory for caching processed files. If NULL, uses
-a default cache directory at \verb{~/.cache/R/DMRsegal/bed_cache/} (default: NULL)}
+a default cache directory at \verb{USER_CACHE_DIR/R/DMRsegal/tabix_cache/} (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
 efficiency (default: 50000)}
-
-\item{chr_levels}{Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.}
 }
 \value{
 A list with two elements:
@@ -62,7 +59,6 @@ The function performs the following workflow:
 \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
 \item Converts chromosomes to integer factors for efficient sorting
 \item Creates a tabix-indexed compressed file for fast random access
-\item Builds a bigmemory-backed matrix of genomic locations for efficient lookups
 \item Caches all processed files based on input file hash for reuse
 }
 
@@ -70,8 +66,6 @@ The cache directory structure includes:
 \itemize{
 \item \verb{bed_beta_<hash>.bed.gz}: Tabix-indexed BED file with methylation values
 \item \verb{bed_beta_<hash>.bed.gz.tbi}: Tabix index file
-\item \verb{bed_locations_<hash>}: bigmemory backing file for genomic locations
-\item \verb{bed_locations_<hash>.desc}: bigmemory descriptor file
 \item \verb{bed_locations_<hash>.rds}: Serialized descriptor for loading locations
 }
 }
@@ -85,7 +79,7 @@ available in the system PATH. These tools are part of the HTSlib/samtools suite.
 
 The function uses chunk-based processing to handle large BED files without
 loading the entire dataset into memory. The genomic locations are stored in
-a bigmemory-backed matrix that can exceed available RAM by using disk-backed
+a Registry object that can exceed available RAM by using disk-backed
 storage.
 }
 

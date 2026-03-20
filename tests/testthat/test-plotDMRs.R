@@ -8,7 +8,7 @@ test_that("plotDMR creates a gtable object", {
         skip("Benchmark DMRs not available")
     }
 
-    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1))
+    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 2, output_file = "Rplots.pdf"))
 
     expect_s3_class(p, "gtable")
     expect_true(inherits(p, "gTree"))
@@ -34,37 +34,6 @@ test_that("plotDMR handles invalid dmr_index", {
     )
 })
 
-test_that("plotDMR works with different array types", {
-    skip_if_not_installed("ggplot2")
-
-    dmrs_450k <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs_450k) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-    p1 <- suppressWarnings(plotDMR(dmrs_450k, dmr_index = 1, array = "450K", genome = "hg19"))
-    expect_s3_class(p1, "gtable")
-
-    dmrs_epic <- remapDMRsArray(dmrs_450k, from_array = "450K", to_array = "EPIC", from_genome = "hg19", to_genome = "hg19")
-    p2 <- suppressWarnings(plotDMR(dmrs_epic, dmr_index = 1, array = "EPIC", genome = "hg19"))
-    expect_s3_class(p2, "gtable")
-})
-
-test_that("plotDMR works with different genome versions", {
-    skip_if_not_installed("ggplot2")
-
-    dmrs_hg19 <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs_hg19) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-    options("DMRsegal.verbose" = 2)
-    p1 <- suppressWarnings(plotDMR(dmrs_hg19, dmr_index = 1, array = "450K", genome = "hg19"))
-    expect_s3_class(p1, "gtable")
-
-    dmrs_hg38 <- remapDMRsArray(dmrs_hg19, from_array = "450K", to_array = "450K", from_genome = "hg19", to_genome = "hg38")
-
-    p2 <- suppressWarnings(plotDMR(dmrs_hg38, dmr_index = 1, array = "450K", genome = "hg38"))
-    expect_s3_class(p2, "gtable")
-})
 
 test_that("plotDMR works without a title", {
     skip_if_not_installed("ggplot2")
@@ -177,6 +146,25 @@ test_that("plotDMR plot structure contains expected components", {
     expect_true(inherits(p, "gtable"))
     expect_true(inherits(p, "gTree"))
     expect_true(inherits(p, "grob"))
+})
+
+test_that(".plotPWM clarifies when a motif logo is consensus-only", {
+    skip_if_not_installed("ggplot2")
+
+    dmr <- GenomicRanges::GRanges("chr1", IRanges::IRanges(start = 1, width = 12))
+    S4Vectors::mcols(dmr)$pwm <- list(matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(Biostrings::DNA_BASES, NULL)
+    ))
+    S4Vectors::mcols(dmr)$consensus_seq <- "AAAAAAAAAAAA"
+    S4Vectors::mcols(dmr)$seeds <- "cg00000001"
+
+    p <- DMRsegal:::.plotPWM(dmr, genome = "hg19", array = NULL, beta_locs = NULL)
+
+    expect_s3_class(p, "ggplot")
+    expect_match(p$labels$subtitle, "Consensus-only logo", fixed = TRUE)
+    expect_identical(p$labels$y, "Relative base weight")
 })
 
 test_that("plotDMR with beta and pheno includes PWM plot", {

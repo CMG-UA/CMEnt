@@ -7,7 +7,7 @@
 library(DMRsegal)
 
 # Load example DMR results from benchmark data
-dmrs <- readRDS("benchmark_data/dmrs.DMRsegal.rds")
+dmrs <- readRDS("dmrsegaldata/dmrs.DMRsegal.rds")
 
 cat("Loaded", length(dmrs), "DMRs\n")
 cat("First DMR summary:\n")

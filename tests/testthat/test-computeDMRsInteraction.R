@@ -1,21 +1,35 @@
 library(testthat)
 
+.loadMotifsAndReduce <- function(dmrs) {
+    dmrs <- dmrs[seq_len(min(200, length(dmrs)))]
+    if (! "pwm" %in% names(mcols(dmrs))) {
+        mcols(dmrs)$pwm <- lapply(seq_along(dmrs), function(i) {
+            matrix(runif(4 * 12), nrow = 4, dimnames = list(c("A", "T", "G", "C"), NULL))
+        })
+        mcols(dmrs)$consensus_seq <- lapply(seq_along(dmrs), function(i) {
+            paste(sample(c("A", "T", "G", "C"), 10, replace = TRUE), collapse = "")
+        })
+    }
+    dmrs
+}
+
 test_that("computeDMRsInteraction returns correct structure with valid input", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result, "list")
     expect_true("interactions" %in% names(result))
     expect_true("components" %in% names(result))
+    expect_true("dmrs" %in% names(result))
 
     if (!is.null(result$interactions)) {
         expect_s3_class(result$interactions, "data.frame")
@@ -28,6 +42,8 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
     }
 
     expect_s3_class(result$components, "data.frame")
+    expect_s4_class(result$dmrs, "GRanges")
+    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
     expect_true(
         all(
             c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
@@ -38,15 +54,14 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 
 test_that("computeDMRsInteraction handles GRanges input", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result, "list")
@@ -56,23 +71,14 @@ test_that("computeDMRsInteraction handles GRanges input", {
     expect_true(nrow(result$components) > 0)
 })
 
-test_that("computeDMRsInteraction works with precomputed motifs", {
+test_that("computeDMRsInteraction works with not precomputed motifs", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
-
-    dmrs_with_motifs <- suppressWarnings(extractDMRMotifs(
-        dmrs,
-        genome = "hg19",
-        array = "450K"
-    ))
 
     result <- suppressWarnings(computeDMRsInteraction(
-        dmrs_with_motifs,
+        dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7
     ))
 
     expect_type(result, "list")
@@ -82,22 +88,20 @@ test_that("computeDMRsInteraction works with precomputed motifs", {
 
 test_that("computeDMRsInteraction handles different similarity thresholds", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_high <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.9,
+        min_similarity = 0.9,
     ))
 
     result_low <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.5
+        min_similarity = 0.5
     ))
 
     expect_type(result_high, "list")
@@ -110,6 +114,8 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
 
 test_that("computeDMRsInteraction returns NULL when no interactions found", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
@@ -117,7 +123,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.99
+        min_similarity = 0.99
     ))
 
     if (is.null(result$interactions)) {
@@ -127,41 +133,55 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
     }
 })
 
-test_that("computeDMRsInteraction handles custom flank_size", {
+test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_default <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        flank_size = 5
+        motif_cpg_flank_size = 5
     ))
 
     result_custom <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        flank_size = 10
+        motif_cpg_flank_size = 10
     ))
 
     expect_type(result_default, "list")
     expect_type(result_custom, "list")
 })
 
-test_that("computeDMRsInteraction validates similarity values", {
+test_that("computeDMRsInteraction does not collapse into a giant component at strict threshold", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE
+    ))
+    expect_true("components" %in% names(result))
+    if (nrow(result$components) > 0) {
+        expect_true(max(result$components$size) < (0.9 * length(dmrs)))
+    }
+})
+
+test_that("computeDMRsInteraction validates similarity values", {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
+    result <- suppressWarnings(computeDMRsInteraction(
+        dmrs,
+        genome = "hg19",
+        array = "450K",
+        min_similarity = 0.7
     ))
 
     if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
@@ -170,17 +190,44 @@ test_that("computeDMRsInteraction validates similarity values", {
     }
 })
 
-test_that("computeDMRsInteraction components are ordered by size", {
+
+test_that("computeDMRsInteraction assigns contiguous positive component IDs when scores exist", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
+    mcols(dmrs)$score <- seq_along(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.5
+        min_similarity = 0.7,
+        min_component_size = 1,
+        query_components_with_jaspar = FALSE
+    ))
+
+    expect_true("component_id" %in% colnames(result$components))
+    if (nrow(result$components) > 0) {
+        expect_true(all(result$components$component_id >= 1))
+        expect_false(any(result$components$component_id == 0))
+        expect_equal(result$components$component_id, seq_len(nrow(result$components)))
+        expect_true(all(result$components$size > 0))
+    }
+    if (nrow(result$interactions) > 0) {
+        expect_true("component_id" %in% colnames(result$interactions))
+    }
+})
+
+test_that("computeDMRsInteraction components are ordered by size", {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
+    result <- suppressWarnings(computeDMRsInteraction(
+        dmrs,
+        genome = "hg19",
+        array = "450K",
+        min_similarity = 0.5,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_true(
@@ -191,15 +238,14 @@ test_that("computeDMRsInteraction components are ordered by size", {
 
 test_that("computeDMRsInteraction consensus sequences are valid", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     if (nrow(result$components) > 0) {
@@ -211,33 +257,33 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
 
 test_that("computeDMRsInteraction works with different array types", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
 
     result_450k <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     result_epic <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "EPIC",
-        min_sim = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result_450k, "list")
     expect_type(result_epic, "list")
 })
 
-test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
+test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
 
     temp_dir <- tempdir()
     plot_dir <- file.path(temp_dir, "test_interaction_plots")
@@ -246,8 +292,9 @@ test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7,
-        plot.dir = plot_dir
+        min_similarity = 0.7,
+        plot_dir = plot_dir,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_true(dir.exists(plot_dir))
@@ -261,16 +308,16 @@ test_that("computeDMRsInteraction creates plot when plot.dir is specified", {
 
 test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
-        skip("Benchmark DMRs not available")
-    }
+    dmrs <- .loadMotifsAndReduce(dmrs)
+
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_sim = 0.7,
-        flank_size = 5
+        min_similarity = 0.7,
+        motif_cpg_flank_size = 5,
+        query_components_with_jaspar = FALSE
     ))
 
     if (nrow(result$components) > 0) {
@@ -281,4 +328,137 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
             expect_equal(ncol(pwm), 2 * 5 + 2)
         }
     }
+})
+
+test_that("extractDMRMotifs keeps seeds grouped per DMR", {
+    locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
+    chr1_inds <- which(locs$chr == "chr1")
+    skip_if(length(chr1_inds) < 6, "Not enough chr1 CpGs in annotation")
+
+    cpg_ids <- rownames(locs)[chr1_inds[1:6]]
+    dmrs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = as.integer(locs[cpg_ids[c(1, 4)], "start"]),
+        end = as.integer(locs[cpg_ids[c(3, 6)], "start"]),
+        start_cpg = cpg_ids[c(1, 4)],
+        end_cpg = cpg_ids[c(3, 6)],
+        start_seed = cpg_ids[c(1, 4)],
+        end_seed = cpg_ids[c(3, 6)],
+        seeds = c(
+            paste(cpg_ids[1:3], collapse = ","),
+            paste(cpg_ids[4:6], collapse = ",")
+        ),
+        stringsAsFactors = FALSE
+    )
+
+    out <- suppressWarnings(extractDMRMotifs(dmrs, genome = "hg38", array = "450K"))
+    expect_equal(nrow(out), 2)
+    expect_true("pwm" %in% colnames(out))
+    expect_true(all(vapply(out$pwm, is.matrix, logical(1))))
+    expect_true(all(vapply(out$pwm, ncol, integer(1)) == 12))
+})
+
+test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
+    pwm_a <- matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_t <- matrix(
+        rep(c(0, 1, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_uniform <- matrix(
+        0.25,
+        nrow = 4,
+        ncol = 12,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", 6),
+        ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+
+    result <- computeDMRsInteraction(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        min_similarity = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE
+    )
+
+    expect_true("dmrs" %in% names(result))
+    expect_s4_class(result$dmrs, "GRanges")
+    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
+    expect_equal(
+        as.character(mcols(result$dmrs)$component_ids),
+        c("1", "1", "1", "2", "2", NA)
+    )
+})
+
+test_that("computeDMRsInteraction writes complete tabular outputs", {
+    pwm_a <- matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_t <- matrix(
+        rep(c(0, 1, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    pwm_uniform <- matrix(
+        0.25,
+        nrow = 4,
+        ncol = 12,
+        dimnames = list(c("A", "T", "G", "C"), NULL)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", 6),
+        ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+
+    output_prefix <- file.path(tempdir(), paste0("dmr-interaction-", as.integer(Sys.time())))
+    interactions_file <- paste0(output_prefix, ".dmr_interactions.tsv")
+    components_file <- paste0(output_prefix, ".dmr_components.tsv")
+
+    result <- computeDMRsInteraction(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        min_similarity = 0.8,
+        min_component_size = 2,
+        query_components_with_jaspar = FALSE,
+        output_prefix = output_prefix
+    )
+
+    expect_true(file.exists(interactions_file))
+    expect_true(file.exists(components_file))
+
+    saved_interactions <- read.delim(
+        interactions_file,
+        sep = "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+    saved_components <- read.delim(
+        components_file,
+        sep = "\t",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+
+    expect_equal(nrow(saved_interactions), nrow(result$interactions))
+    expect_equal(nrow(saved_components), nrow(result$components))
+    expect_true(all(nzchar(saved_components$indices)))
+
+    unlink(c(interactions_file, components_file))
 })

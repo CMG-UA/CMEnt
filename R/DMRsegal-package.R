@@ -13,6 +13,7 @@
 #'   \item \code{\link{plotDMR}}: Visualize individual DMRs with structure, beta values, and motifs
 #'   \item \code{\link{plotDMRs}}: Create multi-panel DMR plots
 #'   \item \code{\link{plotDMRsCircos}}: Generate circos plots with DMR interactions
+#'   \item \code{\link{plotDMRsManhattan}}: Generate genome-wide Manhattan-style plots for DMR scores
 #' }
 #'
 #' @section Input Data:
@@ -27,7 +28,7 @@
 #' @section Platform Support:
 #' The package supports methylation data from multiple platforms:
 #' \itemize{
-#'   \item Illumina arrays: 450K, EPIC (850k), EPICv2, 27K
+#'   \item Human arrays: 450K, EPIC (850k), EPICv2, 27K on hg19, hg38, or hs1
 #'   \item Mouse arrays: mm10, mm39 genomes
 #'   \item NGS data: Via tabix-indexed files
 #'   \item Custom platforms: Via BED file input

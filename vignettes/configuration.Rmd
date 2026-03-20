@@ -31,7 +31,7 @@ This vignette provides a comprehensive guide to the configuration available in D
 **Required:** Yes  
 **Description:** Input methylation data. Can be:
 
-- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `memory_threshold_mb` or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
+- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("DMRsegal.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
 - A beta matrix with CpG IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
@@ -110,7 +110,7 @@ dmrs <- findDMRsFromSeeds(
 ### `ignored_sample_groups`
 **Type:** Character vector  
 **Default:** `NULL`  
-**Description:** Sample groups to exclude from the analysis.
+**Description:** Sample groups to exclude while considering connection and expansion. Can also be "case" or "control".
 
 **Example:**
 ```{r}
@@ -142,7 +142,7 @@ dmrs <- findDMRsFromSeeds(
 
 ### `genome`
 **Type:** Character
-**Default:** `"hg19"`  
+**Default:** `"hg38"`  
 **Description:** Reference genome version.
 
 **Example:**
@@ -159,11 +159,11 @@ dmrs <- findDMRsFromSeeds(
 
 ### `min_cpg_delta_beta`
 **Type:** Numeric  
-**Default:** `0`  
+**Default:** `0.1`  
 **Range:** 0 to 1  
 **Description:** Minimum absolute delta beta value for CpGs to be included in DMRs, during the **second stage** of DMR extension. Use this to filter out low-confidence DMRs.
 
-**Recommendation:** For most applications, 0 is appropriate, to extend DMRs independently of effect size. Consider using 0.05 or 0.1 for stricter filtering.
+**Recommendation:** Keep 0.1 for balanced precision/recall. Lower to 0.05 or 0 only when prioritizing sensitivity.
 
 **Example:**
 ```{r}
@@ -175,12 +175,27 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `adaptive_min_cpg_delta_beta`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** When enabled, DMRsegal adaptively increases `min_cpg_delta_beta` based on the seed-level delta-beta distribution (never below `min_cpg_delta_beta`).
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    adaptive_min_cpg_delta_beta = TRUE
+)
+```
+
 ### `min_seeds`
 **Type:** Integer  
 **Default:** `1`  
 **Description:** Minimum number of connected seeds required in a DMR.
 
-**Recommendation:** Increase this value (e.g., to 2 or 3) for higher-confidence DMRs.
+**Recommendation:** Increase this value (e.g., to 3 or 4) for higher-confidence DMRs.
 
 **Example:**
 ```{r}
@@ -194,8 +209,8 @@ dmrs <- findDMRsFromSeeds(
 
 ### `min_adj_seeds`
 **Type:** Integer  
-**Default:** `1`  
-**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data.
+**Default:** `2`  
+**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. Minimum 2. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data. Only used when min_seeds < min_adj_seeds.
 
 **Example:**
 ```{r}
@@ -210,7 +225,7 @@ dmrs <- findDMRsFromSeeds(
 ### `min_cpgs`
 **Type:** Integer  
 **Default:** `50`  
-**Description:** Minimum number of CpGs required in a DMR after region expansion.
+**Description:** Minimum number of CpGs required in a DMR after region expansion. Minimum 2.
 
 **Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep higher (50+) for WGBS data.
 
@@ -247,11 +262,28 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `expansion_window`
+**Type:** Numeric  
+**Default:** `1e6`  
+**Description:** Stage 2 connectivity is computed only around seed-derived Stage 1 neighborhoods, using this total window width in base pairs.
+
+Set to `<= 0` to compute connectivity genome-wide.
+
+### `max_bridge_seeds_gaps`
+**Type:** Integer  
+**Default:** `1`  
+**Description:** In Stage 1 seed connectivity, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
+
+### `max_bridge_extension_gaps`
+**Type:** Integer
+**Default:** `1`
+**Description:** In Stage 2 DMR extension, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
+
 ### `expansion_step`
 **Type:** Integer  
 **Default:** `500`  
 **Unit:** Base pairs  
-**Description:** Step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
+**Description:** Index-specific step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
 
 **Trade-off:**
 - Smaller values (100-300): Lower memory, slower computation
@@ -285,16 +317,38 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
+### `entanglement`
+**Type:** Character  
+**Options:** `"strong"`, `"weak"`  
+**Default:** `"strong"`  
+**Description:** Strategy for determining connectivity between CpG sites across sample groups:
+
+- `"strong"`: Requires all sample groups to show significant correlation for two sites to be considered connected. This is more conservative and ensures consistent methylation patterns across all groups.
+- `"weak"`: Requires at least one sample group to show significant correlation. This is more permissive and may identify DMRs that are specific to certain groups.
+
+**Recommendation:** Use `"strong"` (default) for most cases to ensure robust, reproducible DMRs. Use `"weak"` when you want to capture group-specific methylation patterns or when working with heterogeneous sample groups.
+
+**Example:**
+```{r}
+dmrs <- findDMRsFromSeeds(
+    beta = beta,
+    seeds = seeds,
+    pheno = pheno,
+    entanglement = "weak"
+)
+```
+
 ### `pval_mode`
 **Type:** Character  
-**Options:** `"parametric"`, `"empirical"`  
-**Default:** `"parametric"`  
+**Options:** `"parametric"`, `"empirical"`, `"auto"`  
+**Default:** `"auto"`  
 **Description:** Method for calculating p-values during connectivity testing:
 
 - `"parametric"`: Uses t-based correlation p-values (faster, assumes normal distribution)
 - `"empirical"`: Uses permutation-based p-values (slower, no distribution assumptions)
+- `"auto"`: Evaluates correlation test assumptions per sample group and chooses `"parametric"` only when diagnostics are acceptable; otherwise switches to `"empirical"`
 
-**Recommendation:** Use `"parametric"` for most cases. Use `"empirical"` for small sample sizes or non-normal data.
+**Recommendation:** Use `"auto"` when you want robust defaults across heterogeneous datasets. Use `"parametric"` when assumptions are known to hold and runtime is critical, and `"empirical"` when assumptions are clearly questionable.
 
 **Example:**
 ```{r}
@@ -403,11 +457,10 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `memory_threshold_mb`
-**Type:** Integer  
-**Default:** `500`  
-**Unit:** Megabytes  
-**Description:** Memory threshold for loading beta files. Files smaller than this will be loaded into memory.
+### `chunk_size`
+**Type:** Integer
+**Default:** `getOption("DMRsegal.chunk_size", 1000)`
+**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
 
 **Example:**
 ```{r}
@@ -415,7 +468,7 @@ dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
-    memory_threshold_mb = 1000
+    chunk_size = 10000
 )
 ```
 
@@ -553,18 +606,25 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `chr_levels`
-**Type:** Character vector  
-**Default:** `NULL`  
-**Description:** Custom chromosome levels to use. If `NULL`, uses default chromosome ordering.
+### `.score_dmrs`
+**Type:** Logical  
+**Default:** `TRUE`  
+**Description:** Whether to score DMRs based on their classification accuracy using cross-validated SVM. When enabled, each DMR is evaluated for its ability to discriminate between sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `accuracy` value represents how well the DMR's methylation pattern can classify samples into their correct groups.
+
+**Details:**
+- Uses stratified k-fold cross-validation (default: 5-fold)
+- Number of folds can be controlled with `options(DMRsegal.scoring_nfold = 5)`
+- Random seed is controlled with `options(DMRsegal.random_seed = 42)`
+- Accuracy values range from 0 to 1, where higher values indicate better discriminative power
+- Requires the `e1071` package for SVM classification
 
 **Example:**
 ```{r}
-dmrs <- findDMRsFromSeeds(
+dmrs_scoring <- scoreDMRs(
+    dmrs = dmrs,
     beta = beta,
-    seeds = seeds,
     pheno = pheno,
-    chr_levels = c("chr1", "chr2", "chr3")
+    sample_group_col = "group"
 )
 ```
 
@@ -573,22 +633,26 @@ dmrs <- findDMRsFromSeeds(
 ### `.load_debug`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Enable debug mode for loading beta files. For internal development use only.
+**Description:** Enable debug mode for loading intermediate files, through short-circuiting. For internal development use only.
 
 # Global Package Options
 
 DMRsegal uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
 
-## Option: `DMRsegal.njobs`
+## Parallelism
+
+### Option: `DMRsegal.njobs`
 **Type:** Integer  
 **Default:** `min(8, future::availableCores() - 1)`  
-**Description:** Default number of parallel jobs.
+**Description:** Number of parallel jobs (defaults to the minimum of 8 and one less than the number of available CPU cores).
 
 ```{r}
 options("DMRsegal.njobs" = 4)
 ```
 
-## Option: `DMRsegal.verbose`
+## Verbosity
+
+### Option: `DMRsegal.verbose`
 **Type:** Integer  
 **Default:** `1`  
 **Description:** Default verbosity level.
@@ -597,43 +661,78 @@ options("DMRsegal.njobs" = 4)
 options("DMRsegal.verbose" = 2)
 ```
 
-## Option: `DMRsegal.use_bed_cache`
+## Reproducibility
+
+### Option: `DMRsegal.random_seed`
+**Type:** Integer  
+**Default:** `42`  
+**Description:** Random seed for reproducibility.
+
+```{r}
+options("DMRsegal.random_seed" = 123)
+```
+
+
+## Memory Management
+
+### Option: `DMRsegal.beta_in_mem_threshold_mb`
+**Type:** Integer  
+**Default:** `500`  
+**Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
+
+```{r}
+options("DMRsegal.beta_in_mem_threshold_mb" = 200)
+```
+
+
+### Option: `DMRsegal.chunk_size`
+**Type:** Integer  
+**Default:** `1000`  
+**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
+
+```{r}
+options("DMRsegal.chunk_size" = 10000)
+```
+
+## Caching
+
+### Option: `DMRsegal.use_bed_cache`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Enable caching of BED file conversions.
+**Description:** Enable caching of BED file conversions. Useful for repeated analyses (e.g., with different parameters) of large datasets.
 
 ```{r}
 options("DMRsegal.use_bed_cache" = TRUE)
 ```
 
-## Option: `DMRsegal.bed_cache_dir`
+### Option: `DMRsegal.bed_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/bed_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
 **Description:** Directory for BED file cache.
 
 ```{r}
 options("DMRsegal.bed_cache_dir" = "/path/to/cache")
 ```
 
-## Option: `DMRsegal.use_tabix_cache`
+### Option: `DMRsegal.use_tabix_cache`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Enable caching of tabix-indexed files.
+**Description:** Enable caching of tabix-indexed files. Useful for repeated analyses (e.g., with different parameters) of large datasets.
 
 ```{r}
 options("DMRsegal.use_tabix_cache" = TRUE)
 ```
 
-## Option: `DMRsegal.tabix_cache_dir`
+### Option: `DMRsegal.tabix_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/tabix_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
 **Description:** Directory for tabix file cache.
 
 ```{r}
 options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
 ```
 
-## Option: `DMRsegal.use_annotation_cache`
+### Option: `DMRsegal.use_annotation_cache`
 **Type:** Logical  
 **Default:** `TRUE`  
 **Description:** Enable caching of gene annotations.
@@ -642,25 +741,27 @@ options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
 options("DMRsegal.use_annotation_cache" = TRUE)
 ```
 
-## Option: `DMRsegal.annotation_cache_dir`
+### Option: `DMRsegal.annotation_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/annotation_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/annotation_cache`  
 **Description:** Directory for annotation cache.
 
 ```{r}
 options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
 ```
 
-## Option: `DMRsegal.jaspar_cache_dir`
+### Option: `DMRsegal.jaspar_cache_dir`
 **Type:** Character  
-**Default:** `~/.cache/R/DMRsegal/jaspar_cache`  
+**Default:** `USER_CACHE_DIR/R/DMRsegal/jaspar_cache`  
 **Description:** Directory for JASPAR motif database cache.
 
 ```{r}
 options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
 ```
 
-## Option: `DMRsegal.jaspar_version`
+## Motif Analysis
+
+### Option: `DMRsegal.jaspar_version`
 **Type:** Integer  
 **Default:** `2024`  
 **Description:** JASPAR database version to use for motif analysis.
@@ -669,16 +770,25 @@ options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
 options("DMRsegal.jaspar_version" = 2024)
 ```
 
-## Option: `DMRsegal.jaspar_tax_group`
+### Option: `DMRsegal.jaspar_tax_group`
 **Type:** Character  
 **Default:** `"vertebrates"`  
 **Description:** Taxonomic group for JASPAR motif filtering.
 
 ```{r}
+options("DMRsegal.min_motif_similarity" = 0.75)
+```
+
+### Option: `DMRsegal.min_motif_similarity`
+**Type:** Numeric  
+**Default:** `0.8`  
+**Description:** Minimum motif similarity threshold for DMR interaction analysis.
+
+```{r}
 options("DMRsegal.jaspar_tax_group" = "vertebrates")
 ```
 
-## Option: `DMRsegal.jaspar_corr_threshold`
+### Option: `DMRsegal.jaspar_corr_threshold`
 **Type:** Numeric  
 **Default:** `0.9`  
 **Description:** Correlation threshold for JASPAR motif similarity.
@@ -687,7 +797,7 @@ options("DMRsegal.jaspar_tax_group" = "vertebrates")
 options("DMRsegal.jaspar_corr_threshold" = 0.85)
 ```
 
-## Option: `DMRsegal.make_debug_dir`
+### Option: `DMRsegal.make_debug_dir`
 **Type:** Logical  
 **Default:** `FALSE`  
 **Description:** Create debug directory for troubleshooting.
@@ -696,13 +806,15 @@ options("DMRsegal.jaspar_corr_threshold" = 0.85)
 options("DMRsegal.make_debug_dir" = TRUE)
 ```
 
-## Option: `DMRsegal.random_seed`
+## DMR scoring
+
+### Option: `DMRsegal.scoring_nfold`
 **Type:** Integer  
-**Default:** `42`  
-**Description:** Random seed for reproducibility.
+**Default:** `5`  
+**Description:** Number of folds for cross-validation when scoring DMRs.
 
 ```{r}
-options("DMRsegal.random_seed" = 123)
+options("DMRsegal.scoring_nfold" = 3)
 ```
 
 # Configuration Examples
@@ -734,7 +846,7 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
-    min_seeds = 1,
+    min_seeds = 2,
     min_cpgs = 3,
     max_lookup_dist = 20000,
     max_pval = 0.05,
@@ -769,7 +881,6 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
-    memory_threshold_mb = 500,
     expansion_step = 1000,
     njobs = 4
 )
@@ -818,7 +929,7 @@ dmrs <- findDMRsFromSeeds(
 
 **Solution:**
 - Decrease `njobs`
-- Decrease `memory_threshold_mb` to enable disk-based processing
+- Decrease `getOption("DMRsegal.beta_in_mem_threshold_mb")` (default 500) to enable disk-based processing
 - Use tabix-indexed files for very large datasets
 - Enable caching options
 
@@ -841,6 +952,7 @@ dmrs <- findDMRsFromSeeds(
 ## Issue: Slow Performance
 
 **Solution:**
+- Increase `chunk_size` for larger processing chunks. Setting this to a larger value (e.g., 10e6) can reduce overhead and speed up processing, especially for genome-wide datasets.
 - Increase `njobs` for parallel processing
 - Increase `expansion_step`
 - Use `pval_mode = "parametric"` instead of `"empirical"`

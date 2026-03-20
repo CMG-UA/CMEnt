@@ -20,7 +20,6 @@
 }
 
 
-
 .getBetaColNamesAndInds <- function(beta_file, beta_col_names = NULL, is_tabix = FALSE) {
     if (endsWith(beta_file, "gz")) {
         conn <- gzfile(beta_file, "r")
@@ -58,7 +57,6 @@
     )
     invisible(ret)
 }
-
 
 
 .subsetBetaFile <- function(beta_file,
@@ -103,7 +101,6 @@
     colnames(beta_sites) <- beta_col_names
     beta_sites
 }
-
 
 
 .readSamplesheet <- function(samplesheet_file,
@@ -286,12 +283,18 @@
 
 #' Internal logging helpers using cli
 
+.log_error <- function(..., .envir = parent.frame()) {
+    msg <- paste0(..., collapse = "")
+    lead <- .col(cli::symbol$cross, "red")
+    stop(paste(lead, msg), call. = FALSE)
+}
+
 #' @keywords internal
 #' @noRd
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    message(paste(lead, msg))
+    warning(paste(lead, msg))
     invisible()
 }
 
@@ -301,7 +304,12 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
-    dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
+    if (level <= length(.DMRsegal_log_env$last_step_time)) {
+        dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
+    } else {
+        .log_warn("No previous step time recorded for level ", level, " to calculate duration.")
+        dur <- ""
+    }
     msg <- paste0(paste0(..., collapse = ""), dur)
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))
@@ -313,6 +321,12 @@
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
+    }
+    # Suppress output from parallel workers
+    if (!is.null(getOption("future.fork.enable")) && getOption("future.fork.enable", TRUE)) {
+        if (exists(".Random.seed", envir = .GlobalEnv) && !identical(Sys.getpid(), getOption("future.main.pid", Sys.getpid()))) {
+            return(invisible())
+        }
     }
     msg <- paste0(..., collapse = "")
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$info, "blue"), sep = "")
@@ -327,7 +341,7 @@
     if (getOption("DMRsegal.verbose", 0) < level) {
         return(invisible())
     }
-    .DMRsegal_log_env$last_step_time[level:max(1, length(.DMRsegal_log_env$last_step_time))] <- Sys.time() # nolint
+    .DMRsegal_log_env$last_step_time[[level]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
@@ -369,14 +383,14 @@
 }
 
 
-.getBEDCacheDir <- function(output_dir) {
+.getTabixCacheDir <- function(output_dir) {
     if (is.null(output_dir)) {
         use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
         if (!is.null(use_cache) && !isFALSE(use_cache)) {
             if (is.character(use_cache)) {
                 cache_dir <- use_cache
             } else {
-                cache_dir <- file.path(path.expand("~"), ".cache", "DMRsegal", "bed_cache")
+                cache_dir <- .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
             }
         } else {
             cache_dir <- tempdir()
@@ -384,73 +398,197 @@
     } else {
         cache_dir <- output_dir
     }
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
     cache_dir
 }
 
+createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select = NULL,
+                         chunk_size = 100000, sep = "\t") {
+    stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
+    stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
-#' Create Genomic Location bigmemory::big.matrix Descriptor from Tabix BED File
+    if (file.exists(output_h5file)) file.remove(output_h5file)
+    dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
+    rhdf5::h5createFile(output_h5file)
+
+    row_offset <- 0L
+    initialized <- FALSE
+    p <- NULL
+
+    cb <- readr::DataFrameCallback$new(function(df, pos) {
+        if (!is.null(select)) {
+            df <- df[, select, drop = FALSE]
+        }
+        if (!initialized) {
+            p <<- ncol(df)
+            rhdf5::h5createDataset(
+                file = output_h5file,
+                dataset = dataset_name,
+                dims = c(0, p),
+                maxdims = c(rhdf5::H5Sunlimited(), p),
+                chunk = c(min(chunk_size, max(1L, nrow(df))), p),
+                storage.mode = "character",
+                level = 7
+            )
+            rhdf5::h5write(names(df), output_h5file, paste0(dataset_name, "_colnames"))
+            initialized <<- TRUE
+        }
+
+        n_new <- nrow(df)
+        if (n_new == 0L) {
+            return(invisible(NULL))
+        }
+
+        # Convert whole chunk to character matrix
+        # (keeps NA as NA_character_)
+        mat <- as.matrix(data.frame(lapply(df, as.character), check.names = FALSE))
+
+        new_total <- row_offset + n_new
+
+        # Extend then write
+        rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+
+        idx_rows <- (row_offset + 1L):new_total
+        rhdf5::h5write(
+            mat,
+            file = output_h5file,
+            name = dataset_name,
+            index = list(idx_rows, 1:p)
+        )
+
+        row_offset <<- new_total
+        invisible(NULL)
+    })
+
+    readr::read_tsv_chunked(
+        file = input_file,
+        callback = cb,
+        chunk_size = chunk_size,
+        show_col_types = FALSE,
+        progress = FALSE
+    )
+
+    rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
+    invisible(output_h5file)
+}
+
+.postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
+    if (!is.null(select)) {
+        df <- df[, select, drop = FALSE]
+    }
+    if (!is.null(rename)) {
+        for (name in names(rename)) {
+            colnames(df)[colnames(df) == name] <- rename[[name]]
+        }
+    }
+    if (!is.null(derive)) {
+        for (new_col in names(derive)) {
+            col_info <- derive[[new_col]]
+            if (!all(col_info$cols %in% colnames(df))) {
+                stop(
+                    "Cannot derive column ", new_col, " because not all required columns are present. ",
+                    "Required columns: ", paste(col_info$cols, collapse = ", "), ". ",
+                    "Available columns: ", paste(colnames(df), collapse = ", ")
+                )
+            }
+            df[[new_col]] <- do.call(col_info$fun, as.data.frame(df[, col_info$cols]))
+        }
+    }
+    if (!is.null(indices)) {
+        missing_indices <- setdiff(indices, colnames(df))
+        if (length(missing_indices) > 0) {
+            stop(
+                "Cannot set indices because the following specified index columns are missing: ",
+                paste(missing_indices, collapse = ", "), ". ",
+                "Available columns: ", paste(colnames(df), collapse = ", ")
+            )
+        }
+        if (length(indices) == 1) {
+            rownames(df) <- df[[indices]]
+        } else {
+            rownames(df) <- do.call(paste, c(df[, indices], sep = ":"))
+        }
+    }
+    df
+}
+
+getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL, chunk_size = 100000) {
+    if (is.data.frame(obj)) {
+        return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
+    }
+    cache_dir <- getOption("DMRsegal.h5_cache_dir", .getOSCacheDir(file.path("R", "DMRsegal", "h5_cache")))
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    h5_file <- file.path(cache_dir, paste0(.getFileHash(obj), ".h5"))
+    if (!file.exists(h5_file)) {
+        createH5file(
+            input_file = obj,
+            output_h5file = h5_file,
+            dataset_name = "data",
+            select = select,
+            chunk_size = chunk_size
+        )
+    }
+    da <- HDF5Array::HDF5Array(h5_file, "data")
+    x <- DelayedDataFrame::DelayedDataFrame(da)
+    colnames(x) <- rhdf5::h5read(h5_file, "data_colnames")
+    .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
+}
+
+
+#' Create Genomic Location Registry from Tabix BED File
 #'
-#' @description This function creates a bigmemory::big.matrix descriptor from a Tabix-indexed BED file.
-#' It reads the genomic locations (chromosome, start, end) from the BED file in chunks and stores them in a bigmemory-backed matrix for efficient access.
-#' This is useful for handling large BED files without loading the entire dataset into memory.
+#' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
-#' @return Character. Path to the RDS file containing the bigmemory::big.matrix descriptor. Loadable with bigmemory::attach.big.matrix(readRDS()).
+#' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000){ # nolint
-    cache_dir <- .getBEDCacheDir(output_dir)
-    options(bigmemory.allow.dimnames = TRUE)
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col = "#chrom", start_col = "start") { # nolint
+    cache_dir <- .getTabixCacheDir(output_dir)
     if (is.null(hash)) {
         hash <- .getFileHash(input_tabix)
     }
-    backing_file <- paste0("bed_locations_", hash)
-    descriptor_file <- paste0("bed_locations_", hash, ".desc")
-    backing_path_full <- file.path(cache_dir, backing_file)
-    descriptor_path_full <- file.path(cache_dir, descriptor_file)
+    cache_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
 
-    if (file.exists(backing_path_full)) {
-        file.remove(backing_path_full)
+    if (file.exists(cache_file) && getOption("DMRsegal.use_tabix_cache", FALSE)) {
+        return(readRDS(cache_file))
     }
-    if (file.exists(descriptor_path_full)) {
-        file.remove(descriptor_path_full)
+    renaming <- c("chr", "start")
+    names(renaming) <- c(chrom_col, start_col)
+    if (!use_id_as_rownames) {
+        sorted_locs <- getRegistry(
+            input_tabix,
+            select = c(chrom_col, start_col),
+            rename = renaming,
+            derive = list(
+                index = list(
+                    cols = c("chr", "start"),
+                    fun = function(chr, start) paste0(chr, ":", start)
+                )
+            ),
+            indices = "index",
+            chunk_size = chunk_size
+        )
+    } else {
+        sorted_locs <- getRegistry(
+            input_tabix,
+            select = c(chrom_col, start_col, "end", "id"),
+            rename = renaming,
+            indices = "id",
+            chunk_size = chunk_size
+        )
     }
-    if (is.null(num_rows)) {
-        # Quickly read number of rows in BED file
-        tmp_con <- gzfile(input_tabix, "r")
-        num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
-        close(tmp_con)
+    if (getOption("DMRsegal.use_tabix_cache", FALSE)) {
+        saveRDS(sorted_locs, file = cache_file)
     }
-    sorted_locs <- bigmemory::big.matrix(
-        nrow = num_rows, ncol = 3,
-        type = "integer",
-        backingfile = backing_file,
-        backingpath = cache_dir,
-        descriptorfile = descriptor_file,
-        dimnames = list(NULL, c("chr", "start", "end"))
-    )
-
-
-    con <- gzfile(file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz")), "r")
-    bed_header <- strsplit(readLines(con, n = 1), "\t")[[1]]
-    count <- 0
-    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
-        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
-        colnames(bed_data) <- bed_header
-        loc_data <- bed_data[, c("#chrom", "start", "end"), drop = FALSE]
-        loc_data <- matrix(as.integer(unlist(loc_data)), ncol = 3)
-
-        sorted_locs[(count + 1):(count + nrow(loc_data)), ] <- loc_data
-        count <- count + nrow(loc_data)
-    }
-    close(con)
-    rownames(sorted_locs) <- paste(sorted_locs[, 1], sorted_locs[, 2], sep = ":")
-    locations_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
-    saveRDS(bigmemory::describe(sorted_locs), file = locations_file)
-    locations_file
+    sorted_locs
 }
 
 
@@ -467,16 +605,15 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #'   methylation values. Can be gzipped (default: NULL)
 #' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
 #'   present in both the pheno rownames and BED file header will be processed
-#' @param genome Character. Genome version to use (e.g., "hg19", "hg38") (default: "hg19")
+#' @param genome Character. Genome version to use (e.g., "hg38", "hg19", "hs1") (default: "hg38")
 #' @param chrom_col Character. Name of the chromosome column in the BED file
 #'   (default: "#chrom")
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `~/.cache/R/DMRsegal/bed_cache/` (default: NULL)
+#'   a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
-#' @param chr_levels Character vector. Optional vector of chromosome levels to use. If not provided, defaults to standard UCSC chromosome names for the specified genome.
 #'
 #' @return A list with two elements:
 #' \itemize{
@@ -493,7 +630,6 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #'   \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
 #'   \item Converts chromosomes to integer factors for efficient sorting
 #'   \item Creates a tabix-indexed compressed file for fast random access
-#'   \item Builds a bigmemory-backed matrix of genomic locations for efficient lookups
 #'   \item Caches all processed files based on input file hash for reuse
 #' }
 #'
@@ -501,8 +637,6 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' \itemize{
 #'   \item `bed_beta_<hash>.bed.gz`: Tabix-indexed BED file with methylation values
 #'   \item `bed_beta_<hash>.bed.gz.tbi`: Tabix index file
-#'   \item `bed_locations_<hash>`: bigmemory backing file for genomic locations
-#'   \item `bed_locations_<hash>.desc`: bigmemory descriptor file
 #'   \item `bed_locations_<hash>.rds`: Serialized descriptor for loading locations
 #' }
 #'
@@ -513,7 +647,7 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' @section Memory Management:
 #' The function uses chunk-based processing to handle large BED files without
 #' loading the entire dataset into memory. The genomic locations are stored in
-#' a bigmemory-backed matrix that can exceed available RAM by using disk-backed
+#' a Registry object that can exceed available RAM by using disk-backed
 #' storage.
 #'
 #' @examples
@@ -556,9 +690,8 @@ genomicLocsFromTabixToDescriptor <- function(input_tabix, output_dir = NULL, num
 #' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
 #'
 #' @export
-readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
-                                         chr_levels = NULL) {
+readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
+                                         start_col = "start", output_dir = NULL, chunk_size = 50000) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -573,7 +706,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         stop("tabix/bgzip not found in PATH. Cannot process BED file.")
     }
 
-    cache_dir <- .getBEDCacheDir(output_dir)
+    cache_dir <- .getTabixCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -620,14 +753,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
         bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
         colnames(bed_data) <- bed_header
-        # Add chr in front of chromosome values if missing
-        if (all(!grepl("^chr", bed_data[[chrom_col]]))) {
-            bed_data[[chrom_col]] <- paste0("chr", bed_data[[chrom_col]])
-        }
-        if (is.null(chr_levels)) {
-            chr_levels <- GenomeInfoDb::getChromInfoFromUCSC(genome)[, 1]
-        }
-        bed_data$chr <- as.integer(factor(bed_data[[chrom_col]], levels = chr_levels))
+        bed_data$chr <- bed_data[[chrom_col]]
         bed_data$start <- as.integer(bed_data[[start_col]])
         bed_data$end <- bed_data$start + 1
         bed_data$score <- "."
@@ -658,7 +784,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
         chunk_size = chunk_size,
         njobs = 1
     )
-    locations_file <- genomicLocsFromTabixToDescriptor(
+    locations <- genomicLocsFromTabix(
         tabix_file_path,
         num_rows = num_rows,
         hash = hash,
@@ -667,10 +793,10 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
     )
 
 
-    return(list(
+    list(
         tabix_file = tabix_file_path,
-        locations_file = locations_file
-    ))
+        locations = locations
+    )
 }
 
 
@@ -685,7 +811,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
-#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg19")
+#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
 #' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
 #'   directory in tempdir() with hash-based naming (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
@@ -729,7 +855,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg19", chrom
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = "hg19",
+                               genome = "hg38",
                                locations_file = NULL,
                                output_file = NULL,
                                chunk_size = 50000,
@@ -754,7 +880,10 @@ convertBetaToTabix <- function(beta_file,
     # Set default output file name - use cache directory
     if (is.null(output_file)) {
         # Create cache directory in temp folder
-        cache_dir <- getOption("DMRsegal.tabix_cache_dir", file.path(path.expand("~"), ".cache", "R", "DMRsegal", "tabix_cache"))
+        cache_dir <- getOption(
+            "DMRsegal.tabix_cache_dir",
+            .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
+        )
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
         }
@@ -813,7 +942,7 @@ convertBetaToTabix <- function(beta_file,
                 withr::defer(unlink(temp_bed))
 
                 # Write header to temp BED file with 6 mandatory BED columns
-                bed_header <- c("#chr", "start", "end", "id", "score", "strand", col_names[-1])
+                bed_header <- c("#chrom", "start", "end", "id", "score", "strand", col_names[-1])
                 writeLines(paste(bed_header, collapse = "\t"), temp_bed)
 
                 # Process file in chunks to avoid memory issues
@@ -849,7 +978,7 @@ convertBetaToTabix <- function(beta_file,
 
                     if (length(common_cpgs) > 0) {
                         # Create BED format for this chunk with 6 mandatory columns
-                        bed_chunk <- sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE]
+                        bed_chunk <- as.data.frame(sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE])
                         bed_chunk$end <- bed_chunk$start + 1
                         bed_chunk$id <- rownames(bed_chunk)
                         bed_chunk$score <- 0
@@ -1057,7 +1186,7 @@ convertBetaToTabix <- function(beta_file,
 #' @param beta_file Character. Path to the input beta values file to be sorted
 #' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
 #' @param array Character. Array platform type (default: "450K")
-#' @param genome Character. Genome version (default: "hg19")
+#' @param genome Character. Genome version (default: "hg38")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
 #'
@@ -1091,7 +1220,7 @@ convertBetaToTabix <- function(beta_file,
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
                                       array = c("450K", "27K", "EPIC", "EPICv2"),
-                                      genome = "hg19",
+                                      genome = "hg38",
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
     # Validate inputs
@@ -1170,93 +1299,89 @@ sortBetaFileByCoordinates <- function(beta_file,
         col.names = TRUE
     )
 
-    return(output_file)
+    output_file
 }
 
-#' Remap DMRs Between Different Methylation Arrays
-#'
-#' @description Remaps Differentially Methylated Regions (DMRs) identified on one
-#' methylation array platform to another array platform, adjusting CpG indices accordingly.
-#' This is useful when comparing results across different array types (e.g., 450K to EPIC).
-#'
-#' @param dmrs GRanges or data frame. DMRs identified on the source array platform
-#' @param from_array Character. Source array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
-#' @param to_array Character. Target array platform (e.g., "450K", "EPIC", "EPICv2", "27K")
-#' @param from_genome Character. Genome version for source (e.g., "hg19")
-#' @param to_genome Character. Genome version for target (e.g., "hg38")
-#'
-#' @return GRanges. DMRs remapped to the target array platform with updated CpG indices
-#'
-#' @details
-#' The function performs the following steps:
-#' \enumerate{
-#'   \item Converts input DMRs to GRanges if provided as a data frame
-#'   \item Retrieves sorted genomic locations for both source and target arrays
-#'   \item Maps CpG indices from source to target array based on genomic coordinates
-#'   \item Updates DMR metadata with new CpG indices
-#' }
-#' @examples
-#' # Assume dmrs_450k is a GRanges object of DMRs from 450K array
-#' remapped_dmrs <- remapDMRsArray(
-#'     dmrs = dmrs_450k,
-#'     from_array = "450K",
-#'     to_array = "EPIC",
-#'     from_genome = "hg19",
-#'     to_genome = "hg38"
-#' )
-#' @export
-remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
-    dmrs <- convertToGRanges(dmrs, from_genome)
-    from_array_locs <- getSortedGenomicLocs(array = from_array, genome = from_genome)
-    to_array_locs <- getSortedGenomicLocs(array = to_array, genome = to_genome)
-    start_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$start_cpg_ind_abs], rownames(to_array_locs))
-    end_cpgs <- match(rownames(from_array_locs)[mcols(dmrs)$end_cpg_ind_abs], rownames(to_array_locs))
-    seeds_inds <- sapply(strsplit(mcols(dmrs)$seeds_inds_abs, ","), function(seed) {
-        match(rownames(from_array_locs)[as.numeric(seed)], rownames(to_array_locs))
-    })
-    drop_missing <- sapply(start_cpgs, function(x) is.na(x)) | sapply(end_cpgs, function(x) is.na(x))
-    if (any(drop_missing)) {
-        .log_warn("Dropping ", sum(drop_missing), " DMRs that could not be mapped to the target array.")
-        dmrs <- dmrs[!drop_missing]
-        start_cpgs <- start_cpgs[!drop_missing]
-        end_cpgs <- end_cpgs[!drop_missing]
-        seeds_inds <- seeds_inds[!drop_missing]
+.prepareCovariateModel <- function(pheno, covariates = NULL) {
+    if (is.null(covariates) || length(covariates) == 0L || is.null(pheno)) {
+        return(NULL)
     }
-    if (length(dmrs) == 0) {
-        .log_warn("No DMRs could be mapped to the target array. Returning empty GRanges.")
-        return(GenomicRanges::GRanges())
+    if (!all(covariates %in% colnames(pheno))) {
+        stop("Not all covariates are present in pheno.")
     }
-    # Remove seeds from mcols(dmrs)$seeds that are correspond to NA seeds_inds after mapping
-    seeds <- strsplit(mcols(dmrs)$seeds, ",")
-    seeds <- lapply(seq_along(seeds), function(i) {
-        seed <- seeds[[i]]
-        seed_inds <- seeds_inds[[i]]
-        seed[!is.na(seed_inds)]
-    })
-    # Clear seeds_inds from NA values
-    seeds_inds <- lapply(seeds_inds, function(seed) {
-        seed[!is.na(seed)]
-    })
-    mcols(dmrs)$start_cpg_ind_abs <- start_cpgs
-    mcols(dmrs)$end_cpg_ind_abs <- end_cpgs
-    mcols(dmrs)$seeds_inds_abs <- sapply(seeds_inds, function(seed) {
-        paste(seed, collapse = ",")
-    })
-    mcols(dmrs)$seeds <- sapply(seeds, function(seed) {
-        paste(seed, collapse = ",")
-    })
-    dmrs <- .liftOverFromGenomeToGenome(dmrs, from_genome, to_genome)
-    dmrs
+    xc <- as.data.frame(pheno[, covariates, drop = FALSE])
+    xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
+    for (col in colnames(xc)) {
+        if (is.character(xc[[col]]) || is.factor(xc[[col]])) {
+            xc[[col]] <- as.numeric(as.factor(xc[[col]]))
+        }
+    }
+    xc <- as.matrix(xc)
+    storage.mode(xc) <- "double"
+    xtx_inv <- tryCatch(solve(crossprod(xc)), error = function(e) NULL)
+    pseudo_solution <- if (is.null(xtx_inv)) NULL else xtx_inv %*% t(xc)
+    list(
+        covariate_matrix = xc,
+        t_covariate_matrix = t(xc),
+        pseudo_solution = pseudo_solution,
+        is_singular = is.null(xtx_inv)
+    )
 }
+
+.remove_confounder_effect <- function(signal, covariate_matrix, pseudo_solution = NULL, t_covariate_matrix = NULL) {
+    if (is.null(covariate_matrix) || ncol(covariate_matrix) == 0L) {
+        return(signal)
+    }
+    if (is.null(pseudo_solution)) {
+        xtx <- crossprod(covariate_matrix)
+        xtx_inv <- tryCatch(solve(xtx), error = function(e) NULL)
+        if (is.null(xtx_inv)) {
+            return(signal)
+        }
+        pseudo_solution <- xtx_inv %*% t(covariate_matrix)
+    }
+    if (is.null(t_covariate_matrix)) {
+        t_covariate_matrix <- t(covariate_matrix)
+    }
+    effect <- t(pseudo_solution %*% t(signal))
+    fitted <- effect %*% t_covariate_matrix
+    if (inherits(signal, "DelayedArray")) {
+        fitted <- DelayedArray::DelayedArray(fitted)
+    }
+    signal - fitted
+}
+
+.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
+    if (inherits(beta, "DelayedDataFrame")) {
+        beta <- DelayedArray::DelayedArray(beta)
+    }
+    m_values <- log2(beta / (1 - beta + 1e-6) + 1e-6)
+    if (is.null(covariate_model)) {
+        covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    }
+    if (!is.null(covariate_model)) {
+        if (isTRUE(covariate_model$is_singular)) {
+            return(m_values)
+        }
+        m_values <- .remove_confounder_effect(
+            m_values,
+            covariate_matrix = covariate_model$covariate_matrix,
+            pseudo_solution = covariate_model$pseudo_solution,
+            t_covariate_matrix = covariate_model$t_covariate_matrix
+        )
+    }
+    m_values[is.na(m_values)] <- 0
+    m_values
+}
+
 
 .liftOverFromGenomeToGenome <- function(granges, from_genome, to_genome) {
     if (from_genome == to_genome) {
         return(granges)
     }
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    cache_dir <- getOption("DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("DMRsegal", "annotations"))
+    )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -1265,7 +1390,7 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
     if (!file.exists(chain_file)) {
         utils::download.file(
             url = paste0(
-                "http://hgdownload.soe.ucsc.edu/goldenPath/",
+                "https://hgdownload.soe.ucsc.edu/goldenPath/",
                 from_genome, "/liftOver/", chain_name, ".gz"
             ),
             destfile = paste0(chain_file, ".gz"), mode = "wb"
@@ -1275,6 +1400,9 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
     lifted_unlisted <- unlist(lifted)
+    if (length(lifted_unlisted) > 0) {
+        GenomeInfoDb::genome(lifted_unlisted) <- to_genome
+    }
     lifted_unlisted
 }
 
@@ -1285,8 +1413,8 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' methylation array platform and genome version. Performs liftOver if necessary.
 #' The function caches the results.
 #'
-#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K"), ignored in the case of mm10 genome or when locations_file is provided
-#' @param genome Character. Genome version (supported: "hg19", "hg38", "mm10", "mm39"), ignored if locations_file is provided
+#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.
+#' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
@@ -1298,7 +1426,7 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' }
 #'
 #' @examples
-#' # Get sorted locations for 450K array (hg19)
+#' # Get sorted locations for 450K array (hg38)
 #' locs_450k <- getSortedGenomicLocs("450K")
 #'
 #' # Get sorted locations for EPIC array with hg38
@@ -1308,21 +1436,25 @@ remapDMRsArray <- function(dmrs, from_array, to_array, from_genome, to_genome) {
 #' locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #'
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), genome = c("hg19", "hg38", "mm10", "mm39"), locations_file = NULL) {
+getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg38", "hg19", "hs1", "mm10", "mm39"), locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
-        try(locs <- bigmemory::attach.big.matrix(locs), silent = TRUE)
         return(locs)
     }
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    array_based <- !is.null(array)
+    if (!array_based) {
+        stop("Provided array is NULL but locations file was not provided.")
+    }
+    array <- strex::match_arg(array, ignore_case = TRUE)
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    array <- strex::match_arg(array, ignore_case = TRUE)
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
+
     array <- tolower(array)
     genome <- tolower(genome)
     cache_file <- file.path(cache_dir, paste0(
@@ -1330,11 +1462,12 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         "_locations.rds"
     ))
     if (getOption("DMRsegal.use_annotation_cache", TRUE) && file.exists(cache_file)) {
+        .log_info("Using cached annotation file: ", basename(cache_file), level = 3)
         locs <- readRDS(cache_file)
         return(locs)
     }
     pkg_name <- NULL
-    if (genome %in% c("hg19", "hg38")) {
+    if (genome %in% c("hg19", "hg38", "hs1")) {
         if (array == "450k") {
             pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
         } else if (array == "epic") {
@@ -1343,8 +1476,18 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
             pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
         } else if (array == "27k") {
             pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
+        } else {
+            stop(
+                paste0(
+                    "Incorrect array and genome combination was provided. ",
+                    "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported."
+                )
+            )
         }
     } else if (genome %in% c("mm10", "mm39")) {
+        if (array != "Mouse") {
+            stop("Incorrect array and genome combination was provided. For mm10 and mm39 only 'Mouse' array is supported.")
+        }
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
             if (!requireNamespace("devtools", quietly = TRUE)) {
@@ -1370,25 +1513,24 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         BiocManager::install(pkg_name)
     }
     locs <- minfi::getLocations(pkg_name)
-    from_genome <- NULL
-    if (genome == "mm39") {
-        from_genome <- "mm10"
+    source_genome <- NULL
+    if (tolower(array) %in% c("450k", "epic", "27k")) {
+        source_genome <- "hg19"
+    } else if (tolower(array) == "epicv2") {
+        source_genome <- "hg38"
+    } else if (tolower(array) == "mouse") {
+        source_genome <- "mm10"
     }
-    if (genome == "hg38") {
-        if (tolower(array) != "epicv2") {
-            from_genome <- "hg19"
-        }
-    } else {
-        if (tolower(array) == "epicv2") {
-            from_genome <- "hg38"
-        }
+    from_genome <- NULL
+    if (!is.null(source_genome) && !identical(genome, source_genome)) {
+        from_genome <- source_genome
     }
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
-    locs <- as.data.frame(locs)
-    colnames(locs)[colnames(locs) == "seqnames"] <- "chr"
-    locs <- locs[orderByLoc(rownames(locs), genomic_locs = as.data.frame(locs)), ]
+    locs <- convertToDataFrame(locs)
+    ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
+    locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
     if (!"start" %in% colnames(locs)) {
         locs[, "start"] <- locs[, "start"]
@@ -1403,7 +1545,25 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
         ,
         "end"
     ] == locs[, "start"], "start"] + 1
-    saveRDS(locs, cache_file)
+    locs$name <- rownames(locs)
+    locs <- getRegistry(locs, "name")
+    tryCatch(
+        {
+            saveRDS(locs, cache_file)
+        },
+        warning = function(w) {
+            .log_warn(
+                "Could not write annotation cache file '", cache_file,
+                "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+            )
+        },
+        error = function(e) {
+            .log_warn(
+                "Could not write annotation cache file '", cache_file,
+                "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+            )
+        }
+    )
     locs
 }
 
@@ -1416,7 +1576,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
 #' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
-#' @param genome Character. Genome version, either "hg19" or "hg38" (default: "hg19")
+#' @param genome Character. Genome version, either "hg38", "hg19", or "hs1" (default: "hg38")
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #'
@@ -1434,88 +1594,56 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2"), gen
 #' @export
 orderByLoc <- function(x,
                        array = c("450K", "27K", "EPIC", "EPICv2"),
-                       genome = c("hg19", "hg38", "mm10", "mm39"),
+                       genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
     }
-    stringr::str_order(paste0(genomic_locs[x, "chr"], ":", genomic_locs[x, "start"]), numeric = TRUE)
+    order(match(x, rownames(genomic_locs)), method = "radix")
+}
+
+#' @keywords internal
+#' @noRd
+.splitCsvValues <- function(x) {
+    if (length(x) == 0 || is.null(x)) {
+        return(character(0))
+    }
+    x <- x[[1]]
+    if (is.na(x) || !nzchar(as.character(x))) {
+        return(character(0))
+    }
+    vals <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+    vals <- trimws(vals)
+    vals <- vals[nzchar(vals)]
+    vals[!is.na(vals)]
 }
 
 
-#' Get Supporting CpG Sites for DMRs
-#'
-#' @description For each Differentially Methylated Region (DMR) in a GRanges object,
-#' retrieves the CpG sites that support the DMR, including upstream and downstream
-#' CpGs as well as the CpGs within the DMR itself. The function allows for limiting
-#' the number of supporting CpGs on each side of the DMR.
-#' @param dmrs GRanges object containing DMRs with metadata columns:
-#' \itemize{
-#'   \item start_cpg_ind: ID of the first CpG in the DMR, index in the processed beta file
-#'   \item end_cpg_ind: ID of the last CpG in the DMR, index in the processed beta file
-#'   \item seeds_inds: Comma-separated string of CpG IDs within the DMR, index in the processed beta file
-#' }
-#' @param max_sup_cpgs_per_dmr_side Integer. Maximum number of supporting CpGs to retrieve
-#'   upstream and downstream of each DMR (default: NULL, meaning no limit)
-#' @param separate_by_section Logical. If TRUE, returns a list with separate entries for upstream,
-#'   downstream, and DMR CpGs. If FALSE, returns a single concatenated vector (default: TRUE)
-#' @param use_absolute_indices Logical. If TRUE, uses absolute indices from metadata columns
-#'   (start_cpg_ind_abs, end_cpg_ind_abs, seeds_inds_abs). If FALSE, uses relative indices
-#'   (start_cpg_ind, end_cpg_ind, seeds_inds) (default: TRUE)
-#' @return A list where each element corresponds to a DMR and contains:
-#' \itemize{
-#'   \item upstream: Vector of upstream supporting CpG IDs or indices
-#'   \item downstream: Vector of downstream supporting CpG IDs or indices
-#'   \item seeds: Vector of CpG IDs or indices within the DMR
-#' }
-#' @examples
-#' # Assume dmrs is a GRanges object with appropriate metadata columns
-#' available_cpgs <- c("cg00000029", "cg00000108", "cg00000109", "cg00000165", "cg00000236")
-#' dmrs_cpgs <- getSupportingSites(dmrs, available_cpgs, max_sup_cpgs_per_dmr_side = 2)
-#' @export
-getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_by_section = TRUE, use_absolute_indices = TRUE) {
-    if (use_absolute_indices) {
-        cpg_starts <- S4Vectors::mcols(dmrs)$start_cpg_ind_abs
-        seeds_inds <- S4Vectors::mcols(dmrs)$seeds_inds_abs
-        cpg_ends <- S4Vectors::mcols(dmrs)$end_cpg_ind_abs
-    } else {
-        cpg_starts <- mcols(dmrs)$start_cpg_ind
-        seeds_inds <- mcols(dmrs)$seeds_inds
-        cpg_ends <- mcols(dmrs)$end_cpg_ind
+#' @keywords internal
+#' @noRd
+.splitCsvIndices <- function(x) {
+    vals <- .splitCsvValues(x)
+    if (length(vals) == 0) {
+        return(integer(0))
     }
-    seeds_inds <- lapply(seeds_inds, function(x) as.integer(unlist(strsplit(as.character(x), ","))))
-    dmrs_cpgs <- list()
-    for (i in seq_along(dmrs)) {
-        start_cpg_ind <- cpg_starts[[i]]
-        dmr_seeds_inds <- seeds_inds[[i]]
-        end_cpg_ind <- cpg_ends[[i]]
-        start_seed_ind <- seeds_inds[[i]][1]
-        end_seed_ind <- seeds_inds[[i]][length(seeds_inds[[i]])]
-        start_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (start_seed_ind - start_cpg_ind) > max_sup_cpgs_per_dmr_side) {
-            start_step <- ceiling((start_seed_ind - start_cpg_ind) / max_sup_cpgs_per_dmr_side)
-        }
-        end_step <- 1
-        if (!is.null(max_sup_cpgs_per_dmr_side) && (end_cpg_ind - end_seed_ind) > max_sup_cpgs_per_dmr_side) {
-            end_step <- ceiling((end_cpg_ind - end_seed_ind) / max_sup_cpgs_per_dmr_side)
-        }
-        if (start_cpg_ind < start_seed_ind - 1) {
-            upstream_sup_cpgs_inds <- seq(start_cpg_ind, start_seed_ind - 1, by = start_step)
-        } else {
-            upstream_sup_cpgs_inds <- c()
-        }
-        if (end_seed_ind + 1 < end_cpg_ind) {
-            downstream_sup_cpgs_inds <- seq(end_seed_ind + 1, end_cpg_ind, by = end_step)
-        } else {
-            downstream_sup_cpgs_inds <- c()
-        }
-        dmrs_cpgs[[i]] <- list(upstream = upstream_sup_cpgs_inds, seeds = dmr_seeds_inds, downstream = downstream_sup_cpgs_inds)
+    suppressWarnings({
+        inds <- as.integer(vals)
+    })
+    inds[!is.na(inds)]
+}
 
-        if (!separate_by_section) {
-            dmrs_cpgs[[i]] <- unlist(dmrs_cpgs[[i]])
-        }
+
+#' @keywords internal
+#' @noRd
+.downsampleFlankIndices <- function(indices, max_sup_cpgs_per_dmr_side) {
+    if (is.null(max_sup_cpgs_per_dmr_side) || max_sup_cpgs_per_dmr_side <= 0) {
+        return(indices)
     }
-    dmrs_cpgs
+    if (length(indices) <= max_sup_cpgs_per_dmr_side) {
+        return(indices)
+    }
+    step <- ceiling(length(indices) / max_sup_cpgs_per_dmr_side)
+    indices[seq.int(1L, length(indices), by = step)]
 }
 
 
@@ -1531,11 +1659,65 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
         BiocGenerics::start(granges) <- pmax(flanked_start, 1)
         BiocGenerics::end(granges) <- pmin(flanked_end, seqls)
         ret <- list(granges = granges, start_off_limit = start_off_limit, end_off_limit = end_off_limit)
-        return(ret)
     } else {
         ret <- list(granges = granges, start_off_limit = rep(0, length(granges)), end_off_limit = rep(0, length(granges)))
-        return(ret)
     }
+    ret
+}
+
+.getBSGenomePackage <- function(genome) {
+    if (genome == "hg19") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
+    } else if (genome == "hg38") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
+    } else if (genome == "hs1") {
+        pkg_name <- "BSgenome.Hsapiens.UCSC.hs1"
+    } else if (genome == "mm10") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
+    } else if (genome == "mm39") {
+        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+    } else {
+        if (!requireNamespace("BSgenome", quietly = TRUE)) {
+            if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                install.packages("BiocManager")
+            }
+            BiocManager::install("BSgenome")
+        }
+        available_genomes <- BSgenome::available.genomes()
+        matched_genome <- grep(paste0("^BSgenome\\..*\\.UCSC\\.", genome, "$"), available_genomes, value = TRUE)
+        if (length(matched_genome) > 0) {
+            pkg_name <- matched_genome[1]
+        } else {
+            pkg_name <- NULL
+        }
+    }
+    if (is.null(pkg_name)) {
+        return(NULL)
+    }
+    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+            .log_warn("BSgenome package not available: ", pkg_name)
+            .log_info("Attempting to install...")
+            tryCatch(
+                {
+                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+                        install.packages("BiocManager")
+                    }
+                    BiocManager::install(pkg_name, update = FALSE)
+                },
+                error = function(e) {
+                    .log_warn("Installation failed")
+                    pkg_name <<- NULL
+                }
+            )
+        }
+    }
+    pkg_name
+}
+
+
+.getOSCacheDir <- function(prefix) {
+    R.utils::getAbsolutePath(path.expand(rappdirs::user_cache_dir(prefix)))
 }
 
 #' Extract DNA Sequences for DMRs
@@ -1546,7 +1728,7 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' motif finding or sequence composition analysis.
 #'
 #' @param dmrs GRanges object containing genomic coordinates of DMRs
-#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg19".
+#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg38" or "hs1".
 #' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
 #'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
 #'   fallback when packages are unavailable (default: FALSE)
@@ -1554,6 +1736,8 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #'   upstream of each DMR (default: 0)
 #' @param dflank_size Integer. Number of base pairs to add as flanking regions
 #'   downstream of each DMR (default: 0)
+#' @param batch_size Integer. For online API, number of regions to process per batch (default: 100)
+#' @param njobs Integer. For online API, number of cores for parallel processing (default: 1)
 #' @return A Character vector containing DNA sequences for each DMR
 #'
 #' @details
@@ -1561,6 +1745,7 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' \itemize{
 #'   \item hg19: BSgenome.Hsapiens.UCSC.hg19
 #'   \item hg38: BSgenome.Hsapiens.UCSC.hg38
+#'   \item hs1: BSgenome.Hsapiens.UCSC.hs1
 #'   \item mm10: BSgenome.Mmusculus.UCSC.mm10
 #'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
 #' }
@@ -1568,14 +1753,18 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' If the required BSgenome package is not installed and installation fails,
 #' the function will automatically fall back to querying sequences from the
 #' UCSC Genome Browser REST API. The online method processes sequences in
-#' batches to avoid overwhelming the API.
+#' batches with optional parallel processing for improved performance with large datasets.
+#'
+#' For large numbers of DMRs (>10k), consider using parallel processing by setting
+#' njobs > 1 when using the online API, or install the appropriate BSgenome package
+#' for much faster local sequence retrieval.
 #'
 #' @examples
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
-#' # Force use of online UCSC API
-#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE)
+#' # Force use of online UCSC API with parallel processing
+#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 #'
 #' # Calculate GC content
 #' gc_content <- sapply(sequences, function(s) {
@@ -1585,47 +1774,22 @@ getSupportingSites <- function(dmrs, max_sup_cpgs_per_dmr_side = NULL, separate_
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver
 #' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0) {
-    dmrs <- convertToGRanges(dmrs, genome)
-    if (genome == "hg19") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
-    } else if (genome == "hg38") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
-    } else if (genome == "mm10") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
-    } else if (genome == "mm39") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
+getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
+                            batch_size = 100, njobs = 1) {
+    if (!use_online) {
+        pkg_name <- .getBSGenomePackage(genome)
+        use_bsgenome <- !is.null(pkg_name)
     } else {
         pkg_name <- NULL
+        use_bsgenome <- FALSE
     }
     extended_ret <- .extendGRangesWithFlanks(dmrs, uflank_size, dflank_size)
     dmrs <- extended_ret$granges
     add_na_to_the_start <- extended_ret$start_off_limit
     add_na_to_the_end <- extended_ret$end_off_limit
-    use_bsgenome <- FALSE
-
-    if (!use_online && !is.null(pkg_name)) {
-        if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            message("BSgenome package not available: ", pkg_name)
-            message("Attempting to install...")
-            tryCatch(
-                {
-                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                        install.packages("BiocManager")
-                    }
-                    BiocManager::install(pkg_name, update = FALSE)
-                    use_bsgenome <- TRUE
-                },
-                error = function(e) {
-                    message("Installation failed. Falling back to online UCSC API.")
-                }
-            )
-        } else {
-            use_bsgenome <- TRUE
-        }
-    }
 
     if (use_bsgenome) {
+        .log_info("Querying sequences using BSgenome package...", level = 2)
         if (!isNamespaceLoaded(pkg_name)) {
             loadNamespace(pkg_name)
         }
@@ -1636,76 +1800,264 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         }
     } else {
         .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
-        sequences <- .getSequencesFromUCSC(dmrs, genome)
+        sequences <- .getSequencesFromUCSC(dmrs, genome, batch_size = batch_size, njobs = njobs)
     }
-    sequences <- mapply(function(seq, na_start, na_end) {
-        if (is.na(seq)) {
-            return(NA_character_)
-        }
-        seq <- paste0(
-            paste(rep("N", na_start), collapse = ""),
-            seq,
-            paste(rep("N", na_end), collapse = "")
-        )
-        seq
-    }, sequences, add_na_to_the_start, add_na_to_the_end, SIMPLIFY = TRUE)
+    off_bound_mask <- add_na_to_the_start > 0 | add_na_to_the_end > 0
+    if (any(off_bound_mask)) {
+        .log_info("  Found ", sum(off_bound_mask), " regions with out-of-bound flanking extensions", level = 2)
+        .log_info("Adding 'N' padding for out-of-bound flanking regions...", level = 2)
+        sequences[off_bound_mask] <- mapply(function(seq, na_start, na_end) {
+            if (is.na(seq)) {
+                return(NA_character_)
+            }
+            seq <- paste0(
+                paste(rep("N", na_start), collapse = ""),
+                seq,
+                paste(rep("N", na_end), collapse = "")
+            )
+            seq
+        }, sequences[off_bound_mask], add_na_to_the_start[off_bound_mask], add_na_to_the_end[off_bound_mask], SIMPLIFY = TRUE)
+    }
     sequences
+}
+
+
+#' @export
+getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
+    pkg_name <- .getBSGenomePackage(genome)
+    if (is.null(pkg_name)) {
+        sequences <- getDMRSequences(regions, genome, use_online = TRUE, njobs = njobs)
+        cpg_counts <- sapply(sequences, function(seq) {
+            if (is.na(seq)) {
+                return(NA_integer_)
+            }
+            stringr::str_count(seq, "CG")
+        })
+        return(unlist(cpg_counts))
+    }
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir", 
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    cpg_positions_file <- file.path(cache_dir, paste0(
+        pkg_name, "_cpg_positions.rds"
+    ))
+    if (canonical_chr) {
+        cpg_positions_file <- file.path(cache_dir, paste0(
+            pkg_name, "_canonical_chr_cpg_positions.rds"
+        ))
+    }
+    if (file.exists(cpg_positions_file)) {
+        cpgs <- readRDS(cpg_positions_file)
+    } else {
+        .log_info("Missing CpG positions cache. Generating CpG positions from BSgenome package...", level = 2)
+        if (!isNamespaceLoaded(pkg_name)) {
+            loadNamespace(pkg_name)
+        }
+        seq_db <- getExportedValue(pkg_name, pkg_name)
+        chrs <- names(seq_db)
+        if (canonical_chr) {
+            chrs <- chrs[grepl("^chr[0-9XYM]+$", chrs)]
+        }
+        cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
+        names(cgs) <- chrs
+        suppressWarnings(
+            cpgs <- do.call(
+                c, lapply(
+                    seq_along(chrs),
+                    function(x) {
+                        GenomicRanges::GRanges(
+                            seqnames = chrs[x],
+                            ranges = IRanges::IRanges(cgs[[x]], width = 2)
+                        )
+                    }
+                )
+            )
+        )
+        cpgs <- data.table::as.data.table(as.data.frame(cpgs, stringsAsFactors = FALSE))[, 1:2]
+        colnames(cpgs) <- c("chr", "start")
+        cpgs[, "end"] <- cpgs[, "start"]
+        data.table::setkey(cpgs, chr, start, end)
+        saveRDS(cpgs, cpg_positions_file)
+    }
+    regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, 1:3]
+    regions <- data.table::as.data.table(regions)
+    colnames(regions) <- c("rchr", "rstart", "rend")
+    regions[, "id"] <- seq_len(nrow(regions))
+    data.table::setkey(regions, rchr, rstart, rend)
+    cpg_counts <- data.table::foverlaps(regions,
+        cpgs,
+        by.x = c("rchr", "rstart", "rend"),
+        by.y = c("chr", "start", "end"),
+    )[, .N, by = id]
+    cpg_counts <- cpg_counts[order(cpg_counts$id), "N"]
+    unlist(cpg_counts)
+    # }
 }
 
 #' Query DNA Sequences from UCSC Genome Browser API
 #'
 #' @description Internal helper function to retrieve DNA sequences from the
 #' UCSC Genome Browser REST API when BSgenome packages are not available.
+#' Uses parallel processing and batched requests for improved performance.
 #'
 #' @param dmrs GRanges object containing genomic coordinates
-#' @param genome Character. Genome version (e.g., "hg19", "mm39")
+#' @param genome Character. Genome version (e.g., "hg38", "hs1", "mm39")
+#' @param batch_size Integer. Number of regions to process per batch (default: 100)
+#' @param njobs Integer. Number of cores for parallel processing (default: 1)
 #'
 #' @return Character vector of DNA sequences
 #'
 #' @keywords internal
 #' @noRd
-.getSequencesFromUCSC <- function(dmrs, genome) {
+.getSequencesFromUCSC <- function(dmrs, genome, batch_size = 100, njobs = 1) {
     base_url <- "https://api.genome.ucsc.edu/getData/sequence"
+    n_dmrs <- length(dmrs)
 
-    sequences <- character(length(dmrs))
+    if (n_dmrs == 0) {
+        return(character(0))
+    }
 
-    for (i in seq_along(dmrs)) {
-        chr <- as.character(GenomeInfoDb::seqnames(dmrs[i]))
-        start <- GenomicRanges::start(dmrs[i])
-        end <- GenomicRanges::end(dmrs[i])
+    n_batches <- ceiling(n_dmrs / batch_size)
 
-        url <- sprintf(
-            "%s?genome=%s;chrom=%s;start=%d;end=%d",
-            base_url, genome, chr, start - 1, end
-        )
+    if (n_dmrs > 100) {
+        .log_info(sprintf(
+            "Retrieving sequences for %d regions in %d batches using %d core(s)...",
+            n_dmrs, n_batches, njobs
+        ), level = 2)
+    }
 
-        tryCatch(
-            {
-                response <- readLines(url, warn = FALSE)
-                json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
+    fetch_batch <- function(batch_idx) {
+        start_idx <- (batch_idx - 1) * batch_size + 1
+        end_idx <- min(batch_idx * batch_size, n_dmrs)
+        batch_dmrs <- dmrs[start_idx:end_idx]
+        batch_sequences <- character(length(batch_dmrs))
 
-                if (!is.null(json_data$dna)) {
-                    sequences[i] <- toupper(json_data$dna)
-                } else {
-                    warning("No sequence returned for region ", chr, ":", start, "-", end)
-                    sequences[i] <- NA_character_
+        for (j in seq_along(batch_dmrs)) {
+            chr <- as.character(GenomeInfoDb::seqnames(batch_dmrs[j]))
+            start <- GenomicRanges::start(batch_dmrs[j])
+            end <- GenomicRanges::end(batch_dmrs[j])
+
+            url <- sprintf(
+                "%s?genome=%s;chrom=%s;start=%d;end=%d",
+                base_url, genome, chr, start - 1, end
+            )
+
+            tryCatch(
+                {
+                    response <- readLines(url, warn = FALSE)
+                    json_data <- jsonlite::fromJSON(paste(response, collapse = ""))
+
+                    if (!is.null(json_data$dna)) {
+                        batch_sequences[j] <- toupper(json_data$dna)
+                    } else {
+                        batch_sequences[j] <- NA_character_
+                    }
+                },
+                error = function(e) {
+                    batch_sequences[j] <- NA_character_
                 }
-            },
-            error = function(e) {
-                warning(
-                    "Failed to retrieve sequence for region ", chr, ":", start, "-", end,
-                    ": ", e$message
-                )
-                sequences[i] <- NA_character_
-            }
-        )
+            )
 
-        if (i %% 10 == 0) {
-            Sys.sleep(0.1)
+            if (j %% 10 == 0) {
+                Sys.sleep(0.05)
+            }
+        }
+
+        batch_sequences
+    }
+
+    if (njobs > 1 && n_batches > 1) {
+        if (!requireNamespace("parallel", quietly = TRUE)) {
+            warning("parallel package not available, using single core processing")
+            njobs <- 1
+        }
+    }
+
+    if (njobs > 1 && n_batches > 1) {
+        cl <- parallel::makeCluster(min(njobs, n_batches))
+        on.exit(parallel::stopCluster(cl), add = TRUE)
+
+        parallel::clusterExport(cl, c("base_url", "genome", "batch_size", "n_dmrs", "dmrs"),
+            envir = environment()
+        )
+        parallel::clusterEvalQ(cl, {
+            library(GenomicRanges)
+            library(GenomeInfoDb)
+            library(jsonlite)
+        })
+
+        batch_results <- parallel::parLapply(cl, seq_len(n_batches), fetch_batch)
+        sequences <- unlist(batch_results)
+    } else {
+        sequences <- character(n_dmrs)
+        for (i in seq_len(n_batches)) {
+            batch_seqs <- fetch_batch(i)
+            start_idx <- (i - 1) * batch_size + 1
+            end_idx <- min(i * batch_size, n_dmrs)
+            sequences[start_idx:end_idx] <- batch_seqs
+
+            if (n_dmrs > 100 && i %% 10 == 0) {
+                .log_info(sprintf("  Progress: %d/%d batches completed", i, n_batches), level = 2)
+            }
         }
     }
 
     sequences
+}
+
+#' @keywords internal
+#' @noRd
+.annotateDMRsWithGeneFeature <- function(dmrs, features, orgdb_pkg,
+                                         feature_type = c("promoter", "gene_body")) {
+    feature_type <- match.arg(feature_type)
+    annotations <- rep(NA_character_, length(dmrs))
+    if (length(dmrs) == 0L || length(features) == 0L) {
+        return(annotations)
+    }
+
+    overlaps <- GenomicRanges::findOverlaps(dmrs, features)
+    if (length(overlaps) == 0L) {
+        return(annotations)
+    }
+
+    if (!isNamespaceLoaded(orgdb_pkg)) {
+        loadNamespace(orgdb_pkg)
+    }
+    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
+    feature_hits <- S4Vectors::subjectHits(overlaps)
+    entrez_ids <- switch(feature_type,
+        promoter = as.character(S4Vectors::mcols(features[feature_hits])$name),
+        gene_body = as.character(names(features)[feature_hits])
+    )
+    valid_entrez_ids <- unique(entrez_ids[!is.na(entrez_ids) & nzchar(entrez_ids)])
+    if (length(valid_entrez_ids) == 0L) {
+        return(annotations)
+    }
+
+    symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
+        keys = valid_entrez_ids,
+        column = "SYMBOL",
+        keytype = "ENTREZID",
+        multiVals = "first"
+    ))
+    names(symbols) <- valid_entrez_ids
+    symbols_by_dmr <- split(
+        symbols[entrez_ids],
+        S4Vectors::queryHits(overlaps)
+    )
+    collapsed_symbols <- vapply(symbols_by_dmr, function(x) {
+        genes_vec <- unique(stats::na.omit(as.character(x)))
+        if (length(genes_vec) == 0L) {
+            return(NA_character_)
+        }
+        paste(genes_vec, collapse = ",")
+    }, character(1))
+    annotations[as.integer(names(collapsed_symbols))] <- unname(collapsed_symbols)
+    annotations
 }
 
 #' Annotate DMRs with Gene Information
@@ -1715,11 +2067,13 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #' gene bodies overlap with the DMR coordinates.
 #'
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation. (default: "hg19")
+#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
 #' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
 #'   define promoter region (default: 2000)
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
 #'   to define promoter region (default: 200)
+#' @param njobs Integer. Number of parallel jobs used to annotate promoter and
+#'   gene-body overlaps (default: `getOption("DMRsegal.njobs")`)
 #'
 #' @return The input Dataframe/GRanges object with additional metadata columns:
 #' \itemize{
@@ -1728,7 +2082,8 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #' }
 #'
 #' @details
-#' The function uses genome-appropriate TxDb packages.
+#' The function uses genome-appropriate TxDb packages. For `hs1`, DMRsegal
+#' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
 #' Gene symbols are retrieved from the appropriate org.*.eg.db package.
 #' Multiple overlapping genes are concatenated with commas.
 #'
@@ -1739,50 +2094,38 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 #'     start = c(1000000, 2000000),
 #'     end = c(1001000, 2001000)
 #' )
-#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg19")
+#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
 #'
 #' # Use custom promoter definition
 #' dmrs_annotated <- annotateDMRsWithGenes(
 #'     dmrs,
 #'     genome = "hg38",
 #'     promoter_upstream = 5000,
-#'     promoter_downstream = 1000
+#'     promoter_downstream = 1000,
+#'     njobs = 2
 #' )
 #'
 #' @export
-annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
+annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
-                                  promoter_downstream = 200) {
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", file.path(
-        path.expand("~"),
-        ".cache", "R", "DMRsegal", "annotations"
-    ))
+                                  promoter_downstream = 200,
+                                  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    )
     dmrs_df_provided <- is.data.frame(dmrs)
-    if (dmrs_df_provided) {
-        dmrs <- GenomicRanges::makeGRangesFromDataFrame(dmrs,
-            keep.extra.columns = TRUE,
-            seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
-            na.rm = TRUE
-        )
-    } else {
-        if (!is(dmrs, "GRanges")) {
-            stop("dmrs must be a data.frame or GRanges object")
-        }
-        # if the genome info in the dmrs is different from the specified genome, update the locations with liftOver
-        dmrs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(dmrs))[[1]]
-        if (dmrs_genome != genome) {
-            dmrs <- .liftOverFromGenomeToGenome(dmrs, dmrs_genome, genome)
-        }
-    }
+    dmrs <- convertToGRanges(dmrs, genome)
 
+    target_genome <- tolower(genome)
+    annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
     supported_organisms <- Organism.dplyr::supportedOrganisms()
-    # find row matching the genome
-    matched_row <- supported_organisms[grepl(tolower(genome), tolower(supported_organisms$TxDb)), , drop = FALSE]
-    if (length(matched_row) == 0) {
+    matched_row <- supported_organisms[grepl(annotation_source_genome, tolower(supported_organisms$TxDb)), , drop = FALSE]
+    if (nrow(matched_row) == 0) {
         stop("Unsupported genome: ", genome)
     }
-    txdb_pkg <- matched_row$TxDb
-    orgdb_pkg <- matched_row$OrgDb
+    txdb_pkg <- matched_row$TxDb[1]
+    orgdb_pkg <- matched_row$OrgDb[1]
 
     # Load required packages
     if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
@@ -1797,6 +2140,13 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             install.packages("BiocManager")
         }
         BiocManager::install(orgdb_pkg)
+    }
+    if (annotation_source_genome != target_genome) {
+        .log_info(
+            "Using ", annotation_source_genome,
+            " gene models lifted to ", target_genome, " for annotation.",
+            level = 2
+        )
     }
     .log_step("Loading gene annotations for ", genome, "...", level = 2)
 
@@ -1820,7 +2170,28 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             # get genes only within standard chromosomes
             std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::seqinfo(txdb))
             genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% std_chroms]
-            saveRDS(genes, genes_file)
+            if (annotation_source_genome != target_genome) {
+                genes <- .liftOverFromGenomeToGenome(genes, annotation_source_genome, target_genome)
+                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
+                genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% target_std_chroms]
+            }
+            tryCatch(
+                {
+                    saveRDS(genes, genes_file)
+                },
+                warning = function(w) {
+                    .log_warn(
+                        "Could not write annotation cache file '", genes_file,
+                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+                    )
+                },
+                error = function(e) {
+                    .log_warn(
+                        "Could not write annotation cache file '", genes_file,
+                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+                    )
+                }
+            )
         }
         promoters_file <- file.path(cache_dir, paste0("promoters_", genome, ".rds"))
         if (file.exists(promoters_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
@@ -1831,129 +2202,104 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg19",
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
             promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
             promoters <- stack(promoters)
-            saveRDS(promoters, promoters_file)
+            if (annotation_source_genome != target_genome) {
+                promoters <- .liftOverFromGenomeToGenome(promoters, annotation_source_genome, target_genome)
+                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
+                promoters <- promoters[as.character(GenomeInfoDb::seqnames(promoters)) %in% target_std_chroms]
+            }
+            tryCatch(
+                {
+                    saveRDS(promoters, promoters_file)
+                },
+                warning = function(w) {
+                    .log_warn(
+                        "Could not write annotation cache file '", promoters_file,
+                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
+                    )
+                },
+                error = function(e) {
+                    .log_warn(
+                        "Could not write annotation cache file '", promoters_file,
+                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
+                    )
+                }
+            )
         }
     })
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
     .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
-
-    # Find overlaps
-    promoter_overlaps <- GenomicRanges::findOverlaps(dmrs, promoters)
-    gene_body_overlaps <- GenomicRanges::findOverlaps(dmrs, genes)
-
-    # Load org.db namespace
-    if (!isNamespaceLoaded(orgdb_pkg)) {
-        loadNamespace(orgdb_pkg)
-    }
-
-    # Get gene symbols - the main object has the same name as the package
-    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
-
-    # Extract Entrez IDs
-    promoter_regions <- promoters[S4Vectors::subjectHits(promoter_overlaps)]
-
-    promoter_entrez <- as.character(mcols(promoter_regions)$name)
-    gene_body_entrez <- names(genes)[S4Vectors::subjectHits(gene_body_overlaps)]
-
-    # Initialize annotation columns
-    n_dmrs <- length(dmrs)
-    dmrs$in_promoter_of <- rep(NA_character_, n_dmrs)
-    dmrs$in_gene_body_of <- rep(NA_character_, n_dmrs)
     .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
-    # Convert Entrez IDs to symbols only if there are overlaps
-    promoter_symbols <- character(0)
-    if (length(promoter_entrez) > 0 && any(!is.na(promoter_entrez))) {
-        valid_promoter_entrez <- promoter_entrez[!is.na(promoter_entrez) & promoter_entrez != ""]
-        if (length(valid_promoter_entrez) > 0) {
-            promoter_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
-                keys = valid_promoter_entrez,
-                column = "SYMBOL",
-                keytype = "ENTREZID",
-                multiVals = "first"
-            ))
-            names(promoter_symbols) <- valid_promoter_entrez
-        }
+    annotation_specs <- list(
+        list(
+            column = "in_promoter_of",
+            features = promoters,
+            feature_type = "promoter"
+        ),
+        list(
+            column = "in_gene_body_of",
+            features = genes,
+            feature_type = "gene_body"
+        )
+    )
+    if (!is.null(njobs) && is.finite(njobs) && as.integer(njobs) > 1L) {
+        withr::local_options(list(DMRsegal.njobs = as.integer(njobs)))
+        .setupParallel()
+        on.exit(.finalizeParallel(), add = TRUE)
+        annotation_results <- future.apply::future_lapply(
+            annotation_specs,
+            function(spec) {
+                list(
+                    column = spec$column,
+                    values = .annotateDMRsWithGeneFeature(
+                        dmrs = dmrs,
+                        features = spec$features,
+                        orgdb_pkg = orgdb_pkg,
+                        feature_type = spec$feature_type
+                    )
+                )
+            },
+            future.seed = TRUE,
+            future.stdout = NA,
+            future.globals = c(".annotateDMRsWithGeneFeature", "dmrs", "orgdb_pkg")
+        )
+    } else {
+        annotation_results <- lapply(annotation_specs, function(spec) {
+            list(
+                column = spec$column,
+                values = .annotateDMRsWithGeneFeature(
+                    dmrs = dmrs,
+                    features = spec$features,
+                    orgdb_pkg = orgdb_pkg,
+                    feature_type = spec$feature_type
+                )
+            )
+        })
     }
-
-    gene_body_symbols <- character(0)
-    if (length(gene_body_entrez) > 0 && any(!is.na(gene_body_entrez))) {
-        valid_gene_body_entrez <- gene_body_entrez[!is.na(gene_body_entrez) & gene_body_entrez != ""]
-        if (length(valid_gene_body_entrez) > 0) {
-            gene_body_symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
-                keys = valid_gene_body_entrez,
-                column = "SYMBOL",
-                keytype = "ENTREZID",
-                multiVals = "first"
-            ))
-            names(gene_body_symbols) <- valid_gene_body_entrez
-        }
+    for (annotation_result in annotation_results) {
+        S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
     .log_success("Gene symbols mapped", level = 2)
-    # Aggregate gene symbols for each DMR
-    if (length(promoter_overlaps) > 0 && length(promoter_symbols) > 0) {
-        promoter_entrez_char <- as.character(promoter_entrez)
-        promoter_symbols_mapped <- promoter_symbols[promoter_entrez_char]
-        promoter_by_dmr <- split(
-            promoter_symbols_mapped,
-            S4Vectors::queryHits(promoter_overlaps)
-        )
-
-        for (i in names(promoter_by_dmr)) {
-            idx <- as.integer(i)
-            genes_vec <- unique(na.omit(promoter_by_dmr[[i]]))
-            if (length(genes_vec) > 0) {
-                dmrs$in_promoter_of[idx] <- paste(genes_vec, collapse = ",")
-            }
-        }
-    }
-
-    if (length(gene_body_overlaps) > 0 && length(gene_body_symbols) > 0) {
-        gene_body_entrez_char <- as.character(gene_body_entrez)
-        gene_body_symbols_mapped <- gene_body_symbols[gene_body_entrez_char]
-        gene_body_by_dmr <- split(
-            gene_body_symbols_mapped,
-            S4Vectors::queryHits(gene_body_overlaps)
-        )
-
-        for (i in names(gene_body_by_dmr)) {
-            idx <- as.integer(i)
-            genes_vec <- unique(na.omit(gene_body_by_dmr[[i]]))
-            if (length(genes_vec) > 0) {
-                dmrs$in_gene_body_of[idx] <- paste(genes_vec, collapse = ",")
-            }
-        }
-    }
     if (dmrs_df_provided) {
-        dmrs <- as.data.frame(dmrs)
-        colnames(dmrs)[colnames(dmrs) == "seqnames"] <- "chr"
+        dmrs <- convertToDataFrame(dmrs)
     }
-    return(dmrs)
+    dmrs
 }
-
-idToGenomicLocsIndex <- function(cpg_ids, genomic_locs) {
-    if (bigmemory::is.big.matrix(genomic_locs)) {
-        numeric_mask <- !is.na(as.numeric(cpg_ids))
-        counts <- sum(numeric_mask)
-        if (counts != length(cpg_ids) && counts != 0) {
-            stop("When using big.matrix for genomic_locs, cpg_ids must be all numeric or all 'chr:pos' IDs. Mixed types are not allowed. Provided cpg_ids have ", counts, " numeric IDs and ", length(cpg_ids) - counts, " non-numeric IDs.")
-        }
-        is_numeric <- counts == length(cpg_ids)
-
-        if (is_numeric) {
-            indices <- as.numeric(cpg_ids)
-        } else {
-            indices <- match(cpg_ids, rownames(genomic_locs))
-        }
-    } else {
-        indices <- match(cpg_ids, rownames(genomic_locs))
-    }
-    indices
-}
-
 
 convertToGRanges <- function(obj, genome) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
+        obj <- .decodeSerializedOutputColumns(obj)
+        # If the chr prefix is missing, add it (e.g. "1" -> "chr1")
+        if (!any(grepl("^chr", obj[[1]]))) {
+            obj[[1]] <- paste0("chr", obj[[1]])
+            obj$chr_prefix_added <- TRUE
+        }
+        # if the chromosome appears in the form of chr1:1230, save the original location in a separate column and parse the location into chr, start, end
+        if (any(grepl(":", obj[[1]]))) {
+            obj$original_location <- obj[[1]]
+            loc_split <- strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
+            obj[[1]] <- sapply(loc_split, function(x) x[1])
+        }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
@@ -1975,6 +2321,403 @@ convertToGRanges <- function(obj, genome) {
         }
     }
     obj
+}
+
+.serializedOutputPrefix <- "DMRsegal:serialized_base64:"
+
+#' @keywords internal
+#' @noRd
+.serializeOutputValue <- function(x) {
+    encoded <- jsonlite::base64_enc(serialize(x, connection = NULL, version = 2))
+    encoded <- gsub("[\r\n]", "", encoded)
+    paste0(
+        .serializedOutputPrefix,
+        encoded
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.isSerializedOutputColumn <- function(x) {
+    is.character(x) &&
+        length(x) > 0L &&
+        any(!is.na(x) & startsWith(x, .serializedOutputPrefix)) &&
+        all(is.na(x) | startsWith(x, .serializedOutputPrefix))
+}
+
+#' @keywords internal
+#' @noRd
+.encodeNonTabularColumns <- function(df) {
+    stopifnot(is.data.frame(df))
+
+    encoded_columns <- names(df)[vapply(df, is.list, logical(1))]
+    if (length(encoded_columns) == 0L) {
+        return(list(data = df, encoded_columns = character(0)))
+    }
+
+    encoded_df <- df
+    for (col in encoded_columns) {
+        encoded_df[[col]] <- vapply(encoded_df[[col]], .serializeOutputValue, character(1))
+    }
+
+    list(data = encoded_df, encoded_columns = encoded_columns)
+}
+
+#' @keywords internal
+#' @noRd
+.decodeSerializedOutputColumns <- function(df) {
+    stopifnot(is.data.frame(df))
+
+    serialized_columns <- names(df)[vapply(df, .isSerializedOutputColumn, logical(1))]
+    if (length(serialized_columns) == 0L) {
+        return(df)
+    }
+
+    decoded_df <- df
+    for (col in serialized_columns) {
+        decoded_df[[col]] <- lapply(decoded_df[[col]], function(x) {
+            if (is.na(x) || !startsWith(x, .serializedOutputPrefix)) {
+                return(x)
+            }
+
+            payload <- sub(
+                paste0("^", .serializedOutputPrefix),
+                "",
+                x
+            )
+            unserialize(jsonlite::base64_dec(payload))
+        })
+    }
+
+    decoded_df
+}
+
+convertToDataFrame <- function(gr) {
+    if (is.data.frame(gr)) {
+        return(gr)
+    }
+    chr_prefix_added <- FALSE
+    if ("chr_prefix_added" %in% names(mcols(gr))) {
+        chr_prefix_added <- TRUE
+    }
+    df <- as.data.frame(gr, stringsAsFactors = FALSE)
+    colnames(df)[colnames(df) == "seqnames"] <- "chr"
+    if ("original_location" %in% colnames(df)) {
+        df <- df[, c("original_location", setdiff(colnames(df), c("chr", "original_location")))]
+        colnames(df)[colnames(df) == "original_location"] <- "chr"
+    }
+    if (chr_prefix_added) {
+        df$chr <- sub("^chr", "", df$chr)
+    }
+    df
+}
+
+.already_logged_dir <- tempdir()
+.already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
+#' @keywords internal
+#' @noRd
+.cleanupParallelState <- function() {
+    # Reset plan first so current backend gets torn down by future.
+    tryCatch(
+        future::plan(future::sequential),
+        error = function(e) invisible(NULL)
+    )
+
+    # Optional deep cleanup for stale multisession clusters.
+    # Disabled by default because stopping dead clusters may block.
+    if (isTRUE(getOption("DMRsegal.force_cluster_cleanup", FALSE))) {
+        reg <- tryCatch(
+            getFromNamespace("clusterRegistry", "future"),
+            error = function(e) NULL
+        )
+        if (is.list(reg) && is.function(reg$stopCluster)) {
+            timeout_sec <- getOption("DMRsegal.cluster_cleanup_timeout_sec", 2)
+            # Keep cleanup bounded so we don't stall before any progress is shown.
+            setTimeLimit(elapsed = timeout_sec, transient = TRUE)
+            on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
+            tryCatch(
+                reg$stopCluster(),
+                error = function(e) invisible(NULL)
+            )
+        }
+    }
+
+    gc(verbose = FALSE)
+    invisible()
+}
+
+#' @keywords internal
+#' @noRd
+.setupParallel <- function() {
+    if (!dir.exists(.already_logged_dir)) {
+        dir.create(.already_logged_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    njobs <- getOption("DMRsegal.njobs")
+    if (njobs < 0) {
+        njobs <- future::availableCores() + njobs
+    }
+    if (njobs > 1) {
+        if (future::availableCores("multicore") > 1L) {
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
+            future::plan(future::multicore, workers = njobs)
+        } else {
+            if (!file.exists(.already_logged_file)) {
+                .log_info("Using multisession parallelization with ", njobs, " workers", level = 2)
+                writeLines("TRUE", con = .already_logged_file)
+            }
+            future::plan(future::multisession, workers = njobs)
+        }
+        withr::defer(future::plan(future::sequential), envir = parent.frame())
+    } else {
+        if (!file.exists(.already_logged_file)) {
+            .log_info("Using sequential processing (njobs=1)", level = 2)
+            writeLines("TRUE", con = .already_logged_file)
+        }
+        future::plan(future::sequential)
+    }
+}
+
+#' @keywords internal
+#' @noRd
+.finalizeParallel <- function() {
+    future::plan(future::sequential)
+}
+
+#' @keywords internal
+#' @noRd
+.calculateBetaStats <- function(beta_values, pheno, aggfun) {
+    is_case <- pheno[, "__casecontrol__"] == 1
+    cases <- beta_values[, is_case, drop = FALSE]
+    cases <- as.matrix(cases, ncol = ncol(cases))
+
+    if (identical(aggfun, mean)) {
+        cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        cases_beta <- matrixStats::rowMedians(cases, na.rm = TRUE)
+    } else {
+        cases_beta <- apply(cases, 1, aggfun, na.rm = TRUE)
+    }
+    cases_sd <- matrixStats::rowSds(cases, na.rm = TRUE)
+    cases_num <- matrixStats::rowCounts(!is.na(cases))
+    rm(cases)
+
+    is_ctrl <- !is_case
+    ctrl <- beta_values[, is_ctrl, drop = FALSE]
+    ctrl <- as.matrix(ctrl, ncol = ncol(ctrl))
+    if (identical(aggfun, mean)) {
+        controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        controls_beta <- matrixStats::rowMedians(ctrl, na.rm = TRUE)
+    } else {
+        controls_beta <- apply(ctrl, 1, aggfun, na.rm = TRUE)
+    }
+    controls_sd <- matrixStats::rowSds(ctrl, na.rm = TRUE)
+    controls_num <- matrixStats::rowCounts(!is.na(ctrl))
+    rm(ctrl)
+
+    list(
+        cases_beta = cases_beta,
+        controls_beta = controls_beta,
+        cases_beta_sd = cases_sd,
+        controls_beta_sd = controls_sd,
+        cases_num = cases_num,
+        controls_num = controls_num
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.resolveAdaptiveMinCpgDeltaBeta <- function(seeds_beta, pheno, aggfun, base_threshold = 0.1) {
+    if (!is.finite(base_threshold)) {
+        return(base_threshold)
+    }
+    case_mask <- pheno[, "__casecontrol__"] == 1
+    ctrl_mask <- pheno[, "__casecontrol__"] == 0
+    if (sum(case_mask, na.rm = TRUE) == 0L || sum(ctrl_mask, na.rm = TRUE) == 0L) {
+        return(base_threshold)
+    }
+    beta_mat <- as.matrix(seeds_beta)
+    max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
+    max_rows <- max(1L, max_rows)
+    if (nrow(beta_mat) > max_rows) {
+        sel <- unique(as.integer(round(seq(1, nrow(beta_mat), length.out = max_rows))))
+        beta_mat <- beta_mat[sel, , drop = FALSE]
+    }
+
+    if (identical(aggfun, mean)) {
+        cases <- matrixStats::rowMeans2(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
+        ctrls <- matrixStats::rowMeans2(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
+    } else if (identical(aggfun, stats::median)) {
+        cases <- matrixStats::rowMedians(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
+        ctrls <- matrixStats::rowMedians(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
+    } else {
+        cases <- apply(beta_mat[, case_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
+        ctrls <- apply(beta_mat[, ctrl_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
+    }
+    deltas <- abs(cases - ctrls)
+    deltas <- deltas[is.finite(deltas)]
+    if (length(deltas) == 0L) {
+        return(base_threshold)
+    }
+    qprob <- getOption("DMRsegal.adaptive_min_cpg_delta_beta_quantile", 0.25)
+    adaptive <- as.numeric(stats::quantile(deltas, probs = qprob, na.rm = TRUE, names = FALSE, type = 7))
+    if (!is.finite(adaptive)) {
+        return(base_threshold)
+    }
+    max(base_threshold, adaptive)
+}
+
+#' @keywords internal
+#' @noRd
+.winsorizeVector <- function(x, probs = c(0.05, 0.95)) {
+    if (!is.numeric(x) || length(x) == 0L) {
+        return(x)
+    }
+    q <- stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE, type = 8)
+    x[x < q[1]] <- q[1]
+    x[x > q[2]] <- q[2]
+    x
+}
+
+#' @keywords internal
+#' @noRd
+.momentStats <- function(x) {
+    if (!is.numeric(x) || length(x) < 3L) {
+        return(c(skew = NA_real_, excess_kurtosis = NA_real_))
+    }
+    s <- stats::sd(x)
+    if (!is.finite(s) || s <= 1e-12) {
+        return(c(skew = 0, excess_kurtosis = 0))
+    }
+    z <- (x - mean(x)) / s
+    c(
+        skew = mean(z^3),
+        excess_kurtosis = mean(z^4) - 3
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
+    min_nvalid_q10 <- getOption("DMRsegal.auto_pval_min_nvalid_q10", 10)
+    corr_delta_threshold <- getOption("DMRsegal.auto_pval_corr_delta_threshold", 0.10)
+    skew_threshold <- getOption("DMRsegal.auto_pval_skew_threshold", 2)
+    excess_kurtosis_threshold <- getOption("DMRsegal.auto_pval_excess_kurtosis_threshold", 7)
+    pilot_max_pairs <- as.integer(getOption("DMRsegal.auto_pval_pilot_pairs", 2000L))
+    pilot_max_pairs <- max(1L, pilot_max_pairs)
+
+    q10_n_valid <- if (length(n_valid) > 0L) {
+        as.numeric(stats::quantile(n_valid, probs = 0.10, na.rm = TRUE, names = FALSE, type = 7))
+    } else {
+        NA_real_
+    }
+    if (!is.finite(q10_n_valid) || q10_n_valid < min_nvalid_q10) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "low effective sample size"
+        ))
+    }
+
+    valid_idx <- which(n_valid >= 3L)
+    if (length(valid_idx) == 0L) {
+        return(list(
+            use_parametric = FALSE,
+            q10_n_valid = q10_n_valid,
+            median_abs_delta_spearman = NA_real_,
+            median_abs_delta_winsorized = NA_real_,
+            median_abs_skew = NA_real_,
+            median_excess_kurtosis = NA_real_,
+            n_pairs_used = 0L,
+            reason = "no valid pairs for diagnostics"
+        ))
+    }
+
+    if (length(valid_idx) > pilot_max_pairs) {
+        sel_pos <- unique(as.integer(round(seq(1, length(valid_idx), length.out = pilot_max_pairs))))
+        valid_idx <- valid_idx[sel_pos]
+    }
+
+    delta_spearman <- rep(NA_real_, length(valid_idx))
+    delta_winsorized <- rep(NA_real_, length(valid_idx))
+    abs_skew <- rep(NA_real_, 2L * length(valid_idx))
+    excess_kurtosis <- rep(NA_real_, 2L * length(valid_idx))
+    k <- 0L
+    for (i in seq_along(valid_idx)) {
+        r <- valid_idx[i]
+        xv <- x_mat[r, ]
+        yv <- y_mat[r, ]
+        ok <- !is.na(xv) & !is.na(yv)
+        if (sum(ok) < 3L) {
+            next
+        }
+        xv <- xv[ok]
+        yv <- yv[ok]
+        r_pearson <- suppressWarnings(stats::cor(xv, yv, method = "pearson"))
+        r_spearman <- suppressWarnings(stats::cor(xv, yv, method = "spearman"))
+        xw <- .winsorizeVector(xv)
+        yw <- .winsorizeVector(yv)
+        r_winsor <- suppressWarnings(stats::cor(xw, yw, method = "pearson"))
+        if (is.finite(r_pearson) && is.finite(r_spearman)) {
+            delta_spearman[i] <- abs(r_pearson - r_spearman)
+        }
+        if (is.finite(r_pearson) && is.finite(r_winsor)) {
+            delta_winsorized[i] <- abs(r_pearson - r_winsor)
+        }
+        mx <- .momentStats(xv)
+        my <- .momentStats(yv)
+        k <- k + 1L
+        abs_skew[(2L * k) - 1L] <- abs(mx["skew"])
+        abs_skew[2L * k] <- abs(my["skew"])
+        excess_kurtosis[(2L * k) - 1L] <- mx["excess_kurtosis"]
+        excess_kurtosis[2L * k] <- my["excess_kurtosis"]
+    }
+
+    median_abs_delta_spearman <- median(delta_spearman, na.rm = TRUE)
+    median_abs_delta_winsorized <- median(delta_winsorized, na.rm = TRUE)
+    median_abs_skew <- median(abs_skew, na.rm = TRUE)
+    median_excess_kurtosis <- median(excess_kurtosis, na.rm = TRUE)
+    if (!is.finite(median_abs_delta_spearman)) {
+        median_abs_delta_spearman <- Inf
+    }
+    if (!is.finite(median_abs_delta_winsorized)) {
+        median_abs_delta_winsorized <- Inf
+    }
+    if (!is.finite(median_abs_skew)) {
+        median_abs_skew <- Inf
+    }
+    if (!is.finite(median_excess_kurtosis)) {
+        median_excess_kurtosis <- Inf
+    }
+
+    use_parametric <- (median_abs_delta_spearman <= corr_delta_threshold) &&
+        (median_abs_delta_winsorized <= corr_delta_threshold) &&
+        (median_abs_skew <= skew_threshold) &&
+        (median_excess_kurtosis <= excess_kurtosis_threshold)
+    reason <- if (use_parametric) {
+        "assumptions look acceptable"
+    } else {
+        "assumptions not met"
+    }
+    list(
+        use_parametric = use_parametric,
+        q10_n_valid = q10_n_valid,
+        median_abs_delta_spearman = median_abs_delta_spearman,
+        median_abs_delta_winsorized = median_abs_delta_winsorized,
+        median_abs_skew = median_abs_skew,
+        median_excess_kurtosis = median_excess_kurtosis,
+        n_pairs_used = k,
+        reason = reason
+    )
 }
 
 #' Load DMRsegal Data Resources
@@ -2029,23 +2772,26 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
             "Available resources: ", paste(available_resources, collapse = ", ")
         )
     }
-    
+
     # First, try using data() to load the resource
     # This works even during covr::package_coverage()
     verbose_setting <- getOption("DMRsegal.verbose", 1)
-    tryCatch({
-        # Suppress data() output
-        invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
-        if (exists(resource, inherits = FALSE)) {
-            if (verbose_setting >= 2) {
-                .log_info("Loaded ", resource, " using data()", level = 2)
+    tryCatch(
+        {
+            # Suppress data() output
+            invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
+            if (exists(resource, inherits = FALSE)) {
+                if (verbose_setting >= 2) {
+                    .log_info("Loaded ", resource, " using data()", level = 2)
+                }
+                return(get(resource, inherits = FALSE))
             }
-            return(get(resource, inherits = FALSE))
+        },
+        error = function(e) {
+            # Silently continue to next method
         }
-    }, error = function(e) {
-        # Silently continue to next method
-    })
-    
+    )
+
     # Second, check if the resource exists in the package namespace (lazy loaded)
     if (exists(resource, envir = asNamespace("DMRsegal"), inherits = FALSE)) {
         if (verbose_setting >= 2) {
@@ -2053,7 +2799,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         }
         return(get(resource, envir = asNamespace("DMRsegal"), inherits = FALSE))
     }
-    
+
     # Third, try to load from data file directly
     data_file <- paste0(resource, ".rda")
     data_path <- system.file("data", data_file, package = "DMRsegal", mustWork = FALSE)
@@ -2067,47 +2813,66 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
             return(get(resource, envir = env))
         }
     }
-    
+
     # Fourth, try ExperimentHub if enabled
     if (use_experiment_hub) {
         if (verbose_setting >= 2) {
             .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
         }
-        
+
         if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
             if (verbose_setting >= 2) {
                 .log_warn("ExperimentHub package not available. Install with: BiocManager::install('ExperimentHub')")
             }
         } else {
-            tryCatch({
-                cache <- ExperimentHub::getExperimentHubOption("CACHE")
-                dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-                eh <- ExperimentHub::ExperimentHub()
-                # Query for DMRsegaldata resources
-                dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
-                # Find the specific resource
-                resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
-                if (length(resource_match) > 0) {
-                    if (verbose_setting >= 2) {
-                        .log_success("Found resource in ExperimentHub", level = 2)
+            tryCatch(
+                {
+                    cache <- ExperimentHub::getExperimentHubOption("CACHE")
+                    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+                    eh <- ExperimentHub::ExperimentHub()
+                    # Query for DMRsegaldata resources
+                    dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
+                    # Find the specific resource
+                    resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
+                    if (length(resource_match) > 0) {
+                        if (verbose_setting >= 2) {
+                            .log_success("Found resource in ExperimentHub", level = 2)
+                        }
+                        return(resource_match[[1]])
+                    } else {
+                        if (verbose_setting >= 2) {
+                            .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                        }
                     }
-                    return(resource_match[[1]])
-                } else {
+                },
+                error = function(e) {
                     if (verbose_setting >= 2) {
-                        .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                        .log_warn("Failed to query ExperimentHub: ", e$message)
                     }
                 }
-            }, error = function(e) {
-                if (verbose_setting >= 2) {
-                    .log_warn("Failed to query ExperimentHub: ", e$message)
-                }
-            })
+            )
         }
     }
-    
+
     # If we get here, the resource was not found
     stop(
         "Resource '", resource, "' not found in package or ExperimentHub.\n",
         "Available resources: ", paste(available_resources, collapse = ", ")
     )
+}
+
+#' @export
+loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
+    ret <- loadExampleInputData(resource, use_experiment_hub = use_experiment_hub)
+    if (resource == "beta") {
+        getBetaHandler(ret, array = "450k")$getBeta(chr = c("chr5", "chr11"))
+    } else if (resource == "pheno") {
+        ret
+    } else if (resource == "dmps") {
+        locs <- getSortedGenomicLocs(array = "450k")
+        locs <- locs[locs$chr %in% c("chr5", "chr11"), ]
+        ret[rownames(ret) %in% rownames(locs), , drop = FALSE]
+    } else if (resource == "array_type") {
+        ret
+    }
 }

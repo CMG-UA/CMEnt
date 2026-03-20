@@ -1,0 +1,61 @@
+/* DMRsegal Viewer Custom Styles */
+
+.value-box {
+    min-height: 100px;
+}
+
+.card {
+    margin-bottom: 1rem;
+}
+
+.plot-output {
+    min-height: 400px;
+}
+
+.nav-link.active {
+    font-weight: 600;
+}
+
+.btn-primary {
+    margin-top: 0.5rem;
+}
+
+.dataTables_wrapper {
+    font-size: 0.9rem;
+}
+
+.table td, .table th {
+    vertical-align: middle;
+}
+
+.dmrsegal-viewer-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding-right: 0.25rem;
+}
+
+.dmrsegal-viewer-github {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--bs-navbar-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.dmrsegal-viewer-github:hover,
+.dmrsegal-viewer-github:focus {
+    color: var(--bs-navbar-hover-color);
+}
+
+.dmrsegal-viewer-logo {
+    display: block;
+    height: 42px;
+    width: auto;
+}
+
+.dmrsegal-viewer-wordmark {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
