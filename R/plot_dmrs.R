@@ -1104,10 +1104,22 @@ plotDMR <- function(dmrs,
                     output_file = NULL,
                     width = 8,
                     height = 12) {
+    input_dmrs_n <- if (inherits(dmrs, "GRanges")) {
+        length(dmrs)
+    } else if (is.data.frame(dmrs)) {
+        nrow(dmrs)
+    } else {
+        NA_integer_
+    }
+
     if (!is.null(output_file)) {
         if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
             stop("Output file must have a .pdf extension.")
         }
+    }
+    if (length(dmr_index) != 1 || is.na(dmr_index) || dmr_index < 1 ||
+        (!is.na(input_dmrs_n) && dmr_index > input_dmrs_n)) {
+        stop("dmr_index (", dmr_index, ") is out of bounds. There are only ", input_dmrs_n, " DMRs available.")
     }
     dmrs <- convertToGRanges(dmrs, genome)
     if (!is.null(array)) {
@@ -1115,23 +1127,6 @@ plotDMR <- function(dmrs,
             array <- array[[1]]
         }
         array <- strex::match_arg(array, ignore_case = TRUE)
-    }
-
-    old_showtext_opts <- showtext::showtext_opts()
-    old_showtext_auto <- .isShowtextAutoEnabled()
-    on.exit({
-        showtext::showtext_opts(old_showtext_opts)
-        if (!old_showtext_auto) {
-            showtext::showtext_auto(enable = FALSE)
-        }
-    }, add = TRUE)
-    showtext::showtext_auto(enable = TRUE)
-    showtext::showtext_opts(dpi = if (!is.null(output_file) || .Device == "null device") 300 else .resolveShowtextDpi(300))
-    if (!is.null(output_file)) {
-        grDevices::cairo_pdf(output_file, width = width, height = height)
-    }
-    if (.Device == "null device") {
-        grDevices::cairo_pdf(width = width, height = height)
     }
 
     # Create BetaHandler if a file path or matrix was provided
@@ -1174,7 +1169,24 @@ plotDMR <- function(dmrs,
         }
     }
 
-    .log_info(sprintf("Generating structure plot...", dmr_index), level = 3)
+    old_showtext_opts <- showtext::showtext_opts()
+    old_showtext_auto <- .isShowtextAutoEnabled()
+    on.exit({
+        showtext::showtext_opts(old_showtext_opts)
+        if (!old_showtext_auto) {
+            showtext::showtext_auto(enable = FALSE)
+        }
+    }, add = TRUE)
+    showtext::showtext_auto(enable = TRUE)
+    showtext::showtext_opts(dpi = if (!is.null(output_file) || .Device == "null device") 300 else .resolveShowtextDpi(300))
+    if (!is.null(output_file)) {
+        grDevices::cairo_pdf(output_file, width = width, height = height)
+    }
+    if (.Device == "null device") {
+        grDevices::cairo_pdf(width = width, height = height)
+    }
+
+    .log_info("Generating structure plot...", level = 3)
 
     # Create structure plot
     ret <- .plotDMRStructure(

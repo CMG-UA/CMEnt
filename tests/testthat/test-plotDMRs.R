@@ -251,20 +251,23 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
-    pheno_file <- loadExampleInputData("pheno")
-    beta_file <- loadExampleInputData("beta")
+    pheno <- loadExampleInputData("pheno")
+    beta <- loadExampleInputData("beta")
 
-    if (!file.exists(pheno_file) || !file.exists(beta_file)) {
-        pheno_file <- "../../data/pheno.rda"
-        beta_file <- "../../data/beta.rda"
+    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+        pheno_env <- new.env(parent = emptyenv())
+        load(pheno, envir = pheno_env)
+        pheno <- pheno_env$pheno
+    }
+    if (is.character(beta) && length(beta) == 1 && file.exists(beta)) {
+        beta_env <- new.env(parent = emptyenv())
+        load(beta, envir = beta_env)
+        beta <- beta_env$beta
     }
 
-    if (!file.exists(pheno_file) || !file.exists(beta_file)) {
-        skip("Data files not available")
+    if (!is.data.frame(pheno) || !(is.matrix(beta) || is.data.frame(beta))) {
+        skip("Example beta/pheno data not available in a plottable format")
     }
-
-    load(pheno_file)
-    load(beta_file)
 
     p <- suppressWarnings(plotDMR(
         dmrs = dmrs,

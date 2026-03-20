@@ -27,8 +27,8 @@
     is_gb <- grepl("g", x, ignore.case = TRUE)
     x <- sub("[k|m|g]*b?p?$", "", x, ignore.case = TRUE)
     e <- try(x <- as.numeric(x), silent = TRUE)
-    if (inherits(e, "try-error") || !is.finite(x) || x < 1) {
-        stop("Coordinate must be a finite numeric value >= 1. Invalid coordinate: '", x, "'")
+    if (inherits(e, "try-error") || !is.finite(x) || x < 0) {
+        stop("Coordinate must be a finite numeric value >= 0. Invalid coordinate: '", x, "'")
     }
     if (is_kb) {
         x <- x * 1e3
@@ -57,11 +57,11 @@
             stop("Each region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000'). Invalid region: '", clean[i], "'")
         }
         e <- try(start <- .parseCoordinateNum(start_end[1]))
-        if (inherits(e, "try-error") || !is.finite(start) || start < 1) {
+        if (inherits(e, "try-error") || !is.finite(start) || start < 0) {
             stop("Start position must be a valid genomic number in the format 'chr:start-end'. Invalid start: '", start_end[1], "' in region '", clean[i], "'")
         }
         e <- try(end <- .parseCoordinateNum(start_end[2]))
-        if (inherits(e, "try-error") || !is.finite(end) || end < 1) {
+        if (inherits(e, "try-error") || !is.finite(end) || end < 0) {
             stop("End position must be a valid genomic number in the format 'chr:start-end'. Invalid end: '", start_end[2], "' in region '", clean[i], "'")
         }
         matched[[i]] <- c(chr, start, end)
