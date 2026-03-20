@@ -50,7 +50,10 @@ NULL
                         value = 1, min = 1, step = 1
                     ))
                 ),
-                DT::DTOutput(ns("dmr_table"))
+                .viewerWithSpinner(
+                    DT::DTOutput(ns("dmr_table")),
+                    proxy_height = "420px"
+                )
             )
         )
     )
@@ -142,7 +145,6 @@ NULL
                         shiny::h6("Plot Options"),
                         shiny::numericInput(ns("max_cpgs"), "Max CpGs", value = 100, min = 10, max = 500, step = 10),
                         shiny::numericInput(ns("max_samples_per_group"), "Max Samples/Group", value = 10, min = 1, max = 50, step = 1),
-                        shiny::checkboxInput(ns("plot_motif"), "Show Motif Logo", value = TRUE),
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
                         shiny::br(), shiny::br(),
@@ -167,7 +169,9 @@ NULL
                                 shiny::p("Click 'Generate Plot' to visualize a DMR")
                             )
                         ),
-                        shiny::plotOutput(ns("dmr_plot"), height = "700px")
+                        .viewerWithSpinner(
+                            shiny::plotOutput(ns("dmr_plot"), height = "700px")
+                        )
                     )
                 )
             )
@@ -214,21 +218,20 @@ NULL
             params <- requested_params()
             tryCatch(
                 {
-                    shiny::withProgress(message = "Generating DMR plot...", value = NULL, {
-                        plotDMR(
-                            dmrs = data$dmrs,
-                            dmr_index = params$dmr_index,
-                            beta = data$beta_handler,
-                            pheno = data$pheno,
-                            genome = data$genome,
-                            array = data$array,
-                            sample_group_col = data$sample_group_col,
-                            max_cpgs = params$max_cpgs,
-                            max_samples_per_group = params$max_samples_per_group,
-                            plot_title = TRUE
-                        )
-                        shiny::isolate(plot_params(params))
-                    })
+                    plot_obj <- plotDMR(
+                        dmrs = data$dmrs,
+                        dmr_index = params$dmr_index,
+                        beta = data$beta_handler,
+                        pheno = data$pheno,
+                        genome = data$genome,
+                        array = data$array,
+                        sample_group_col = data$sample_group_col,
+                        max_cpgs = params$max_cpgs,
+                        max_samples_per_group = params$max_samples_per_group,
+                        plot_title = TRUE
+                    )
+                    shiny::isolate(plot_params(params))
+                    plot_obj
                 },
                 error = function(e) {
                     shiny::showNotification(
@@ -287,11 +290,141 @@ NULL
                 bslib::card(
                     bslib::card_header("Multi-DMR Grid"),
                     bslib::card_body(
-                        shiny::plotOutput(ns("dmrs_plot"), height = "800px")
+                        .viewerWithSpinner(
+                            shiny::plotOutput(ns("dmrs_plot"), height = "800px")
+                        )
                     )
                 )
             )
         )
+    )
+}
+
+.viewerPlotlyPanelRange <- function(plot_build, axis = c("x", "y")) {
+    axis <- match.arg(axis)
+    panel_params <- plot_build$layout$panel_params[[1]]
+    range_name <- paste0(axis, ".range")
+
+    if (!is.null(panel_params[[range_name]])) {
+        return(as.numeric(panel_params[[range_name]]))
+    }
+
+    axis_params <- panel_params[[axis]]
+    if (is.null(axis_params)) {
+        return(NULL)
+    }
+
+    if (!is.null(axis_params$continuous_range)) {
+        return(as.numeric(axis_params$continuous_range))
+    }
+    if (!is.null(axis_params$range$range)) {
+        return(as.numeric(axis_params$range$range))
+    }
+    if (!is.null(axis_params$range)) {
+        return(as.numeric(axis_params$range))
+    }
+
+    NULL
+}
+
+.prepareViewerPlotForPlotly <- function(plot_obj) {
+    plot_build <- ggplot2::ggplot_build(plot_obj)
+    x_range <- .viewerPlotlyPanelRange(plot_build, axis = "x")
+    y_range <- .viewerPlotlyPanelRange(plot_build, axis = "y")
+
+    if (is.null(x_range) && is.null(y_range)) {
+        return(plot_obj)
+    }
+
+    prepared_plot <- plot_obj
+    for (i in seq_along(prepared_plot$layers)) {
+        if (!inherits(prepared_plot$layers[[i]]$geom, "GeomRect")) {
+            next
+        }
+
+        layer_data <- prepared_plot$layers[[i]]$data
+        if (!is.data.frame(layer_data) || nrow(layer_data) == 0) {
+            next
+        }
+
+        if (!is.null(x_range)) {
+            if ("xmin" %in% colnames(layer_data)) {
+                layer_data$xmin[!is.finite(layer_data$xmin)] <- x_range[1]
+            }
+            if ("xmax" %in% colnames(layer_data)) {
+                layer_data$xmax[!is.finite(layer_data$xmax)] <- x_range[2]
+            }
+        }
+
+        if (!is.null(y_range)) {
+            if ("ymin" %in% colnames(layer_data)) {
+                layer_data$ymin[!is.finite(layer_data$ymin)] <- y_range[1]
+            }
+            if ("ymax" %in% colnames(layer_data)) {
+                layer_data$ymax[!is.finite(layer_data$ymax)] <- y_range[2]
+            }
+        }
+
+        prepared_plot$layers[[i]]$data <- layer_data
+    }
+
+    prepared_plot
+}
+
+.repairViewerPlotlyFilledTraces <- function(widget) {
+    x_range <- suppressWarnings(as.numeric(widget$x$layout$xaxis$range))
+    y_range <- suppressWarnings(as.numeric(widget$x$layout$yaxis$range))
+
+    for (i in seq_along(widget$x$data)) {
+        trace <- widget$x$data[[i]]
+        if (!identical(trace$fill, "toself")) {
+            next
+        }
+
+        if (!is.null(trace$x) && length(x_range) == 2L) {
+            x_vals <- suppressWarnings(as.numeric(trace$x))
+            if (any(!is.finite(x_vals))) {
+                x_vals[is.infinite(x_vals) & x_vals < 0] <- x_range[1]
+                x_vals[is.infinite(x_vals) & x_vals > 0] <- x_range[2]
+                trace$x <- x_vals
+            }
+        }
+
+        if (!is.null(trace$y) && length(y_range) == 2L) {
+            y_vals <- suppressWarnings(as.numeric(trace$y))
+            if (any(!is.finite(y_vals))) {
+                y_vals[is.infinite(y_vals) & y_vals < 0] <- y_range[1]
+                y_vals[is.infinite(y_vals) & y_vals > 0] <- y_range[2]
+                trace$y <- y_vals
+            }
+        }
+
+        widget$x$data[[i]] <- trace
+    }
+
+    widget
+}
+
+.configureViewerPlotly <- function(plot_obj) {
+    plot_obj <- .prepareViewerPlotForPlotly(plot_obj)
+    widget <- plotly::ggplotly(
+        plot_obj,
+        tooltip = "text",
+        dynamicTicks = FALSE
+    )
+    widget <- .repairViewerPlotlyFilledTraces(widget)
+    widget <- plotly::layout(
+        widget,
+        dragmode = "pan",
+        hovermode = "closest",
+        legend = list(orientation = "h", x = 0, y = -0.18),
+        margin = list(l = 60, r = 20, t = 70, b = 80)
+    )
+    plotly::config(
+        widget,
+        displaylogo = FALSE,
+        responsive = TRUE,
+        scrollZoom = TRUE
     )
 }
 
@@ -303,7 +436,6 @@ NULL
                 bslib::card(
                     bslib::card_header("Manhattan Plot Settings"),
                     bslib::card_body(
-                        shiny::checkboxInput(ns("show_blocks"), "Show Blocks", value = TRUE),
                         shiny::sliderInput(ns("point_size"), "Point Size", min = 0.5, max = 3, value = 1.1, step = 0.1),
                         shiny::sliderInput(ns("point_alpha"), "Point Transparency", min = 0.1, max = 1, value = 0.75, step = 0.05),
                         shiny::hr(),
@@ -321,7 +453,13 @@ NULL
                 bslib::card(
                     bslib::card_header("Manhattan Plot"),
                     bslib::card_body(
-                        shiny::plotOutput(ns("manhattan_plot"), height = "500px")
+                        shiny::div(
+                            class = "small text-muted mb-2",
+                            "Scroll to zoom, drag to pan, and hover over points or shaded blocks for DMR details."
+                        ),
+                        .viewerWithSpinner(
+                            plotly::plotlyOutput(ns("manhattan_plot"), height = "500px")
+                        )
                     )
                 )
             )
@@ -342,7 +480,6 @@ NULL
         shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs)
             params <- list(
-                show_blocks = input$show_blocks,
                 point_size = input$point_size,
                 point_alpha = input$point_alpha
             )
@@ -355,23 +492,24 @@ NULL
         })
         shiny::outputOptions(output, "has_plot", suspendWhenHidden = FALSE)
 
-        output$manhattan_plot <- shiny::renderPlot({
+        output$manhattan_plot <- plotly::renderPlotly({
             shiny::req(plot_request() > 0L, requested_params())
             params <- requested_params()
             tryCatch(
                 {
-                    shiny::withProgress(message = "Generating Manhattan plot...", value = NULL, {
-                        plot_obj <- plotDMRsManhattan(
-                            dmrs = data$dmrs,
-                            genome = data$genome,
-                            show_blocks = params$show_blocks,
-                            point_size = params$point_size,
-                            point_alpha = params$point_alpha
-                        )
-                        shiny::isolate(plot_params(params))
-                        print(plot_obj)
-                        invisible(plot_obj)
-                    })
+                    .log_info("Generating Manhattan plot..", level = 3)
+                    plot_obj <- plotDMRsManhattan(
+                        dmrs = data$dmrs,
+                        genome = data$genome,
+                        point_size = params$point_size,
+                        point_alpha = params$point_alpha
+                    )
+                    .log_info("Manhattan plot generated successfully.", level = 3)
+                    .log_info("Configuring plotly interactivity for Manhattan plot..", level = 3)
+                    shiny::isolate(plot_params(params))
+                    ret <- .configureViewerPlotly(plot_obj)
+                    .log_info("Plotly interactivity configured successfully.", level = 3)
+                    ret
                 },
                 error = function(e) {
                     shiny::showNotification(
@@ -382,7 +520,7 @@ NULL
                     stop(e)
                 }
             )
-        }, res = 100, execOnResize = FALSE)
+        })
 
         output$download_plot <- shiny::downloadHandler(
             filename = function() {
@@ -394,7 +532,6 @@ NULL
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
                     genome = data$genome,
-                    show_blocks = params$show_blocks,
                     point_size = params$point_size,
                     point_alpha = params$point_alpha,
                     output_file = file,
@@ -436,7 +573,13 @@ NULL
                 bslib::card(
                     bslib::card_header("Block Formation Diagnostic"),
                     bslib::card_body(
-                        shiny::plotOutput(ns("block_plot"), height = "600px")
+                        shiny::div(
+                            class = "small text-muted mb-2",
+                            "Use the plotly controls to zoom into local score transitions, inspect candidate spans, and follow accepted blocks."
+                        ),
+                        .viewerWithSpinner(
+                            plotly::plotlyOutput(ns("block_plot"), height = "600px")
+                        )
                     )
                 )
             )
@@ -468,23 +611,25 @@ NULL
             plot_request(plot_request() + 1L)
         }, ignoreInit = TRUE)
 
-        output$block_plot <- shiny::renderPlot({
+        output$block_plot <- plotly::renderPlotly({
             shiny::req(plot_request() > 0L, plot_params())
             params <- plot_params()
             tryCatch(
                 {
-                    shiny::withProgress(message = "Generating block formation plot...", value = NULL, {
-                        plot_obj <- plotDMRBlockFormation(
-                            dmrs = data$dmrs,
-                            chromosome = params$chromosome,
-                            genome = data$genome,
-                            k_neighbors = params$k_neighbors,
-                            block_gap_mode = params$block_gap_mode,
-                            block_gap_fixed_bp = if (identical(params$block_gap_mode, "fixed")) params$block_gap_fixed_bp else NULL
-                        )
-                        print(plot_obj)
-                        invisible(plot_obj)
-                    })
+                    .log_info("Generating block formation plot..", params$chromosome, params$block_gap_mode, level = 3)
+                    plot_obj <- plotDMRBlockFormation(
+                        dmrs = data$dmrs,
+                        chromosome = params$chromosome,
+                        genome = data$genome,
+                        k_neighbors = params$k_neighbors,
+                        block_gap_mode = params$block_gap_mode,
+                        block_gap_fixed_bp = if (identical(params$block_gap_mode, "fixed")) params$block_gap_fixed_bp else NULL
+                    )
+                    .log_info("Block formation plot generated successfully.", params$chromosome, level = 3)
+                    .log_info("Configuring plotly interactivity for block formation plot..", params$chromosome, level = 3)
+                    ret <- .configureViewerPlotly(plot_obj)
+                    .log_info("Plotly interactivity configured successfully.", params$chromosome, level = 3)
+                    ret
                 },
                 error = function(e) {
                     shiny::showNotification(
@@ -495,7 +640,7 @@ NULL
                     stop(e)
                 }
             )
-        }, res = 100, execOnResize = FALSE)
+        })
     })
 }
 
@@ -714,7 +859,10 @@ NULL
                 bslib::card(
                     bslib::card_header("Circos Plot Settings"),
                     bslib::card_body(
-                        shiny::uiOutput(ns("interaction_status")),
+                        .viewerWithSpinner(
+                            shiny::uiOutput(ns("interaction_status")),
+                            proxy_height = "110px"
+                        ),
                         shiny::radioButtons(ns("mode"), "Mode",
                             choices = c("Auto Selection" = "auto", "Manual Region" = "manual"),
                             selected = "auto", inline = TRUE
@@ -758,8 +906,14 @@ NULL
                     bslib::card_header("Circos Plot"),
                     bslib::card_body(
                         shiny::div(
-                            style = "display: flex; justify-content: center;",
-                            shiny::plotOutput(ns("circos_plot"), height = "700px", width = "700px")
+                            class = "small text-muted mb-2",
+                            "This viewer uses the static circlize plot in the app. PDF export remains available below."
+                        ),
+                        .viewerWithSpinner(
+                            shiny::div(
+                                style = "display: flex; justify-content: center;",
+                                shiny::plotOutput(ns("circos_plot"), height = "700px", width = "700px")
+                            )
                         )
                     )
                 )
@@ -909,21 +1063,22 @@ NULL
             prepared_state_key <- .viewerCircosPreparedStateKey(params)
             tryCatch(
                 {
-                    shiny::withProgress(message = "Generating Circos plot...", value = NULL, {
+                    prepared_plot_state <- params$prepared_plot_state
+                    if (is.null(prepared_plot_state)) {
                         prepared_plot_state <- .runViewerCircosPlot(
                             params,
                             viewer_data(),
                             prepared_plot_state = params$prepared_plot_state
                         )
-                        shiny::isolate(plot_params(params))
-                        if (!is.null(prepared_plot_state)) {
-                            shiny::isolate(circos_prepared_state(list(
-                                key = prepared_state_key,
-                                state = prepared_plot_state
-                            )))
-                        }
-                        shiny::removeNotification(id = session$ns("circos_error"))
-                    })
+                    }
+                    shiny::isolate(plot_params(params))
+                    if (!is.null(prepared_plot_state)) {
+                        shiny::isolate(circos_prepared_state(list(
+                            key = prepared_state_key,
+                            state = prepared_plot_state
+                        )))
+                    }
+                    shiny::removeNotification(id = session$ns("circos_error"))
                 },
                 error = function(e) {
                     .log_warn("Failed to generate Circos plot in viewer: ", conditionMessage(e), level = 1)
@@ -936,9 +1091,7 @@ NULL
                     stop(e)
                 }
             )
-        },
-        res = 100,
-        execOnResize = FALSE)
+        }, res = 100, execOnResize = FALSE)
 
         output$download_plot <- shiny::downloadHandler(
             filename = function() {

@@ -32,6 +32,24 @@ test_that("plotDMRsManhattan draws block rectangles when block ids are present",
     expect_true("GeomRect" %in% geom_classes)
 })
 
+test_that("Manhattan block rectangles are full-height overview bands", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100, 180, 260), width = c(40, 40, 40)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.66)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
+    S4Vectors::mcols(dmrs)$block_id <- c("chr1_block1", "chr1_block1", NA)
+
+    built <- ggplot2::ggplot_build(plotDMRsManhattan(dmrs, genome = "hg19"))
+    rect_layer <- built$data[[1]]
+
+    expect_true(all(is.infinite(rect_layer$ymin)))
+    expect_true(all(is.infinite(rect_layer$ymax)))
+    expect_true(all((rect_layer$xmax - rect_layer$xmin) > 0))
+})
+
 test_that(".normalizeCircosRegion parses region strings", {
     region_df <- DMRsegal:::.normalizeCircosRegion("chr7:1000-2500")
     expect_equal(nrow(region_df), 1)
@@ -84,6 +102,16 @@ test_that("plotDMRBlockFormation returns a ggplot diagnostics object", {
     geom_classes <- vapply(p$layers, function(layer) class(layer$geom)[1], character(1))
     expect_true("GeomPoint" %in% geom_classes)
     expect_true("GeomLine" %in% geom_classes)
+    expect_true("GeomSegment" %in% geom_classes)
+
+    built <- ggplot2::ggplot_build(p)
+    line_layer <- built$data[[which(geom_classes == "GeomLine")[1]]]
+    expect_equal(sum(diff(line_layer$x[is.finite(line_layer$x)]) < 0, na.rm = TRUE), 0)
+
+    rect_layers <- built$data[which(geom_classes == "GeomRect")]
+    expect_true(all(vapply(rect_layers, function(layer) {
+        all(is.finite(layer$ymin)) && all(is.finite(layer$ymax))
+    }, logical(1))))
 })
 
 test_that("plotDMRBlockFormation validates chromosome availability", {

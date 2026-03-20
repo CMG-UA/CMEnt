@@ -8,6 +8,7 @@
 #'   \code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}.meta.rds}.
 #' @param launch_browser Logical. Whether to launch in browser (default: TRUE).
 #' @param port Integer. Port number for Shiny server (default: auto-assigned).
+#' @param diagnostic Logical. Whether to enable diagnostic features for block formation visualization (default: FALSE).
 #'
 #' @return Invisibly returns the Shiny app object.
 #'
@@ -17,8 +18,8 @@
 #'   \item \strong{Overview}: Summary statistics and filterable DMR table
 #'   \item \strong{Single DMR}: Detailed view of individual DMRs with heatmap and motif logo
 #'   \item \strong{Manhattan}: Genome-wide scatter plot of DMR scores
-#'   \item \strong{Block Formation}: Diagnostic view of DMR block detection
 #'   \item \strong{Circos}: Circular genome plot with motif interactions
+#'   \item \strong{Block Formation}: Diagnostic view of DMR block detection, if `diagnostic = TRUE`
 #' }
 #'
 #' The function expects the following output files from \code{findDMRsFromSeeds}:
@@ -44,7 +45,8 @@
 launchDMRsegalViewer <- function(
     output_prefix,
     launch_browser = TRUE,
-    port = NULL
+    port = NULL,
+    diagnostic = FALSE
 ) {
     validation <- .validateOutputPrefix(output_prefix)
     if (!validation$valid) {
@@ -58,7 +60,7 @@ launchDMRsegalViewer <- function(
 
     data <- .loadDMRsegalData(output_prefix)
 
-    ui <- .createViewerUI()
+    ui <- .createViewerUI(diagnostic = diagnostic)
     server <- .createViewerServer(data)
 
     app <- shiny::shinyApp(ui = ui, server = server)
@@ -308,6 +310,39 @@ launchDMRsegalViewer <- function(
     paste0(.viewerAssetPrefix, "/", asset_name)
 }
 
+.viewerWithSpinner <- function(ui, proxy_height = NULL) {
+    shinycssloaders::withSpinner(
+        ui,
+        type = 4,
+        color = "#2C3E50",
+        size = 0.9,
+        hide.ui = FALSE,
+        proxy.height = proxy_height
+    )
+}
+
+.viewerPageSpinnerCaption <- function(message = "Processing...", detail = NULL) {
+    detail <- trimws(if (is.null(detail)) "" else as.character(detail))
+    shiny::tags$div(
+        class = "text-center",
+        shiny::tags$div(class = "fw-semibold", message),
+        if (nzchar(detail)) shiny::tags$div(class = "small text-muted mt-1", detail)
+    )
+}
+
+.viewerShowPageSpinner <- function(message = "Processing...", detail = NULL) {
+    shinycssloaders::showPageSpinner(
+        type = 4,
+        color = "#2C3E50",
+        size = 0.9,
+        caption = .viewerPageSpinnerCaption(message = message, detail = detail)
+    )
+}
+
+.viewerHidePageSpinner <- function() {
+    shinycssloaders::hidePageSpinner()
+}
+
 .viewerBrandUI <- function(asset_dir) {
     github_link <- shiny::tags$a(
         shiny::icon("github"),
@@ -331,41 +366,6 @@ launchDMRsegalViewer <- function(
         class = "dmrsegal-viewer-brand",
         github_link,
         logo
-    )
-}
-
-.viewerBusyOverlayUI <- function() {
-    shiny::tags$div(
-        id = "dmrsegal-viewer-busy-overlay",
-        class = "dmrsegal-viewer-busy-overlay",
-        hidden = "hidden",
-        `aria-hidden` = "true",
-        shiny::tags$div(
-            class = "dmrsegal-viewer-busy-card",
-            role = "status",
-            `aria-live` = "assertive",
-            `aria-atomic` = "true",
-            shiny::tags$div(
-                class = "spinner-border text-primary dmrsegal-viewer-busy-spinner",
-                role = "presentation"
-            ),
-            shiny::tags$div(
-                class = "dmrsegal-viewer-busy-message",
-                `data-role` = "message",
-                "Processing..."
-            ),
-            shiny::tags$div(
-                class = "dmrsegal-viewer-busy-detail",
-                `data-role` = "detail",
-                ""
-            ),
-            shiny::actionButton(
-                "viewer_cancel_task",
-                "Cancel",
-                class = "btn btn-outline-danger px-4",
-                `data-role` = "cancel"
-            )
-        )
     )
 }
 
@@ -460,7 +460,6 @@ launchDMRsegalViewer <- function(
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
                     genome = data$genome,
-                    show_blocks = params$show_blocks,
                     point_size = params$point_size,
                     point_alpha = params$point_alpha
                 )
@@ -983,7 +982,7 @@ launchDMRsegalViewer <- function(
     )
 }
 
-.createViewerUI <- function() {
+.createViewerUI <- function(diagnostic = FALSE) {
     asset_dir <- .registerViewerAssets()
     asset_head <- if (!is.null(asset_dir)) {
         shiny::tags$head(
@@ -991,74 +990,84 @@ launchDMRsegalViewer <- function(
                 rel = "stylesheet",
                 type = "text/css",
                 href = .viewerAssetHref("custom.css")
-            ),
-            shiny::tags$script(
-                src = .viewerAssetHref("busy-overlay.js"),
-                defer = "defer"
             )
         )
     }
-
-    shiny::tagList(
-        asset_head,
-        bslib::page_navbar(
-            title = "DMRsegal Viewer",
-            id = "navbar",
-            theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
-            fillable = TRUE,
-            footer = .viewerBusyOverlayUI(),
-            bslib::nav_panel(
-                title = "Overview",
-                icon = shiny::icon("table"),
-                .overviewUI("overview")
-            ),
-            bslib::nav_panel(
-                title = "Single DMR",
-                icon = shiny::icon("dna"),
-                .plotDMRUI("single_dmr")
-            ),
-            bslib::nav_panel(
-                title = "Manhattan",
-                icon = shiny::icon("chart-line"),
-                .manhattanUI("manhattan")
-            ),
+    panels_list <- list(
+        bslib::nav_panel(
+            title = "Overview",
+            icon = shiny::icon("table"),
+            .overviewUI("overview")
+        ),
+        bslib::nav_panel(
+            title = "Single DMR",
+            icon = shiny::icon("dna"),
+            .plotDMRUI("single_dmr")
+        ),
+        bslib::nav_panel(
+            title = "Manhattan",
+            icon = shiny::icon("chart-line"),
+            .manhattanUI("manhattan")
+        ),
+        bslib::nav_panel(
+            title = "Circos",
+            icon = shiny::icon("circle-notch"),
+            .circosUI("circos")
+        )
+    )
+    if (diagnostic) {
+        panels_list <- c(panels_list, list(
             bslib::nav_panel(
                 title = "Block Formation",
                 icon = shiny::icon("layer-group"),
                 .blockFormationUI("block_formation")
-            ),
-            bslib::nav_panel(
-                title = "Circos",
-                icon = shiny::icon("circle-notch"),
-                .circosUI("circos")
-            ),
+            )
+        ))
+    }
+    navbar <- do.call(bslib::page_navbar, c(
+        list(
+            title = "DMRsegal Viewer",
+            id = "navbar",
+            theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
+            fillable = TRUE
+        ),
+        panels_list,
+        list(
             bslib::nav_spacer(),
             bslib::nav_item(.viewerBrandUI(asset_dir))
         )
+    ))
+
+    shiny::tagList(
+        asset_head,
+        navbar
     )
 }
 
 .createViewerServer <- function(data) {
     function(input, output, session) {
         task_controller <- .createViewerTaskController(session, data)
+        page_spinner_visible <- shiny::reactiveVal(FALSE)
         task_controller$initialize()
 
         shiny::observe({
             state <- task_controller$state()
-            session$sendCustomMessage(
-                "dmrsegal-viewer-busy",
-                list(
-                    active = isTRUE(state$active),
-                    message = if (is.null(state$message)) "" else state$message,
-                    detail = if (is.null(state$detail)) "" else state$detail,
-                    cancelable = isTRUE(state$cancelable)
-                )
-            )
-        })
+            spinner_visible <- page_spinner_visible()
 
-        shiny::observeEvent(input$viewer_cancel_task, {
-            task_controller$cancel()
-        }, ignoreInit = TRUE)
+            if (isTRUE(state$active) && !spinner_visible) {
+                .viewerShowPageSpinner(
+                    message = if (is.null(state$message)) "Processing..." else state$message,
+                    detail = state$detail
+                )
+                page_spinner_visible(TRUE)
+                return()
+            }
+
+            if (!isTRUE(state$active) && spinner_visible) {
+                .viewerHidePageSpinner()
+                page_spinner_visible(FALSE)
+            }
+        })
 
         selected_dmr_id <- .overviewServer("overview", data)
         .plotDMRServer("single_dmr", data, task_controller)
@@ -1078,6 +1087,9 @@ launchDMRsegalViewer <- function(
         })
 
         session$onSessionEnded(function() {
+            if (isTRUE(page_spinner_visible())) {
+                try(.viewerHidePageSpinner(), silent = TRUE)
+            }
             try(task_controller$shutdown(), silent = TRUE)
             .log_info("DMRsegal Viewer session ended.", level = 1)
         })

@@ -62,20 +62,28 @@ test_that("Shiny module UI functions return tagList", {
     expect_s3_class(DMRsegal:::.circosUI("test"), "shiny.tag.list")
 })
 
-test_that("Viewer UI includes a global busy overlay", {
-    ui_html <- as.character(DMRsegal:::.createViewerUI())
+test_that("Viewer UI uses shinycssloaders instead of the custom busy overlay", {
+    skip_if_not_installed("shinycssloaders")
 
-    expect_match(ui_html, "dmrsegal-viewer-busy-overlay", fixed = TRUE)
-    expect_match(ui_html, "viewer_cancel_task", fixed = TRUE)
+    ui <- DMRsegal:::.createViewerUI()
+    ui_html <- as.character(ui)
+
+    expect_true(grepl("shiny-spinner-output-container", ui_html, fixed = TRUE))
+    expect_false(grepl("dmrsegal-viewer-busy-overlay", ui_html, fixed = TRUE))
+    expect_false(grepl("busy-overlay.js", ui_html, fixed = TRUE))
 })
 
-test_that("Viewer busy overlay script reconciles output completion events", {
-    script_path <- test_path("..", "..", "inst", "shiny", "DMRsegalViewer", "www", "busy-overlay.js")
-    script <- paste(readLines(script_path, warn = FALSE), collapse = "\n")
+test_that("Viewer spinner helpers delegate to shinycssloaders page spinners", {
+    show_helper <- paste(deparse(body(DMRsegal:::.viewerShowPageSpinner)), collapse = "\n")
+    hide_helper <- paste(deparse(body(DMRsegal:::.viewerHidePageSpinner)), collapse = "\n")
 
-    expect_match(script, "shiny:value", fixed = TRUE)
-    expect_match(script, "attributeFilter", fixed = TRUE)
-    expect_match(script, "aria-hidden", fixed = TRUE)
+    expect_match(show_helper, "showPageSpinner", fixed = TRUE)
+    expect_match(hide_helper, "hidePageSpinner", fixed = TRUE)
+})
+
+test_that("Viewer no longer ships the custom busy overlay script", {
+    script_path <- test_path("..", "..", "inst", "shiny", "DMRsegalViewer", "www", "busy-overlay.js")
+    expect_false(file.exists(script_path))
 })
 
 test_that("Circos viewer falls back to lightweight interactive settings without precomputed interactions", {
@@ -157,6 +165,115 @@ test_that("Circos viewer status UI reflects cache availability and actions", {
     expect_match(as.character(empty_status), "Precomputed Circos cache loaded, but no interaction links are available.", fixed = TRUE)
     expect_match(as.character(empty_status), "Recompute Interactions", fixed = TRUE)
     expect_match(as.character(ready_status), "Precomputed Circos cache available.", fixed = TRUE)
+})
+
+test_that("Circos UI renders the static in-app viewer", {
+    ui <- DMRsegal:::.circosUI("test")
+    ui_html <- as.character(ui)
+
+    expect_match(ui_html, "This viewer uses the static circlize plot in the app.", fixed = TRUE)
+    expect_match(ui_html, "shiny-plot-output", fixed = TRUE)
+    expect_false(grepl("plotly", ui_html, fixed = TRUE))
+})
+
+test_that("plotly viewer preserves Manhattan chromosome tick labels", {
+    skip_if_not_installed("plotly")
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(100, 200, 100), width = c(40, 40, 40)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.64)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
+    S4Vectors::mcols(dmrs)$block_id <- c("chr1_block1", "chr1_block1", NA)
+
+    widget <- DMRsegal:::.configureViewerPlotly(
+        plotDMRsManhattan(dmrs, genome = "hg19")
+    )
+    built_widget <- plotly::plotly_build(widget)
+
+    expect_equal(unname(built_widget$x$layout$xaxis$ticktext), c("chr1", "chr2"))
+})
+
+test_that("plotly viewer converts full-height block rectangles to finite ranges", {
+    skip_if_not_installed("plotly")
+
+    x <- c(
+        seq(1e6, by = 5e4, length.out = 10),
+        seq(2e7, by = 5e4, length.out = 10),
+        seq(4e7, by = 5e4, length.out = 10)
+    )
+    y <- c(
+        seq(0.58, 0.74, length.out = 15),
+        seq(0.74, 0.58, length.out = 15)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", length(x)),
+        ranges = IRanges::IRanges(start = x, width = 100),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$score <- y
+
+    widget <- DMRsegal:::.configureViewerPlotly(
+        plotDMRBlockFormation(
+            dmrs = dmrs,
+            chromosome = "chr1",
+            block_gap_mode = "fixed",
+            block_gap_fixed_bp = 1e6,
+            genome = "hg19"
+        )
+    )
+    built_widget <- plotly::plotly_build(widget)
+    rect_traces <- Filter(function(trace) {
+        identical(trace$type, "scatter") && identical(trace$fill, "toself")
+    }, built_widget$x$data)
+
+    expect_true(length(rect_traces) > 0)
+    expect_true(all(vapply(rect_traces, function(trace) all(is.finite(trace$y)), logical(1))))
+})
+
+test_that("plotly viewer keeps block-formation line traces ordered", {
+    skip_if_not_installed("plotly")
+
+    x <- c(
+        seq(1e6, by = 5e4, length.out = 10),
+        seq(2e7, by = 5e4, length.out = 10),
+        seq(4e7, by = 5e4, length.out = 10)
+    )
+    y <- c(
+        seq(0.58, 0.74, length.out = 15),
+        seq(0.74, 0.58, length.out = 15)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", length(x)),
+        ranges = IRanges::IRanges(start = x, width = 100),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$score <- y
+
+    widget <- DMRsegal:::.configureViewerPlotly(
+        plotDMRBlockFormation(
+            dmrs = dmrs,
+            chromosome = "chr1",
+            block_gap_mode = "fixed",
+            block_gap_fixed_bp = 1e6,
+            genome = "hg19"
+        )
+    )
+    built_widget <- plotly::plotly_build(widget)
+    line_traces <- Filter(function(trace) {
+        identical(trace$type, "scatter") &&
+            identical(trace$mode, "lines") &&
+            !identical(trace$fill, "toself")
+    }, built_widget$x$data)
+
+    expect_true(length(line_traces) > 0)
+    expect_true(all(vapply(line_traces, function(trace) {
+        x_vals <- suppressWarnings(as.numeric(trace$x))
+        sum(diff(x_vals[is.finite(x_vals)]) < 0, na.rm = TRUE) == 0
+    }, logical(1))))
 })
 
 test_that("loadViewerCircosCache treats blank cache files as empty tables", {

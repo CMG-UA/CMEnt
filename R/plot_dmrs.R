@@ -4,7 +4,8 @@ if (getRversion() >= "2.15.1") {
         "Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position",
         "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y",
         "label", "Group", "block_id", "xmin", "xmax", "ymin", "ymax", "midpoint",
-        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope"
+        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope",
+        "hover_text", "candidate_id", "segment_id", "block_local_id", "dmr_id"
     ))
 }
 
@@ -35,6 +36,74 @@ if (getRversion() >= "2.15.1") {
 .isShowtextAutoEnabled <- function() {
     hooks <- getHook("plot.new")
     any(vapply(hooks, inherits, logical(1), "showtext_hook"))
+}
+
+.formatHoverValue <- function(x, digits = NULL) {
+    if (is.null(x) || length(x) == 0) {
+        return(NA_character_)
+    }
+
+    if (is.list(x) && !is.data.frame(x)) {
+        x <- unlist(x, recursive = TRUE, use.names = FALSE)
+    }
+
+    x <- x[!is.na(x)]
+    if (length(x) == 0) {
+        return(NA_character_)
+    }
+
+    if (is.numeric(x)) {
+        if (!is.null(digits)) {
+            x <- formatC(
+                x,
+                format = "f",
+                digits = digits,
+                big.mark = ",",
+                drop0trailing = TRUE
+            )
+        } else {
+            x <- format(x, trim = TRUE, scientific = FALSE, big.mark = ",")
+        }
+    }
+
+    x <- trimws(as.character(x))
+    x <- x[nzchar(x)]
+    if (length(x) == 0) {
+        return(NA_character_)
+    }
+
+    paste(unique(x), collapse = ", ")
+}
+
+.hoverLine <- function(label, value, digits = NULL) {
+    value_chr <- .formatHoverValue(value, digits = digits)
+    if (is.na(value_chr) || !nzchar(value_chr)) {
+        return(NULL)
+    }
+    paste0(label, ": ", value_chr)
+}
+
+.buildHoverText <- function(...) {
+    lines <- unlist(list(...), use.names = FALSE)
+    if (length(lines) == 0) {
+        return("")
+    }
+    lines <- as.character(lines)
+    lines <- lines[!is.na(lines) & nzchar(lines)]
+    paste(lines, collapse = "<br>")
+}
+
+.formatGenomicInterval <- function(chr, start, end) {
+    chr <- .formatHoverValue(chr)
+    if (is.na(chr) || !nzchar(chr)) {
+        return(NA_character_)
+    }
+    start_chr <- .formatHoverValue(start)
+    end_chr <- .formatHoverValue(end)
+    if (is.na(start_chr) || is.na(end_chr)) {
+        return(chr)
+    }
+    paste0(chr, ":", start_chr, "-", end_chr)
 }
 
 #' Plot DMR Structure with seeds and Extended CpGs
@@ -1239,7 +1308,9 @@ plotDMR <- function(dmrs,
     factor(region_class, levels = c("Promoter", "Gene Body", "Intergenic"))
 }
 
-.buildManhattanBlockRects <- function(dmr_df, block_col = "block_id") {
+.buildManhattanBlockRects <- function(dmr_df,
+                                     block_col = "block_id",
+                                     min_display_fraction = 0.01) {
     if (!(block_col %in% colnames(dmr_df))) {
         return(data.frame())
     }
@@ -1248,37 +1319,53 @@ plotDMR <- function(dmrs,
     if (!any(keep)) {
         return(data.frame())
     }
-    block_df <- dmr_df[keep, c("position", "score", block_col), drop = FALSE]
-    colnames(block_df)[3] <- "block_id"
+    block_df <- dmr_df[keep, c("chr", "position", "score", block_col), drop = FALSE]
+    colnames(block_df)[4] <- "block_id"
     by_block <- split(block_df, block_df$block_id)
     if (length(by_block) == 0) {
         return(data.frame())
     }
 
-    y_rng <- range(dmr_df$score, na.rm = TRUE)
-    y_span <- diff(y_rng)
-    y_pad <- max(1e-6, y_span * 0.03)
     x_unique <- sort(unique(dmr_df$position))
     if (length(x_unique) >= 2L) {
         x_pad <- max(1, min(diff(x_unique), na.rm = TRUE) * 0.35)
     } else {
         x_pad <- 1
     }
+    chr_display_span <- tapply(dmr_df$position, dmr_df$chr, function(x) {
+        rng <- range(x, na.rm = TRUE)
+        max(1, diff(rng))
+    })
 
     rects <- do.call(rbind, lapply(names(by_block), function(id) {
         d <- by_block[[id]]
+        chr_value <- as.character(d$chr[1])
+        chr_span_value <- suppressWarnings(as.numeric(chr_display_span[chr_value]))
+        if (!is.finite(chr_span_value) || length(chr_span_value) != 1L) {
+            chr_span_value <- max(1, diff(range(d$position, na.rm = TRUE)))
+        }
         xmin <- min(d$position, na.rm = TRUE)
         xmax <- max(d$position, na.rm = TRUE)
         if (xmin == xmax) {
             xmin <- xmin - x_pad
             xmax <- xmax + x_pad
         }
+        min_width <- max(
+            x_pad * 2,
+            chr_span_value * min_display_fraction
+        )
+        current_width <- xmax - xmin
+        if (is.finite(min_width) && current_width < min_width) {
+            midpoint <- (xmin + xmax) / 2
+            xmin <- midpoint - min_width / 2
+            xmax <- midpoint + min_width / 2
+        }
         data.frame(
             block_id = id,
             xmin = xmin,
             xmax = xmax,
-            ymin = min(d$score, na.rm = TRUE) - y_pad,
-            ymax = max(d$score, na.rm = TRUE) + y_pad,
+            ymin = -Inf,
+            ymax = Inf,
             stringsAsFactors = FALSE
         )
     }))
@@ -1395,56 +1482,172 @@ plotDMRBlockFormation <- function(dmrs,
     candidate_df <- details$candidates_df
     split_df <- details$split_events_df
     blocks_df <- details$blocks_df
+    dmr_df <- dmr_df[order(dmr_df$midpoint), , drop = FALSE]
 
-    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = midpoint, y = score_raw)) +
-        ggplot2::geom_point(color = "#4D4D4D", alpha = point_alpha, size = point_size) +
-        ggplot2::geom_line(ggplot2::aes(y = score_smoothed), color = "#1F78B4", linewidth = 0.6)
+    dmr_df$dmr_id <- seq_len(nrow(dmr_df))
+    dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
+        .buildHoverText(
+            .hoverLine("Chromosome", chromosome),
+            .hoverLine("DMR order", dmr_df$dmr_order[i]),
+            .hoverLine("Midpoint", dmr_df$midpoint[i]),
+            .hoverLine("Raw score", dmr_df$score_raw[i], digits = 3),
+            .hoverLine("Smoothed score", dmr_df$score_smoothed[i], digits = 3),
+            .hoverLine("Segment", dmr_df$segment_id[i]),
+            .hoverLine("Segment slope", dmr_df$segment_slope[i], digits = 6),
+            .hoverLine("Block", dmr_df$block_local_id[i])
+        )
+    }, character(1))
+
+    if (nrow(seg_df) > 0) {
+        seg_df$hover_text <- vapply(seq_len(nrow(seg_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("Segment", seg_df$segment_id[i]),
+                .hoverLine("Chromosome", chromosome),
+                .hoverLine("DMR span", paste(seg_df$dmr_start_idx[i], seg_df$dmr_end_idx[i], sep = "-")),
+                .hoverLine("Genomic span", .formatGenomicInterval(chromosome, seg_df$start_bp[i], seg_df$end_bp[i])),
+                .hoverLine("Slope", seg_df$slope[i], digits = 6)
+            )
+        }, character(1))
+    }
+
+    score_vals <- c(dmr_df$score_raw, dmr_df$score_smoothed)
+    score_vals <- score_vals[is.finite(score_vals)]
+    y_rng <- range(score_vals, na.rm = TRUE)
+    y_span <- diff(y_rng)
+    if (!is.finite(y_span) || y_span <= 0) {
+        y_span <- max(abs(y_rng), na.rm = TRUE)
+        if (!is.finite(y_span) || y_span <= 0) {
+            y_span <- 1
+        }
+    }
+    candidate_band <- c(y_rng[1] - y_span * 0.22, y_rng[1] - y_span * 0.15)
+    block_band <- c(y_rng[1] - y_span * 0.12, y_rng[1] - y_span * 0.05)
 
     if (nrow(candidate_df) > 0) {
-        p <- p + ggplot2::geom_rect(
-            data = candidate_df,
-            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = -Inf, ymax = Inf),
-            inherit.aes = FALSE,
-            fill = "#FDB863",
-            alpha = 0.08,
-            color = NA
-        )
-    }
-
-    if (nrow(blocks_df) > 0) {
-        p <- p + ggplot2::geom_rect(
-            data = blocks_df,
-            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = -Inf, ymax = Inf),
-            inherit.aes = FALSE,
-            fill = "#B2DF8A",
-            color = "#33A02C",
-            linewidth = 0.35,
-            alpha = 0.14
-        )
-    }
-
-    if (nrow(seg_df) > 1) {
-        p <- p + ggplot2::geom_vline(
-            data = seg_df[-nrow(seg_df), , drop = FALSE],
-            ggplot2::aes(xintercept = end_bp),
-            inherit.aes = FALSE,
-            color = "#6A3D9A",
-            linetype = "dotted",
-            linewidth = 0.25,
-            alpha = 0.8
-        )
+        candidate_df$ymin_band <- candidate_band[1]
+        candidate_df$ymax_band <- candidate_band[2]
+        candidate_df$hover_text <- vapply(seq_len(nrow(candidate_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("Candidate", candidate_df$candidate_id[i]),
+                .hoverLine("Chromosome", chromosome),
+                .hoverLine("Segments", paste(candidate_df$seg_start[i], candidate_df$seg_end[i], sep = "-")),
+                .hoverLine("DMR span", paste(candidate_df$dmr_start_idx[i], candidate_df$dmr_end_idx[i], sep = "-")),
+                .hoverLine("Genomic span", .formatGenomicInterval(chromosome, candidate_df$start_bp[i], candidate_df$end_bp[i]))
+            )
+        }, character(1))
     }
 
     if (nrow(split_df) > 0) {
-        p <- p + ggplot2::geom_vline(
+        split_df$line_ymin <- candidate_band[1]
+        split_df$line_ymax <- y_rng[2]
+        split_df$hover_text <- vapply(seq_len(nrow(split_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("Candidate", split_df$candidate_id[i]),
+                .hoverLine("Split after DMR", split_df$split_after_global_idx[i]),
+                .hoverLine("Gap", split_df$gap_bp[i]),
+                .hoverLine("Left boundary", split_df$left_bp[i]),
+                .hoverLine("Right boundary", split_df$right_bp[i])
+            )
+        }, character(1))
+    }
+
+    if (nrow(blocks_df) > 0) {
+        blocks_df$ymin_band <- block_band[1]
+        blocks_df$ymax_band <- block_band[2]
+        blocks_df$hover_text <- vapply(seq_len(nrow(blocks_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("Block", blocks_df$block_local_id[i]),
+                .hoverLine("Candidate", blocks_df$candidate_id[i]),
+                .hoverLine("Chromosome", chromosome),
+                .hoverLine("DMR span", paste(blocks_df$dmr_start_idx[i], blocks_df$dmr_end_idx[i], sep = "-")),
+                .hoverLine("Genomic span", .formatGenomicInterval(chromosome, blocks_df$start_bp[i], blocks_df$end_bp[i])),
+                .hoverLine("DMRs in block", blocks_df$n_dmrs[i]),
+                .hoverLine("Span", blocks_df$span_bp[i]),
+                .hoverLine("Max gap", blocks_df$max_gap_bp[i]),
+                .hoverLine("Segments", blocks_df$segment_ids[i])
+            )
+        }, character(1))
+    }
+
+    if (nrow(seg_df) > 0) {
+        seg_df$start_score <- dmr_df$score_smoothed[pmax(1L, pmin(nrow(dmr_df), seg_df$dmr_start_idx))]
+        seg_df$end_score <- dmr_df$score_smoothed[pmax(1L, pmin(nrow(dmr_df), seg_df$dmr_end_idx))]
+    }
+
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = midpoint, y = score_raw))
+
+    if (nrow(candidate_df) > 0) {
+        p <- p + suppressWarnings(ggplot2::geom_rect(
+            data = candidate_df,
+            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = ymin_band, ymax = ymax_band, text = hover_text),
+            inherit.aes = FALSE,
+            fill = "#FDB863",
+            alpha = 0.22,
+            color = NA
+        ))
+    }
+
+    if (nrow(blocks_df) > 0) {
+        p <- p + suppressWarnings(ggplot2::geom_rect(
+            data = blocks_df,
+            ggplot2::aes(xmin = start_bp, xmax = end_bp, ymin = ymin_band, ymax = ymax_band, text = hover_text),
+            inherit.aes = FALSE,
+            fill = "#B2DF8A",
+            color = "#33A02C",
+            linewidth = 0.3,
+            alpha = 0.28
+        ))
+    }
+
+    p <- p +
+        suppressWarnings(ggplot2::geom_point(
+            ggplot2::aes(text = hover_text),
+            color = "#4D4D4D",
+            alpha = point_alpha,
+            size = point_size
+        )) +
+        suppressWarnings(ggplot2::geom_line(
+            data = dmr_df,
+            ggplot2::aes(x = midpoint, y = score_smoothed, group = 1, text = hover_text),
+            inherit.aes = FALSE,
+            color = "#1F78B4",
+            linewidth = 0.7,
+            alpha = 0.9
+        ))
+
+    if (nrow(seg_df) > 0) {
+        p <- p + suppressWarnings(ggplot2::geom_segment(
+            data = seg_df,
+            ggplot2::aes(
+                x = start_bp,
+                xend = end_bp,
+                y = start_score,
+                yend = end_score,
+                text = hover_text
+            ),
+            inherit.aes = FALSE,
+            color = "#6A3D9A",
+            linewidth = 0.55,
+            alpha = 0.75
+        ))
+    }
+
+    if (nrow(split_df) > 0) {
+        p <- p + suppressWarnings(ggplot2::geom_segment(
             data = split_df,
-            ggplot2::aes(xintercept = right_bp),
+            ggplot2::aes(
+                x = right_bp,
+                xend = right_bp,
+                y = line_ymin,
+                yend = line_ymax,
+                text = hover_text
+            ),
             inherit.aes = FALSE,
             color = "#E31A1C",
             linetype = "dashed",
             linewidth = 0.35,
             alpha = 0.9
-        )
+        ))
     }
 
     subtitle <- paste0(
@@ -1468,7 +1671,7 @@ plotDMRBlockFormation <- function(dmrs,
             plot.title = ggplot2::element_text(face = "bold"),
             plot.subtitle = ggplot2::element_text(size = 9)
         ) +
-        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.03, 0.05)))
+        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.24, 0.06)))
 
     p
 }
@@ -1558,6 +1761,37 @@ plotDMRsManhattan <- function(dmrs,
         region_class = region_class,
         stringsAsFactors = FALSE
     )
+    mcols_df <- S4Vectors::mcols(dmrs)
+    dmr_df$dmr_id <- if ("id" %in% colnames(mcols_df)) {
+        as.character(mcols_df$id)
+    } else {
+        sprintf("DMR_%d", seq_len(length(dmrs)))
+    }
+    dmr_df$delta_beta <- if ("delta_beta" %in% colnames(mcols_df)) {
+        suppressWarnings(as.numeric(mcols_df$delta_beta))
+    } else {
+        NA_real_
+    }
+    dmr_df$cpgs_num <- if ("cpgs_num" %in% colnames(mcols_df)) {
+        suppressWarnings(as.numeric(mcols_df$cpgs_num))
+    } else {
+        NA_real_
+    }
+    dmr_df$seeds_num <- if ("seeds_num" %in% colnames(mcols_df)) {
+        suppressWarnings(as.numeric(mcols_df$seeds_num))
+    } else {
+        NA_real_
+    }
+    dmr_df$promoter_genes <- if (promoter_col %in% colnames(mcols_df)) {
+        as.character(mcols_df[[promoter_col]])
+    } else {
+        NA_character_
+    }
+    dmr_df$gene_body_genes <- if (gene_body_col %in% colnames(mcols_df)) {
+        as.character(mcols_df[[gene_body_col]])
+    } else {
+        NA_character_
+    }
     if (block_col %in% colnames(S4Vectors::mcols(dmrs))) {
         dmr_df$block_id <- as.character(S4Vectors::mcols(dmrs)[[block_col]])
     } else {
@@ -1576,6 +1810,20 @@ plotDMRsManhattan <- function(dmrs,
     names(chr_offsets) <- names(chr_lengths)
 
     dmr_df$position <- dmr_df$midpoint + chr_offsets[as.character(dmr_df$chr)]
+    dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
+        .buildHoverText(
+            .hoverLine("DMR", dmr_df$dmr_id[i]),
+            .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
+            .hoverLine("Score", dmr_df$score[i], digits = 3),
+            .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
+            .hoverLine("Primary region", dmr_df$region_class[i]),
+            .hoverLine("CpGs", dmr_df$cpgs_num[i]),
+            .hoverLine("Seeds", dmr_df$seeds_num[i]),
+            .hoverLine("Block", dmr_df$block_id[i]),
+            .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),
+            .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
+        )
+    }, character(1))
     axis_df <- stats::aggregate(position ~ chr, data = dmr_df, FUN = function(x) mean(range(x)))
     axis_df <- axis_df[match(chr_levels, as.character(axis_df$chr)), , drop = FALSE]
     axis_df <- axis_df[is.finite(axis_df$position), , drop = FALSE]
@@ -1598,18 +1846,38 @@ plotDMRsManhattan <- function(dmrs,
     p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class, shape = region_class))
     block_rects <- data.frame()
     if (show_blocks) {
+        .log_info("Building block rectangles for visualization...", level = 3)
         block_rects <- .buildManhattanBlockRects(dmr_df, block_col = "block_id")
         if (nrow(block_rects) > 0) {
-            p <- p + ggplot2::geom_rect(
+            block_members <- split(dmr_df, dmr_df$block_id)
+            block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
+                members <- block_members[[block_rects$block_id[i]]]
+                .buildHoverText(
+                    .hoverLine("Block", block_rects$block_id[i]),
+                    .hoverLine("DMRs", nrow(members)),
+                    .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
+                    .hoverLine("Score range", paste(
+                        .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
+                        .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
+                        sep = " to "
+                    )),
+                    .hoverLine("DMR IDs", paste(utils::head(members$dmr_id, 5), collapse = ", ")),
+                    if (nrow(members) > 5) "More DMRs available in this block." else NULL
+                )
+            }, character(1))
+            p <- p + suppressWarnings(ggplot2::geom_rect(
                 data = block_rects,
-                ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, text = hover_text),
                 inherit.aes = FALSE,
                 fill = block_rects$fill,
                 color = block_rects$fill,
                 linewidth = block_linewidth,
                 alpha = block_alpha,
                 show.legend = FALSE
-            )
+            ))
+            .log_info("Block rectangles added to the plot.", level = 3)
+        } else {
+            .log_info("No block rectangles to display based on column '", block_col, "'.", level = 2)
         }
     }
     subtitle <- NULL
@@ -1617,7 +1885,7 @@ plotDMRsManhattan <- function(dmrs,
         subtitle <- paste0("Identified blocks: ", nrow(block_rects))
     }
     p <- p +
-        ggplot2::geom_point(size = point_size, alpha = point_alpha, stroke = 0) +
+        suppressWarnings(ggplot2::geom_point(ggplot2::aes(text = hover_text), size = point_size, alpha = point_alpha, stroke = 0)) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(
