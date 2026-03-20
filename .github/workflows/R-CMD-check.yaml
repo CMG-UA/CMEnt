@@ -1,11 +1,9 @@
-# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
-# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
 on:
   workflow_dispatch:
   pull_request:
     branches: [main, master]
 
-name: R-CMD-check.yaml
+name: R-CMD-check
 
 permissions: read-all
 
@@ -15,39 +13,44 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash -el {0}
+
     strategy:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest,   r: 'release'}
-          - {os: windows-latest, r: 'release'}
-          - {os: ubuntu-latest,   r: 'release'}
+          - { os: macos-latest,   r: "release" }
+          - { os: windows-latest, r: "release" }
+          - { os: ubuntu-latest,  r: "release" }
+
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+
     steps:
       - uses: actions/checkout@v4
-      
-      - name: create environment with mamba
-        uses: conda-incubator/setup-miniconda@v2
+
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3.0.3
         with:
-          mamba-version: "*"
+          miniforge-version: latest
           channels: conda-forge,bioconda,defaults
-          auto-activate-base: false
+          channel-priority: strict
           activate-environment: ci_env
           environment-file: envs/ci_env.yaml
-          
-      - name: check solution
+          auto-activate: true
+
+      - name: Debug conda
         run: |
-          mamba env export
+          conda info --envs
+          conda env export -n ci_env
 
       - name: Install macOS system dependencies
         if: matrix.config.os == 'macos-latest'
         run: |
           brew install imagemagick@6
           brew install libgit2
-      
+
       - name: Install Linux system dependencies
         if: matrix.config.os == 'ubuntu-latest'
         run: |
@@ -59,7 +62,6 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.config.r }}
-          http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
@@ -76,10 +78,9 @@ jobs:
             any::bumphunter
             any::doParallel
             any::magick
-
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
         with:
-          upload-snapshots: 'always'
+          upload-snapshots: always
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
