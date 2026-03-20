@@ -36,12 +36,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         njobs = 1,
         #' @field beta_chunk_size Chunk size for subsetting beta values
         beta_chunk_size = NULL,
-        #' @field epicv2Remap Whether to remap EPICv2 cross-hybridizing probes (EPICv2 only)
-        epicv2Remap = TRUE,
-        #' @field epicv2Filter Strategy for filtering EPICv2 replicate probes (EPICv2 only)
-        epicv2Filter = "mean",
-        #' @field epicv2Preprocessed Whether EPICv2 preprocessing has been applied
-        epicv2Preprocessed = FALSE,
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
         #' @param array Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
@@ -51,8 +45,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param chrom_col Chromosome column name in tabix file
         #' @param start_col Start position column name in tabix file
         #' @param njobs Number of parallel jobs
-        #' @param epicv2Remap Logical. For EPICv2 arrays: remap cross-hybridizing probes. Default TRUE.
-        #' @param epicv2Filter Character. For EPICv2 arrays: replicate probe strategy ("mean", "sensitivity", "precision", "random").
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -61,11 +53,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               sorted_locs = NULL,
                               chrom_col = "#chrom",
                               start_col = "start",
-                              njobs = 1,
-                              epicv2Remap = TRUE,
-                              epicv2Filter = c("mean", "sensitivity", "precision", "random")) {
+                              njobs = 1) {
             # Validate inputs
-            epicv2Filter <- match.arg(epicv2Filter)
             if (is.null(beta)) {
                 stop("Beta values must be provided")
             }
@@ -77,12 +66,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 self$array <- array
                 self$genome <- genome
             }
-
-            # Set EPICv2 preprocessing options
-            self$epicv2Remap <- epicv2Remap
-            self$epicv2Filter <- epicv2Filter
-            self$epicv2Preprocessed <- FALSE
-
 
             # Set fields
             self$beta <- beta
@@ -165,12 +148,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
                 mem_thres <- getOption("DMRsegal.beta_in_mem_threshold_mb", 500)
-                if (file_size_mb < mem_thres) {
-                    .log_step(
-                        "Beta file is small (", round(file_size_mb, 1),
-                        " MB). Loading into memory for faster access..."
-                    )
-
+                if (file_size_mb < mem_thres ) {
                     private$.beta_file_in_memory <- tryCatch(
                         {
                             temp_data <- data.table::fread(
@@ -661,43 +639,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 level = 3
             )
             beta_subset
-        },
-
-        #' @description Apply EPICv2-specific preprocessing to beta values
-        #' @details Uses DMRcate's methodology to remap cross-hybridizing probes and
-        #'   filter replicate probes. Only applies to EPICv2 arrays with in-memory beta values.
-        #' @return Self (invisibly)
-        applyEPICv2Preprocessing = function() {
-            if (self$epicv2Preprocessed) {
-                .log_info("EPICv2 preprocessing already applied, skipping...", level = 2)
-                return(invisible(self))
-            }
-            if (tolower(self$array) != "epicv2") {
-                .log_info("Array is not EPICv2, skipping preprocessing...", level = 2)
-                return(invisible(self))
-            }
-
-            # Ensure beta is loaded into memory
-            self$load()
-
-            if (!is.null(private$.beta_file_in_memory)) {
-                result <- preprocessEPICv2(
-                    beta = private$.beta_file_in_memory,
-                    epicv2Remap = self$epicv2Remap,
-                    epicv2Filter = self$epicv2Filter
-                )
-
-                # Update internal state with preprocessed data
-                private$.beta_file_in_memory <- result$beta
-                private$.beta_row_names <- rownames(result$beta)
-                self$sorted_locs <- result$coords
-                self$epicv2Preprocessed <- TRUE
-            } else {
-                .log_warn("EPICv2 replicate filtering requires in-memory beta values. ",
-                         "Consider loading beta into memory for full preprocessing support.")
-            }
-
-            invisible(self)
         }
     ),
     private = list(
@@ -742,11 +683,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' @param chrom_col Chromosome column name in tabix file
 #' @param start_col Start position column name in tabix file
 #' @param njobs Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.
-#' @param epicv2Remap Logical. For EPICv2 arrays: remap cross-hybridizing probes to their
-#'   actual genomic targets. Default TRUE. Uses DMRcate's methodology.
-#' @param epicv2Filter Character. For EPICv2 arrays: strategy for handling replicate
-#'   probes at the same CpG site. Options: "mean", "sensitivity", "precision", "random".
-#'   Default "mean". Uses DMRcate's methodology.
 #' @return A new BetaHandler object
 #'
 #' @examples
@@ -771,13 +707,10 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            chrom_col = "#chrom",
                            start_col = "start",
-                           njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-                           epicv2Remap = TRUE,
-                           epicv2Filter = c("mean", "sensitivity", "precision", "random")) {
+                           njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
     }
-    epicv2Filter <- match.arg(epicv2Filter)
     invisible(BetaHandler$new(
         beta = beta,
         array = array,
@@ -786,8 +719,6 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
         njobs = njobs,
         sorted_locs = sorted_locs,
         chrom_col = chrom_col,
-        start_col = start_col,
-        epicv2Remap = epicv2Remap,
-        epicv2Filter = epicv2Filter
+        start_col = start_col
     ))
 }
