@@ -17,11 +17,7 @@
 .Renviron
 
 # data folders ----
-dmrsegaldata
-dmrcatedata
-
 debug
-
 
 # Temporary files created by testthat ----
 tests/testthat/test*.loader
@@ -43,7 +39,8 @@ Rd2.tex
 data/sim_bs_1000.rds
 *.log
 figure-html
-simulated_ont/*
 reports/*
-simulated_ont
 .vscode
+*R_x86_64-pc-linux-gnu.tar.gz
+DMRsegal_0.99.0_R_x86_64-pc-linux-gnu.Rcheck/*
+..Rcheck/
