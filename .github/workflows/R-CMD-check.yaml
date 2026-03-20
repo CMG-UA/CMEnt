@@ -62,7 +62,7 @@ jobs:
           export BACKEND=BSPM
           ./run.sh bootstrap
           ./run.sh install_deps
-          ./run.sh install_r knitr rmarkdown BiocStyle rcmdcheck
+          ./run.sh install_r knitr rmarkdown BiocStyle rcmdcheck devtools
         shell: bash
 
       - uses: r-lib/actions/setup-pandoc@v2

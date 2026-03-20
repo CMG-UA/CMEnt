@@ -47,7 +47,8 @@ Primary goal:
 ## Setup and Dependencies
 
 ```{r}
-devtools::load_all()
+try(devtools::load_all(), silent = TRUE)
+try(library(DMRsegal), silent = TRUE)
 library(bsseq)
 library(data.table)
 library(ggplot2)

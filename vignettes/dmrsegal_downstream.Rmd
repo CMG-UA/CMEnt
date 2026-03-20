@@ -44,11 +44,8 @@ This notebook showcases additional DMRsegal capabilities beyond DMR discovery, i
 ## Setup
 
 ```{r setup}
-if (requireNamespace("devtools", quietly = TRUE)) {
-    devtools::load_all(quiet = TRUE)
-}
-
-library(DMRsegal)
+try(devtools::load_all(), silent = TRUE)
+try(library(DMRsegal), silent = TRUE)
 library(GenomicRanges)
 library(dplyr)
 library(ggplot2)

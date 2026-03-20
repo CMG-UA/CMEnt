@@ -175,9 +175,8 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
-
-    pheno_file <- system.file("data/pheno.rda", package = "DMRsegal")
-    beta_file <- system.file("data/beta.rda", package = "DMRsegal")
+    pheno_file <- loadExampleInputData("pheno")
+    beta_file <- loadExampleInputData("beta")
 
     if (!file.exists(pheno_file) || !file.exists(beta_file)) {
         pheno_file <- "../../data/pheno.rda"

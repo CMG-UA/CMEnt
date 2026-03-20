@@ -10,6 +10,8 @@ vignette: >
 ---
 
 ```{r setup, include=FALSE}
+try(devtools::load_all(), silent = TRUE)
+try(library(DMRsegal), silent = TRUE)
 knitr::opts_chunk$set(
     echo = TRUE,
     warning = FALSE,
@@ -39,7 +41,7 @@ This vignette provides a comprehensive guide to the configuration available in D
 
 **Example:**
 ```{r}
-beta <- system.file("data/beta.rda", package = "DMRsegal")
+beta <- loadExampleInputData("beta")
 ```
 
 ### `seeds`

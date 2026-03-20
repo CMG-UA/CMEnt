@@ -44,7 +44,8 @@ The dataset used is DMRsegaldata, which contains methylation profiles for 5 canc
 ## Setup and Dependencies
 
 ```{r, message=FALSE}
-devtools::load_all()
+try(devtools::load_all(), silent = TRUE)
+try(library(DMRsegal), silent = TRUE)
 library(minfi)
 library(data.table)
 library(ggplot2)
