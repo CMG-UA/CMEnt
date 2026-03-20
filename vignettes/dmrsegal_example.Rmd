@@ -70,13 +70,18 @@ cat(sprintf("Head of phenotype data:\n"))
 print(head(pheno))
 cat(sprintf("Head of DMPs:\n"))
 print(head(dmps))
-# For the sake of the example, we look only at chromosomes 16-22.
-dmps <- dmps[seqnames(dmps) %in% paste0("chr", 16:22)]
+
 
 # The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform the SVM-based scoring of the DMRs.
 # It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
 # The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
+
+# For the sake of the example, we look only at chromosomes 16-20.
+dmps_locs <- beta_handler$getGenomicLocs()[rownames(dmps), ]
+dmps <- dmps[dmps_locs[, "chr"]  %in% paste0("chr", 16:20), ]
+cat(sprintf("Number of DMPs (seeds) on chr16-20: %d\n", nrow(dmps)))
+
 ```
 
 ## DMR Calling from Seeds
@@ -94,7 +99,7 @@ dmrs <- findDMRsFromSeeds(
     covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
     genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
     array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
-    output_prefix = "vignettes/DMRsegal_example", # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
+    output_prefix = "tmp/DMRsegal_example", # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
     n_cores = 4
 )
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
@@ -327,7 +332,7 @@ if (!circos_region_plotted) {
 The DMRsegal interactive Shiny app can be launched with the `launchDMRsegalViewer` function, 
 which allows for interactive exploration of the DMRs and the aforementioned plots. In order to use it, the `output_prefix` argument should be provided in the `findDMRsFromSeeds` function, as the app looks for the output files with this prefix.
 ```{r launch_shiny_app, eval=FALSE}
-launchDMRsegalViewer("vignettes/DMRsegal_example")
+launchDMRsegalViewer("tmp/DMRsegal_example")
 ```
 
 ## Session Info
