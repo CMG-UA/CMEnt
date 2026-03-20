@@ -11,7 +11,7 @@ permissions: read-all
 
 jobs:
   test-coverage:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     defaults:
@@ -25,12 +25,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v3.0.3
+        uses: conda-incubator/setup-miniconda@v3.3.0
         with:
-          miniforge-version: latest
           channels: conda-forge,bioconda,defaults
           channel-priority: strict
-          activate-environment: ci_env
           environment-file: envs/ci_env.yaml
           auto-activate: true
 
