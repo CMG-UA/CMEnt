@@ -2,7 +2,7 @@
 if (getRversion() >= "2.15.1") {
     utils::globalVariables(c(
         "Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position",
-        "score", "region_class", "chr", "target_x", "target_y", "label_x", "label_y",
+        "score", "dmr_class", "chr", "target_x", "target_y", "label_x", "label_y",
         "label", "Group", "block_id", "xmin", "xmax", "ymin", "ymax", "midpoint",
         "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope",
         "hover_text", "candidate_id", "segment_id", "block_local_id", "dmr_id"
@@ -1300,12 +1300,200 @@ plotDMR <- function(dmrs,
     promoter_mask <- if (has_promoter) .hasNonEmptyString(mcols_df[[promoter_col]]) else rep(FALSE, length(dmrs))
     gene_body_mask <- if (has_gene_body) .hasNonEmptyString(mcols_df[[gene_body_col]]) else rep(FALSE, length(dmrs))
 
-    region_class <- rep("Intergenic", length(dmrs))
-    region_class[gene_body_mask] <- "Gene Body"
-    region_class[promoter_mask] <- "Promoter"
-    region_class[promoter_mask & gene_body_mask] <- NA
+    dmr_class <- rep("Intergenic", length(dmrs))
+    dmr_class[gene_body_mask] <- "Gene Body"
+    dmr_class[promoter_mask] <- "Promoter"
+    dmr_class[promoter_mask & gene_body_mask] <- NA
 
-    factor(region_class, levels = c("Promoter", "Gene Body", "Intergenic"))
+    factor(dmr_class, levels = c("Promoter", "Gene Body", "Intergenic"))
+}
+
+.getManhattanChromosomeLengths <- function(dmrs,
+                                           genome = "hg38",
+                                           chromosomes = NULL,
+                                           cytoband = NULL) {
+    if (length(dmrs) == 0) {
+        return(stats::setNames(numeric(), character()))
+    }
+
+    chr_values <- as.character(GenomicRanges::seqnames(dmrs))
+    if (is.null(chromosomes)) {
+        chromosomes <- .orderChromosomesNaturally(chr_values)
+    } else {
+        chromosomes <- .orderChromosomesNaturally(chromosomes)
+    }
+    chromosomes <- unique(as.character(chromosomes))
+    if (length(chromosomes) == 0L) {
+        return(stats::setNames(numeric(), character()))
+    }
+
+    chr_lengths <- stats::setNames(rep(NA_real_, length(chromosomes)), chromosomes)
+    seq_lengths <- suppressWarnings(GenomeInfoDb::seqlengths(dmrs))
+    if (length(seq_lengths) > 0) {
+        seq_lengths <- suppressWarnings(as.numeric(seq_lengths[chromosomes]))
+        names(seq_lengths) <- chromosomes
+        keep_seq <- is.finite(seq_lengths) & seq_lengths > 0
+        if (any(keep_seq)) {
+            chr_lengths[keep_seq] <- seq_lengths[keep_seq]
+        }
+    }
+
+    if (any(!is.finite(chr_lengths) | chr_lengths <= 0) && is.null(cytoband)) {
+        cytoband <- .getCytobandData(genome)
+    }
+    if (!is.null(cytoband) && nrow(cytoband) > 0) {
+        cytoband_lengths <- tapply(cytoband$V3, cytoband$V1, max, na.rm = TRUE)
+        for (chr_name in intersect(chromosomes, names(cytoband_lengths))) {
+            chr_len <- suppressWarnings(as.numeric(cytoband_lengths[[chr_name]]))
+            if (!is.finite(chr_len) || chr_len <= 0) {
+                next
+            }
+            current_len <- chr_lengths[[chr_name]]
+            chr_lengths[[chr_name]] <- if (is.finite(current_len) && current_len > 0) {
+                max(current_len, chr_len)
+            } else {
+                chr_len
+            }
+        }
+    }
+
+    dmr_lengths <- tapply(GenomicRanges::end(dmrs), chr_values, max, na.rm = TRUE)
+    for (chr_name in intersect(chromosomes, names(dmr_lengths))) {
+        chr_len <- suppressWarnings(as.numeric(dmr_lengths[[chr_name]]))
+        if (!is.finite(chr_len) || chr_len <= 0) {
+            next
+        }
+        current_len <- chr_lengths[[chr_name]]
+        chr_lengths[[chr_name]] <- if (is.finite(current_len) && current_len > 0) {
+            max(current_len, chr_len)
+        } else {
+            chr_len
+        }
+    }
+
+    chr_lengths[!is.finite(chr_lengths) | chr_lengths <= 0] <- 1
+    chr_lengths
+}
+
+.resolveManhattanPlotSpans <- function(dmrs,
+                                       genome = "hg38",
+                                       region = NULL,
+                                       cytoband = NULL) {
+    chr_values <- as.character(GenomicRanges::seqnames(dmrs))
+    chr_levels <- .orderChromosomesNaturally(chr_values)
+    if (length(chr_levels) == 0L) {
+        stop("No chromosomes available for Manhattan plotting.")
+    }
+
+    if (is.null(region)) {
+        chr_lengths <- .getManhattanChromosomeLengths(
+            dmrs = dmrs,
+            genome = genome,
+            chromosomes = chr_levels,
+            cytoband = cytoband
+        )
+        spans <- data.frame(
+            span_id = chr_levels,
+            chr = chr_levels,
+            plot_start = rep(1, length(chr_levels)),
+            plot_end = as.numeric(chr_lengths[chr_levels]),
+            label = chr_levels,
+            stringsAsFactors = FALSE
+        )
+    } else {
+        region_df <- .normalizeCircosRegion(region, cytoband = cytoband)
+        if (is.null(region_df) || nrow(region_df) == 0) {
+            stop("No valid plotting regions could be resolved from 'region'.")
+        }
+
+        region_gr <- GenomicRanges::GRanges(
+            seqnames = region_df$chr,
+            ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
+        )
+        region_gr <- GenomicRanges::reduce(region_gr, ignore.strand = TRUE)
+        region_df <- as.data.frame(region_gr)[, c("seqnames", "start", "end"), drop = FALSE]
+        colnames(region_df) <- c("chr", "plot_start", "plot_end")
+        region_df$chr <- as.character(region_df$chr)
+
+        chr_lengths <- .getManhattanChromosomeLengths(
+            dmrs = dmrs,
+            genome = genome,
+            chromosomes = unique(region_df$chr),
+            cytoband = cytoband
+        )
+        length_lookup <- chr_lengths[region_df$chr]
+        keep_lengths <- is.finite(length_lookup) & length_lookup > 0
+        region_df$plot_end[keep_lengths] <- pmin(region_df$plot_end[keep_lengths], length_lookup[keep_lengths])
+        region_df <- region_df[region_df$plot_start <= region_df$plot_end, , drop = FALSE]
+        if (nrow(region_df) == 0) {
+            stop("The requested plotting region falls outside the available chromosome ranges.")
+        }
+
+        chr_order <- .orderChromosomesNaturally(unique(region_df$chr))
+        ord <- order(match(region_df$chr, chr_order), region_df$plot_start, region_df$plot_end)
+        region_df <- region_df[ord, , drop = FALSE]
+        spans <- data.frame(
+            span_id = paste0(region_df$chr, ":", region_df$plot_start, "-", region_df$plot_end),
+            chr = region_df$chr,
+            plot_start = region_df$plot_start,
+            plot_end = region_df$plot_end,
+            label = vapply(seq_len(nrow(region_df)), function(i) {
+                .formatGenomicInterval(region_df$chr[i], region_df$plot_start[i], region_df$plot_end[i])
+            }, character(1)),
+            stringsAsFactors = FALSE
+        )
+    }
+
+    spans$span_width <- pmax(1, spans$plot_end - spans$plot_start + 1)
+    spans$offset <- c(0, utils::head(cumsum(spans$span_width), -1))
+    spans$axis_position <- spans$offset + (spans$span_width + 1) / 2
+    rownames(spans) <- NULL
+    spans
+}
+
+.assignManhattanSpans <- function(dmr_df, plot_spans) {
+    if (nrow(dmr_df) == 0 || nrow(plot_spans) == 0) {
+        return(rep(NA_integer_, nrow(dmr_df)))
+    }
+
+    dmr_gr <- GenomicRanges::GRanges(
+        seqnames = dmr_df$chr,
+        ranges = IRanges::IRanges(start = dmr_df$start, end = dmr_df$end)
+    )
+    span_gr <- GenomicRanges::GRanges(
+        seqnames = plot_spans$chr,
+        ranges = IRanges::IRanges(start = plot_spans$plot_start, end = plot_spans$plot_end)
+    )
+    hits <- GenomicRanges::findOverlaps(dmr_gr, span_gr, ignore.strand = TRUE)
+    if (length(hits) == 0L) {
+        return(rep(NA_integer_, nrow(dmr_df)))
+    }
+
+    hit_df <- data.frame(
+        query = S4Vectors::queryHits(hits),
+        subject = S4Vectors::subjectHits(hits),
+        stringsAsFactors = FALSE
+    )
+    hit_df$midpoint_inside <- dmr_df$midpoint[hit_df$query] >= plot_spans$plot_start[hit_df$subject] &
+        dmr_df$midpoint[hit_df$query] <= plot_spans$plot_end[hit_df$subject]
+    overlap_start <- pmax(dmr_df$start[hit_df$query], plot_spans$plot_start[hit_df$subject])
+    overlap_end <- pmin(dmr_df$end[hit_df$query], plot_spans$plot_end[hit_df$subject])
+    hit_df$overlap_width <- pmax(0, overlap_end - overlap_start + 1)
+    hit_df <- hit_df[
+        order(
+            hit_df$query,
+            -as.integer(hit_df$midpoint_inside),
+            -hit_df$overlap_width,
+            hit_df$subject
+        ),
+        ,
+        drop = FALSE
+    ]
+    hit_df <- hit_df[!duplicated(hit_df$query), , drop = FALSE]
+
+    assignment <- rep(NA_integer_, nrow(dmr_df))
+    assignment[hit_df$query] <- hit_df$subject
+    assignment
 }
 
 .buildManhattanBlockRects <- function(dmr_df,
@@ -1319,9 +1507,18 @@ plotDMR <- function(dmrs,
     if (!any(keep)) {
         return(data.frame())
     }
-    block_df <- dmr_df[keep, c("chr", "position", "score", block_col), drop = FALSE]
+    base_cols <- c("chr", "position", "score", block_col)
+    if ("span_id" %in% colnames(dmr_df)) {
+        base_cols <- c(base_cols, "span_id")
+    }
+    block_df <- dmr_df[keep, base_cols, drop = FALSE]
     colnames(block_df)[4] <- "block_id"
-    by_block <- split(block_df, block_df$block_id)
+    if ("span_id" %in% colnames(block_df)) {
+        block_df$group_id <- paste(block_df$span_id, block_df$block_id, sep = "::")
+    } else {
+        block_df$group_id <- block_df$block_id
+    }
+    by_block <- split(block_df, block_df$group_id)
     if (length(by_block) == 0) {
         return(data.frame())
     }
@@ -1337,8 +1534,8 @@ plotDMR <- function(dmrs,
         max(1, diff(rng))
     })
 
-    rects <- do.call(rbind, lapply(names(by_block), function(id) {
-        d <- by_block[[id]]
+    rects <- do.call(rbind, lapply(names(by_block), function(group_id) {
+        d <- by_block[[group_id]]
         chr_value <- as.character(d$chr[1])
         chr_span_value <- suppressWarnings(as.numeric(chr_display_span[chr_value]))
         if (!is.finite(chr_span_value) || length(chr_span_value) != 1L) {
@@ -1361,7 +1558,8 @@ plotDMR <- function(dmrs,
             xmax <- midpoint + min_width / 2
         }
         data.frame(
-            block_id = id,
+            block_id = d$block_id[1],
+            group_id = group_id,
             xmin = xmin,
             xmax = xmax,
             ymin = -Inf,
@@ -1682,6 +1880,9 @@ plotDMRBlockFormation <- function(dmrs,
 #' DMRs are colored by their dominant genomic region class inferred from DMR annotations.
 #'
 #' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
+#' @param region Optional plotting scope. Can be NULL for full-chromosome plotting,
+#' a GRanges, a string in the form `"chr:start-end"`, or a data.frame/list with
+#' `chr`, `start`, and `end`.
 #' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg38"`).
 #' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
@@ -1705,6 +1906,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' }
 #' @export
 plotDMRsManhattan <- function(dmrs,
+                              region = NULL,
                               genome = "hg38",
                               promoter_col = "in_promoter_of",
                               gene_body_col = "in_gene_body_of",
@@ -1745,20 +1947,22 @@ plotDMRsManhattan <- function(dmrs,
     dmrs <- dmrs[keep]
     scores <- scores[keep]
 
-    region_class <- .classifyDMRRegionForManhattan(dmrs, promoter_col = promoter_col, gene_body_col = gene_body_col)
-    m <- !is.na(region_class)
+    dmr_class <- .classifyDMRRegionForManhattan(dmrs, promoter_col = promoter_col, gene_body_col = gene_body_col)
+    m <- !is.na(dmr_class)
     dmrs <- dmrs[m]
     scores <- scores[m]
-    region_class <- region_class[m]
-    chr <- as.character(GenomicRanges::seqnames(dmrs))
-    chr_levels <- .orderChromosomesNaturally(chr)
+    dmr_class <- dmr_class[m]
+    if (length(dmrs) == 0) {
+        stop("No DMRs remain after filtering unsupported region classes for Manhattan plotting.")
+    }
 
+    chr <- as.character(GenomicRanges::seqnames(dmrs))
     dmr_df <- data.frame(
         chr = chr,
         start = GenomicRanges::start(dmrs),
         end = GenomicRanges::end(dmrs),
         score = scores,
-        region_class = region_class,
+        dmr_class = dmr_class,
         stringsAsFactors = FALSE
     )
     mcols_df <- S4Vectors::mcols(dmrs)
@@ -1797,26 +2001,44 @@ plotDMRsManhattan <- function(dmrs,
     } else {
         dmr_df$block_id <- NA_character_
     }
-    dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
     dmr_df$midpoint <- floor((dmr_df$start + dmr_df$end) / 2)
+    plot_spans <- .resolveManhattanPlotSpans(
+        dmrs = dmrs,
+        genome = genome,
+        region = region
+    )
+    span_idx <- .assignManhattanSpans(dmr_df, plot_spans)
+    if (!is.null(region)) {
+        keep_span <- !is.na(span_idx)
+        if (!any(keep_span)) {
+            stop("No DMRs overlap the requested plotting region.")
+        }
+        dmr_df <- dmr_df[keep_span, , drop = FALSE]
+        span_idx <- span_idx[keep_span]
+    }
+    if (anyNA(span_idx)) {
+        dmr_df <- dmr_df[!is.na(span_idx), , drop = FALSE]
+        span_idx <- span_idx[!is.na(span_idx)]
+    }
+    if (nrow(dmr_df) == 0) {
+        stop("No DMRs are available for Manhattan plotting after applying the plotting scope.")
+    }
 
-    chr_lengths <- tapply(dmr_df$end, dmr_df$chr, max, na.rm = TRUE)
-    chr_lengths <- as.numeric(chr_lengths)
-    names(chr_lengths) <- levels(dmr_df$chr)
-    chr_lengths[!is.finite(chr_lengths)] <- 0
-
-    chr_offsets <- c(0, cumsum(chr_lengths)[seq_len(max(1L, length(chr_lengths) - 1L))])
-    chr_offsets <- chr_offsets[seq_along(chr_lengths)]
-    names(chr_offsets) <- names(chr_lengths)
-
-    dmr_df$position <- dmr_df$midpoint + chr_offsets[as.character(dmr_df$chr)]
+    dmr_df$span_id <- plot_spans$span_id[span_idx]
+    dmr_df$plot_start <- plot_spans$plot_start[span_idx]
+    dmr_df$plot_end <- plot_spans$plot_end[span_idx]
+    dmr_df$offset <- plot_spans$offset[span_idx]
+    midpoint_clipped <- pmin(pmax(dmr_df$midpoint, dmr_df$plot_start), dmr_df$plot_end)
+    dmr_df$position <- (midpoint_clipped - dmr_df$plot_start + 1) + dmr_df$offset
+    chr_levels <- .orderChromosomesNaturally(unique(plot_spans$chr))
+    dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
     dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
         .buildHoverText(
             .hoverLine("DMR", dmr_df$dmr_id[i]),
             .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
             .hoverLine("Score", dmr_df$score[i], digits = 3),
             .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
-            .hoverLine("Primary region", dmr_df$region_class[i]),
+            .hoverLine("Primary region", dmr_df$dmr_class[i]),
             .hoverLine("CpGs", dmr_df$cpgs_num[i]),
             .hoverLine("Seeds", dmr_df$seeds_num[i]),
             .hoverLine("Block", dmr_df$block_id[i]),
@@ -1824,11 +2046,14 @@ plotDMRsManhattan <- function(dmrs,
             .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
         )
     }, character(1))
-    axis_df <- stats::aggregate(position ~ chr, data = dmr_df, FUN = function(x) mean(range(x)))
-    axis_df <- axis_df[match(chr_levels, as.character(axis_df$chr)), , drop = FALSE]
-    axis_df <- axis_df[is.finite(axis_df$position), , drop = FALSE]
+    axis_df <- plot_spans[, c("axis_position", "label"), drop = FALSE]
+    axis_df <- axis_df[is.finite(axis_df$axis_position), , drop = FALSE]
+    total_span_width <- sum(plot_spans$span_width, na.rm = TRUE)
+    if (!is.finite(total_span_width) || total_span_width <= 0) {
+        total_span_width <- max(dmr_df$position, na.rm = TRUE)
+    }
 
-    chrom_boundaries <- cumsum(chr_lengths)
+    chrom_boundaries <- cumsum(plot_spans$span_width)
     chrom_boundaries <- chrom_boundaries[is.finite(chrom_boundaries)]
     chrom_boundaries <- chrom_boundaries[seq_len(max(0L, length(chrom_boundaries) - 1L))]
 
@@ -1843,19 +2068,24 @@ plotDMRsManhattan <- function(dmrs,
         "Intergenic" = 15
     )
 
-    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = region_class, shape = region_class))
+    p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = dmr_class, shape = dmr_class))
     block_rects <- data.frame()
     if (show_blocks) {
         .log_info("Building block rectangles for visualization...", level = 3)
         block_rects <- .buildManhattanBlockRects(dmr_df, block_col = "block_id")
         if (nrow(block_rects) > 0) {
-            block_members <- split(dmr_df, dmr_df$block_id)
+            block_members <- split(dmr_df, if ("span_id" %in% colnames(dmr_df)) {
+                paste(dmr_df$span_id, dmr_df$block_id, sep = "::")
+            } else {
+                dmr_df$block_id
+            })
             block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
-                members <- block_members[[block_rects$block_id[i]]]
+                members <- block_members[[block_rects$group_id[i]]]
                 .buildHoverText(
                     .hoverLine("Block", block_rects$block_id[i]),
                     .hoverLine("DMRs", nrow(members)),
                     .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
+                    .hoverLine("Scope", paste(unique(members$span_id), collapse = ", ")),
                     .hoverLine("Score range", paste(
                         .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
                         .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
@@ -1880,21 +2110,26 @@ plotDMRsManhattan <- function(dmrs,
             .log_info("No block rectangles to display based on column '", block_col, "'.", level = 2)
         }
     }
-    subtitle <- NULL
+    subtitle_parts <- character()
     if (nrow(block_rects) > 0) {
-        subtitle <- paste0("Identified blocks: ", nrow(block_rects))
+        subtitle_parts <- c(subtitle_parts, paste0("Identified blocks: ", nrow(block_rects)))
     }
+    if (!is.null(region)) {
+        subtitle_parts <- c(subtitle_parts, paste0("Scope: ", nrow(plot_spans), " selected region", if (nrow(plot_spans) == 1) "" else "s"))
+    }
+    subtitle <- if (length(subtitle_parts) > 0) paste(subtitle_parts, collapse = " | ") else NULL
     p <- p +
         suppressWarnings(ggplot2::geom_point(ggplot2::aes(text = hover_text), size = point_size, alpha = point_alpha, stroke = 0)) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(
-            breaks = axis_df$position,
-            labels = as.character(axis_df$chr),
+            breaks = axis_df$axis_position,
+            labels = axis_df$label,
+            limits = c(1, total_span_width),
             expand = ggplot2::expansion(mult = c(0.01, 0.01))
         ) +
         ggplot2::labs(
-            x = "Chromosome",
+            x = if (is.null(region)) "Chromosome" else "Genomic Region",
             y = "score",
             title = paste0("DMR Manhattan Plot"),
             subtitle = subtitle

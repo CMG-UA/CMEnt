@@ -6,6 +6,7 @@
 \usage{
 plotDMRsManhattan(
   dmrs,
+  region = NULL,
   genome = "hg38",
   promoter_col = "in_promoter_of",
   gene_body_col = "in_gene_body_of",
@@ -22,6 +23,11 @@ plotDMRsManhattan(
 }
 \arguments{
 \item{dmrs}{GRanges object or data frame. DMR results from findDMRsFromSeeds.}
+
+\item{region}{Optional plotting scope. Can be NULL for full-chromosome plotting,
+a GRanges, a string in the form \code{"chr:start-end"}, or a data.frame/list with
+\code{chr}, \code{start}, and \code{end}.}
+
 \item{genome}{Character. Genome version passed to \code{convertToGRanges} (default: \code{"hg38"}).}
 
 \item{promoter_col}{Character. Metadata column indicating promoter overlap (default: \code{"in_promoter_of"}).}

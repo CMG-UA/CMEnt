@@ -62,6 +62,13 @@ test_that("Shiny module UI functions return tagList", {
     expect_s3_class(DMRsegal:::.circosUI("test"), "shiny.tag.list")
 })
 
+test_that("Manhattan UI exposes an optional plotting region input", {
+    ui_html <- as.character(DMRsegal:::.manhattanUI("test"))
+
+    expect_match(ui_html, "Plotting Region (optional)", fixed = TRUE)
+    expect_match(ui_html, "chr7:100000-2000000", fixed = TRUE)
+})
+
 test_that("Viewer UI uses shinycssloaders instead of the custom busy overlay", {
     skip_if_not_installed("shinycssloaders")
 
@@ -182,7 +189,11 @@ test_that("plotly viewer preserves Manhattan chromosome tick labels", {
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr1", "chr2"),
         ranges = IRanges::IRanges(start = c(100, 200, 100), width = c(40, 40, 40)),
-        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = c("chr1", "chr2"),
+            seqlengths = c(1000, 1500),
+            genome = "hg19"
+        )
     )
     S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.64)
     S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
@@ -195,6 +206,34 @@ test_that("plotly viewer preserves Manhattan chromosome tick labels", {
     built_widget <- plotly::plotly_build(widget)
 
     expect_equal(unname(built_widget$x$layout$xaxis$ticktext), c("chr1", "chr2"))
+})
+
+test_that("viewer background Manhattan task forwards region scope", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100, 200), width = c(40, 40)),
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = "chr1",
+            seqlengths = 1000,
+            genome = "hg19"
+        )
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA)
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2")
+
+    expect_error(
+        DMRsegal:::.viewerRunBackgroundTaskFromData(
+            task_type = "manhattan_plot",
+            data = list(dmrs = dmrs, genome = "hg19"),
+            params = list(
+                region = "chr1:800-900",
+                point_size = 1.1,
+                point_alpha = 0.75
+            )
+        ),
+        "No DMRs overlap the requested plotting region"
+    )
 })
 
 test_that("plotly viewer converts full-height block rectangles to finite ranges", {

@@ -459,6 +459,7 @@ launchDMRsegalViewer <- function(
             plot = .captureViewerRecordedPlot(function() {
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
+                    region = params$region,
                     genome = data$genome,
                     point_size = params$point_size,
                     point_alpha = params$point_alpha

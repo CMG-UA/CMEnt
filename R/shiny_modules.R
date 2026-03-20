@@ -436,6 +436,12 @@ NULL
                 bslib::card(
                     bslib::card_header("Manhattan Plot Settings"),
                     bslib::card_body(
+                        shiny::textInput(
+                            ns("region"),
+                            "Plotting Region (optional)",
+                            placeholder = "e.g., chr7:100000-2000000 or chr5:1-5e7,chr11:1-6e7"
+                        ),
+                        shiny::helpText("Leave empty to plot the full chromosome span for every chromosome with DMRs."),
                         shiny::sliderInput(ns("point_size"), "Point Size", min = 0.5, max = 3, value = 1.1, step = 0.1),
                         shiny::sliderInput(ns("point_alpha"), "Point Transparency", min = 0.1, max = 1, value = 0.75, step = 0.05),
                         shiny::hr(),
@@ -480,6 +486,7 @@ NULL
         shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs)
             params <- list(
+                region = if (nzchar(trimws(input$region))) trimws(input$region) else NULL,
                 point_size = input$point_size,
                 point_alpha = input$point_alpha
             )
@@ -500,6 +507,7 @@ NULL
                     .log_info("Generating Manhattan plot..", level = 3)
                     plot_obj <- plotDMRsManhattan(
                         dmrs = data$dmrs,
+                        region = params$region,
                         genome = data$genome,
                         point_size = params$point_size,
                         point_alpha = params$point_alpha
@@ -531,6 +539,7 @@ NULL
                 shiny::req(params)
                 plotDMRsManhattan(
                     dmrs = data$dmrs,
+                    region = params$region,
                     genome = data$genome,
                     point_size = params$point_size,
                     point_alpha = params$point_alpha,

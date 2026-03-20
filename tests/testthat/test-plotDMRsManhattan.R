@@ -19,7 +19,11 @@ test_that("plotDMRsManhattan draws block rectangles when block ids are present",
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr1", "chr1", "chr2"),
         ranges = IRanges::IRanges(start = c(100, 180, 260, 100), width = c(40, 40, 40, 40)),
-        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = c("chr1", "chr2"),
+            seqlengths = c(1000, 1500),
+            genome = "hg19"
+        )
     )
     S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.66, 0.64)
     S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA, NA)
@@ -36,7 +40,11 @@ test_that("Manhattan block rectangles are full-height overview bands", {
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr1", "chr1"),
         ranges = IRanges::IRanges(start = c(100, 180, 260), width = c(40, 40, 40)),
-        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = "chr1",
+            seqlengths = 1000,
+            genome = "hg19"
+        )
     )
     S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.66)
     S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
@@ -48,6 +56,59 @@ test_that("Manhattan block rectangles are full-height overview bands", {
     expect_true(all(is.infinite(rect_layer$ymin)))
     expect_true(all(is.infinite(rect_layer$ymax)))
     expect_true(all((rect_layer$xmax - rect_layer$xmin) > 0))
+})
+
+test_that("Manhattan plotting spans use full chromosome lengths", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(100, 220, 120), width = c(40, 40, 40)),
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = c("chr1", "chr2"),
+            seqlengths = c(1000, 2000),
+            genome = "hg19"
+        )
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.64)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
+
+    spans <- DMRsegal:::.resolveManhattanPlotSpans(dmrs, genome = "hg19")
+
+    expect_equal(spans$chr, c("chr1", "chr2"))
+    expect_equal(spans$plot_start, c(1, 1))
+    expect_equal(spans$plot_end, c(1000, 2000))
+    expect_equal(spans$offset, c(0, 1000))
+})
+
+test_that("Manhattan plotting region controls the plotted scope", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(180, 620, 120), width = c(40, 40, 40)),
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = c("chr1", "chr2"),
+            seqlengths = c(1000, 2000),
+            genome = "hg19"
+        )
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.71, 0.64)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
+
+    spans <- DMRsegal:::.resolveManhattanPlotSpans(
+        dmrs,
+        genome = "hg19",
+        region = "chr1:200-800"
+    )
+    expect_equal(spans$chr, "chr1")
+    expect_equal(spans$plot_start, 200)
+    expect_equal(spans$plot_end, 800)
+
+    built <- ggplot2::ggplot_build(plotDMRsManhattan(dmrs, genome = "hg19", region = "chr1:200-800"))
+    point_layer <- built$data[[length(built$data)]]
+
+    expect_equal(length(unique(point_layer$x)), 2)
+    expect_true(all(point_layer$x >= 1))
+    expect_true(all(point_layer$x <= 601))
 })
 
 test_that(".normalizeCircosRegion parses region strings", {
