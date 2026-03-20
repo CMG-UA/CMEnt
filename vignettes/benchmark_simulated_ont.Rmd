@@ -62,7 +62,22 @@ library(S4Vectors)
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
 output_dir <- "simulated_ont"
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+get_benchmark_file <- function(filename) {
+    benchmark_file <- ""
+    try(benchmark_file <- system.file("benchmarks", "simulated_ont", filename, package = "DMRsegal"), silent = TRUE)
+    if (benchmark_file == "") {
+        if ("inst" %in% dir()) {
+            benchmark_file <- file.path("inst", "benchmarks", "simulated_ont", filename)
+        } else if ("inst" %in% dir("../")) {
+            benchmark_file <- file.path("..", "inst", "benchmarks", "simulated_ont", filename)
+        } else {
+            benchmark_file <- file.path("benchmarks", "simulated_ont", filename)
+        }
+        benchmark_file <- file.path("inst", "benchmarks", "simulated_ont", filename)
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
 ```
 
 ### Install External Dependencies

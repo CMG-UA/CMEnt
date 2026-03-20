@@ -2831,7 +2831,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
                     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
                     eh <- ExperimentHub::ExperimentHub()
                     # Query for DMRsegaldata resources
-                    dmrsegal_resources <- ExperimentHub::query(eh, "DMRsegaldata")
+                    dmrsegal_resources <- AnnotationHub::query(eh, "DMRsegaldata")
                     # Find the specific resource
                     resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
                     if (length(resource_match) > 0) {

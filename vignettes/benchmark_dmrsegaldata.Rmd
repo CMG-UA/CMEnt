@@ -55,8 +55,23 @@ library(progressr)
 
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
-output_dir <- "dmrsegaldata"
-dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+get_benchmark_file <- function(filename) {
+    benchmark_file <- ""
+    try(benchmark_file <- system.file("benchmarks", "dmrsegaldata", filename, package = "DMRsegal"), silent = TRUE)
+    if (benchmark_file == "") {
+        if ("inst" %in% dir()) {
+            benchmark_file <- file.path("inst", "benchmarks", "dmrsegaldata", filename)
+        } else if ("inst" %in% dir("../")) {
+            benchmark_file <- file.path("..", "inst", "benchmarks", "dmrsegaldata", filename)
+        } else {
+            benchmark_file <- file.path("benchmarks", "dmrsegaldata", filename)
+        }
+        benchmark_file <- file.path("inst", "benchmarks", "dmrsegaldata", filename)
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
 ```
 
 ### Install External Dependencies
@@ -169,7 +184,7 @@ names(dmps_gr) <- rownames(dmps)
 ## Method 1: DMRsegal
 
 ```{r DMRsegal}
-dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
+dmrsegal_file <-  get_benchmark_file("dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("DMRsegal.verbose" = 3)
@@ -216,7 +231,7 @@ cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_dmrsegal), ro
 ## Method 2: comb-p
 
 ```{r comb-p}
-combp_file <- file.path(output_dir, "dmrs.combp.rds")
+combp_file <- get_benchmark_file("dmrs.combp.rds")
 
 run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
@@ -303,7 +318,7 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 
 ## Method 3: probeLasso
 ```{r probeLasso}
-probelasso_file <- file.path(output_dir, "dmrs.probeLasso.rds")
+probelasso_file <- get_benchmark_file("dmrs.probeLasso.rds")
 
 run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
@@ -380,7 +395,7 @@ cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso)
 ## Method 4: DMRcate
 
 ```{r dmrcate}
-dmrcate_file <- file.path(output_dir, "dmrs.dmrcate.rds")
+dmrcate_file <- get_benchmark_file("dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
     start_time <- Sys.time()
@@ -410,7 +425,7 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 ## Method 5: Bumphunter
 
 ```{r bumphunter}
-bumphunter_file <- file.path(output_dir, "dmrs.bumphunter.rds")
+bumphunter_file <- get_benchmark_file("dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
     library(bumphunter)
     library(doParallel)
