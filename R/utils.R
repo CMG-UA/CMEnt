@@ -1448,7 +1448,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     }
     array <- strex::match_arg(array, ignore_case = TRUE)
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir", 
+        "DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
     )
     if (!dir.exists(cache_dir)) {

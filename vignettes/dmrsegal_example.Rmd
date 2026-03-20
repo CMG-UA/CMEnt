@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal Downstream Capabilities"
+title: "DMRsegal End-to-End Example"
 author: "DMRsegal Package"
 date: "`r Sys.Date()`"
 output:
   BiocStyle::html_document:
     code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal Downstream Capabilities}
+  %\VignetteIndexEntry{DMRsegal End-to-End Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -39,7 +39,7 @@ cat("
 
 ## Goal
 
-This notebook showcases additional DMRsegal capabilities beyond DMR discovery, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. We use the example DMRs from `DMRsegaldata` as a benchmark to demonstrate these downstream analyses.
+This notebook showcases all DMRsegal capabilities, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. 
 
 ## Setup
 
@@ -56,34 +56,55 @@ genome <- "hg19"
 ## Load Example Inputs and Benchmark DMRs
 
 ```{r load_inputs_and_dmrs}
+# loadExampleInputData is a helper function to load example data included in the package.
 beta <- loadExampleInputData("beta")
 pheno <- loadExampleInputData("pheno")
 array_type <- loadExampleInputData("array_type")
+# DMPs are produced from minfi, and have the form of a dataframe
 dmps <- loadExampleInputData("dmps")
+cat(sprintf("Beta matrix dimensions: %d CpGs x %d samples\n", nrow(beta), ncol(beta)))
+cat(sprintf("Phenotype data dimensions: %d samples x %d columns\n", nrow(pheno), ncol(pheno)))
+cat(sprintf("Array type: %s\n", array_type))
+cat(sprintf("Number of DMPs (seeds): %d\n", nrow(dmps)))
+cat(sprintf("Head of phenotype data:\n"))
+print(head(pheno))
+cat(sprintf("Head of DMPs:\n"))
+print(head(dmps))
+# For the sake of the example, we look only at chromosomes 16-22.
+dmps <- dmps[seqnames(dmps) %in% paste0("chr", 16:22)]
 
+# The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform the SVM-based scoring of the DMRs.
+# It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
+# The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
-
-dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
-cat(sprintf("Benchmark DMRsegal DMRs loaded: %d\n", length(dmrs)))
 ```
 
-## DMR Summary and scoring
+## DMR Calling from Seeds
+The `findDMRsFromSeeds` function is used to call DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and CpGs in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
+```{r find_dmrs}
+pheno[, "case_control"] <- pheno$Sample_Group == "cancer"
+# Find DMRs using parallel processing with 4 cores, producing a GRanges object with the called DMRs and their metadata.
+dmrs <- findDMRsFromSeeds(
+    beta = beta_handler, # The beta can be an array-like object, tabix file path, or a BED file path. Here we use the beta handler, which is a wrapper around the beta matrix that allows for efficient retrieval of beta values for the DMRs and their seeds.
+    seeds = dmps, # The seeds are the DMPs, which are pre-computed and provided as example data.
+    seeds_id_col = NULL, # The column in the seeds data that contains the unique identifier for each seed, which will be used to link the seeds to the DMRs. If not provided, like here, the rownames of the seeds data will be used as identifiers. In case of a NGS experiment (of a BED, tabix or bsseq input), the names should be in the format "chr:position" to allow for correct linking to the genomic coordinates.
+    pheno = pheno, # The phenotype data, which contains the sample information and covariates. It should have a column with the sample group labels, which will be used for the SVM-based scoring of the DMRs. It can be provided as a TSV file.
+    casecontrol_col = "case_control", # The column in the phenotype data that contains the binary case-control labels for the samples, which will be used for the SVM-based scoring of the DMRs. It should be a logical or factor column with two levels, where one level is considered as "case" and the other as "control". If not provided, the first level of the sample group column will be considered as "control" and the second level as "case".
+    sample_group_col = "Sample_Group", # The column in the phenotype data that contains the sample group labels for the SVM-based scoring.
+    covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
+    genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
+    array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
+    output_prefix = "vignettes/DMRsegal_example", # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
+    n_cores = 4
+)
+cat(sprintf("DMRs found: %d\n", length(dmrs)))
+cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))
+cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", start(dmrs)[1], "-", end(dmrs)[1])))
+```
+
+## DMR Summary
 The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, score, and block ID of each DMR.
 ```{r}
-stopifnot(length(dmrs) > 0)
-
-if (!all(c("score", "cv_accuracy") %in% colnames(mcols(dmrs)))) {
-    options(DMRsegal.scoring_nfold = 3)
-    dmrs <- scoreDMRs(
-        dmrs = dmrs,
-        beta = beta_handler,
-        pheno = pheno,
-        genome = genome,
-        array = array_type,
-        sample_group_col = "Sample_Group"
-    )
-}
-
 summary_tbl <- data.frame(
     chr = as.character(seqnames(dmrs)),
     start = start(dmrs),
@@ -101,23 +122,16 @@ knitr::kable(head(summary_tbl, 5), caption = "Top 5 scoring DMRs (margin-sensiti
 ```
 
 ## Motif Discovery
-Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function. The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
+Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function (called by default when `findDMRsFromSeeds` is used). The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
 ```{r}
-motif_dmrs <- extractDMRMotifs(
-    dmrs = dmrs,
-    genome = genome,
-    array = array_type,
-    motif_cpg_flank_size = 5
-)
-
-n_motif_consensus <- sum(!is.na(mcols(motif_dmrs)$consensus_seq))
-n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(motif_dmrs)$consensus_seq)))
-cat(sprintf("Motifs extracted for %d/%d DMRs.\n", n_motif_consensus, length(motif_dmrs)))
+n_motif_consensus <- sum(!is.na(mcols(dmrs)$consensus_seq))
+n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(dmrs)$consensus_seq)))
+cat(sprintf("Motifs extracted for %d/%d DMRs.\n", n_motif_consensus, length(dmrs)))
 cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
 ```
 
 ## Motif-Based DMR Interactions
-Once motifs are extracted, the `computeDMRsInteraction` function identifies "interactions" between DMRs based on motif similarity. 
+Once motifs are extracted, the `computeDMRsInteraction` function can be used to identify "interactions" between DMRs based on motif similarity. 
 The rationale is that DMRs with similar motifs may be co-regulated or functionally related, even if they are not in close genomic proximity.
 The function computes pairwise similarities between the PWMs of the extracted motifs,
 excluding the center CpG positions, corrects for microarray design biases,
@@ -126,7 +140,7 @@ The resulting components are annotated with JASPAR motifs if available.
 The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
 ```{r}
 interaction_results <- computeDMRsInteraction(
-    dmrs = motif_dmrs,
+    dmrs = dmrs,
     genome = genome,
     array = array_type,
     min_similarity = 0.8,
@@ -137,6 +151,7 @@ interaction_results <- computeDMRsInteraction(
 
 interaction_tbl <- interaction_results$interactions
 component_tbl <- interaction_results$components
+dmrs <- interaction_results$dmrs # The input DMRs are returned with additional metadata columns for the interactions and components.
 
 cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
 cat(sprintf("Components found: %d\n", nrow(component_tbl)))
@@ -145,7 +160,7 @@ if (nrow(component_tbl) > 0) {
     cat(
         sprintf(
             "Largest component size: %d / %d DMRs (%.2f%%)\n",
-            largest_component, length(motif_dmrs), 100 * largest_component / length(motif_dmrs)
+            largest_component, length(dmrs), 100 * largest_component / length(dmrs)
         )
     )
 }
@@ -187,41 +202,6 @@ plotDMRsManhattan(
 )
 ```
 
-### DMR Block Formation Diagnostics
-To inspect how block IDs are formed, we plot one chromosome-level diagnostic view.
-We pick the chromosome of the widest called block and overlay the raw scores, smoothed curve,
-PELT segments, candidate A-B-C spans, split points from the distance rule, and final accepted blocks.
-```{r block_formation_diagnostics, fig.height=7, fig.width=14, dpi=150}
-block_ids <- as.character(mcols(dmrs)$block_id)
-midpoints <- floor((start(dmrs) + end(dmrs)) / 2)
-block_df <- data.frame(
-    chr = as.character(seqnames(dmrs)),
-    midpoint = midpoints,
-    block_id = block_ids,
-    stringsAsFactors = FALSE
-)
-block_df <- block_df[!is.na(block_df$block_id) & nzchar(block_df$block_id), , drop = FALSE]
-if (nrow(block_df) > 0) {
-    block_span <- aggregate(midpoint ~ block_id + chr, data = block_df, FUN = function(x) max(x) - min(x))
-    target_chr <- as.character(block_span$chr[which.max(block_span$midpoint)])
-    cat(sprintf("Diagnostics chromosome selected: %s\n", target_chr))
-    tryCatch(
-        {
-            plotDMRBlockFormation(
-                dmrs = dmrs,
-                chromosome = target_chr
-            )
-        },
-        error = function(e) {
-            message("Block formation diagnostics failed: ", conditionMessage(e))
-            NULL
-        }
-    )
-} else {
-    cat("No block IDs available for diagnostics.\n")
-}
-```
-
 ### Single DMR Plot
 Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the CpGs in the DMR, the seeds, and the motif-based interactions with other DMRs, 
 along with JASPAR annotations if existing.
@@ -251,24 +231,17 @@ cat(
     )
 )
 
-tryCatch(
-    {
-        plotDMR(
-            dmrs = dmrs,
-            dmr_index = selected_dmr_idx,
-            beta = beta_handler,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
-            genome = genome,
-            array = array_type,
-            motif_cpg_flank_size = 5
-        )
-    },
-    error = function(e) {
-        message("Single DMR plot generation failed: ", conditionMessage(e))
-        NULL
-    }
+plotDMR(
+    dmrs = dmrs,
+    dmr_index = selected_dmr_idx,
+    beta = beta_handler,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    genome = genome,
+    array = array_type,
+    motif_cpg_flank_size = 5
 )
+
 ```
 
 ### Summary Circos Plot
@@ -280,7 +253,7 @@ The information includes:
 - The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
 ```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
-circos_dmrs <- motif_dmrs
+circos_dmrs <- dmrs
 circos_summary_plotted <- FALSE
 
 tryCatch(
@@ -350,6 +323,12 @@ if (!circos_region_plotted) {
 }
 ```
 
+### DMRsegal interactive Shiny App
+The DMRsegal interactive Shiny app can be launched with the `launchDMRsegalViewer` function, 
+which allows for interactive exploration of the DMRs and the aforementioned plots. In order to use it, the `output_prefix` argument should be provided in the `findDMRsFromSeeds` function, as the app looks for the output files with this prefix.
+```{r launch_shiny_app, eval=FALSE}
+# launchDMRsegalViewer("vignettes/DMRsegal_example")
+```
 
 ## Session Info
 

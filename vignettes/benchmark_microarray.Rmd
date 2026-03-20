@@ -233,7 +233,7 @@ cat(sprintf("DMRsegal: Found %d DMRs in %d seconds\n", length(dmrs_dmrsegal), ro
 ```{r comb-p}
 combp_file <- get_benchmark_file("dmrs.combp.rds")
 
-run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
+run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
         warning("bedtools not found in PATH. comb-p requires bedtools to be installed.")
         warning("Install with: conda install -yc bioconda bedtools")
@@ -245,8 +245,8 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
         warning("Install with: conda install -yc bioconda combined-pvalues")
         return(GRanges())
     }
-
-    bed_file <- file.path(output_dir, "dmps_for_combp.bed")
+    tmpdir <- tempdir()
+    bed_file <- file.path(tmpdir, "dmps_for_combp.bed")
     bed_df <- data.frame(
         chrom = as.character(seqnames(dmps_gr)),
         start = start(dmps_gr) - 1,
@@ -260,10 +260,9 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
         row.names = FALSE, col.names = TRUE
     )
 
-    output_prefix <- file.path(output_dir, "combp_output")
     cmd <- sprintf(
         "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.01 --region-filter-n 3 %s",
-        seed, dist, output_prefix, bed_file
+        seed, dist, file.path(tmpdir, "output."), bed_file
     )
 
     tryCatch(
@@ -275,7 +274,7 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
                 return(GRanges())
             }
 
-            regions_file <- paste0(output_prefix, ".regions-p.bed.gz")
+            regions_file <- paste0(file.path(tmpdir, "output."), "regions-p.bed.gz")
             if (file.exists(regions_file)) {
                 regions <- fread(cmd = sprintf("zcat %s", regions_file))
                 colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
@@ -303,7 +302,7 @@ run_combp <- function(dmps_gr, output_dir, seed = 500, dist = 500) {
 
 if (!file.exists(combp_file)) {
     start_time <- Sys.time()
-    dmrs_combp <- run_combp(dmps_gr, output_dir)
+    dmrs_combp <- run_combp(dmps_gr)
     end_time <- Sys.time()
     time_combp <- end_time - start_time
     saveRDS(list(dmrs = dmrs_combp, time = time_combp), combp_file)

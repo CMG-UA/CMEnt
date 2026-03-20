@@ -1951,7 +1951,7 @@ findDMRsFromSeeds <- function(
     if (is.null(casecontrol_col)) {
         pheno[, "__casecontrol__"] <- ifelse(pheno[, sample_group_col] == levels(as.factor(pheno[, sample_group_col]))[1], 0, 1)
     } else {
-        pheno[, "__casecontrol__"] <- pheno[, casecontrol_col]
+        pheno[, "__casecontrol__"] <- as.numeric(pheno[, casecontrol_col])
     }
     if (is.null(ignored_sample_groups)) {
         ignored_sample_groups <- c()

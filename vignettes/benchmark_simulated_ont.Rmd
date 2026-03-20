@@ -61,7 +61,6 @@ library(S4Vectors)
 
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
-output_dir <- "simulated_ont"
 get_benchmark_file <- function(filename) {
     benchmark_file <- ""
     try(benchmark_file <- system.file("benchmarks", "simulated_ont", filename, package = "DMRsegal"), silent = TRUE)
@@ -489,7 +488,7 @@ knitr::kable(
 ## Benchmarking DMR Detection Methods
 
 ```{r dmrsegal}
-dmrsegal_file <- file.path(output_dir, "dmrs.DMRsegal.rds")
+dmrsegal_file <- get_benchmark_file("dmrs.DMRsegal.rds")
 
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
@@ -535,7 +534,7 @@ if (!file.exists(dmrsegal_file)) {
 
 
 ```{r dmrcate}
-dmrcate_file <- file.path(output_dir, "dmrs.DMRcate.rds")
+dmrcate_file <- get_benchmark_file("dmrs.DMRcate.rds")
 
 run_dmrcate_bsseq <- function(
     bs_obj,
@@ -680,7 +679,7 @@ if (!file.exists(dmrcate_file)) {
 ```
 
 ```{r dmrseq}
-dmrseq_file <- file.path(output_dir, "dmrs.dmrseq.rds")
+dmrseq_file <- get_benchmark_file("dmrs.dmrseq.rds")
 
 run_dmrseq_bsseq <- function(
     bs_obj,
@@ -841,7 +840,7 @@ if (!file.exists(dmrseq_file)) {
 ```
 
 ```{r hummingbird}
-hummingbird_file <- file.path(output_dir, "dmrs.hummingbird.rds")
+hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
 
 run_hummingbird_bsseq <- function(
     bs_obj,
