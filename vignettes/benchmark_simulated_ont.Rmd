@@ -194,9 +194,8 @@ We score seeds by a combined score of p-value and effect size (delta beta) to pr
 ```{r seeds_calculation}
 design <- model.matrix(~Sample_Group, data = pheno)
 colnames(design) <- c("(Intercept)", "Condition2_vs_Condition1")
-seeds_tsv <- file.path(output_dir, "seeds.tsv")
-seeds_meta_rds <- file.path(output_dir, "seeds.meta.rds")
-
+seeds_tsv <- get_benchmark_file("seeds.tsv")
+seeds_meta_rds <- get_benchmark_file("seeds.meta.rds")
 if (!file.exists(seeds_tsv)) {
     gr <- granges(sim_bs)
     locs <- data.frame(
