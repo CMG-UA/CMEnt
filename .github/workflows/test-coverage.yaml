@@ -43,7 +43,7 @@ jobs:
           chmod 0755 run.sh
           export BACKEND=BSPM
           ./run.sh bootstrap
-          ./run.sh install_r any::covr any::xml2 any::rcmdcheck any::IlluminaHumanMethylation450kanno.ilmn12.hg19 any::IlluminaHumanMethylationEPICanno.ilm10b4.hg19 any::BSgenome.Hsapiens.UCSC.hg19 any::mockery
+          ./run.sh install_r covr xml2 rcmdcheck IlluminaHumanMethylation450kanno.ilmn12.hg19 IlluminaHumanMethylationEPICanno.ilm10b4.hg19 BSgenome.Hsapiens.UCSC.hg19 mockery
           ./run.sh install_deps
         shell: bash
 
