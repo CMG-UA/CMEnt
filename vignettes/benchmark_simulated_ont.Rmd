@@ -81,7 +81,7 @@ get_benchmark_file <- function(filename) {
 
 ### Install External Dependencies
 
-```{r, eval=FALSE}
+```{r}
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
 }
@@ -97,11 +97,6 @@ if (!requireNamespace("dmrseq", quietly = TRUE)) {
 if (!requireNamespace("hummingbird", quietly = TRUE)) {
     BiocManager::install("hummingbird", update = FALSE, ask = FALSE)
 }
-
-if (!requireNamespace("karyoploteR", quietly = TRUE)) {
-    BiocManager::install("karyoploteR", update = FALSE, ask = FALSE)
-}
-library(karyoploteR)
 
 if (!requireNamespace("tidyr", quietly = TRUE)) {
     install.packages("tidyr")
@@ -748,9 +743,9 @@ hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
 
 run_hummingbird_bsseq <- function(
     bs_obj,
-    max_gap = 500L,
-    min_cpgs = 3L,
-    min_length = 50L
+    max_gap = 300L, # default
+    min_cpgs = 3L, # default is 10
+    min_length = 50L # default is 500
 ) {
     sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
     if (!"Sample_Group" %in% colnames(sample_df)) {

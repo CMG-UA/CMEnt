@@ -76,7 +76,7 @@ get_benchmark_file <- function(filename) {
 
 ### Install External Dependencies
 
-```{r, eval=FALSE}
+```{r}
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
 }
@@ -110,24 +110,12 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 
 **Note:** comb-p requires both the tool itself and bedtools. Install via conda:
 
-```bash
-# Install comb-p and bedtools
-conda install -yc bioconda combined-pvalues bedtools
-
-# Or create a dedicated environment
-conda create -n combp python=3.9
-conda activate combp
-conda install -yc bioconda combined-pvalues bedtools
-```
-
-```{r, eval=FALSE}
-# Check if comb-p and bedtools are available
-if (Sys.which("comb-p") == "") {
-    warning("comb-p not found. Install with: conda install -yc bioconda combined-pvalues")
-}
-
-if (Sys.which("bedtools") == "") {
-    warning("bedtools not found. Install with: conda install -yc bioconda bedtools")
+```{bash}
+{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || { 
+    echo >&2 "comb-p or bedtools not found. Installing with conda...";
+    conda create -n dmrsegal_microarray_exp python=3.9
+    conda activate dmrsegal_microarray_exp
+    conda install -yc bioconda combined-pvalues bedtools
 }
 ```
 
