@@ -2280,7 +2280,6 @@ findDMRsFromSeeds <- function(
     .checkResult(dmrs, "1", start_col = "start_seed_pos", end_col = "end_seed_pos")
 
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 1)
-    .log_info("Summary of connected seeds DMRs:\n\t", paste(capture.output(summary(dmrs)), collapse = "\n\t"), level = 3)
     .log_step("Stage 2: Expanding DMRs on neighborhood CpGs..", level = 1)
 
     # Set up progress tracking for DMR expansion
@@ -2496,7 +2495,6 @@ findDMRsFromSeeds <- function(
     .checkResult(extended_dmrs, "2", start_col = "start", end_col = "end")
     .log_success("Post-processing complete.", level = 2)
     .log_success("DMR expansion complete.", level = 1)
-    .log_info("Summary of extended DMRs:\n\t", paste(capture.output(summary(extended_dmrs)), collapse = "\n\t"), level = 3)
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
         .log_info("Saving extended DMRs prior to filtering to debug/03_extended_dmrs.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
@@ -2578,7 +2576,6 @@ findDMRsFromSeeds <- function(
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 1)
     merged_dmrs <- convertToDataFrame(merged_dmrs_ranges)
-    .log_info("Summary of merged DMRs:\n\t", paste(capture.output(summary(merged_dmrs)), collapse = "\n\t"), level = 3)
 
     if (getOption("DMRsegal.make_debug_dir", FALSE)) {
         .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
@@ -2772,7 +2769,6 @@ findDMRsFromSeeds <- function(
     final_dmrs <- convertToDataFrame(final_dmrs_granges)
 
     .log_info("Final number of DMRs: ", nrow(final_dmrs), level = 1)
-    .log_info("Summary of final DMRs:\n\t", paste(capture.output(summary(final_dmrs)), collapse = "\n\t"), level = 3)
     if (!is.null(output_prefix)) {
         viewer_cpgs <- unique(unlist(lapply(S4Vectors::mcols(final_dmrs_granges)$cpgs, .splitCsvValues), use.names = FALSE))
         viewer_beta <- all_selected_cpgs_beta[viewer_cpgs, beta_col_names_detection, drop = FALSE]

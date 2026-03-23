@@ -110,7 +110,7 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 
 **Note:** comb-p requires both the tool itself and bedtools. Install via conda:
 
-```{bash}
+```{bash, engine.opts='-l'}
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || { 
     echo >&2 "comb-p or bedtools not found. Installing with conda...";
     conda create -n dmrsegal_microarray_exp python=3.9
@@ -175,7 +175,7 @@ names(dmps_gr) <- rownames(dmps)
 dmrsegal_file <-  get_benchmark_file("dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
-    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.verbose" = 2)
     options("DMRsegal.njobs" = dmrsegal_njobs)
     cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
     cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
@@ -199,7 +199,7 @@ if (!file.exists(dmrsegal_file)) {
         .score_dmrs = TRUE,
         chunk_size = 1e5,
         njobs = dmrsegal_njobs,
-        verbose = 3
+        verbose = 2
     ))
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
