@@ -38,7 +38,6 @@ Imports:
     bedr,
     BiocGenerics,
     Biostrings,
-    BSgenome,
     bslib (>= 0.5.0),
     bsseq,
     callr,
@@ -113,12 +112,14 @@ Suggests:
     UpSetR,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
+    BSgenome,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Hsapiens.UCSC.hs1,
     org.Hs.eg.db,
     JASPAR2024,
-    optparse
+    optparse,
+    bsseqData
 Config/testthat/edition: 3
 Collate:
     'utils.R'

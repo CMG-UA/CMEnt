@@ -3,7 +3,7 @@
 #' Simulate DMRs with Correlated Effects.
 #'
 #' Add simulated DMRs to observed control data. Control data will be split into two (artificial) populations.
-#' Based on the \link[dmrseq]{simDMRs} function, with additional options to control the correlation structure of methylation changes across CpGs within a DMR
+#' Extends \link[dmrseq]{simDMRs} function, with additional options to control the correlation structure of methylation changes across CpGs within a DMR
 #' and across samples.
 #'
 #' @param bs A BSseq object containing the control data to which DMRs will be added. All loci must have coverage in every sample.
@@ -27,6 +27,20 @@
 #'   \item{bs}{A BSseq object containing the simulated methylation data with the added DMRs.}
 #'   \item{delta}{A numeric vector with the maximum methylation change applied to each DMR.}
 #' @export
+#' @examples
+#' \dontrun{
+#' # Load example BSseq data
+#' data("BS.cancer.ex", package = "bsseqData")
+#' # Simulate DMRs with correlated effects
+#' sim_data <- simDMRsCorrelated(BS.cancer.ex,
+#'     num.dmrs = 100,
+#'     delta.max0 = 0.2,
+#'     use.correlated.effects = TRUE,
+#'     corr.sd = 0.25,
+#'     corr.length = 200,
+#'     sample.sd.frac = 0.33
+#' )
+#' }
 simDMRsCorrelated <- function(bs,
                               num.dmrs = 3000,
                               delta.max0 = 0.3,
