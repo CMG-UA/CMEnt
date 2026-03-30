@@ -68,7 +68,6 @@ Imports:
     inline,
     IRanges,
     jsonlite,
-    lsa,
     methods,
     minfi,
     Organism.dplyr,
