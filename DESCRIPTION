@@ -36,6 +36,7 @@ Depends:
 Imports:
     AnnotationDbi,
     bedr,
+    Biobase,
     BiocGenerics,
     Biostrings,
     bslib (>= 0.5.0),
@@ -46,6 +47,7 @@ Imports:
     colorspace,
     ComplexHeatmap,
     data.table,
+    DelayedArray,
     DelayedDataFrame,
     dplyr,
     DT,
@@ -67,6 +69,7 @@ Imports:
     inline,
     IRanges,
     jsonlite,
+    matrixStats,
     methods,
     minfi,
     Organism.dplyr,
@@ -76,15 +79,18 @@ Imports:
     R6,
     rhdf5,
     readr,
+    rappdirs,
     reshape2,
     rtracklayer,
     S4Vectors,
+    Seqinfo,
     shiny (>= 1.7.0),
     shinycssloaders,
     showtext,
     stats,
     strex,
     stringr,
+    SummarizedExperiment,
     TFBSTools,
     tools,
     utils,
@@ -140,5 +146,7 @@ Collate:
     'plot_dmrs_circos.R'
     'shiny_modules.R'
     'shiny_app.R'
+    'augment_bsseq.R'
+    'sim_dmrs_correlated.R'
     'zzz.R'
 NeedsCompilation: no

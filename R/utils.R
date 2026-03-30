@@ -2772,7 +2772,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
     }
 
     # First, try using data() to load the resource
-    # This works even during covr::package_coverage()
+    # This works even during coverage-instrumented runs.
     verbose_setting <- getOption("DMRsegal.verbose", 1)
     tryCatch(
         {
