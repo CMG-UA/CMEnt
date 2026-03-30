@@ -19,9 +19,9 @@
 #' # Load example BSseq data
 #' data("BSobj", package = "bsseq")
 #' # Augment with 5 synthetic samples
-#' augmented_bs <- augmenBSSeq(BSobj, n_new_samples = 5, seed = 123)
+#' augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5, seed = 123)
 #' }
-augmenBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
+augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     if (!is.null(seed)) set.seed(seed)
 
     # Keep only sites with coverage in at least min_samples
