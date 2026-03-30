@@ -102,7 +102,6 @@ Suggests:
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
     IlluminaHumanMethylationEPICv2anno.20a1.hg38,
-    IlluminaMouseMethylationanno.12.v1.mm10,
     BiocManager,
     devtools,
     knitr,
