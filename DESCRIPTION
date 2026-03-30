@@ -46,7 +46,6 @@ Imports:
     colorspace,
     ComplexHeatmap,
     data.table,
-    DBI,
     DelayedDataFrame,
     dplyr,
     DT,
@@ -91,8 +90,13 @@ Imports:
     utils,
     withr
 Suggests:
+    AnnotationHub,
+    ExperimentHub,
+    IlluminaHumanMethylation27kanno.ilmn12.hg19,
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
+    IlluminaHumanMethylationEPICv2anno.20a1.hg38,
+    IlluminaMouseMethylationanno.12.v1.mm10,
     BiocManager,
     devtools,
     knitr,
@@ -100,7 +104,6 @@ Suggests:
     BiocStyle,
     testthat (>= 3.0.0),
     mockery,
-    covr,
     DMRcate,
     doParallel,
     bumphunter,
@@ -115,10 +118,15 @@ Suggests:
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Hsapiens.UCSC.hs1,
+    BSgenome.Mmusculus.UCSC.mm10,
+    BSgenome.Mmusculus.UCSC.mm39,
     org.Hs.eg.db,
+    org.Mm.eg.db,
     JASPAR2024,
     optparse,
-    bsseqData
+    bsseqData,
+    pkgload,
+    TxDb.Mmusculus.UCSC.mm10.ensGene
 Config/testthat/edition: 3
 Collate:
     'utils.R'
