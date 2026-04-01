@@ -655,16 +655,22 @@
         }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
-        run_mask <- run_mask[run_mask]
+        run_mask <- rep(TRUE, length(run_starts))
 
         if (ugap > 0L) {
-            run_mask <- run_mask & run_starts - ugap > 0
+            boundary_mask <- run_starts - ugap > 0L
+            run_starts <- run_starts[boundary_mask]
+            run_ends <- run_ends[boundary_mask]
+            run_mask <- rep(TRUE, length(run_starts))
             for (i in seq_len(ugap)) {
                 run_mask <- run_mask & connectivity_array[run_starts - i, "reason"] != "end-of-input"
             }
         }
         if (dgap > 0L) {
-            run_mask <- run_mask & run_ends + dgap <= n_sites
+            boundary_mask <- run_ends + dgap <= n_sites
+            run_starts <- run_starts[boundary_mask]
+            run_ends <- run_ends[boundary_mask]
+            run_mask <- rep(TRUE, length(run_starts))
             for (i in seq_len(dgap)) {
                 run_mask <- run_mask & connectivity_array[run_ends + i, "reason"] != "end-of-input"
             }
