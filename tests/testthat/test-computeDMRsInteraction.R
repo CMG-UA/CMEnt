@@ -360,6 +360,23 @@ test_that("extractDMRMotifs keeps seeds grouped per DMR", {
     expect_true(all(vapply(out$pwm, ncol, integer(1)) == 12))
 })
 
+test_that("getBackgroundArrayMotif uses start-anchored CpG windows for array probes", {
+    cache_dir <- tempfile("dmrsegal-bg-cache-")
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    withr::local_options(list(DMRsegal.annotation_cache_dir = cache_dir))
+
+    locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
+    skip_if(nrow(locs) == 0, "Annotation locations not available")
+    expect_true(all((locs$end - locs$start + 1L) == 2L))
+
+    bg_pwm <- getBackgroundArrayMotif(genome = "hg38", array = "450K", motif_cpg_flank_size = 5)
+
+    expect_true(is.matrix(bg_pwm))
+    expect_equal(dim(bg_pwm), c(4, 12))
+    expect_true(all(is.finite(bg_pwm)))
+    expect_true(all(abs(colSums(bg_pwm) - 1) < 1e-8))
+})
+
 test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
     pwm_a <- matrix(
         rep(c(1, 0, 0, 0), 12),

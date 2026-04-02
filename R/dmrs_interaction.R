@@ -215,6 +215,10 @@ getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
         sorted_locs <- convertToGRanges(sorted_locs, genome)
+        # Array annotations store CpGs as width-2 "CG" ranges, but motif windows in
+        # this workflow are anchored on the CpG start base plus one downstream base.
+        # Resize to width 1 so the extracted background windows match extractDMRMotifs().
+        sorted_locs <- GenomicRanges::resize(sorted_locs, width = 1, fix = "start")
         cpg_seqs <- getDMRSequences(sorted_locs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1)
         expected_len <- 2 * motif_cpg_flank_size + 2
         valid_cpg_seqs <- !is.na(cpg_seqs) & nchar(cpg_seqs) == expected_len

@@ -1694,7 +1694,7 @@ orderByLoc <- function(x,
     }
     if (!requireNamespace(pkg_name, quietly = TRUE)) {
         if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            .log_warn("BSgenome package not available: ", pkg_name)
+            .log_info("BSgenome package not available: ", pkg_name)
             .log_info("Attempting to install...")
             tryCatch(
                 {
@@ -1704,7 +1704,7 @@ orderByLoc <- function(x,
                     BiocManager::install(pkg_name, update = FALSE)
                 },
                 error = function(e) {
-                    .log_warn("Installation failed")
+                    .log_warn("Installation of ", pkg_name, " failed")
                     pkg_name <<- NULL
                 }
             )
