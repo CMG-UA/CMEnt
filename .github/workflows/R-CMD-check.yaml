@@ -118,7 +118,7 @@ jobs:
         id: r-ci
         run: |
           export BACKEND=BSPM
-          for pkg in knitr rmarkdown rcmdcheck devtools; do
+          for pkg in knitr rmarkdown rcmdcheck devtools magick; do
             if ! Rscript -e "quit(status = !requireNamespace('${pkg}', quietly = TRUE))"; then
               ./run.sh install_r "${pkg}"
             fi
