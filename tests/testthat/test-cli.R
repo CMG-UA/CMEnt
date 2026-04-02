@@ -52,18 +52,15 @@ test_that("dispatcher prints command-specific help for the viewer command", {
 })
 
 test_that("dispatcher routes launchDMRsegalViewer arguments through the CLI parser", {
-    skip_if_not_installed("mockery")
     skip_if_not_installed("optparse")
-    library(mockery)
 
     captured_args <- NULL
-    stub(
-        DMRsegal:::.runDMRsegalCLI,
-        "launchDMRsegalViewerCLI",
-        function(args) {
+    local_mocked_bindings(
+        launchDMRsegalViewerCLI = function(args) {
             captured_args <<- args
             NULL
-        }
+        },
+        .package = "DMRsegal"
     )
 
     expect_no_error(

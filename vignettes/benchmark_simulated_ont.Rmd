@@ -127,10 +127,16 @@ sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
 sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
 
 if (!file.exists(sim_bs_path)) {
-    stop("Missing BSseq input file: ", sim_bs_path)
+    curl::curl_download(
+        url = "https://zenodo.org/records/19387316/files/sim_bs_1000.rds?download=1",
+        destfile = sim_bs_path
+    )
 }
 if (!file.exists(sim_truth_path)) {
-    stop("Missing ground-truth DMR file: ", sim_truth_path)
+    curl::curl_download(
+        url = "https://zenodo.org/records/19387316/files/sim_dmrs_1000.tsv?download=1",
+        destfile = sim_truth_path
+    )
 }
 
 sim_bs <- readRDS(sim_bs_path)

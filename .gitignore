@@ -37,6 +37,8 @@ Rd2.tex
 *.bak
 *_cache/
 data/sim_bs_1000.rds
+data/sim_dmrs_1000.tsv
+
 *.log
 figure-html
 reports/*

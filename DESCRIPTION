@@ -139,7 +139,7 @@ Collate:
     'dmrs_finder_from_seeds.R'
     'dmrs_interaction.R'
     'dmrs_scoring.R'
-    'find_dmrs_from_seeds.R'
+    'cli.R'
     'DMRsegal-package.R'
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
