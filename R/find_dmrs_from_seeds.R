@@ -5,8 +5,6 @@
         stop("Package 'optparse' is required for DMRsegal CLI support.", call. = FALSE)
     }
 
-    optparse::make_option
-
     list(
         optparse::make_option(
             "--beta",
