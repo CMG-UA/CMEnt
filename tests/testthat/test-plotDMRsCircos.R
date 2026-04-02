@@ -1,3 +1,5 @@
+skip_if_covr_expensive("Skipping expensive circos plotting integration tests under covr.")
+
 test_that("plotDMRsCircos creates a circos plot", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")

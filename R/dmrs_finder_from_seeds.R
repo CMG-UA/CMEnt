@@ -2006,8 +2006,10 @@ findDMRsFromSeeds <- function(
     beta_locs <- beta_handler$getBetaLocs()
     ord <- str_order(paste(beta_locs[, "chr"], ":", beta_locs[, "start"]), numeric = TRUE)
     if (!all(ord == seq_len(nrow(beta_locs)))) {
-        browser()
-        stop("Beta locations are not sorted. Issue with input data.")
+        stop(
+            "Beta locations are not sorted. Ensure the beta input is ordered by chromosome and genomic start position.",
+            call. = FALSE
+        )
     }
 
 

@@ -2,6 +2,8 @@
 library(testthat)
 library(DMRsegal)
 
+skip_if_covr_expensive("Skipping expensive entanglement integration tests under covr.")
+
 test_that("findDMRsFromSeeds works with weak entanglement", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")

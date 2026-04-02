@@ -59,33 +59,26 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     )
 })
 
+skip_if_covr_expensive("Skipping expensive input-mode integration tests under covr.")
+
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("DMRsegal.beta_in_mem_threshold_mb" = 500)
-    withCallingHandlers(
-        {
-            dmrs <- findDMRsFromSeeds(
-                .score_dmrs = FALSE,
-                beta = beta,
-                seeds = dmps,
-                pheno = pheno,
-                sample_group_col = "Sample_Group",
-                min_seeds = 2,
-                min_cpgs = 3,
-                max_lookup_dist = 1000,
-                verbose = 3
-            )
-        },
-        warning = function(w) {
-            message("Caught warning: ", conditionMessage(w))
-            # print call stack
-            print(sys.calls())
-            # enter interactive debugger
-            browser()
-        }
+    expect_no_warning(
+        dmrs <- findDMRsFromSeeds(
+            .score_dmrs = FALSE,
+            beta = beta,
+            seeds = dmps,
+            pheno = pheno,
+            sample_group_col = "Sample_Group",
+            min_seeds = 2,
+            min_cpgs = 3,
+            max_lookup_dist = 1000,
+            verbose = 3
+        )
     )
     # Assertions
     expect_true(!is.null(dmrs))

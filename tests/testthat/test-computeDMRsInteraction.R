@@ -1,5 +1,7 @@
 library(testthat)
 
+skip_if_covr_expensive("Skipping expensive interaction integration tests under covr.")
+
 .loadMotifsAndReduce <- function(dmrs) {
     dmrs <- dmrs[seq_len(min(200, length(dmrs)))]
     if (! "pwm" %in% names(mcols(dmrs))) {

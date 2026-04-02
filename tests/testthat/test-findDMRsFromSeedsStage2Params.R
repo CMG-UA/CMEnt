@@ -1,6 +1,8 @@
 
 library(testthat)
 
+skip_if_covr_expensive("Skipping expensive Stage 2 integration tests under covr.")
+
 test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps parameters", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")

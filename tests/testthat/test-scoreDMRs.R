@@ -1,6 +1,8 @@
 # Test suite for scoreDMRs function
 library(testthat)
 
+skip_if_covr_expensive("Skipping expensive scoring integration tests under covr.")
+
 test_that("scoreDMRs adds score column to DMRs", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")

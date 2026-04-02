@@ -1,6 +1,7 @@
 # Test suite for findDMRsFromSeeds function
 library(testthat)
 
+skip_if_covr_expensive("Skipping expensive end-to-end DMR discovery tests under covr.")
 
 test_that("findDMRsFromSeeds work with covariates adjustment", {
     beta <- loadExampleInputDataChr5And11("beta")
