@@ -11,6 +11,7 @@ WORKDIR /DMRsegal
 SHELL ["/bin/bash", "-c"]
 
 # Install system dependencies
+RUN Rscript -e "install.packages(c('devtools', 'remotes'))"
 RUN Rscript -e "devtools::install()"
 
 ENTRYPOINT ["inst/bin/run_dmrsegal.R"]
