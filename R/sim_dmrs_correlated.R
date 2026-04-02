@@ -58,7 +58,7 @@ simDMRsCorrelated <- function(bs,
         )
     }
 
-    sampleSize <- floor(nrow(Biobase::pData(bs)) / 2)
+    sampleSize <- floor(ncol(bs) / 2)
     message(
         "Simulating DMRs for ", sampleSize, " vs ", ncol(bs) - sampleSize,
         " comparison"
@@ -123,7 +123,7 @@ simDMRsCorrelated <- function(bs,
 
     meth.mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
     unmeth.mat <- as.matrix(bsseq::getCoverage(bs, type = "Cov")) - meth.mat
-    chr <- as.character(Seqinfo::seqnames(bs))
+    chr <- as.character(GenomeInfoDb::seqnames(bs))
     pos <- start(bs)
 
     cluster <- bumphunter::clusterMaker(chr, pos, maxGap = 500)
@@ -144,7 +144,7 @@ simDMRsCorrelated <- function(bs,
 
     fnc <- function(index) {
         gr.dmr <- GenomicRanges::GRanges(
-            seqnames = unique(as.character(Seqinfo::seqnames(bs)[index])),
+            seqnames = unique(as.character(GenomeInfoDb::seqnames(bs)[index])),
             IRanges::IRanges(
                 start = min(start(bs)[index]),
                 end = max(start(bs)[index])

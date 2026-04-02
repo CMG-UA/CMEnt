@@ -24,6 +24,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        env:
+          CACHE_NUMBER: 0
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('envs/ci_env.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-
+
       - name: Setup conda env
         uses: conda-incubator/setup-miniconda@v3.3.0
         with:
@@ -31,19 +41,70 @@ jobs:
           channel-priority: strict
           environment-file: envs/ci_env.yaml
           auto-activate: true
+          use-only-tar-bz2: true
 
       - name: Debug conda
         run: |
           conda info --envs
           conda env export -n ci_env
 
-      - name: Setup R dependencies
+      - name: Download r-ci helper
         run: |
           curl -OLs https://eddelbuettel.github.io/r-ci/run.sh
           chmod 0755 run.sh
+        shell: bash
+
+      - name: Bootstrap r-ci
+        run: |
           export BACKEND=BSPM
           ./run.sh bootstrap
-          ./run.sh install_r covr xml2 rcmdcheck IlluminaHumanMethylation450kanno.ilmn12.hg19 IlluminaHumanMethylationEPICanno.ilm10b4.hg19 BSgenome.Hsapiens.UCSC.hg19 mockery
+        shell: bash
+
+      - name: Discover R cache path
+        id: r-cache
+        run: |
+          libs <- unique(c(.Library.site, file.path(dirname(.Library), "site-library")))
+          libs <- libs[nzchar(libs)]
+          libs <- libs[libs != .Library]
+          writeLines(c(
+            sprintf("version=%s", getRversion()),
+            sprintf("platform=%s", R.version$platform),
+            "paths<<EOF",
+            libs,
+            "EOF"
+          ), Sys.getenv("GITHUB_OUTPUT"))
+        shell: Rscript {0}
+
+      - name: Prepare R cache paths
+        run: |
+          while IFS= read -r lib; do
+            [ -n "$lib" ] || continue
+            sudo mkdir -p "$lib"
+            sudo chmod 2777 "$lib"
+          done <<'EOF'
+          ${{ steps.r-cache.outputs.paths }}
+          EOF
+        shell: bash
+
+      - name: Cache R site libraries
+        id: r-deps-cache
+        uses: actions/cache@v4
+        env:
+          CACHE_NUMBER: 0
+        with:
+          path: ${{ steps.r-cache.outputs.paths }}
+          key: ${{ runner.os }}-${{ steps.r-cache.outputs.platform }}-r-site-library-${{ steps.r-cache.outputs.version }}-${{ env.CACHE_NUMBER }}-${{ hashFiles('DESCRIPTION', '.github/workflows/test-coverage.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.r-cache.outputs.platform }}-r-site-library-${{ steps.r-cache.outputs.version }}-${{ env.CACHE_NUMBER }}-
+
+      - name: Setup R dependencies
+        run: |
+          export BACKEND=BSPM
+          for pkg in covr xml2 rcmdcheck IlluminaHumanMethylation450kanno.ilmn12.hg19 IlluminaHumanMethylationEPICanno.ilm10b4.hg19 BSgenome.Hsapiens.UCSC.hg19 mockery; do
+            if ! Rscript -e "quit(status = !requireNamespace('${pkg}', quietly = TRUE))"; then
+              ./run.sh install_r "${pkg}"
+            fi
+          done
           ./run.sh install_deps
         shell: bash
 

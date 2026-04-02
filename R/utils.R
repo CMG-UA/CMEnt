@@ -1715,7 +1715,7 @@ orderByLoc <- function(x,
 
 
 .getOSCacheDir <- function(prefix) {
-    R.utils::getAbsolutePath(path.expand(rappdirs::user_cache_dir(prefix)))
+    normalizePath(tools::R_user_dir(prefix, which = "cache"), mustWork = FALSE)
 }
 
 #' Extract DNA Sequences for DMRs

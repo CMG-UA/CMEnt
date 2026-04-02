@@ -95,7 +95,6 @@
 #' @importFrom stringr str_count str_order
 #' @importFrom readr read_tsv
 #' @importFrom data.table fread fwrite
-#' @importFrom dplyr %>% filter select mutate
 #' @importFrom bedr tabix
 #' @importFrom BSgenome getSeq
 #' @importFrom utils txtProgressBar setTxtProgressBar
