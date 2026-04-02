@@ -77,6 +77,9 @@ get_benchmark_file <- function(filename) {
 ### Install External Dependencies
 
 ```{r}
+if (!"repos" %in% names(options())) {
+    options("repos" = c(CRAN = "https://cloud.r-project.org"))
+}
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
 }

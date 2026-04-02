@@ -125,7 +125,7 @@ resolve_input_path <- function(path_in_repo) {
 
 sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
 sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
-
+dir.create("data", showWarnings = FALSE, recursive = TRUE)
 if (!file.exists(sim_bs_path)) {
     curl::curl_download(
         url = "https://zenodo.org/records/19387316/files/sim_bs_1000.rds?download=1",

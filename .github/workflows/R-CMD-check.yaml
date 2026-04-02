@@ -56,13 +56,13 @@ jobs:
         if: matrix.config.os == 'macos-latest'
         run: |
           brew install imagemagick@6
-          brew install libgit2
+          brew install libgit2 openssl libxml2 curl
 
       - name: Install Linux system dependencies
         if: matrix.config.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmagick++-dev libgit2-dev
+          sudo apt-get install -y libmagick++-dev libgit2-dev libcurl4-openssl-dev libssl-dev libxml2-dev
 
       - name: Download r-ci helper
         run: |
