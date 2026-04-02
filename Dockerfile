@@ -13,5 +13,4 @@ SHELL ["/bin/bash", "-c"]
 # Install system dependencies
 RUN Rscript -e "devtools::install()"
 
-ENTRYPOINT ["inst/bin/find_dmrs_from_seeds.R"]
-
+ENTRYPOINT ["inst/bin/run_dmrsegal.R"]

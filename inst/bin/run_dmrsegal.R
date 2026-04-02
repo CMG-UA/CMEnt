@@ -5,6 +5,6 @@ if (!requireNamespace("DMRsegal", quietly = TRUE)) {
 }
 
 DMRsegal:::.runDMRsegalCLI(
-    cli_args = c("findDMRsFromSeeds", commandArgs(trailingOnly = TRUE)),
+    cli_args = commandArgs(trailingOnly = TRUE),
     script_name = commandArgs(FALSE)[1]
 )
