@@ -103,7 +103,7 @@ Suggests:
     knitr,
     rmarkdown,
     BiocStyle,
-    magick, # for vignette figures
+    magick,
     testthat (>= 3.0.0),
     mockery,
     DMRcate,
