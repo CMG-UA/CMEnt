@@ -150,7 +150,7 @@ sim_bs <- sim_bs[valid_cpgs, ]
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
     truth_df,
-    seqnames.field = "chr",
+    seqnames.field = "seqnames",
     start.field = "start",
     end.field = "end",
     keep.extra.columns = TRUE
