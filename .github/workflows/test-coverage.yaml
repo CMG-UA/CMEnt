@@ -37,11 +37,10 @@ jobs:
       - name: Setup conda env
         uses: conda-incubator/setup-miniconda@v3.3.0
         with:
-          channels: conda-forge,bioconda,defaults
+          channels: conda-forge,bioconda
           channel-priority: strict
           environment-file: envs/ci_env.yaml
           auto-activate: true
-          use-only-tar-bz2: true
 
       - name: Debug conda
         run: |
