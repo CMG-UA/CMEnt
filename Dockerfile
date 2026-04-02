@@ -13,5 +13,6 @@ SHELL ["/bin/bash", "-c"]
 # Install system dependencies
 RUN Rscript -e "install.packages(c('devtools', 'remotes'))"
 RUN Rscript -e "devtools::install()"
+RUN Rscript -e "install.packages('optparse')"
 
 ENTRYPOINT ["inst/bin/run_dmrsegal.R"]
