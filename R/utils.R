@@ -2450,7 +2450,12 @@ convertToDataFrame <- function(gr) {
     if (!dir.exists(.already_logged_dir)) {
         dir.create(.already_logged_dir, recursive = TRUE, showWarnings = FALSE)
     }
-
+    if (nzchar(Sys.getenv("CI"))) {
+        # CI-safe future backend
+        .log_info("Running in CI environment, using sequential processing to avoid parallel issues in CI", level = 2)
+        future::plan(future::sequential)
+        return()
+    }
     njobs <- getOption("DMRsegal.njobs")
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs
