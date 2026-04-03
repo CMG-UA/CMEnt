@@ -9,9 +9,11 @@ simDMRsCorrelated(
   num.dmrs = 3000,
   delta.max0 = 0.3,
   use.correlated.effects = TRUE,
-  corr.sd = 0.25,
+  corr.mode = c("background", "manual"),
+  corr.rate = 1,
+  corr.sd = 0.3,
   corr.length = 200,
-  sample.sd.frac = 0.33
+  sample.sd.frac = 0.75
 )
 }
 \arguments{
@@ -26,9 +28,17 @@ each affected DMR on top of the smooth mean shift, creating more realistic regio
 patterns of differential methylation. If FALSE, only the smooth deterministic DMR effect is
 applied, without the additional correlated deviations.}
 
-\item{corr.sd}{Controls the magnitude of the correlated effect across CpGs within a DMR.
-Higher values lead to stronger correlation and more coherent DMRs, while lower values result in
-weaker correlation and more heterogeneous DMRs.}
+\item{corr.mode}{Character. \code{"background"} (default) estimates a neighboring-CpG correlation
+distribution from the background signal in \code{bs} and calibrates DMR-specific correlation
+settings from it. \code{"manual"} uses the supplied \code{corr.sd} and \code{sample.sd.frac} directly.}
+
+\item{corr.rate}{Numeric scalar multiplier applied to the sampled background correlation
+targets when \code{corr.mode = "background"}. Values above 1 strengthen the expected
+neighboring-CpG correlation signal, while values between 0 and 1 weaken it.}
+
+\item{corr.sd}{Controls the magnitude of the correlated effect across CpGs within a DMR when
+\code{corr.mode = "manual"}. Higher values lead to stronger correlation and more coherent DMRs,
+while lower values result in weaker correlation and more heterogeneous DMRs.}
 
 \item{corr.length}{Controls the length scale of the correlation across CpGs within a DMR.
 Smaller values lead to more localized correlation (i.e., stronger correlation between
@@ -36,12 +46,14 @@ nearby CpGs and weaker correlation between distant CpGs), while larger values le
 more extended correlation across the DMR.}
 
 \item{sample.sd.frac}{Controls the magnitude of sample-specific variation relative to the
-shared correlated effect. Higher values make CpG-to-CpG correlation easier to observe
-across samples, while lower values keep replicates more similar to the shared DMR profile.}
+shared correlated effect when \code{corr.mode = "manual"}. Higher values make CpG-to-CpG
+correlation easier to observe across samples, while lower values keep replicates more
+similar to the shared DMR profile.}
 }
 \value{
 A named list containing:
-\item{gr.dmrs}{A GRanges object with the locations of the simulated DMRs.}
+\item{gr.dmrs}{A GRanges object with the locations of the simulated DMRs and metadata
+columns \code{corr_target}, \code{corr_sd_used}, \code{sample_sd_frac_used}, and \code{corr_mode_used}.}
 \item{dmr.mncov}{A numeric vector with the mean coverage of each simulated DMR.}
 \item{dmr.L}{A numeric vector with the number of CpGs in each simulated DMR.}
 \item{bs}{A BSseq object containing the simulated methylation data with the added DMRs.}
@@ -57,14 +69,23 @@ and across samples.
 # Load example BSseq data
 data("BS.cancer.ex", package = "bsseqData")
 keep <- rowSums(as.matrix(bsseq::getCoverage(BS.cancer.ex, type = "Cov")) == 0) == 0
-# Simulate DMRs with correlated effects
+# Simulate DMRs with background-calibrated correlation
 sim_data <- simDMRsCorrelated(BS.cancer.ex[keep, ],
     num.dmrs = 100,
     delta.max0 = 0.2,
     use.correlated.effects = TRUE,
-    corr.sd = 0.25,
+    corr.rate = 1.2,
+    corr.length = 200
+)
+
+# Manual correlation settings remain available
+sim_data_manual <- simDMRsCorrelated(BS.cancer.ex[keep, ],
+    num.dmrs = 100,
+    delta.max0 = 0.2,
+    corr.mode = "manual",
+    corr.sd = 0.3,
     corr.length = 200,
-    sample.sd.frac = 0.33
+    sample.sd.frac = 0.75
 )
 }
 }
