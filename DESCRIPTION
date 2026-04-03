@@ -142,6 +142,5 @@ Collate:
     'shiny_modules.R'
     'shiny_app.R'
     'augment_bsseq.R'
-    'sim_dmrs_correlated.R'
     'zzz.R'
 NeedsCompilation: no
