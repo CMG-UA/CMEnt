@@ -76,7 +76,7 @@ get_benchmark_file <- function(filename) {
 
 ### Install External Dependencies
 
-```{r}
+```{r, eval=FALSE}
 r <- getOption("repos")
 if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
@@ -101,20 +101,14 @@ if (!requireNamespace("tidyr", quietly = TRUE)) {
     install.packages("tidyr")
 }
 
-if (!requireNamespace("reticulate", quietly = TRUE)) {
-    install.packages("reticulate")
-}
-
 if (!requireNamespace("ChAMP", quietly = TRUE)) {
     BiocManager::install("ChAMP", update = FALSE, ask = FALSE)
 }
 ```
 
-### Setup comb-p (conda required)
+**Note:** comb-p requires both the Python tool itself (combined-pvalues) and bedtools, installing using new conda env if not present:
 
-**Note:** comb-p requires both the tool itself and bedtools. Install via conda:
-
-```{bash, engine.opts='-l'}
+```{bash, engine.opts='-l', eval=FALSE}
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || { 
     echo >&2 "comb-p or bedtools not found. Installing with conda...";
     conda create -n dmrsegal_microarray_exp python=3.9

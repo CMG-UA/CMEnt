@@ -2,7 +2,7 @@
 % Please edit documentation in R/augment_bsseq.R
 \name{augmentBSSeq}
 \alias{augmentBSSeq}
-\title{Augment BSseq Object (Per-Site)}
+\title{Augment BSseq Object}
 \usage{
 augmentBSSeq(bs, n_new_samples, seed = NULL, min_samples = 2)
 }
@@ -19,11 +19,11 @@ augmentBSSeq(bs, n_new_samples, seed = NULL, min_samples = 2)
 A BSseq object with original and synthetic samples
 }
 \description{
-Generate synthetic samples by sampling from per-site coverage and methylation
-distributions. For each CpG site, coverage is sampled from a Poisson distribution
-fitted to that site's coverage values, and methylation is sampled from a Beta
-distribution fit with sample-size-aware shrinkage to avoid over-dispersion when
-only a few input samples are available.
+Generate synthetic samples while preserving both per-site coverage and
+methylation marginals and the local correlation structure of neighboring CpGs.
+Coverage and methylation are first fit with per-site Poisson/Beta marginals,
+then synthetic samples are drawn through chromosome-local Gaussian copula
+fields whose dependence is estimated from adjacent CpGs in the observed data.
 }
 \examples{
 \dontrun{

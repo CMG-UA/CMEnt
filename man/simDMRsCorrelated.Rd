@@ -21,8 +21,10 @@ simDMRsCorrelated(
 
 \item{delta.max0}{The maximum absolute change in methylation proportion to apply within a DMR. The actual change for each DMR will be randomly varied around this value.}
 
-\item{use.correlated.effects}{If TRUE, simulates correlated methylation changes across CpGs within a DMR,
-creating more realistic regional patterns of differential methylation. If FALSE, simulates independent changes at each CpG site.}
+\item{use.correlated.effects}{If TRUE, adds correlated latent deviations across CpGs within
+each affected DMR on top of the smooth mean shift, creating more realistic regional
+patterns of differential methylation. If FALSE, only the smooth deterministic DMR effect is
+applied, without the additional correlated deviations.}
 
 \item{corr.sd}{Controls the magnitude of the correlated effect across CpGs within a DMR.
 Higher values lead to stronger correlation and more coherent DMRs, while lower values result in
@@ -33,8 +35,9 @@ Smaller values lead to more localized correlation (i.e., stronger correlation be
 nearby CpGs and weaker correlation between distant CpGs), while larger values lead to
 more extended correlation across the DMR.}
 
-\item{sample.sd.frac}{Controls the magnitude of sample-specific variation relative to the correlated effect.
-Higher values lead to more variability between samples, while lower values lead to more consistent effects across samples.}
+\item{sample.sd.frac}{Controls the magnitude of sample-specific variation relative to the
+shared correlated effect. Higher values make CpG-to-CpG correlation easier to observe
+across samples, while lower values keep replicates more similar to the shared DMR profile.}
 }
 \value{
 A named list containing:
@@ -53,8 +56,9 @@ and across samples.
 \dontrun{
 # Load example BSseq data
 data("BS.cancer.ex", package = "bsseqData")
+keep <- rowSums(as.matrix(bsseq::getCoverage(BS.cancer.ex, type = "Cov")) == 0) == 0
 # Simulate DMRs with correlated effects
-sim_data <- simDMRsCorrelated(BS.cancer.ex,
+sim_data <- simDMRsCorrelated(BS.cancer.ex[keep, ],
     num.dmrs = 100,
     delta.max0 = 0.2,
     use.correlated.effects = TRUE,
