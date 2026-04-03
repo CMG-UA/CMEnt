@@ -110,7 +110,6 @@ Suggests:
     doParallel,
     bumphunter,
     ChAMP,
-    reticulate,
     tidyr,
     scales,
     UpSetR,
