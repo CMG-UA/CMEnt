@@ -61,7 +61,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
-        annotated_with_genes = FALSE,
+        annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
@@ -114,7 +114,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
-        annotated_with_genes = FALSE,
+        annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
@@ -166,7 +166,7 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,
-        annotated_with_genes = FALSE,
+        annotate_with_genes = FALSE,
         extract_motifs = FALSE,
             beta = bed_file,
             seeds = dmps,
@@ -214,7 +214,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
-        annotated_with_genes = FALSE,
+        annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
@@ -268,7 +268,7 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
-        annotated_with_genes = FALSE,
+        annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
