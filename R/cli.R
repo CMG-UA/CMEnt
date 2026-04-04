@@ -199,6 +199,11 @@
             help = "Port number for the Shiny server (default: auto-assigned)."
         ),
         optparse::make_option(
+            "--host",
+            default = "127.0.0.1",
+            help = "Host interface for the Shiny server (default: 127.0.0.1). Use 0.0.0.0 in Docker."
+        ),
+        optparse::make_option(
             "--diagnostic",
             default = FALSE,
             type = "logical",
@@ -295,6 +300,7 @@ launchDMRsegalViewerCLI <- function(args) {
         output_prefix = args$output_prefix,
         launch_browser = args$launch_browser,
         port = args$port,
+        host = args$host,
         diagnostic = args$diagnostic
     ))
 }

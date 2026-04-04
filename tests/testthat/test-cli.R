@@ -67,6 +67,7 @@ test_that("dispatcher routes launchDMRsegalViewer arguments through the CLI pars
                 "--output_prefix", "results/test",
                 "--launch_browser", "FALSE",
                 "--port", "3456",
+                "--host", "0.0.0.0",
                 "--diagnostic", "TRUE"
             ),
             script_name = "run_dmrsegal.R"
@@ -76,5 +77,6 @@ test_that("dispatcher routes launchDMRsegalViewer arguments through the CLI pars
     expect_equal(captured_args$output_prefix, "results/test")
     expect_false(captured_args$launch_browser)
     expect_equal(captured_args$port, 3456L)
+    expect_equal(captured_args$host, "0.0.0.0")
     expect_true(captured_args$diagnostic)
 })

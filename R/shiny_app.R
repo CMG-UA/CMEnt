@@ -8,6 +8,8 @@
 #'   \code{{output_prefix}.seeds_beta.tsv.gz}, and \code{{output_prefix}.meta.rds}.
 #' @param launch_browser Logical. Whether to launch in browser (default: TRUE).
 #' @param port Integer. Port number for Shiny server (default: auto-assigned).
+#' @param host Character. Host interface for the Shiny server (default: \code{"127.0.0.1"}).
+#'   Use \code{"0.0.0.0"} when exposing the app from a Docker container.
 #' @param diagnostic Logical. Whether to enable diagnostic features for block formation visualization (default: FALSE).
 #'
 #' @return Invisibly returns the Shiny app object.
@@ -46,6 +48,7 @@ launchDMRsegalViewer <- function(
     output_prefix,
     launch_browser = TRUE,
     port = NULL,
+    host = "127.0.0.1",
     diagnostic = FALSE
 ) {
     validation <- .validateOutputPrefix(output_prefix)
@@ -65,7 +68,7 @@ launchDMRsegalViewer <- function(
 
     app <- shiny::shinyApp(ui = ui, server = server)
     run_args <- c(
-        list(appDir = app, launch.browser = launch_browser),
+        list(appDir = app, launch.browser = launch_browser, host = host),
         if (is.null(port)) list() else list(port = port)
     )
 

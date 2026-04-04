@@ -8,6 +8,7 @@ launchDMRsegalViewer(
   output_prefix,
   launch_browser = TRUE,
   port = NULL,
+  host = "127.0.0.1",
   diagnostic = FALSE
 )
 }
@@ -19,6 +20,9 @@ The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
 \item{launch_browser}{Logical. Whether to launch in browser (default: TRUE).}
 
 \item{port}{Integer. Port number for Shiny server (default: auto-assigned).}
+
+\item{host}{Character. Host interface for the Shiny server (default: \code{"127.0.0.1"}).
+Use \code{"0.0.0.0"} when exposing the app from a Docker container.}
 
 \item{diagnostic}{Logical. Whether to enable diagnostic features for block formation visualization (default: FALSE).}
 }
