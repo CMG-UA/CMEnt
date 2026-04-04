@@ -419,12 +419,12 @@ if (!file.exists(bumphunter_file)) {
         library(doParallel)
     })
     start_time <- Sys.time()
-    # Safer defaults for local/WSL rendering; override via options().
-    bh_cores <- 1
+    bh_cores <- max(1L, min(4L, future::availableCores() - 1L))
     bh_b <- 100L
     bh_max_dmrs <- 1000000L
     bh_max_gap <- 2000L
     bh_min_l <- 2L
+    bh_region_p <- 0.05
 
     doParallel::registerDoParallel(cores = bh_cores)
     on.exit({
@@ -433,6 +433,11 @@ if (!file.exists(bumphunter_file)) {
     }, add = TRUE)
 
     design <- model.matrix(~Sample_Group, data = pheno)
+    bh_cluster <- bumphunter::clusterMaker(
+        chr = as.character(locs$chr),
+        pos = locs$start,
+        maxGap = bh_max_gap
+    )
     max_gap <- bh_max_gap
     dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
@@ -445,6 +450,7 @@ if (!file.exists(bumphunter_file)) {
             cutoff = dmrs_cutoff,
             chr = as.character(locs$chr),
             pos = locs$start,
+            cluster = bh_cluster,
             maxGap = max_gap,
             nullMethod = "bootstrap",
             B = 0,
@@ -465,6 +471,7 @@ if (!file.exists(bumphunter_file)) {
         design = design,
         chr = as.character(locs$chr),
         pos = locs$start,
+        cluster = bh_cluster,
         cutoff = final_cutoff,
         maxGap = max_gap,
         nullMethod = "bootstrap",
@@ -474,8 +481,8 @@ if (!file.exists(bumphunter_file)) {
     )
 
     dmr_table <- bumphunter_results$table
-    dmr_table$p.adj <- p.adjust(dmr_table$p.value, method = "BH")
-    dmr_table <- dmr_table[dmr_table$L >= bh_min_l & dmr_table$p.adj <= 0.05, ]
+    # bumphunter already estimates region-level p-values from the bootstrap null.
+    dmr_table <- dmr_table[dmr_table$L >= bh_min_l & dmr_table$p.value <= bh_region_p, ]
 
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
@@ -637,13 +644,13 @@ knitr::kable(iou_matrix, digits = 4, caption = "IoU (genomic coverage-based simi
 
 ```{r, fig.width=10, fig.height=5}
 viz_data <- results_comparison |>
-    dplyr::select(Method, Number_of_DMRs, Total_Coverage_bp) |>
+    dplyr::select(Method, Number.of.DMRs, Total.Coverage.bp) |>
     tidyr::pivot_longer(
-        cols = c(Number_of_DMRs, Total_Coverage_bp),
+        cols = c(Number.of.DMRs, Total.Coverage.bp),
         names_to = "Metric", values_to = "Value"
     )
 
-viz_data$Metric <- ifelse(viz_data$Metric == "Number_of_DMRs",
+viz_data$Metric <- ifelse(viz_data$Metric == "Number.of.DMRs",
     "Number of DMRs",
     "Total Coverage (bp)"
 )
