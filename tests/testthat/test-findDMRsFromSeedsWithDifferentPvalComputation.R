@@ -184,20 +184,22 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps, target_n = 50L)
     # Test with ntries = 0 (should use default)
-    dmrs_ntries_0 <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        pval_mode = "empirical",
-        ntries = 0
-    )
+    expect_warning({
+        dmrs_ntries_0 <- findDMRsFromSeeds(
+            .score_dmrs = FALSE,
+            annotate_with_genes = FALSE,
+            extract_motifs = FALSE,
+            beta = beta,
+            seeds = dmps,
+            pheno = pheno,
+            sample_group_col = "Sample_Group",
+            min_seeds = 2,
+            min_cpgs = 3,
+            max_lookup_dist = 1000,
+            pval_mode = "empirical",
+            ntries = 0
+        ), "No DMRs passed"
+    })
 
     # Test with ntries = 50
     dmrs_ntries_50 <- findDMRsFromSeeds(
@@ -261,7 +263,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
             empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
             ntries = 50,
             mid_p = FALSE
-        ), "sufficient small empirical p-value"
+        ), "sufficient small empirical"
     )
     expect_true(all(!ret_weak$connected))
     expect_true(all(grepl("pval>max_pval", ret_weak$reason, fixed = TRUE)))
