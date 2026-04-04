@@ -193,6 +193,7 @@ if (!file.exists(dmrsegal_file)) {
         max_bridge_extension_gaps = 3,
         min_seeds = 2,
         min_cpgs = 3,
+        min_cpg_delta_beta = 0,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
@@ -1150,7 +1151,7 @@ if ("score" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
         end_idx <- min(i * bin_size, length(dmrs_segal_scored))
         bin_dmrs <- dmrs_segal_scored[start_idx:end_idx]
 
-        in_consensus <- sum(overlapsAny(bin_dmrs, consensus_3plus))
+        in_consensus <- sum(overlapsAny(bin_dmrs, consensus_2plus))
 
         data.frame(
             Score_Bin = sprintf("Top %d%%", i * 10),
@@ -1172,7 +1173,7 @@ if ("score" %in% names(mcols(dmrs_dmrsegal)) && length(dmrs_dmrsegal) > 10) {
         labs(
             title = "DMRsegal Scoring Quality Assessment",
             subtitle = "Higher-scoring DMRs should have higher consensus overlap",
-            x = "Score Decile", y = "% in Consensus (3+ methods)"
+            x = "Score Decile", y = "% in Consensus (2+ methods)"
         )
 }
 ```
