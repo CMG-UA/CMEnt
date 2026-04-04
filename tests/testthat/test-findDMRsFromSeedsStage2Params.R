@@ -19,8 +19,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
             min_cpgs = 3,
             max_lookup_dist = 1000,
             expansion_window = 1, # Expand DMRs by 1bp
-            max_bridge_seeds_gaps = 2, # Allow bridging up to 2 seeds apart
-            verbose = 2 # Set verbose to 2 to capture detailed logs
+            max_bridge_seeds_gaps = 2 # Allow bridging up to 2 seeds apart
         )
     # Assertions
     expect_s4_class(dmrs_expanded, "GRanges")
