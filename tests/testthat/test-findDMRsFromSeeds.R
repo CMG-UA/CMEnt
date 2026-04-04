@@ -77,7 +77,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
         # Assertions
         expect_s4_class(dmrs_segal, "GRanges")
-        expect_equal(length(dmrs_segal), 165)
+        expect_equal(length(dmrs_segal), 143)
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
 
         # Check that all DMRs meet the criteria

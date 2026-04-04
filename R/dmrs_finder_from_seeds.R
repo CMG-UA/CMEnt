@@ -724,15 +724,22 @@
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
+    beta_row_ids <- rownames(beta_locs)
+    # Numeric indices in this function are relative to beta_locs, which may be a subset
+    # of the full beta matrix. Prefer stable row IDs whenever they are available so that
+    # all backends query the same CpGs during connectivity estimation.
+    use_numeric_row_index <- is.null(beta_row_ids) ||
+        length(beta_row_ids) != n_sites ||
+        anyNA(beta_row_ids) ||
+        any(!nzchar(beta_row_ids))
     if (any(pval_mode_per_group == "auto") || any(empirical_strategy_per_group[pval_mode_per_group == "empirical"] == "auto")) {
         .log_info(
             "Selecting p-value computation mode for each group using the first chunk as a pilot.",
             level = 2
         )
-        use_numeric_row_index <- !is.character(beta_handler$beta)
         first_chunk_rows <- splits[1, 1]:(splits[1, 2] + 1L)
         if (!use_numeric_row_index) {
-            first_chunk_rows <- rownames(beta_locs)[first_chunk_rows]
+            first_chunk_rows <- beta_row_ids[first_chunk_rows]
         }
         # select testing settings using the first chunk as a pilot
         first_chunk <- beta_handler$getBeta(
@@ -772,8 +779,9 @@
     gc()
     beta_chr_vec <- beta_chr
     beta_start_vec <- as.numeric(beta_locs[, "start"])
-    use_numeric_row_index <- !is.character(beta_handler$beta)
-    beta_row_ids <- if (!use_numeric_row_index) rownames(beta_locs) else NULL
+    if (use_numeric_row_index) {
+        beta_row_ids <- NULL
+    }
     fun <- function(split_ind, beta_handler) {
         split <- splits[split_ind, ]
         pair_start <- as.integer(split[1])
