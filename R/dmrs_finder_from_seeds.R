@@ -2067,7 +2067,7 @@ findDMRsFromSeeds <- function(
     sample_groups <- factor(pheno_detection[, sample_group_col])
     group_inds <- split(seq_along(sample_groups), sample_groups)
 
-    .log_step("Reordering seeds by genomic location...", level = 2)
+    .log_step("Reordering seeds by genomic location...", level = 3)
 
 
     if (!all(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
@@ -2098,6 +2098,7 @@ findDMRsFromSeeds <- function(
     } else {
         seeds_tsv <- seeds_tsv[order(seeds_tsv[, seeds_id_col]), , drop = FALSE]
     }
+    .log_success("Seeds reordered by genomic location.", level = 3)
 
     # Filter seeds not present in array annotation first (prevents NA logical indices later)
 
@@ -2127,7 +2128,7 @@ findDMRsFromSeeds <- function(
     }
     seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
 
-    .log_info("Subsetting beta matrix for seeds...", level = 2)
+    .log_step("Subsetting beta matrix for seeds...", level = 3)
     seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
     seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
     rownames(seeds_beta) <- seeds
@@ -2151,7 +2152,7 @@ findDMRsFromSeeds <- function(
         )
     }
 
-    .log_info("Subset size: ", paste(dim(seeds_beta), collapse = ","), level = 2)
+    .log_success("Subset size: ", paste(dim(seeds_beta), collapse = ","), level = 3)
     .log_info("Number of provided seeds: ", length(seeds), level = 2)
     resolved_min_cpg_delta_beta <- as.numeric(min_cpg_delta_beta)
     if (adaptive_min_cpg_delta_beta) {

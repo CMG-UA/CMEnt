@@ -32,7 +32,7 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,
@@ -74,7 +74,7 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100),] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,

@@ -33,7 +33,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -90,7 +90,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -142,7 +142,7 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -190,7 +190,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -243,7 +243,7 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()

@@ -21,7 +21,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test missing required parameters
     expect_error(
@@ -65,7 +65,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("DMRsegal.beta_in_mem_threshold_mb" = 500)
     suppressWarnings(
@@ -93,7 +93,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     
     expected_dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -265,7 +265,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -300,7 +300,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     array_type <- loadExampleInputDataChr5And11("array_type")
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())

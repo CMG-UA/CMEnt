@@ -4,7 +4,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
@@ -115,7 +115,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -182,7 +182,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(50), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps, target_n = 50L)
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,

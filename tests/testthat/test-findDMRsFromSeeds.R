@@ -5,7 +5,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     options(error = traceback)
     options(warn = 2)
     dmrs <- findDMRsFromSeeds(
@@ -20,7 +20,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         min_seeds = 2,
         min_cpgs = 3,
         njobs = 1,
-        max_lookup_dist = 1000,
+        max_lookup_dist = 1000
     )
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
 })
@@ -92,7 +92,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Make the dataset smaller for faster testing
-    dmps <- dmps[seq_len(100), ]
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with strict min_seeds
     expect_warning(
@@ -155,7 +155,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(
@@ -210,7 +210,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
@@ -237,7 +237,7 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
     output_prefix <- file.path(tempdir(), paste0("dmrsegal-test-", as.integer(Sys.time())))
