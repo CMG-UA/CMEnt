@@ -1,3 +1,5 @@
+options("DMRsegal.verbose" = 0)
+
 test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with ugap", {
     set.seed(1)
     cpg_ids <- paste0("cg", 1:10)

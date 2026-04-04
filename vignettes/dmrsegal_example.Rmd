@@ -45,10 +45,12 @@ This notebook showcases all DMRsegal capabilities, including DMR scoring, motif 
 
 ```{r setup}
 try(devtools::load_all(), silent = TRUE)
-try(library(DMRsegal), silent = TRUE)
-library(GenomicRanges)
-library(dplyr)
-library(ggplot2)
+suppressPackageStartupMessages({
+    try(library(DMRsegal), silent = TRUE)
+    library(GenomicRanges)
+    library(dplyr)
+    library(ggplot2)
+})
 
 genome <- "hg19"
 ```

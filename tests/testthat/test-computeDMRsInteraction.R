@@ -1,17 +1,22 @@
-library(testthat)
-
-skip_if_covr_expensive("Skipping expensive interaction integration tests under covr.")
+.reduceAndClearMotifs <- function(dmrs, size = 200) {
+    if (length(dmrs) > size) {
+        dmrs <- dmrs[seq_len(size)]
+    }
+    if ("pwm" %in% names(mcols(dmrs))) {
+        mcols(dmrs)$pwm <- NULL
+        mcols(dmrs)$consensus_seq <- NULL
+    }
+    dmrs
+}
 
 .loadMotifsAndReduce <- function(dmrs) {
-    dmrs <- dmrs[seq_len(min(200, length(dmrs)))]
-    if (! "pwm" %in% names(mcols(dmrs))) {
-        mcols(dmrs)$pwm <- lapply(seq_along(dmrs), function(i) {
-            matrix(runif(4 * 12), nrow = 4, dimnames = list(c("A", "T", "G", "C"), NULL))
-        })
-        mcols(dmrs)$consensus_seq <- lapply(seq_along(dmrs), function(i) {
-            paste(sample(c("A", "T", "G", "C"), 10, replace = TRUE), collapse = "")
-        })
-    }
+    dmrs <- .reduceAndClearMotifs(dmrs)
+    mcols(dmrs)$pwm <- lapply(seq_along(dmrs), function(i) {
+        matrix(runif(4 * 12), nrow = 4, dimnames = list(c("A", "T", "G", "C"), NULL))
+    })
+    mcols(dmrs)$consensus_seq <- lapply(seq_along(dmrs), function(i) {
+        paste(sample(c("A", "T", "G", "C"), 10, replace = TRUE), collapse = "")
+    })
     dmrs
 }
 
@@ -75,7 +80,7 @@ test_that("computeDMRsInteraction handles GRanges input", {
 
 test_that("computeDMRsInteraction works with not precomputed motifs", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-
+    dmrs <- .reduceAndClearMotifs(dmrs)
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
@@ -192,7 +197,6 @@ test_that("computeDMRsInteraction validates similarity values", {
     }
 })
 
-
 test_that("computeDMRsInteraction assigns contiguous positive component IDs when scores exist", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
@@ -252,7 +256,7 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
 
     if (nrow(result$components) > 0) {
         expect_true(all(sapply(result$components$consensus_seq, function(x) {
-            all(strsplit(x, "")[[1]] %in% c("A", "T", "G", "C"))
+            all(base::strsplit(x, "")[[1]] %in% c("A", "T", "G", "C"))
         })))
     }
 })
@@ -365,11 +369,15 @@ test_that("getBackgroundArrayMotif uses start-anchored CpG windows for array pro
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     withr::local_options(list(DMRsegal.annotation_cache_dir = cache_dir))
 
-    locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
+    locs <- getSortedGenomicLocs(array = "450K", genome = "hg19")
     skip_if(nrow(locs) == 0, "Annotation locations not available")
     expect_true(all((locs$end - locs$start + 1L) == 2L))
 
-    bg_pwm <- getBackgroundArrayMotif(genome = "hg38", array = "450K", motif_cpg_flank_size = 5)
+    bg_pwm <- getBackgroundArrayMotif(
+        genome = "hg19", array = "450K",
+        motif_cpg_flank_size = 5,
+        .sorted_locs = locs[seq_len(1000), , drop = FALSE]
+    )
 
     expect_true(is.matrix(bg_pwm))
     expect_equal(dim(bg_pwm), c(4, 12))

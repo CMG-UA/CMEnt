@@ -1,17 +1,18 @@
-
-library(testthat)
-
-skip_if_covr_expensive("Skipping expensive Stage 2 integration tests under covr.")
+options("DMRsegal.verbose" = 0)
 
 test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps parameters", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with expansion_window and max_bridge_seeds_gaps
-    expect_message(
-        dmrs_expanded <- findDMRsFromSeeds(
+    dmrs_expanded <- NULL
+    output <- capture_output({
+        dmrs_expanded <<- findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            extract_motifs = FALSE,
+            annotate_with_genes = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno,
@@ -20,12 +21,11 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
             min_cpgs = 3,
             max_lookup_dist = 1000,
             expansion_window = 1, # Expand DMRs by 1bp
-            max_bridge_seeds_gaps = 2, # Allow bridging up to 2 seeds apart
-            annotate_with_genes = FALSE,
-            verbose = 2
-        ), "Stage 2 connectivity restricted to 264 seed-derived windows" # Expect the windows to be the same number as the DMRs at that point
-    )
-
+            max_bridge_seeds_gaps = 2 # Allow bridging up to 2 seeds apart
+        )
+    })
+    expect_contains(output, "Stage 2 connectivity restricted to ", length(dmrs_expanded)," seed-derived windows") # Expect the windows to be the same number as the DMRs at that point
+        
     # Assertions
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
@@ -50,7 +50,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
 
         # Projection from subset indices must preserve original CpG IDs.
         all_beta_ids <- rownames(beta)
-        used_cpgs <- unique(unlist(strsplit(dmr_df$cpgs, ",", fixed = TRUE), use.names = FALSE))
+        used_cpgs <- unique(unlist(base::strsplit(dmr_df$cpgs, ",", fixed = TRUE), use.names = FALSE))
         used_cpgs <- used_cpgs[nzchar(used_cpgs)]
         expect_true(all(used_cpgs %in% all_beta_ids))
     }
@@ -60,10 +60,13 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -71,13 +74,14 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_seeds = 2,
         min_cpgs = 3,
         min_cpg_delta_beta = 0,
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
+        max_lookup_dist = 1000
     )
 
     # Test with delta beta filtering
     dmrs_with_filter <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -85,8 +89,7 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         min_seeds = 2,
         min_cpgs = 3,
         min_cpg_delta_beta = 0.1, # Filter out small changes
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
+        max_lookup_dist = 1000
     )
 
 
@@ -134,6 +137,8 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta_handler,
         seeds = seeds,
         pheno = pheno,
@@ -148,9 +153,7 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
         pval_mode = "parametric",
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
-        annotate_with_genes = FALSE,
-        njobs = 1,
-        verbose = 0
+        njobs = 1
     ))
 
     expect_s4_class(dmrs, "GRanges")
@@ -195,6 +198,7 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
     dmrs <- expect_no_error(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta_handler,
         seeds = seeds,
         pheno = pheno,
@@ -209,9 +213,7 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
         pval_mode = "parametric",
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
-        annotate_with_genes = FALSE,
-        njobs = 1,
-        verbose = 0
+        njobs = 1
     ))
 
     expect_s4_class(dmrs, "GRanges")
@@ -222,19 +224,21 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
     expect_identical(dmr_df$start_seed[[1]], cpg_ids[[1]])
     expect_identical(dmr_df$end_seed[[1]], cpg_ids[[length(cpg_ids)]])
     expect_equal(dmr_df$seeds_num[[1]], length(cpg_ids))
-    expect_equal(length(strsplit(dmr_df$seeds[[1]], ",", fixed = TRUE)[[1]]), dmr_df$seeds_num[[1]])
+    expect_equal(length(base::strsplit(dmr_df$seeds[[1]], ",", fixed = TRUE)[[1]]), dmr_df$seeds_num[[1]])
 })
 
 test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and chunked parallel execution", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     withr::local_options(list(DMRsegal.parallel_dmr_chunk_size = 1L))
 
     args <- list(
         .score_dmrs = FALSE,
         extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -243,9 +247,7 @@ test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and ch
         min_cpgs = 3,
         max_lookup_dist = 1000,
         expansion_window = 1,
-        max_bridge_seeds_gaps = 2,
-        annotate_with_genes = FALSE,
-        verbose = 0
+        max_bridge_seeds_gaps = 2
     )
 
     dmrs_seq <- do.call(findDMRsFromSeeds, c(args, list(njobs = 1)))

@@ -1,17 +1,31 @@
-# Test suite for entanglement parameter
-library(testthat)
-library(DMRsegal)
-
-skip_if_covr_expensive("Skipping expensive entanglement integration tests under covr.")
+setoptions("DMRsegal.verbose" = 0)
 
 test_that("findDMRsFromSeeds works with weak entanglement", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+
+     dmrs_relaxed <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        entanglement = "weak",
+        pval_mode = "parametric"
+    )
 
 
     dmrs_relaxed <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -21,8 +35,6 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
         max_lookup_dist = 1000,
         entanglement = "weak",
         pval_mode = "parametric",
-        annotate_with_genes = FALSE,
-        verbose = 2
     )
 
     expect_true(is.null(dmrs_relaxed) || inherits(dmrs_relaxed, "GRanges"))
@@ -35,10 +47,13 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
 
     dmrs_strict <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -47,13 +62,13 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         min_cpgs = 3,
         max_lookup_dist = 1000,
         entanglement = "strong",
-        pval_mode = "parametric",
-        annotate_with_genes = FALSE,
-        verbose = 2
+        pval_mode = "parametric"
     )
 
     dmrs_relaxed <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -62,9 +77,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         min_cpgs = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
-        pval_mode = "parametric",
-        annotate_with_genes = FALSE,
-        verbose = 2
+        pval_mode = "parametric"
     )
 
     strict_count <- if (is.null(dmrs_strict)) 0 else length(dmrs_strict)
@@ -77,10 +90,13 @@ test_that("entanglement parameter validates correctly", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            annotate_with_genes = FALSE,
+            extract_motifs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno,

@@ -11,7 +11,9 @@ vignette: >
 
 ```{r setup, include=FALSE}
 try(devtools::load_all(), silent = TRUE)
-try(library(DMRsegal), silent = TRUE)
+suppressPackageStartupMessages({
+    try(library(DMRsegal), silent = TRUE)
+})
 knitr::opts_chunk$set(
     echo = TRUE,
     warning = FALSE,
@@ -488,7 +490,6 @@ dmrs <- findDMRsFromSeeds(
 
 **Example:**
 ```{r}
-options("DMRsegal.verbose" = 2)
 dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
@@ -876,7 +877,6 @@ dmrs <- findDMRsFromSeeds(
 
 ```{r}
 options("DMRsegal.use_tabix_cache" = TRUE)
-options("DMRsegal.verbose" = 2)
 
 dmrs <- findDMRsFromSeeds(
     beta = "large_dataset.bed.gz",

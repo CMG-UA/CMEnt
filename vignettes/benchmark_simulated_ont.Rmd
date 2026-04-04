@@ -48,15 +48,17 @@ Primary goal:
 
 ```{r}
 try(devtools::load_all(), silent = TRUE)
-try(library(DMRsegal), silent = TRUE)
-library(bsseq)
-library(data.table)
-library(ggplot2)
-library(dplyr)
-library(GenomicRanges)
-library(progressr)
-library(SummarizedExperiment)
-library(S4Vectors)
+suppressPackageStartupMessages({
+    try(library(DMRsegal), silent = TRUE)
+    library(bsseq)
+    library(data.table)
+    library(ggplot2)
+    library(dplyr)
+    library(GenomicRanges)
+    library(progressr)
+    library(SummarizedExperiment)
+    library(S4Vectors)
+})
 
 
 progressr::handlers("cli")
@@ -398,7 +400,7 @@ dmrsegal_file <- get_benchmark_file("dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("DMRsegal.njobs" = dmrsegal_njobs)
-    options("DMRsegal.verbose" = 3)
+    options("DMRsegal.verbose" = 1)
     start_time <- Sys.time()
 
     beta_handler <- DMRsegal::getBetaHandler(
@@ -422,8 +424,7 @@ if (!file.exists(dmrsegal_file)) {
             entanglement = "weak",
             annotate_with_genes = FALSE,
             .score_dmrs = TRUE,
-            njobs = dmrsegal_njobs,
-            verbose = 3
+            njobs = dmrsegal_njobs
         )
     )
     end_time <- Sys.time()

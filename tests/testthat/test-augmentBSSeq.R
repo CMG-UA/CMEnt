@@ -3,6 +3,7 @@ suppressPackageStartupMessages({
     library(DMRsegal)
     library(bsseq)
 })
+options("DMRsegal.verbose" = 0)
 
 #' Create a mock BSseq object for testing
 #'
@@ -233,7 +234,7 @@ test_that("augmentBSSeq avoids over-dispersion with low-input boundary methylati
 
     result <- augmentBSSeq(bsseq_obj, n_new_samples = 100, seed = 123, min_samples = 2)
     synthetic_idx <- grepl("^synthetic_", sampleNames(result))
-    synthetic_meth <- getMeth(result, type = "raw")[, synthetic_idx, drop = FALSE]
+    synthetic_meth <- bsseq::getMeth(result, type = "raw")[, synthetic_idx, drop = FALSE]
 
     low_sites <- seq_len(n_sites %/% 2)
     high_sites <- (n_sites %/% 2 + 1):n_sites

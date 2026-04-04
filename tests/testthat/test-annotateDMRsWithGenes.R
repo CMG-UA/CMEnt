@@ -1,3 +1,4 @@
+options("DMRsegal.verbose" = 0)
 test_that("annotateDMRsWithGenes matches between sequential and parallel execution", {
     skip_on_cran()
     skip_if_offline()

@@ -1,7 +1,4 @@
-suppressPackageStartupMessages({
-    library(testthat)
-    library(DMRsegal)
-})
+options("DMRsegal.verbose" = 0)
 
 test_that("findDMRsFromSeeds infers hg19 for legacy human arrays", {
     beta <- matrix(0.5, nrow = 2, ncol = 2)

@@ -45,13 +45,15 @@ The dataset used is DMRsegaldata, which contains methylation profiles for 5 canc
 
 ```{r, message=FALSE}
 try(devtools::load_all(), silent = TRUE)
-try(library(DMRsegal), silent = TRUE)
-library(minfi)
-library(data.table)
-library(ggplot2)
-library(dplyr)
-library(GenomicRanges)
-library(progressr)
+suppressPackageStartupMessages({
+    try(library(DMRsegal), silent = TRUE)
+    library(minfi)
+    library(data.table)
+    library(ggplot2)
+    library(dplyr)
+    library(GenomicRanges)
+    library(progressr)
+})
 
 progressr::handlers("cli")
 options(progressr.enable = TRUE)
@@ -173,7 +175,7 @@ names(dmps_gr) <- rownames(dmps)
 dmrsegal_file <-  get_benchmark_file("dmrs.DMRsegal.rds")
 if (!file.exists(dmrsegal_file)) {
     dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
-    options("DMRsegal.verbose" = 2)
+    options("DMRsegal.verbose" = 1)
     options("DMRsegal.njobs" = dmrsegal_njobs)
     cat(sprintf("DMRsegal parallel jobs: %d\n", dmrsegal_njobs))
     cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
@@ -197,7 +199,7 @@ if (!file.exists(dmrsegal_file)) {
         .score_dmrs = TRUE,
         chunk_size = 1e5,
         njobs = dmrsegal_njobs,
-        verbose = 2
+        verbose = 1
     ))
     end_time <- Sys.time()
     time_dmrsegal <- end_time - start_time
@@ -412,8 +414,10 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 ```{r bumphunter}
 bumphunter_file <- get_benchmark_file("dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
-    library(bumphunter)
-    library(doParallel)
+    suppressPackageStartupMessages({
+        library(bumphunter)
+        library(doParallel)
+    })
     start_time <- Sys.time()
     # Safer defaults for local/WSL rendering; override via options().
     bh_cores <- 1

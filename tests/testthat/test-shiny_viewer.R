@@ -1,3 +1,4 @@
+options("DMRsegal.verbose" = 0)
 test_that("validateOutputPrefix detects missing files", {
     temp_dir <- tempdir()
     fake_prefix <- file.path(temp_dir, "nonexistent_analysis")

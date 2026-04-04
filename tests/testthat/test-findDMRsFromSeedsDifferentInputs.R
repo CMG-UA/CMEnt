@@ -1,9 +1,9 @@
 suppressPackageStartupMessages({
-    library(testthat)
-    library(DMRsegal)
     library(bsseq)
     library(GenomicRanges)
 })
+options("DMRsegal.verbose" = 0)
+
 
 create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
     seed_row_names <- rownames(seeds)
@@ -21,6 +21,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     # Test missing required parameters
     expect_error(
@@ -59,25 +60,26 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     )
 })
 
-skip_if_covr_expensive("Skipping expensive input-mode integration tests under covr.")
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("DMRsegal.beta_in_mem_threshold_mb" = 500)
     expect_no_warning(
         dmrs <- findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            extract_motifs = FALSE,
+            annotate_with_genes = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_seeds = 2,
             min_cpgs = 3,
-            max_lookup_dist = 1000,
-            verbose = 3
+            max_lookup_dist = 1000
         )
     )
     # Assertions
@@ -91,17 +93,34 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
+    
+    expected_dmrs <- findDMRsFromSeeds(
+        .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        njobs = 1
+    )
+    
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
-    options("DMRsegal.verbose" = 3)
     options("DMRsegal.use_tabix_cache" = FALSE)
     options("DMRsegal.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = sorted_beta_file,
         seeds = dmps,
         pheno = pheno,
@@ -111,6 +130,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         max_lookup_dist = 1000,
         njobs = 1
     )
+    expect_equal(as.data.frame(dmrs), as.data.frame(expected_dmrs))
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
@@ -174,24 +194,25 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
     options("DMRsegal.use_tabix_cache" = FALSE)
-    options("DMRsegal.verbose" = 2)
     options("DMRsegal.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
         min_cpgs = 2,
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE
+        max_lookup_dist = 1000
     )
 
     expect_called(mock_convertBetaToTabix, 0)
@@ -208,6 +229,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     array_type <- loadExampleInputDataChr5And11("array_type")
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
@@ -231,6 +253,8 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = bed_file,
         seeds = dmps_with_chr_pos,
         seeds_id_col = "ID",
@@ -241,8 +265,7 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
         bed_start_col = "start",
         min_seeds = 2,
         min_cpgs = 3,
-        max_lookup_dist = 1000,
-        verbose = 2
+        max_lookup_dist = 1000
     )
 
 

@@ -120,7 +120,6 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             .log_info("Loading beta data...", level = 2)
             if (!is.character(self$beta) && length(self$beta) > 0) {
                 if (is_bsseq(self$beta)) {
-                    .log_step("Processing BSseq object...", level = 1)
                     private$.bsseq_object <- sort(self$beta)
                     self$beta <- NULL
                     private$.loaded <- TRUE
@@ -179,7 +178,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
                     private$.beta_file <- NULL
                 } else {
-                    .log_step(
+                    .log_info(
                         "Beta file is large (", round(file_size_mb, 1),
                         " MB). Checking for tabix conversion opportunity..."
                     )
@@ -237,7 +236,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
 
             if (!is.null(self$beta_row_names_file) && file.exists(self$beta_row_names_file)) {
-                .log_step("Reading row names from beta row names file: ",
+                .log_info("Reading row names from beta row names file: ",
                     self$beta_row_names_file, " ...",
                     level = 2
                 )
@@ -248,7 +247,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     quote = ""
                 ))
             } else {
-                .log_step("Reading row names from input...", level = 2)
+                .log_info("Reading row names from input...", level = 2)
                 if (!is.null(private$.bsseq_object)) {
                     .log_info("Reading from BSseq object...", level = 3)
                     gr <- granges(private$.bsseq_object)
@@ -491,7 +490,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                     }
                 } else if (!is.null(chr)) {
-                    .log_step("Subsetting by chromosome from in-memory beta data..", level = 3)
+                    .log_info("Subsetting by chromosome from in-memory beta data..", level = 3)
                     .log_info("Getting genomic locations for chromosome subsetting...", level = 4)
                     all_locs <- self$getBetaLocs()
                     .log_info("Performing chromosome subsetting...", level = 4)
@@ -544,7 +543,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 .log_step("Subsetting from tabix file..", level = 3)
                 if (!is.null(chr)) {
                     qregions <- chr
-                    regions <- data.frame(chr = strsplit(chr, ",")[[1]])
+                    regions <- data.frame(chr = base::strsplit(chr, ",")[[1]])
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
                     qregions <- regions[!duplicated(regions),]

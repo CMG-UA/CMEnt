@@ -44,14 +44,14 @@
 }
 
 .parseRegionString <- function(region_str) {
-    clean <- trimws(unlist(strsplit(region_str, ",")))
+    clean <- trimws(unlist(base::strsplit(region_str, ",")))
     matched <- list()
     for (i in seq_along(clean)) {
-        chr <- strsplit(clean[i], ":", fixed = TRUE)[[1]]
+        chr <- base::strsplit(clean[i], ":", fixed = TRUE)[[1]]
         if (length(chr) != 2) {
             stop("Each region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000'). Invalid region: '", clean[i], "'")
         }
-        start_end <- strsplit(chr[2], "-", fixed = TRUE)[[1]]
+        start_end <- base::strsplit(chr[2], "-", fixed = TRUE)[[1]]
         chr <- trimws(chr[[1]])
         if (length(start_end) != 2) {
             stop("Each region must be in the format 'chr:start-end' (e.g., 'chr7:100000-200000'). Invalid region: '", clean[i], "'")
@@ -229,7 +229,7 @@
     cb <- cytoband
     if (!is.null(unique_chrs)) {
         unique_chrs <- as.character(unique_chrs)
-        cb <- cb[cb$V1 %in% lapply(strsplit(unique_chrs, ":"), function(x) x[1]), , drop = FALSE]
+        cb <- cb[cb$V1 %in% lapply(base::strsplit(unique_chrs, ":"), function(x) x[1]), , drop = FALSE]
     }
     if (nrow(cb) == 0) {
         return(NULL)
@@ -921,9 +921,9 @@
                 }
                 label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
                 if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
+                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
                     jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
+                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
                     } else {
                         rep("", length(jas_names))
                     }
@@ -2056,9 +2056,9 @@ plotDMRsCircos <- function(dmrs,
                 }
                 label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
                 if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
+                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
                     jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
+                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
                     } else {
                         rep("", length(jas_names))
                     }
@@ -2389,7 +2389,7 @@ plotAutoDMRsCircos <- function(dmrs,
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
     dmrs_cpgs <- as.character(mcols(dmrs)$cpgs)
     dmrs_cpgs <- dmrs_cpgs[!is.na(dmrs_cpgs)]
-    dmrs_cpgs_list <- strsplit(dmrs_cpgs, split = ",", fixed = TRUE)
+    dmrs_cpgs_list <- base::strsplit(dmrs_cpgs, split = ",", fixed = TRUE)
     dmrs_cpgs_inds <- trimws(unique(unlist(dmrs_cpgs_list, use.names = FALSE)))
     dmrs_cpgs_inds <- dmrs_cpgs_inds[nzchar(dmrs_cpgs_inds)]
     if (length(dmrs_cpgs_inds) == 0) {

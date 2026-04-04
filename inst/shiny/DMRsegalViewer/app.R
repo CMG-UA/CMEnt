@@ -2,10 +2,12 @@
 # This file allows running the viewer as a standalone app
 # Usage: shiny::runApp(system.file("shiny/DMRsegalViewer", package = "DMRsegal"))
 
-library(DMRsegal)
-library(shiny)
-library(bslib)
-library(DT)
+suppressPackageStartupMessages({
+    library(DMRsegal)
+    library(shiny)
+    library(bslib)
+    library(DT)
+})
 
 output_prefix <- Sys.getenv("DMRSEGAL_OUTPUT_PREFIX", unset = "")
 

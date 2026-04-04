@@ -48,7 +48,7 @@
         x
     }
     if (is.character(values)) {
-        values <- trimws(unlist(strsplit(values, ",", fixed = TRUE), use.names = FALSE))
+        values <- trimws(unlist(base::strsplit(values, ",", fixed = TRUE), use.names = FALSE))
         values <- values[nzchar(values)]
     }
     idxs <- suppressWarnings(as.integer(values))
@@ -205,7 +205,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 }
 
 
-getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
+getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5, .sorted_locs = NULL) {
     cache_dir <- getOption("DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
     )
@@ -213,7 +213,11 @@ getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
     cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", motif_cpg_flank_size, ".rds"))
     if (!file.exists(cache_file)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        if (is.null(.sorted_locs)) {
+            sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
+        } else {
+            sorted_locs <- .sorted_locs
+        }
         sorted_locs <- convertToGRanges(sorted_locs, genome)
         # Array annotations store CpGs as width-2 "CG" ranges, but motif windows in
         # this workflow are anchored on the CpG start base plus one downstream base.
@@ -229,7 +233,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5) {
         if (length(cpg_seqs) == 0) {
             stop("Could not compute background motif PWM: no valid motif windows were extracted.")
         }
-        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
+        cpg_seqs <- matrix(unlist(base::strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         bg_frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
         tryCatch(
@@ -303,7 +307,7 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = motif_cpg_flank_size, dflank_size = motif_cpg_flank_size + 1
     )
-    dmrs_seeds <- strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
+    dmrs_seeds <- base::strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
     all_seeds <- unique(unlist(dmrs_seeds, use.names = FALSE))
     all_seeds <- all_seeds[nzchar(all_seeds)]
     beta_locs_start <- as.integer(beta_locs[all_seeds, "start", drop = TRUE])
@@ -341,7 +345,7 @@ extractDMRMotifs <- function(
             next
         }
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
-        cpg_seqs <- matrix(unlist(strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
+        cpg_seqs <- matrix(unlist(base::strsplit(cpg_seqs, split = "")), nrow = 2 * motif_cpg_flank_size + 2, byrow = FALSE)
         frequencies <- as.matrix(apply(cpg_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
         if (array_based) {
             frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))

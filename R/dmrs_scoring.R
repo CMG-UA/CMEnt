@@ -896,7 +896,7 @@ scoreDMRs <- function(
     groups <- pheno[, "__casecontrol__"]
     nfold <- getOption("DMRsegal.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
-    dmr_cpgs <- strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
+    dmr_cpgs <- base::strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
     .log_step("Transforming beta values for DMR scoring", level = 2)
     dmrs_m <- .transformBeta(beta_handler$getBeta(

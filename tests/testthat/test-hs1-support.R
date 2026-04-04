@@ -1,7 +1,9 @@
 test_that("getSortedGenomicLocs supports hs1 for 450K arrays", {
     skip_on_cran()
     skip_if_offline()
-    skip_if_not_installed("IlluminaHumanMethylation450kanno.ilmn12.hg19")
+    if (!nzchar(system.file(package = "IlluminaHumanMethylation450kanno.ilmn12.hg19"))) {
+        skip("Package 'IlluminaHumanMethylation450kanno.ilmn12.hg19' not installed")
+    }
 
     locs <- getSortedGenomicLocs(array = "450K", genome = "hs1")
 

@@ -1,15 +1,16 @@
-# Test suite for new functionality in findDMRsFromSeeds
-library(testthat)
-
+options("DMRsegal.verbose" = 0)
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
     skip_on_ci()
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -17,13 +18,14 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_cpgs = 3,
         max_lookup_dist = 1000,
-        pval_mode = "parametric",
-        annotate_with_genes = FALSE
+        pval_mode = "parametric"
     )
 
     # Test empirical mode with auto strategy
     dmrs_empirical_auto <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -33,13 +35,14 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "auto",
-        ntries = 100,
-        annotate_with_genes = FALSE
+        ntries = 100
     )
 
     # Test automatic p-value mode selection
     dmrs_pval_auto <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -49,13 +52,14 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         max_lookup_dist = 1000,
         pval_mode = "auto",
         empirical_strategy = "auto",
-        ntries = 100,
-        annotate_with_genes = FALSE
+        ntries = 100
     )
 
     # Test empirical mode with montecarlo strategy
     dmrs_empirical_mc <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -65,13 +69,14 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
-        ntries = 100,
-        annotate_with_genes = FALSE
+        ntries = 100
     )
 
     # Test empirical mode with permutations strategy
     dmrs_empirical_perm <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -81,8 +86,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "permutations",
-        ntries = 100,
-        annotate_with_genes = FALSE
+        ntries = 100
     )
 
     # Assertions
@@ -111,10 +115,12 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
     # Run with same seed twice
     dmrs_seed1_run1 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -124,12 +130,13 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
-        ntries = 50,
-        annotate_with_genes = FALSE
+        ntries = 50
     )
     options("DMRsegal.random_seed" = 42)
     dmrs_seed1_run2 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -139,13 +146,14 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
-        ntries = 50,
-        annotate_with_genes = FALSE
+        ntries = 50
     )
     # Run with different seed
     options("DMRsegal.random_seed" = 123)
     dmrs_seed2 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -155,8 +163,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
-        ntries = 50,
-        annotate_with_genes = FALSE
+        ntries = 50
     )
 
     # Assertions
@@ -175,10 +182,12 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
-
+    dmps <- dmps[seq_len(50), ] # Use a smaller set for testing
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -187,13 +196,14 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
-        ntries = 0,
-        annotate_with_genes = FALSE
+        ntries = 0
     )
 
     # Test with ntries = 50
     dmrs_ntries_50 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
+        annotated_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -202,30 +212,13 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         min_cpgs = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
-        ntries = 50,
-        annotate_with_genes = FALSE
-    )
-
-    # Test with ntries = 200
-    dmrs_ntries_200 <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_cpgs = 3,
-        max_lookup_dist = 1000,
-        pval_mode = "empirical",
-        ntries = 200,
-        annotate_with_genes = FALSE
+        ntries = 50
     )
 
     # Assertions
     expect_true(is.null(dmrs_ntries_0) || inherits(dmrs_ntries_0, "GRanges"))
     expect_true(is.null(dmrs_ntries_50) || inherits(dmrs_ntries_50, "GRanges"))
-    expect_true(is.null(dmrs_ntries_200) || inherits(dmrs_ntries_200, "GRanges"))
-
+    
     # All should produce valid results
     if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))

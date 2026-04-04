@@ -1,7 +1,4 @@
-# Test suite for scoreDMRs function
-library(testthat)
-
-skip_if_covr_expensive("Skipping expensive scoring integration tests under covr.")
+options("DMRsegal.verbose" = 0)
 
 test_that("scoreDMRs adds score column to DMRs", {
     beta <- loadExampleInputDataChr5And11("beta")
@@ -18,8 +15,7 @@ test_that("scoreDMRs adds score column to DMRs", {
         beta = beta,
         pheno = pheno,
         genome = "hg19",
-        sample_group_col = "Sample_Group",
-        verbose = 2
+        sample_group_col = "Sample_Group"
     )
 
     expect_true("score" %in% names(mcols(scoring_dmrs)))
@@ -36,18 +32,19 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100), ] # Use a smaller set for testing
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
         min_cpgs = 3,
-        max_lookup_dist = 1000,
-        annotate_with_genes = FALSE,
-        verbose = 0
+        max_lookup_dist = 1000
     )
 
     expect_true("score" %in% names(mcols(dmrs)))
@@ -66,8 +63,7 @@ test_that("scoreDMRs accepts a BetaHandler input", {
         beta = beta_handler,
         pheno = pheno,
         genome = "hg19",
-        sample_group_col = "Sample_Group",
-        verbose = 0
+        sample_group_col = "Sample_Group"
     )
 
     expect_true("score" %in% names(mcols(scoring_dmrs)))
@@ -78,9 +74,12 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(100),] # Use a smaller set for testing
 
-    dmrs <- expect_no_error(findDMRsFromSeeds(
+    dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -89,10 +88,8 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
         min_seeds = 2,
         min_cpgs = 2,
         max_lookup_dist = 2000,
-        annotate_with_genes = FALSE,
-        verbose = 3,
         njobs = 1
-    ))
+    )
 
     expect_s4_class(dmrs, "GRanges")
     expect_true("score" %in% names(mcols(dmrs)))

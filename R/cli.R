@@ -241,7 +241,7 @@ findDMRsFromSeedsCLI <- function(args) {
     array <- args$array
     covariates <- args$covariates
     if (!is.null(covariates)) {
-        covariates <- strsplit(covariates, ",")[[1]]
+        covariates <- base::strsplit(covariates, ",")[[1]]
     }
     if (!is.null(array) && tolower(array) == "null") {
         array <- NULL
@@ -328,6 +328,9 @@ launchDMRsegalViewerCLI <- function(args) {
         script_name <- "run_dmrsegal.R"
     } else {
         script_name <- basename(script_name)
+    }
+    if (script_name == "Rscript" || script_name == "R") {
+        script_name <- ""
     }
 
     paste(

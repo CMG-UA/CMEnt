@@ -220,13 +220,13 @@
         if (!is.null(sample_group_control)) {
             subset_samplesheet[, "casecontrol"] <- 1
             if (length(sample_group_control) == 1) {
-                sample_group_control <- strsplit(sample_group_control, ",")[[1]]
+                sample_group_control <- base::strsplit(sample_group_control, ",")[[1]]
             }
             subset_samplesheet[subset_samplesheet[, sample_group_col] %in% sample_group_control, "casecontrol"] <- 0
         } else {
             subset_samplesheet[, "casecontrol"] <- 0
             if (length(sample_group_case) == 1) {
-                sample_group_case <- strsplit(sample_group_case, ",")[[1]]
+                sample_group_case <- base::strsplit(sample_group_case, ",")[[1]]
             }
             subset_samplesheet[subset_samplesheet[, sample_group_col] %in% sample_group_case, "casecontrol"] <- 1
         }
@@ -358,10 +358,10 @@
     sample_group_control <- args$sample_group_control
     sample_group_case <- args$sample_group_case
     if (!is.null(sample_group_case)) {
-        sample_group_case <- strsplit(sample_group_case, ",")[[1]]
+        sample_group_case <- base::strsplit(sample_group_case, ",")[[1]]
     }
     if (!is.null(sample_group_control)) {
-        sample_group_control <- strsplit(sample_group_control, ",")[[1]]
+        sample_group_control <- base::strsplit(sample_group_control, ",")[[1]]
     }
 
     if (endsWith(samplesheet_file, ".csv")) {
@@ -714,7 +714,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
 
     # Read BED file header
-    bed_header <- strsplit(readLines(bed_file, n = 1), "\t")[[1]]
+    bed_header <- base::strsplit(readLines(bed_file, n = 1), "\t")[[1]]
     # Ensure required columns are present
     required_cols <- c(chrom_col, start_col)
     missing_cols <- setdiff(required_cols, bed_header)
@@ -920,7 +920,7 @@ convertBetaToTabix <- function(beta_file,
                 header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
                 header_line <- readLines(header_conn, n = 1)
                 close(header_conn)
-                col_names <- strsplit(header_line, "\t")[[1]]
+                col_names <- base::strsplit(header_line, "\t")[[1]]
 
                 # Get total number of rows for progress tracking
                 .log_step("Counting rows in beta file...", level = 2)
@@ -1062,8 +1062,8 @@ convertBetaToTabix <- function(beta_file,
                 if (length(chunk_files) > 0) {
                     # Helper function to compare two BED lines (chr:start)
                     compare_bed_lines <- function(line1, line2) {
-                        parts1 <- strsplit(line1, "\t", fixed = TRUE)[[1]]
-                        parts2 <- strsplit(line2, "\t", fixed = TRUE)[[1]]
+                        parts1 <- base::strsplit(line1, "\t", fixed = TRUE)[[1]]
+                        parts2 <- base::strsplit(line2, "\t", fixed = TRUE)[[1]]
 
                         chr1 <- parts1[1]
                         chr2 <- parts2[1]
@@ -1407,6 +1407,42 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 
+.loadAnnotationLocations <- function(pkg_name, source_genome) {
+    pkg_dir <- find.package(pkg_name)
+    data_env <- new.env(parent = emptyenv())
+    lazyLoad(file.path(pkg_dir, "data", "Rdata"), envir = data_env)
+
+    if (!exists("Locations", envir = data_env, inherits = FALSE)) {
+        stop("Annotation package '", pkg_name, "' does not contain a 'Locations' dataset.")
+    }
+
+    locs <- get("Locations", envir = data_env, inherits = FALSE)
+    locs <- as.data.frame(locs, stringsAsFactors = FALSE)
+
+    required_cols <- c("chr", "pos")
+    missing_cols <- setdiff(required_cols, colnames(locs))
+    if (length(missing_cols) > 0) {
+        stop(
+            "Annotation package '", pkg_name, "' is missing required columns in 'Locations': ",
+            paste(missing_cols, collapse = ", ")
+        )
+    }
+
+    gr <- GenomicRanges::GRanges(
+        seqnames = locs$chr,
+        ranges = IRanges::IRanges(start = locs$pos, width = 1)
+    )
+    names(gr) <- rownames(locs)
+    GenomeInfoDb::genome(gr) <- source_genome
+    gr
+}
+
+
+.isPackageInstalled <- function(pkg_name) {
+    nzchar(system.file(package = pkg_name))
+}
+
+
 #' Get Sorted Array Locations
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
@@ -1489,7 +1525,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             stop("Incorrect array and genome combination was provided. For mm10 and mm39 only 'Mouse' array is supported.")
         }
         pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
-        if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        if (!.isPackageInstalled(pkg_name)) {
             if (!requireNamespace("devtools", quietly = TRUE)) {
                 install.packages("devtools")
             }
@@ -1502,7 +1538,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
             "/", genome
         )
     }
-    if (!requireNamespace(pkg_name, quietly = TRUE)) {
+    if (!.isPackageInstalled(pkg_name)) {
         .log_info(
             "Installing required annotation package: ",
             pkg_name
@@ -1512,7 +1548,6 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         }
         BiocManager::install(pkg_name)
     }
-    locs <- minfi::getLocations(pkg_name)
     source_genome <- NULL
     if (tolower(array) %in% c("450k", "epic", "27k")) {
         source_genome <- "hg19"
@@ -1521,6 +1556,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     } else if (tolower(array) == "mouse") {
         source_genome <- "mm10"
     }
+    locs <- .loadAnnotationLocations(pkg_name, source_genome = source_genome)
     from_genome <- NULL
     if (!is.null(source_genome) && !identical(genome, source_genome)) {
         from_genome <- source_genome
@@ -1610,7 +1646,7 @@ orderByLoc <- function(x,
     if (is.na(x) || !nzchar(as.character(x))) {
         return(character(0))
     }
-    vals <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+    vals <- unlist(base::strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
     vals <- trimws(vals)
     vals <- vals[nzchar(vals)]
     vals[!is.na(vals)]
@@ -1715,7 +1751,9 @@ orderByLoc <- function(x,
 
 
 .getOSCacheDir <- function(prefix) {
-    normalizePath(tools::R_user_dir(prefix, which = "cache"), mustWork = FALSE)
+    x <- normalizePath(tools::R_user_dir(prefix, which = "cache"), mustWork = FALSE)
+    try(dir.create(x, recursive = TRUE, showWarnings = FALSE))
+    x
 }
 
 #' Extract DNA Sequences for DMRs
@@ -1983,9 +2021,11 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
             envir = environment()
         )
         parallel::clusterEvalQ(cl, {
+            suppressPackageStartupMessages({
             library(GenomicRanges)
             library(GenomeInfoDb)
             library(jsonlite)
+            })
         })
 
         batch_results <- parallel::parLapply(cl, seq_len(n_batches), fetch_batch)
@@ -2295,7 +2335,7 @@ convertToGRanges <- function(obj, genome) {
         # if the chromosome appears in the form of chr1:1230, save the original location in a separate column and parse the location into chr, start, end
         if (any(grepl(":", obj[[1]]))) {
             obj$original_location <- obj[[1]]
-            loc_split <- strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
+            loc_split <- base::strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
             obj[[1]] <- sapply(loc_split, function(x) x[1])
         }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
@@ -2874,7 +2914,8 @@ loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
     } else if (resource == "dmps") {
         locs <- getSortedGenomicLocs(array = "450k")
         locs <- locs[locs$chr %in% c("chr5", "chr11"), ]
-        ret[rownames(ret) %in% rownames(locs), , drop = FALSE]
+        locs <- locs[rownames(locs) %in% rownames(ret), , drop = FALSE]
+        ret[rownames(locs), , drop = FALSE]
     } else if (resource == "array_type") {
         ret
     }

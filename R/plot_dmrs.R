@@ -161,12 +161,12 @@ if (getRversion() >= "2.15.1") {
     }
 
     # Extract DMR information
-    seeds <- strsplit(dmr_data$seeds, split = ",")[[1]]
-    cpgs <- strsplit(dmr_data$cpgs, split = ",")[[1]]
-    downstream_sup_cpgs <- strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
+    seeds <- base::strsplit(dmr_data$seeds, split = ",")[[1]]
+    cpgs <- base::strsplit(dmr_data$cpgs, split = ",")[[1]]
+    downstream_sup_cpgs <- base::strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
     downstream_sup_cpgs <- setdiff(downstream_sup_cpgs, seeds)
     downstream_sup_cpgs_locs <- .locsToDf(beta_locs[downstream_sup_cpgs, , drop = FALSE])
-    upstream_sup_cpgs <- strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
+    upstream_sup_cpgs <- base::strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
     upstream_sup_cpgs <- setdiff(upstream_sup_cpgs, seeds)
     upstream_sup_cpgs_locs <- .locsToDf(beta_locs[upstream_sup_cpgs, , drop = FALSE])
     if (length(upstream_sup_cpgs) == 0) {
@@ -597,7 +597,7 @@ if (getRversion() >= "2.15.1") {
 
 
     # Mark seeds
-    seed_ids <- unlist(strsplit(as.character(dmr_data$seeds), ","))
+    seed_ids <- unlist(base::strsplit(as.character(dmr_data$seeds), ","))
     is_seed <- cpg_ids %in% seed_ids
 
     # Create heatmap
@@ -812,9 +812,9 @@ minmaxscale <- function(x) {
     jas_tbl <- motif_context$jaspar
     lines <- c(lines, "", "JASPAR matches:")
     if (nrow(jas_tbl) > 0 && "jaspar_names" %in% colnames(jas_tbl) && !is.na(jas_tbl$jaspar_names[1])) {
-        names <- strsplit(jas_tbl$jaspar_names[1], ",", fixed = TRUE)[[1]]
+        names <- base::strsplit(jas_tbl$jaspar_names[1], ",", fixed = TRUE)[[1]]
         cors <- if ("jaspar_corr" %in% colnames(jas_tbl) && !is.na(jas_tbl$jaspar_corr[1])) {
-            strsplit(jas_tbl$jaspar_corr[1], ",", fixed = TRUE)[[1]]
+            base::strsplit(jas_tbl$jaspar_corr[1], ",", fixed = TRUE)[[1]]
         } else {
             rep("", length(names))
         }
@@ -877,7 +877,7 @@ minmaxscale <- function(x) {
 
     seed_count <- NA_integer_
     if ("seeds" %in% colnames(S4Vectors::mcols(dmr))) {
-        seed_ids <- strsplit(as.character(S4Vectors::mcols(dmr)$seeds[[1]]), ",", fixed = TRUE)[[1]]
+        seed_ids <- base::strsplit(as.character(S4Vectors::mcols(dmr)$seeds[[1]]), ",", fixed = TRUE)[[1]]
         seed_count <- sum(nzchar(seed_ids))
     }
     consensus_only <- all(colSums(pwm > 0) <= 1)

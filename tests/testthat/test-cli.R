@@ -1,7 +1,4 @@
-suppressPackageStartupMessages({
-    library(testthat)
-    library(DMRsegal)
-})
+options("DMRsegal.verbose" = 0)
 
 test_that("CLI command resolver supports subcommands and legacy flag-only invocations", {
     find_invocation <- DMRsegal:::.resolveDMRsegalCLIInvocation(

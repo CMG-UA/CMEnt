@@ -1,5 +1,4 @@
-library(testthat)
-
+options("DMRsegal.verbose" = 0)
 test_that("plotDMR creates a gtable object", {
     skip_if_not_installed("ggplot2")
 
@@ -66,7 +65,6 @@ test_that("plotDMRs creates a combined plot", {
 
 test_that("plotDMRs handles NULL dmr_indices", {
     skip_if_not_installed("ggplot2")
-    options("DMRsegal.verbose" = 3)
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
     if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")

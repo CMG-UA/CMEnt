@@ -1,4 +1,4 @@
-skip_if_covr_expensive("Skipping expensive circos plotting integration tests under covr.")
+options("DMRsegal.verbose" = 0)
 
 test_that("plotDMRsCircos creates a circos plot", {
     beta <- loadExampleInputDataChr5And11("beta")
@@ -12,7 +12,6 @@ test_that("plotDMRsCircos creates a circos plot", {
     }
 
     dmrs_subset <- dmrs[seq_len(min(5, length(dmrs))), drop = FALSE]
-    options("DMRsegal.verbose" = 2)
     expect_no_error(
         plotDMRsCircos(
             dmrs = dmrs_subset,
@@ -62,7 +61,7 @@ test_that("plotDMRsCircos handles BetaHandler input", {
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
-    options("DMRsegal.verbose" = 3)
+    
     dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
 
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
@@ -593,8 +592,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
             query_components_with_jaspar = FALSE,
             max_dmrs_per_chr = 1,
             max_cpgs_per_dmr = 1,
-            max_num_samples_per_group = 2,
-            verbose = 0
+            max_num_samples_per_group = 2
         )
     )
     expect_s3_class(selected, "data.frame")

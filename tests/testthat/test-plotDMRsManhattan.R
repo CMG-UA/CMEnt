@@ -1,3 +1,4 @@
+options("DMRsegal.verbose" = 0)
 test_that("plotDMRsManhattan returns a ggplot object", {
     skip_if_not_installed("ggplot2")
 

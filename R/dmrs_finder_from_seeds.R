@@ -1962,7 +1962,7 @@ findDMRsFromSeeds <- function(
     if (is.null(ignored_sample_groups)) {
         ignored_sample_groups <- c()
     } else {
-        ignored_sample_groups <- trimws(unlist(strsplit(ignored_sample_groups, ",")))
+        ignored_sample_groups <- trimws(unlist(base::strsplit(ignored_sample_groups, ",")))
         ignored_sample_groups <- ignored_sample_groups[nzchar(ignored_sample_groups)]
     }
     if (!is.null(output_prefix)) {
@@ -2620,6 +2620,18 @@ findDMRsFromSeeds <- function(
     }
     filtered_dmrs <- convertToDataFrame(filtered_dmrs_ranges)
 
+    if (nrow(filtered_dmrs) == 0) {
+        .log_warn("No DMRs passed the filtering step.")
+        saveViewerBetaFile()
+        if (!is.null(output_prefix)) {
+            for (f in c(".methylation.tsv.gz", ".tsv.gz")) {
+                gzfile <- gzfile(file.path(output_dir, paste0(output_prefix, f)), "w", compression = 2)
+                close(gzfile)
+            }
+        }
+        return(NULL)
+    }
+
     array_based <- !is.null(array)
 
     if (array_based && min_adj_seeds > min_seeds) {
@@ -2665,7 +2677,7 @@ findDMRsFromSeeds <- function(
 
     annotated_dmrs <- filtered_dmrs
 
-    all_selected_cpgs <- unique(unlist(strsplit(annotated_dmrs$cpgs, ","), use.names = FALSE))
+    all_selected_cpgs <- unique(unlist(base::strsplit(annotated_dmrs$cpgs, ","), use.names = FALSE))
     all_selected_cpgs_beta <- beta_handler$getBeta(row_names = all_selected_cpgs, col_names = beta_col_names)
     .log_step("Calculating per-CpG beta statistics..", level = 2)
     beta_stats <- .calculateBetaStats(
@@ -2677,7 +2689,7 @@ findDMRsFromSeeds <- function(
 
     beta_stats <- as.data.frame(beta_stats)
     rownames(beta_stats) <- all_selected_cpgs
-    dmrs_seeds <- strsplit(annotated_dmrs$seeds, ",")
+    dmrs_seeds <- base::strsplit(annotated_dmrs$seeds, ",")
     .log_step("Adding DMR delta-beta information..", level = 2)
 
     dmr_seeds_list <- lapply(dmrs_seeds, as.character)
@@ -2708,7 +2720,7 @@ findDMRsFromSeeds <- function(
     annotated_dmrs$controls_beta_min <- seeds_agg$controls_beta_min
     annotated_dmrs$controls_beta_max <- seeds_agg$controls_beta_max
 
-    dmr_cpgs_list <- strsplit(annotated_dmrs$cpgs, ",")
+    dmr_cpgs_list <- base::strsplit(annotated_dmrs$cpgs, ",")
     dmr_cpgs <- unlist(dmr_cpgs_list, use.names = FALSE)
     dmr_cpgs_groups <- rep(seq_along(dmr_cpgs_list), lengths(dmr_cpgs_list))
 

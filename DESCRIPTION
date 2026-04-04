@@ -69,7 +69,6 @@ Imports:
     jsonlite,
     matrixStats,
     methods,
-    minfi,
     Organism.dplyr,
     progressr,
     plotly,
