@@ -39,8 +39,8 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     valid_sites <- rowSums(cov_matrix > 0) >= min_samples
     bsseq_filtered <- bs[valid_sites, ]
     # Keep assay-level sample dimnames aligned with colData before combining objects.
-    colnames(assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
-    colnames(assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
 
     if (nrow(bsseq_filtered) == 0L) {
         stop("No CpG sites have coverage in at least 'min_samples' samples")
