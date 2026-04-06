@@ -1,20 +1,5 @@
 # nolint start: object_name_linter
 
-options(
-  warn = 1,
-  error = function() {
-    traceback(3)
-    q(status = 1)
-  }
-)
-trace("::", tracer = quote({
-  cat("[TRACE ::] ", paste(deparse(sys.call()), collapse = " "), "\n", sep = "")
-}), print = FALSE)
-
-cat("DMRsegal path: ", system.file(package = "DMRsegal"), "\n", sep = "")
-cat("DMRsegal version: ", as.character(utils::packageVersion("DMRsegal")), "\n", sep = "")
-print(find("augmentBSSeq"))
-
 #' Augment BSseq Object
 #'
 #' Generate synthetic samples while preserving both per-site coverage and
