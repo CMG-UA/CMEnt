@@ -261,6 +261,30 @@ adjacent_sample_correlation <- function(bs_obj, sample_idx) {
     stats::median(corrs, na.rm = TRUE)
 }
 
+lag_correlation_profile <- function(bs_obj, sample_idx, max_lag = 5L) {
+    cov <- as.matrix(bsseq::getCoverage(bs_obj, type = "Cov")[, sample_idx, drop = FALSE])
+    meth <- as.matrix(bsseq::getCoverage(bs_obj, type = "M")[, sample_idx, drop = FALSE])
+    prop <- (meth + 0.5) / (cov + 1)
+    signal <- qlogis(pmin(pmax(prop, 1e-6), 1 - 1e-6))
+
+    chr <- as.character(GenomeInfoDb::seqnames(bs_obj))
+    profile <- numeric(max_lag)
+
+    for (lag in seq_len(max_lag)) {
+        pair_idx <- which(chr[(lag + 1):nrow(signal)] == chr[1:(nrow(signal) - lag)])
+        idx_1 <- pair_idx
+        idx_2 <- pair_idx + lag
+
+        corrs <- vapply(seq_along(idx_1), function(i) {
+            suppressWarnings(stats::cor(signal[idx_1[i], ], signal[idx_2[i], ]))
+        }, numeric(1))
+
+        profile[lag] <- stats::median(corrs, na.rm = TRUE)
+    }
+
+    profile
+}
+
 make_correlated_bsseq <- function(seed = 1) {
     set.seed(seed)
 
@@ -311,4 +335,22 @@ test_that("augmentBSSeq preserves neighboring CpG correlation", {
     expect_true(anyDuplicated(colnames(aug)) == 0L)
     expect_gt(syn_corr, 0.25)
     expect_gt(syn_corr, orig_corr - 0.2)
+})
+
+test_that("augmentBSSeq preserves correlation decay with lag", {
+    bs <- make_correlated_bsseq(seed = 42)
+
+    aug <- augmentBSSeq(bs, n_new_samples = 30, seed = 99)
+
+    orig_idx <- seq_len(ncol(bs))
+    syn_idx <- (ncol(bs) + 1):ncol(aug)
+
+    orig_profile <- lag_correlation_profile(aug, orig_idx, max_lag = 6L)
+    syn_profile <- lag_correlation_profile(aug, syn_idx, max_lag = 6L)
+
+    expect_equal(length(orig_profile), 6L)
+    expect_equal(length(syn_profile), 6L)
+    expect_true(all(diff(orig_profile) <= 1e-8, na.rm = TRUE))
+    expect_true(all(diff(syn_profile) <= 1e-8, na.rm = TRUE))
+    expect_lt(mean(abs(orig_profile - syn_profile), na.rm = TRUE), 0.25)
 })
