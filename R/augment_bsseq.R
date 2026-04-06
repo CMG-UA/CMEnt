@@ -12,6 +12,7 @@
 #' @param n_new_samples Number of new synthetic samples to generate
 #' @param seed Random seed for reproducibility
 #' @param min_samples Minimum number of samples with coverage required per site
+#' @importFrom SummarizedExperiment assays
 #' @return A BSseq object with original and synthetic samples
 #' @export
 #' @examples
@@ -37,10 +38,10 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     cov_matrix <- bsseq::getCoverage(bs)
     valid_sites <- rowSums(cov_matrix > 0) >= min_samples
     bsseq_filtered <- bs[valid_sites, ]
-    # Make sure that the filtered object is correctly initialized
-    colnames(assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
-    colnames(assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
-    
+    # Keep assay-level sample dimnames aligned with colData before combining objects.
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
+
     if (nrow(bsseq_filtered) == 0L) {
         stop("No CpG sites have coverage in at least 'min_samples' samples")
     }
