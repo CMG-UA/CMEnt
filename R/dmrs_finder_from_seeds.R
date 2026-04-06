@@ -612,7 +612,7 @@
         connectivity_array <- .makeOutputTemplate(n_sites, default_reason)
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
-        checked_inds <- NULL
+        checked_pairs <- NULL
         updating_inds <- integer(0)
         pair_ranges <- if (window_mode) .build_window_pair_ranges() else .buildAllPairRanges()
         if (nrow(pair_ranges) == 0L) {
@@ -682,28 +682,30 @@
         run_starts <- run_starts[run_mask]
         if (ugap > 0L) {
             # The following indices will be re-checked
-            checked_inds <- data.frame(before = run_starts - ugap, after = run_starts)
+            checked_pairs <- data.frame(before = run_starts - ugap, after = run_starts)
             updating_inds <- run_starts - ugap
             .log_info(
-                "Re-assessing connectivity for ", nrow(checked_inds), " sites at the upstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the upstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
             )
         } else if (dgap > 0L) {
-            checked_inds <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
+            checked_pairs <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
             updating_inds <- run_ends + 1
             .log_info(
-                "Re-assessing connectivity for ", nrow(checked_inds), " sites at the downstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the downstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
             )
         }
-        # The order matters, so we form the inds by first making a matrix and then flattening it
-        checked_inds <- as.vector(t(as.matrix(checked_inds)))
 
-        # Updating the splits to include only the pairs that involve the checked_inds
-        ninds_in_splits <- apply(splits, 1, function(r) sum(checked_inds >= r[1] & checked_inds <= r[2]))
+        # Updating the splits to include only chunks with complete re-check pairs.
+        ninds_in_splits <- apply(splits, 1, function(r) {
+            site_start <- as.integer(r[1])
+            site_end <- as.integer(r[2]) + 1L
+            sum(checked_pairs$before >= site_start & checked_pairs$after <= site_end)
+        })
         splits <- splits[ninds_in_splits > 0L, , drop = FALSE]
         ninds_in_splits <- ninds_in_splits[ninds_in_splits > 0L]
-        # accumulate the checked_inds, so that to have splits with a considerable chunk size
+        # accumulate bridge re-check chunks to keep a considerable chunk size
         if (nrow(splits) > 1L) {
             old_n <- nrow(splits)
             splits <- .poolSplits(splits, split_weights = ninds_in_splits)
@@ -789,26 +791,13 @@
         site_start <- pair_start
         site_end <- pair_end + 1L
         inds <- site_start:site_end
-        if (!is.null(checked_inds)) {
-            inds <- checked_inds[checked_inds >= site_start & checked_inds <= site_end]
-            # make sure that the first element is included in the updated_inds, else drop the first site
-            if (!inds[1] %in% updating_inds) {
-                inds <- inds[-1]
-            }
-            if (length(inds) == 0L) {
+        if (!is.null(checked_pairs)) {
+            pair_mask <- checked_pairs$before >= site_start & checked_pairs$after <= site_end
+            if (!any(pair_mask)) {
                 return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
             }
-            # make sure that the last element is not included in the updated_inds, else drop the last site
-            if (inds[length(inds)] %in% updating_inds) {
-                inds <- inds[-length(inds)]
-            }
-            # The result must not be odd
-            if (length(inds) %% 2 == 1L) {
-                stop("The number of checked indices in the chunk must be even, as they represent pairs. Found ", length(inds), " checked indices in chunk ", split_ind, ".")
-            }
-            if (length(inds) == 0L) {
-                return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
-            }
+            chunk_pairs <- checked_pairs[pair_mask, c("before", "after"), drop = FALSE]
+            inds <- as.vector(t(as.matrix(chunk_pairs)))
         }
         locs <- data.frame(
             chr = beta_chr_vec[inds],
@@ -835,10 +824,10 @@
             empirical_strategy_per_group = empirical_strategy_per_group,
             ntries = ntries,
             mid_p = mid_p,
-            check_non_overlapping = !is.null(checked_inds)
+            check_non_overlapping = !is.null(checked_pairs)
         )
         rm(chunk_beta)
-        if (!is.null(checked_inds) && length(checked_inds) > 0L) {
+        if (!is.null(checked_pairs) && length(inds) > 0L) {
             # attach to result so outer loop can map back exactly
             # keep only mod 2 = 1
             inds <- inds[seq_along(inds) %% 2 == 1]
@@ -865,7 +854,7 @@
         if (nrow(x) == 0L) {
             return(invisible(NULL))
         }
-        if (is.null(checked_inds)) {
+        if (is.null(checked_pairs)) {
             # First pass: full overwrite
             idx <- item$pair_start:item$pair_end
             connected_vec[idx] <<- x$connected
@@ -938,7 +927,7 @@
                     "ntries",
                     "mid_p",
                     "updating_inds",
-                    "checked_inds",
+                    "checked_pairs",
                     "verbose",
                     "p_ext",
                     ".testConnectivityBatch"
@@ -958,7 +947,7 @@
     reason_vec[bridge_mask] <- "bridged"
 
     # Preserve hard window boundaries even when chunk pooling evaluates ranges spanning multiple windows.
-    if (is.null(checked_inds) && window_mode && exists("pair_ranges", inherits = FALSE) && nrow(pair_ranges) > 0L) {
+    if (is.null(checked_pairs) && window_mode && exists("pair_ranges", inherits = FALSE) && nrow(pair_ranges) > 0L) {
         boundary_left <- pair_ranges$start_pair[pair_ranges$start_pair > 1L] - 1L
         boundary_right <- pair_ranges$end_pair
         boundary_idx <- unique(c(boundary_left, boundary_right))
