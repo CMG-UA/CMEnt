@@ -130,13 +130,13 @@ sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 if (!file.exists(sim_bs_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/17475297/files/sim_bs_1000.rds?download=1",
+        url = "https://zenodo.org/records/19442263/files/sim_bs_1000.rds?download=1",
         destfile = sim_bs_path
     )
 }
 if (!file.exists(sim_truth_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/17475297/files/sim_dmrs_1000.tsv?download=1",
+        url = "https://zenodo.org/records/19442263/files/sim_dmrs_1000.tsv?download=1",
         destfile = sim_truth_path
     )
 }
