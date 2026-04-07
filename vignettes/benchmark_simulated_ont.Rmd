@@ -1101,7 +1101,9 @@ scenario_defs <- list(
             min_cpgs = 2,
             max_bridge_seeds_gaps = 2L,
             max_bridge_extension_gaps = 6L,
-            expansion_window = 20000
+            expansion_window = 20000,
+            chunk_size = 2e5L,
+            njobs = 1L
         )
     ),
     CombinedRelaxed = list(
@@ -1113,7 +1115,9 @@ scenario_defs <- list(
             min_cpgs = 2,
             max_bridge_seeds_gaps = 2L,
             max_bridge_extension_gaps = 6L,
-            expansion_window = 20000
+            expansion_window = 20000,
+            chunk_size = 2e5L,
+            njobs = 1L
         )
     )
 )

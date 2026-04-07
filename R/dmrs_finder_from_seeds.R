@@ -440,6 +440,52 @@
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
 
+    # Estimate a safe upper bound for pair chunks to avoid worker OOM when
+    # users request very large chunk_size values on sequencing-scale inputs.
+    n_cols_for_chunk <- if (!is.null(col_names)) {
+        length(col_names)
+    } else {
+        length(beta_handler$getBetaColNames())
+    }
+    chunk_mem_mb <- getOption("DMRsegal.max_chunk_memory_mb", 256)
+    if (!is.numeric(chunk_mem_mb) || length(chunk_mem_mb) != 1L || is.na(chunk_mem_mb) || chunk_mem_mb <= 0) {
+        chunk_mem_mb <- Inf
+    }
+    chunk_mem_multiplier <- getOption("DMRsegal.chunk_memory_multiplier", 12)
+    if (!is.numeric(chunk_mem_multiplier) || length(chunk_mem_multiplier) != 1L || is.na(chunk_mem_multiplier) || chunk_mem_multiplier <= 0) {
+        chunk_mem_multiplier <- 12
+    }
+    bytes_per_pair_est <- as.numeric(8 * max(1L, n_cols_for_chunk) * chunk_mem_multiplier)
+    max_pairs_by_memory <- if (is.finite(chunk_mem_mb)) {
+        as.integer(floor((as.numeric(chunk_mem_mb) * 1024^2) / max(1, bytes_per_pair_est)))
+    } else {
+        .Machine$integer.max
+    }
+    if (!is.finite(max_pairs_by_memory) || is.na(max_pairs_by_memory)) {
+        max_pairs_by_memory <- .Machine$integer.max
+    }
+    max_pairs_by_memory <- max(100L, max_pairs_by_memory)
+
+    requested_chunk_size <- suppressWarnings(as.integer(chunk_size))
+    if (is.finite(requested_chunk_size) && requested_chunk_size > max_pairs_by_memory) {
+        .log_info(
+            "Capping chunk_size from ", requested_chunk_size,
+            " to ", max_pairs_by_memory,
+            " to fit the connectivity memory budget (",
+            as.numeric(chunk_mem_mb), " MB per worker, ", n_cols_for_chunk,
+            " sample columns, multiplier=", chunk_mem_multiplier, ").",
+            level = 2
+        )
+    }
+
+    .applyChunkSizeSafetyCap <- function(chunk_size_eff) {
+        chunk_size_eff <- as.integer(chunk_size_eff)
+        if (!is.finite(chunk_size_eff) || is.na(chunk_size_eff) || chunk_size_eff < 1L) {
+            chunk_size_eff <- 1L
+        }
+        min(chunk_size_eff, max_pairs_by_memory)
+    }
+
     .makeOutputTemplate <- function(nrows, reason_default) {
         ret <- data.frame(
             connected = rep(FALSE, nrows),
@@ -469,7 +515,7 @@
             max_chunk_size_for_parallel <- as.integer(ceiling(total_pairs / njobs))
             chunk_size_eff <- min(chunk_size_eff, max_chunk_size_for_parallel)
         }
-        chunk_size_eff <- max(1L, chunk_size_eff)
+        chunk_size_eff <- .applyChunkSizeSafetyCap(chunk_size_eff)
         out <- vector("list", nrow(pair_ranges_df) * 2L)
         out_n <- 0L
         for (i in seq_len(nrow(pair_ranges_df))) {
@@ -506,6 +552,7 @@
             max_chunk_size_for_parallel <- as.integer(ceiling(sum(split_weights) / njobs))
             chunk_size_eff <- min(chunk_size_eff, max(1L, max_chunk_size_for_parallel))
         }
+        chunk_size_eff <- .applyChunkSizeSafetyCap(chunk_size_eff)
         if (chunk_size_eff <= 1L) {
             return(splits_mat)
         }
@@ -613,7 +660,6 @@
         connectivity_array[chr_ends, "connected"] <- FALSE
         connectivity_array[chr_ends, "reason"] <- "end-of-input"
         checked_pairs <- NULL
-        updating_inds <- integer(0)
         pair_ranges <- if (window_mode) .build_window_pair_ranges() else .buildAllPairRanges()
         if (nrow(pair_ranges) == 0L) {
             return (
@@ -683,14 +729,12 @@
         if (ugap > 0L) {
             # The following indices will be re-checked
             checked_pairs <- data.frame(before = run_starts - ugap, after = run_starts)
-            updating_inds <- run_starts - ugap
             .log_info(
                 "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the upstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
             )
         } else if (dgap > 0L) {
             checked_pairs <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
-            updating_inds <- run_ends + 1
             .log_info(
                 "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the downstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
@@ -926,7 +970,6 @@
                     "empirical_strategy_per_group",
                     "ntries",
                     "mid_p",
-                    "updating_inds",
                     "checked_pairs",
                     "verbose",
                     "p_ext",
@@ -2634,11 +2677,11 @@ findDMRsFromSeeds <- function(
 
     if (array_based && min_adj_seeds > min_seeds) {
         .log_step("Calculating CpG content and adjusted seeds number..", level = 2)
-        filtered_dmrs$cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
+        cpgs_num_bg <- getCpGBackgroundCounts(filtered_dmrs_ranges, genome)
+        cpgs_num_bg[!is.finite(cpgs_num_bg) | is.na(cpgs_num_bg) | cpgs_num_bg <= 0] <- 1L
+        filtered_dmrs$cpgs_num_bg <- cpgs_num_bg
 
-        underlying_cpgs_num[underlying_cpgs_num == 0] <- 1
-
-        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs[, "cpgs_num"] / filtered_dmrs[, "cpgs_num_bg"] * filtered_dmrs[, "seeds_num"])
+        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs$cpgs_num / filtered_dmrs$cpgs_num_bg * filtered_dmrs$seeds_num)
 
         .log_success("CpG content calculated.", level = 2)
         adj_filtered_dmrs <- filtered_dmrs[

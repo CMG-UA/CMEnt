@@ -98,6 +98,41 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
     }
 })
 
+test_that("findDMRsFromSeeds handles adjusted seeds filtering for array data", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+
+    dmrs_adj <- expect_no_error(suppressWarnings(findDMRsFromSeeds(
+        .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        array = "450K",
+        genome = "hg19",
+        min_seeds = 2,
+        min_adj_seeds = 3,
+        min_cpgs = 3,
+        min_cpg_delta_beta = 0,
+        max_lookup_dist = 1000,
+        njobs = 1
+    )))
+
+    expect_true(is.null(dmrs_adj) || inherits(dmrs_adj, "GRanges"))
+
+    if (!is.null(dmrs_adj) && length(dmrs_adj) > 0L) {
+        dmr_df <- as.data.frame(dmrs_adj)
+        expect_true(all(c("cpgs_num_bg", "seeds_num_adj") %in% names(dmr_df)))
+        expect_true(all(is.finite(dmr_df$cpgs_num_bg)))
+        expect_true(all(dmr_df$cpgs_num_bg >= 1))
+        expect_true(all(dmr_df$seeds_num_adj >= 3))
+    }
+})
+
 test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
     cpg_ids <- c("cgA", "cgB", "cgC", "cgD")
     beta <- matrix(

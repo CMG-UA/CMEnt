@@ -155,3 +155,49 @@ test_that("downstream gap recheck skips out-of-bounds runs", {
     )
     expect_equal(ret$connectivity_array$connected, c(FALSE, TRUE, FALSE, TRUE))
 })
+
+
+test_that("chunk_size is capped by memory budget option", {
+    set.seed(1)
+    cpg_ids <- paste0("cg", seq_len(2000))
+    beta <- matrix(runif(2000 * 6), nrow = 2000)
+    rownames(beta) <- cpg_ids
+    colnames(beta) <- paste0("S", 1:6)
+    locs <- data.frame(
+        chr = rep("chr1", 2000),
+        start = seq(100, by = 10, length.out = 2000),
+        end = seq(101, by = 10, length.out = 2000),
+        row.names = cpg_ids,
+        stringsAsFactors = FALSE
+    )
+
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        g = c("A", "A", "A", "B", "B", "B"),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    gi <- list(A = 1:3, B = 4:6)
+
+    withr::local_options(list(
+        DMRsegal.max_chunk_memory_mb = 1,
+        DMRsegal.chunk_memory_multiplier = 12,
+        DMRsegal.verbose = 0
+    ))
+
+    ret <- DMRsegal:::.buildConnectivityArraySinglePass(
+        beta_handler = bh,
+        beta_locs = locs,
+        pheno = pheno,
+        group_inds = gi,
+        pval_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"),
+        max_pval = 0.05,
+        max_lookup_dist = 1000,
+        chunk_size = 5000,
+        njobs = 1
+    )
+
+    # With a 1 MB memory budget and 6 columns, chunk_size must be capped below 5000.
+    expect_true(nrow(ret$splits) > 1)
+})
