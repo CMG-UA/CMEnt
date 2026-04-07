@@ -179,21 +179,6 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `adaptive_min_cpg_delta_beta`
-**Type:** Logical  
-**Default:** `TRUE`  
-**Description:** When enabled, DMRsegal adaptively increases `min_cpg_delta_beta` based on the seed-level delta-beta distribution (never below `min_cpg_delta_beta`).
-
-**Example:**
-```{r}
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno,
-    adaptive_min_cpg_delta_beta = TRUE
-)
-```
-
 ### `min_seeds`
 **Type:** Integer  
 **Default:** `1`  

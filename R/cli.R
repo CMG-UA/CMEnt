@@ -79,12 +79,6 @@
             help = "The minimum CpG delta beta during DMR expansion, to filter CpGs based on delta beta (default: 0.1)."
         ),
         optparse::make_option(
-            "--adaptive_min_cpg_delta_beta",
-            default = TRUE,
-            type = "logical",
-            help = "Whether to adaptively increase min_cpg_delta_beta from the seed-level delta-beta distribution (default: TRUE)."
-        ),
-        optparse::make_option(
             "--ignored_sample_groups",
             default = NULL,
             help = "The sample groups to ignore while considering connection and expansion, comma separated. Can also be 'case' or 'control'."
@@ -263,7 +257,6 @@ findDMRsFromSeedsCLI <- function(args) {
         casecontrol_col = args$casecontrol_col,
         covariates = covariates,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
-        adaptive_min_cpg_delta_beta = args$adaptive_min_cpg_delta_beta,
         expansion_step = args$expansion_step,
         array = array,
         genome = genome,

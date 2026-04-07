@@ -1084,13 +1084,11 @@ scenario_defs <- list(
     ),
     FixedDelta_0.10 = list(
         params = list(
-            adaptive_min_cpg_delta_beta = FALSE,
             min_cpg_delta_beta = 0.10
         )
     ),
     FixedDelta_0.05 = list(
         params = list(
-            adaptive_min_cpg_delta_beta = FALSE,
             min_cpg_delta_beta = 0.05
         )
     ),
@@ -1108,7 +1106,6 @@ scenario_defs <- list(
     ),
     CombinedRelaxed = list(
         params = list(
-            adaptive_min_cpg_delta_beta = FALSE,
             min_cpg_delta_beta = 0.05,
             max_pval = 0.2,
             min_seeds = 1,

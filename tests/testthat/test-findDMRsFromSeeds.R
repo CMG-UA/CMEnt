@@ -64,7 +64,6 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_cpg_delta_beta = 0,
-            adaptive_min_cpg_delta_beta = FALSE,
             min_seeds = 2,
             min_cpgs = 3,
             max_lookup_dist = 10000,

@@ -13,7 +13,6 @@ findDMRsFromSeeds(
   casecontrol_col = NULL,
   covariates = NULL,
   min_cpg_delta_beta = 0.1,
-  adaptive_min_cpg_delta_beta = TRUE,
   expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = NULL,
@@ -62,8 +61,6 @@ findDMRsFromSeeds(
 \item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
 \item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.1.}
-
-\item{adaptive_min_cpg_delta_beta}{Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.}
 
 \item{expansion_step}{Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 

@@ -23,7 +23,6 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
-#' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
@@ -1725,7 +1724,6 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
-#' @param adaptive_min_cpg_delta_beta Logical. Whether to adaptively increase min_cpg_delta_beta from seed-level delta-beta distribution (never below min_cpg_delta_beta). Default is TRUE.
 #' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
@@ -1767,7 +1765,6 @@ findDMRsFromSeeds <- function(
     casecontrol_col = NULL,
     covariates = NULL,
     min_cpg_delta_beta = 0.1,
-    adaptive_min_cpg_delta_beta = TRUE,
     expansion_step = 500,
     array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
     genome = NULL,
@@ -1965,9 +1962,6 @@ findDMRsFromSeeds <- function(
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
     stopifnot(!is.null(entanglement))
-    if (!is.logical(adaptive_min_cpg_delta_beta) || length(adaptive_min_cpg_delta_beta) != 1 || is.na(adaptive_min_cpg_delta_beta)) {
-        stop("adaptive_min_cpg_delta_beta must be TRUE or FALSE.")
-    }
     if (expansion_window == "auto") {
         expansion_window <- if (array_based) -1 else 10000
         if (array_based) {
@@ -2187,17 +2181,9 @@ findDMRsFromSeeds <- function(
     .log_success("Subset size: ", paste(dim(seeds_beta), collapse = ","), level = 3)
     .log_info("Number of provided seeds: ", length(seeds), level = 2)
     resolved_min_cpg_delta_beta <- as.numeric(min_cpg_delta_beta)
-    if (adaptive_min_cpg_delta_beta) {
-        resolved_min_cpg_delta_beta <- .resolveAdaptiveMinCpgDeltaBeta(
-            seeds_beta = seeds_beta,
-            pheno = pheno_detection,
-            aggfun = aggfun,
-            base_threshold = resolved_min_cpg_delta_beta
-        )
-    }
+
     .log_info(
         "Using min_cpg_delta_beta threshold: ", signif(resolved_min_cpg_delta_beta, 4),
-        if (adaptive_min_cpg_delta_beta) " (adaptive)." else " (fixed).",
         level = 2
     )
 
