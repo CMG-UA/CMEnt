@@ -165,6 +165,32 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     expect_equal(beta_locs$start, start_positions)
 })
 
+test_that("BetaHandler sorts genomic locations from unsorted BSseq input", {
+    set.seed(123)
+    n_loci <- 8
+    n_samples <- 4
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+
+    unsorted_starts <- c(300, 100, 800, 200, 700, 400, 600, 500)
+    gr <- GRanges(
+        seqnames = rep("chr1", n_loci),
+        ranges = IRanges(start = unsorted_starts, width = 1)
+    )
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = paste0("Sample", seq_len(n_samples))
+    )
+
+    beta_handler <- getBetaHandler(beta = bsseq_obj)
+    beta_locs <- beta_handler$getBetaLocs()
+
+    expect_equal(beta_locs$start, sort(unsorted_starts))
+    expect_true(all(diff(beta_locs$start) >= 0))
+    expect_equal(rownames(beta_locs), paste0("chr1:", sort(unsorted_starts)))
+    expect_equal(rownames(beta_locs), beta_handler$getBetaRowNames())
+})
+
 test_that("BetaHandler handles missing row names in BSseq gracefully", {
     set.seed(123)
     n_loci <- 50

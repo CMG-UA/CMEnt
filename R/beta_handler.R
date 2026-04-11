@@ -83,7 +83,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_step("Extracting genomic locations from BSseq object...", level = 2)
-                gr <- granges(beta)
+                private$.bsseq_object <- sort(beta)
+                self$beta <- NULL
+                gr <- granges(private$.bsseq_object)
                 .log_step("Constructing sorted_locs delayed data frame..", level = 3)
                 sorted_locs <- DelayedDataFrame::DelayedDataFrame(
                     chr = as.character(seqnames(gr)),
@@ -118,6 +120,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(invisible(self))
             }
             .log_info("Loading beta data...", level = 2)
+            if (!is.null(private$.bsseq_object)) {
+                private$.loaded <- TRUE
+                return(invisible(self))
+            }
             if (!is.character(self$beta) && length(self$beta) > 0) {
                 if (is_bsseq(self$beta)) {
                     private$.bsseq_object <- sort(self$beta)
