@@ -2572,47 +2572,6 @@ convertToDataFrame <- function(gr) {
     )
 }
 
-#' @keywords internal
-#' @noRd
-.resolveAdaptiveMinCpgDeltaBeta <- function(seeds_beta, pheno, aggfun, base_threshold = 0.1) {
-    if (!is.finite(base_threshold)) {
-        return(base_threshold)
-    }
-    case_mask <- pheno[, "__casecontrol__"] == 1
-    ctrl_mask <- pheno[, "__casecontrol__"] == 0
-    if (sum(case_mask, na.rm = TRUE) == 0L || sum(ctrl_mask, na.rm = TRUE) == 0L) {
-        return(base_threshold)
-    }
-    beta_mat <- as.matrix(seeds_beta)
-    max_rows <- as.integer(getOption("DMRsegal.adaptive_min_cpg_delta_beta_max_rows", 50000L))
-    max_rows <- max(1L, max_rows)
-    if (nrow(beta_mat) > max_rows) {
-        sel <- unique(as.integer(round(seq(1, nrow(beta_mat), length.out = max_rows))))
-        beta_mat <- beta_mat[sel, , drop = FALSE]
-    }
-
-    if (identical(aggfun, mean)) {
-        cases <- matrixStats::rowMeans2(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
-        ctrls <- matrixStats::rowMeans2(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
-    } else if (identical(aggfun, stats::median)) {
-        cases <- matrixStats::rowMedians(beta_mat[, case_mask, drop = FALSE], na.rm = TRUE)
-        ctrls <- matrixStats::rowMedians(beta_mat[, ctrl_mask, drop = FALSE], na.rm = TRUE)
-    } else {
-        cases <- apply(beta_mat[, case_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
-        ctrls <- apply(beta_mat[, ctrl_mask, drop = FALSE], 1, aggfun, na.rm = TRUE)
-    }
-    deltas <- abs(cases - ctrls)
-    deltas <- deltas[is.finite(deltas)]
-    if (length(deltas) == 0L) {
-        return(base_threshold)
-    }
-    qprob <- getOption("DMRsegal.adaptive_min_cpg_delta_beta_quantile", 0.25)
-    adaptive <- as.numeric(stats::quantile(deltas, probs = qprob, na.rm = TRUE, names = FALSE, type = 7))
-    if (!is.finite(adaptive)) {
-        return(base_threshold)
-    }
-    max(base_threshold, adaptive)
-}
 
 #' @keywords internal
 #' @noRd
