@@ -2037,14 +2037,18 @@ findDMRsFromSeeds <- function(
     }
     pheno_all <- pheno[beta_col_names, , drop = FALSE]
     beta_locs <- beta_handler$getBetaLocs()
-    ord <- str_order(paste(beta_locs[, "chr"], ":", beta_locs[, "start"]), numeric = TRUE)
-    if (!all(ord == seq_len(nrow(beta_locs)))) {
-        stop(
-            "Beta locations are not sorted. Ensure the beta input is ordered by chromosome and genomic start position.",
-            call. = FALSE
-        )
-    }
-
+    lapply(
+        split(beta_locs, beta_locs[,"chr"]),
+        function(df) {
+            ord <- str_order(df[,"start"], numeric = TRUE)
+            if (!all(ord == seq_len(nrow(df)))) {
+                stop(
+                    "Beta locations are not sorted within chromosome ", unique(df[,"chr"]), ". Ensure the beta input is ordered by genomic start position.",
+                    call. = FALSE
+                )
+            }
+        }
+    )
 
     samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups)
     if ("case" %in% ignored_sample_groups) {
