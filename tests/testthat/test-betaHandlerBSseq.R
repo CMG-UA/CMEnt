@@ -257,3 +257,67 @@ test_that("BetaHandler allows missing CpGs from BSseq when allow_missing=TRUE", 
     expect_equal(nrow(beta_subset), 2)
     expect_equal(rownames(beta_subset), c(cpg_names[[1]], cpg_names[[2]]))
 })
+
+test_that("BetaHandler subset returns compact BSseq handler with requested rows and columns", {
+    set.seed(123)
+    n_loci <- 60
+    n_samples <- 6
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep("chr1", n_loci),
+        ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
+    )
+    cpg_names <- paste(seqnames(gr), start(gr), sep = ":")
+    names(gr) <- cpg_names
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+
+    beta_handler <- getBetaHandler(beta = bsseq_obj)
+    subset_rows <- cpg_names[10:20]
+    subset_cols <- sample_names[c(2, 4, 6)]
+
+    subset_handler <- beta_handler$subset(
+        row_names = subset_rows,
+        col_names = subset_cols
+    )
+
+    expect_s3_class(subset_handler, "BetaHandler")
+    expect_equal(subset_handler$getBetaRowNames(), subset_rows)
+    expect_equal(subset_handler$getBetaColNames(), subset_cols)
+    expect_equal(
+        subset_handler$getBeta(),
+        beta_handler$getBeta(row_names = subset_rows, col_names = subset_cols),
+        tolerance = 1e-8
+    )
+    expect_equal(rownames(subset_handler$getBetaLocs()), subset_rows)
+})
+
+test_that("BetaHandler subset supports numeric row indexing", {
+    set.seed(99)
+    n_loci <- 20
+    n_samples <- 4
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep("chr2", n_loci),
+        ranges = IRanges(start = seq(5000, by = 25, length.out = n_loci), width = 1)
+    )
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+
+    beta_handler <- getBetaHandler(beta = bsseq_obj)
+    subset_handler <- beta_handler$subset(row_names = c(2, 5, 7), col_names = sample_names[1:2])
+
+    expect_equal(
+        subset_handler$getBeta(),
+        beta_handler$getBeta(row_names = c(2, 5, 7), col_names = sample_names[1:2]),
+        tolerance = 1e-8
+    )
+})

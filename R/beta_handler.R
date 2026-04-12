@@ -426,6 +426,94 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             private$.is_array_based <- !grepl(rownames(first_loc), pattern = "^chr[A-Za-z0-9]+:\\d+$", ignore.case = TRUE)
             private$.is_array_based
         },
+
+        #' @description Build a compact BetaHandler view for a subset of rows/columns
+        #' @param row_names Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows
+        #' @param col_names Character vector of sample IDs to keep; NULL keeps all columns
+        #' @param allow_missing Logical; if TRUE, silently drops missing row names
+        #' @return A BetaHandler object scoped to the requested subset
+        subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
+            self$validate()
+            all_row_names <- self$getBetaRowNames()
+            if (is.null(row_names)) {
+                subset_row_names <- all_row_names
+            } else if (is.numeric(row_names)) {
+                row_idx <- as.integer(row_names)
+                n_all <- length(all_row_names)
+                if (allow_missing) {
+                    keep <- !is.na(row_idx) & row_idx >= 1L & row_idx <= n_all
+                    row_idx <- row_idx[keep]
+                } else {
+                    bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_all
+                    if (any(bad)) {
+                        bad_idx <- unique(row_idx[bad])
+                        bad_idx <- bad_idx[!is.na(bad_idx)]
+                        stop(
+                            "Requested row indices out of bounds [1,", n_all, "]: ",
+                            paste(head(bad_idx, 10), collapse = ", ")
+                        )
+                    }
+                }
+                subset_row_names <- all_row_names[row_idx]
+            } else {
+                subset_row_names <- as.character(row_names)
+                row_match <- match(subset_row_names, all_row_names)
+                if (allow_missing) {
+                    subset_row_names <- subset_row_names[!is.na(row_match)]
+                } else if (any(is.na(row_match))) {
+                    missing_rows <- unique(subset_row_names[is.na(row_match)])
+                    stop(
+                        "Requested CpG sites not found in beta data: ",
+                        paste(missing_rows, collapse = ", ")
+                    )
+                }
+            }
+
+            all_col_names <- self$getBetaColNames()
+            if (is.null(col_names)) {
+                subset_col_names <- all_col_names
+            } else {
+                subset_col_names <- as.character(col_names)
+                missing_cols <- setdiff(subset_col_names, all_col_names)
+                if (length(missing_cols) > 0) {
+                    stop(
+                        "Requested samples not found in beta data: ",
+                        paste(missing_cols, collapse = ", ")
+                    )
+                }
+            }
+
+            subset_locs <- self$getBetaLocs()[subset_row_names, , drop = FALSE]
+
+            if (!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object)) {
+                # For in-memory/BSseq backends, materialize only the needed slice so workers do not
+                # inherit the full parent payload when this subset handler is serialized.
+                subset_beta <- self$getBeta(
+                    row_names = subset_row_names,
+                    col_names = subset_col_names,
+                    allow_missing = FALSE
+                )
+                return(getBetaHandler(
+                    beta = subset_beta,
+                    array = self$array,
+                    genome = self$genome,
+                    sorted_locs = subset_locs,
+                    njobs = self$njobs
+                ))
+            }
+
+            subset_handler <- self$clone(deep = FALSE)
+            subset_handler$sorted_locs <- subset_locs
+            subset_handler$beta_row_names_file <- NULL
+            subset_handler$.__enclos_env__$private$.beta_locs <- subset_locs
+            subset_handler$.__enclos_env__$private$.beta_row_names <- subset_row_names
+            subset_handler$.__enclos_env__$private$.beta_col_names <- subset_col_names
+            subset_handler$.__enclos_env__$private$.loaded <- TRUE
+            subset_handler$.__enclos_env__$private$.validated <- TRUE
+            subset_handler$.__enclos_env__$private$.self_contained <- TRUE
+            subset_handler
+        },
+
         #' @description Extract beta values for specific CpG sites and samples
         #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)

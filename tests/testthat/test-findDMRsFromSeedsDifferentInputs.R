@@ -209,6 +209,76 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     expect_equal(mem_connectivity, tabix_connectivity)
 })
 
+test_that("parallel connectivity is invariant to per-batch BetaHandler subsetting", {
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
+    dmps <- dmps[seq_len(30), , drop = FALSE]
+
+    mem_handler <- getBetaHandler(beta, array = "450K", genome = "hg19", njobs = 1)
+    beta_locs <- mem_handler$getBetaLocs()
+    seeds <- unique(rownames(dmps))
+    seeds <- seeds[orderByLoc(seeds, genome = "hg19", genomic_locs = beta_locs)]
+    seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
+
+    pheno_detection <- pheno[rownames(pheno), , drop = FALSE]
+    sample_groups <- factor(pheno_detection[, "Sample_Group"])
+    group_inds <- split(seq_along(sample_groups), sample_groups)
+    pval_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
+    empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
+
+    withr::local_options(list(
+        DMRsegal.parallel_result_batch_size = 2L,
+        DMRsegal.parallel_batch_beta_subset = FALSE,
+        DMRsegal.njobs = 2L
+    ))
+    connectivity_no_subset <- .buildConnectivityArraySinglePass(
+        beta_handler = mem_handler,
+        beta_locs = seeds_locs,
+        pheno = pheno_detection,
+        group_inds = group_inds,
+        pval_mode_per_group = pval_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group,
+        col_names = rownames(pheno),
+        max_pval = 0.05,
+        min_delta_beta = 0,
+        max_lookup_dist = 1000,
+        chunk_size = 3,
+        entanglement = "strong",
+        aggfun = stats::median,
+        ntries = 10,
+        mid_p = TRUE,
+        njobs = 2
+    )[["connectivity_array"]]
+
+    withr::local_options(list(
+        DMRsegal.parallel_result_batch_size = 2L,
+        DMRsegal.parallel_batch_beta_subset = TRUE,
+        DMRsegal.parallel_batch_beta_subset_min_rows = 1L,
+        DMRsegal.njobs = 2L
+    ))
+    connectivity_with_subset <- .buildConnectivityArraySinglePass(
+        beta_handler = mem_handler,
+        beta_locs = seeds_locs,
+        pheno = pheno_detection,
+        group_inds = group_inds,
+        pval_mode_per_group = pval_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group,
+        col_names = rownames(pheno),
+        max_pval = 0.05,
+        min_delta_beta = 0,
+        max_lookup_dist = 1000,
+        chunk_size = 3,
+        entanglement = "strong",
+        aggfun = stats::median,
+        ntries = 10,
+        mid_p = TRUE,
+        njobs = 2
+    )[["connectivity_array"]]
+
+    expect_equal(connectivity_no_subset, connectivity_with_subset)
+})
+
 test_that("findDMRsFromSeeds works with BSseq input", {
     set.seed(42)
     n_loci <- 200

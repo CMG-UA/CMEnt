@@ -400,7 +400,8 @@
     mid_p = TRUE,
     checked_pairs = NULL,
     use_numeric_row_index = TRUE,
-    beta_row_ids = NULL
+    beta_row_ids = NULL,
+    beta_row_ids_offset = 0L
 ) {
     pair_start <- as.integer(split[[1]])
     pair_end <- as.integer(split[[2]])
@@ -422,7 +423,19 @@
         start = beta_start_vec[inds],
         stringsAsFactors = FALSE
     )
-    row_ids <- if (use_numeric_row_index) inds else beta_row_ids[inds]
+    if (use_numeric_row_index) {
+        row_ids <- inds
+    } else {
+        local_inds <- as.integer(inds - as.integer(beta_row_ids_offset))
+        if (any(local_inds < 1L) || any(local_inds > length(beta_row_ids))) {
+            stop(
+                "Row index offset mismatch while resolving batch row IDs: [",
+                min(local_inds), ", ", max(local_inds), "] outside [1, ",
+                length(beta_row_ids), "]"
+            )
+        }
+        row_ids <- beta_row_ids[local_inds]
+    }
     chunk_beta <- beta_handler$getBeta(
         row_names = row_ids,
         col_names = col_names
@@ -845,14 +858,15 @@
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
-    beta_row_ids <- rownames(beta_locs)
+    beta_row_ids_full <- rownames(beta_locs)
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
     # all backends query the same CpGs during connectivity estimation.
-    use_numeric_row_index <- is.null(beta_row_ids) ||
-        length(beta_row_ids) != n_sites ||
-        anyNA(beta_row_ids) ||
-        any(!nzchar(beta_row_ids))
+    use_numeric_row_index <- is.null(beta_row_ids_full) ||
+        length(beta_row_ids_full) != n_sites ||
+        anyNA(beta_row_ids_full) ||
+        any(!nzchar(beta_row_ids_full))
+    beta_row_ids <- if (use_numeric_row_index) NULL else beta_row_ids_full
     if (any(pval_mode_per_group == "auto") || any(empirical_strategy_per_group[pval_mode_per_group == "empirical"] == "auto")) {
         .log_info(
             "Selecting p-value computation mode for each group using the first chunk as a pilot.",
@@ -860,7 +874,7 @@
         )
         first_chunk_rows <- splits[1, 1]:(splits[1, 2] + 1L)
         if (!use_numeric_row_index) {
-            first_chunk_rows <- beta_row_ids[first_chunk_rows]
+            first_chunk_rows <- beta_row_ids_full[first_chunk_rows]
         }
         # select testing settings using the first chunk as a pilot
         first_chunk <- beta_handler$getBeta(
@@ -900,13 +914,17 @@
     gc()
     beta_chr_vec <- beta_chr_ids
     beta_start_vec <- as.integer(beta_locs[, "start"])
-    if (use_numeric_row_index) {
-        beta_row_ids <- NULL
-    }
-    .runConnectivityChunk <- function(split, checked_pairs_local = checked_pairs) {
+    .runConnectivityChunk <- function(
+        split,
+        checked_pairs_local = checked_pairs,
+        worker_beta_handler = beta_handler,
+        worker_use_numeric_row_index = use_numeric_row_index,
+        worker_beta_row_ids = beta_row_ids,
+        worker_beta_row_ids_offset = 0L
+    ) {
         .connectivityChunkWorker(
             split = split,
-            beta_handler = beta_handler,
+            beta_handler = worker_beta_handler,
             beta_chr_vec = beta_chr_vec,
             beta_start_vec = beta_start_vec,
             group_inds = group_inds,
@@ -923,8 +941,9 @@
             ntries = ntries,
             mid_p = mid_p,
             checked_pairs = checked_pairs_local,
-            use_numeric_row_index = use_numeric_row_index,
-            beta_row_ids = beta_row_ids
+            use_numeric_row_index = worker_use_numeric_row_index,
+            beta_row_ids = worker_beta_row_ids,
+            beta_row_ids_offset = worker_beta_row_ids_offset
         )
     }
     # Work with local vectors to avoid repeated data.frame copy-on-modify in the hot loop.
@@ -988,7 +1007,14 @@
         invisible(NULL)
     }
 
-    .futureBatchConnectivity <- function(batch_splits, batch_checked_pairs = checked_pairs) {
+    .futureBatchConnectivity <- function(
+        batch_splits,
+        batch_checked_pairs = checked_pairs,
+        batch_beta_handler = beta_handler,
+        batch_use_numeric_row_index = use_numeric_row_index,
+        batch_beta_row_ids = beta_row_ids,
+        batch_beta_row_ids_offset = 0L
+    ) {
         future.apply::future_lapply(
             X = batch_splits,
             future.seed = TRUE,
@@ -998,7 +1024,7 @@
                 ".testConnectivityBatch"
             ),
             FUN = .connectivityChunkWorker,
-            beta_handler = beta_handler,
+            beta_handler = batch_beta_handler,
             beta_chr_vec = beta_chr_vec,
             beta_start_vec = beta_start_vec,
             group_inds = group_inds,
@@ -1015,8 +1041,9 @@
             ntries = ntries,
             mid_p = mid_p,
             checked_pairs = batch_checked_pairs,
-            use_numeric_row_index = use_numeric_row_index,
-            beta_row_ids = beta_row_ids
+            use_numeric_row_index = batch_use_numeric_row_index,
+            beta_row_ids = batch_beta_row_ids,
+            beta_row_ids_offset = batch_beta_row_ids_offset
         )
     }
 
@@ -1031,6 +1058,55 @@
             c("before", "after"),
             drop = FALSE
         ]
+    }
+
+    batch_subset_enabled <- isTRUE(getOption("DMRsegal.parallel_batch_beta_subset", TRUE))
+    batch_subset_min_rows <- as.integer(getOption("DMRsegal.parallel_batch_beta_subset_min_rows", 5000L))
+    if (!is.finite(batch_subset_min_rows) || is.na(batch_subset_min_rows) || batch_subset_min_rows < 1L) {
+        batch_subset_min_rows <- 1L
+    }
+
+    .resolveBatchWorkerPayload <- function(batch_inds) {
+        payload <- list(
+            beta_handler = beta_handler,
+            use_numeric_row_index = use_numeric_row_index,
+            beta_row_ids = beta_row_ids,
+            beta_row_ids_offset = 0L
+        )
+        if (!batch_subset_enabled || length(batch_inds) == 0L) {
+            return(payload)
+        }
+        if (use_numeric_row_index || is.null(beta_row_ids_full)) {
+            return(payload)
+        }
+
+        batch_pair_start <- min(splits[batch_inds, 1])
+        batch_pair_end <- max(splits[batch_inds, 2]) + 1L
+        batch_nrows <- batch_pair_end - batch_pair_start + 1L
+        if (!is.finite(batch_nrows) || is.na(batch_nrows) || batch_nrows < batch_subset_min_rows) {
+            return(payload)
+        }
+
+        batch_row_ids <- beta_row_ids_full[batch_pair_start:batch_pair_end]
+        subset_handler <- tryCatch(
+            beta_handler$subset(row_names = batch_row_ids, col_names = col_names),
+            error = function(e) e
+        )
+        if (inherits(subset_handler, "error")) {
+            .log_warn(
+                "Failed to create per-batch BetaHandler subset for chunk range ",
+                batch_pair_start, "-", batch_pair_end,
+                ". Proceeding with the full handler. Error: ",
+                conditionMessage(subset_handler)
+            )
+            return(payload)
+        }
+
+        payload$beta_handler <- subset_handler
+        payload$use_numeric_row_index <- FALSE
+        payload$beta_row_ids <- batch_row_ids
+        payload$beta_row_ids_offset <- batch_pair_start - 1L
+        payload
     }
 
     .isRetryableFutureBatchError <- function(e) {
@@ -1071,9 +1147,19 @@
             batch_inds <- all_split_inds[batch_start:batch_end]
             batch_splits <- lapply(batch_inds, function(i) as.integer(splits[i, ]))
             batch_checked_pairs <- .subsetCheckedPairsForBatch(batch_inds)
+            batch_worker_payload <- .resolveBatchWorkerPayload(batch_inds)
             if (!use_parallel) {
                 for (split in batch_splits) {
-                    .applyChunkResult(.runConnectivityChunk(split, checked_pairs_local = batch_checked_pairs))
+                    .applyChunkResult(
+                        .runConnectivityChunk(
+                            split,
+                            checked_pairs_local = batch_checked_pairs,
+                            worker_beta_handler = batch_worker_payload$beta_handler,
+                            worker_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
+                            worker_beta_row_ids = batch_worker_payload$beta_row_ids,
+                            worker_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
+                        )
+                    )
                 }
                 next
             }
@@ -1082,7 +1168,14 @@
             ret <- NULL
             repeat {
                 ret <- tryCatch(
-                    .futureBatchConnectivity(batch_splits, batch_checked_pairs = batch_checked_pairs),
+                    .futureBatchConnectivity(
+                        batch_splits,
+                        batch_checked_pairs = batch_checked_pairs,
+                        batch_beta_handler = batch_worker_payload$beta_handler,
+                        batch_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
+                        batch_beta_row_ids = batch_worker_payload$beta_row_ids,
+                        batch_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
+                    ),
                     error = function(e) e
                 )
                 if (!inherits(ret, "error")) {
@@ -1126,7 +1219,16 @@
 
             if (!use_parallel && is.null(ret)) {
                 for (split in batch_splits) {
-                    .applyChunkResult(.runConnectivityChunk(split, checked_pairs_local = batch_checked_pairs))
+                    .applyChunkResult(
+                        .runConnectivityChunk(
+                            split,
+                            checked_pairs_local = batch_checked_pairs,
+                            worker_beta_handler = batch_worker_payload$beta_handler,
+                            worker_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
+                            worker_beta_row_ids = batch_worker_payload$beta_row_ids,
+                            worker_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
+                        )
+                    )
                 }
                 next
             }
