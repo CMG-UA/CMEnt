@@ -939,50 +939,136 @@
         invisible(NULL)
     }
 
+    .futureBatchConnectivity <- function(batch_inds) {
+        future.apply::future_lapply(
+            X = batch_inds,
+            future.seed = TRUE,
+            future.stdout = NA,
+            future.globals = c(
+                "splits",
+                "group_inds",
+                "pheno",
+                "covariates",
+                "max_pval",
+                "min_delta_beta",
+                "max_lookup_dist",
+                "entanglement",
+                "aggfun",
+                "pval_mode_per_group",
+                "empirical_strategy_per_group",
+                "ntries",
+                "mid_p",
+                "checked_pairs",
+                "verbose",
+                "p_ext",
+                ".testConnectivityBatch"
+            ),
+            beta_handler = beta_handler,
+            FUN = fun
+        )
+    }
+
+    .isRetryableFutureBatchError <- function(e) {
+        if (inherits(e, "FutureInterruptError")) {
+            return(TRUE)
+        }
+        msg <- conditionMessage(e)
+        grepl(
+            "did not deliver a result|was interrupted|multicorefuture|worker.*(died|terminated)|failed to retrieve|connection.*closed|sigkill",
+            msg,
+            ignore.case = TRUE
+        )
+    }
+
     if (njobs == 1L) {
         for (split_ind in seq_len(nrow(splits))) {
             .applyChunkResult(fun(split_ind, beta_handler))
         }
     } else {
         .setupParallel()
+        on.exit(.finalizeParallel(), add = TRUE)
         all_split_inds <- seq_len(nrow(splits))
         batch_size <- as.integer(getOption("DMRsegal.parallel_result_batch_size", max(njobs * 4L, 16L)))
         batch_size <- max(1L, batch_size)
+        max_parallel_retries <- as.integer(getOption("DMRsegal.parallel_batch_retries", 1L))
+        if (!is.finite(max_parallel_retries) || is.na(max_parallel_retries) || max_parallel_retries < 0L) {
+            max_parallel_retries <- 1L
+        }
+        max_attempts <- max_parallel_retries + 1L
+        fallback_to_sequential <- getOption("DMRsegal.parallel_fallback_to_sequential", TRUE)
+        if (is.null(fallback_to_sequential)) {
+            fallback_to_sequential <- TRUE
+        }
+        fallback_to_sequential <- isTRUE(fallback_to_sequential)
+        use_parallel <- TRUE
         for (batch_start in seq.int(1L, length(all_split_inds), by = batch_size)) {
             batch_end <- min(batch_start + batch_size - 1L, length(all_split_inds))
             batch_inds <- all_split_inds[batch_start:batch_end]
-            ret <- future.apply::future_lapply(
-                X = batch_inds,
-                future.seed = TRUE,
-                future.stdout = NA,
-                future.globals = c(
-                    "splits",
-                    "group_inds",
-                    "pheno",
-                    "covariates",
-                    "max_pval",
-                    "min_delta_beta",
-                    "max_lookup_dist",
-                    "entanglement",
-                    "aggfun",
-                    "pval_mode_per_group",
-                    "empirical_strategy_per_group",
-                    "ntries",
-                    "mid_p",
-                    "checked_pairs",
-                    "verbose",
-                    "p_ext",
-                    ".testConnectivityBatch"
-                ),
-                beta_handler = beta_handler,
-                FUN = fun
-            )
+            if (!use_parallel) {
+                for (split_ind in batch_inds) {
+                    .applyChunkResult(fun(split_ind, beta_handler))
+                }
+                next
+            }
+
+            attempt <- 1L
+            ret <- NULL
+            repeat {
+                ret <- tryCatch(
+                    .futureBatchConnectivity(batch_inds),
+                    error = function(e) e
+                )
+                if (!inherits(ret, "error")) {
+                    break
+                }
+
+                retryable_error <- .isRetryableFutureBatchError(ret)
+                if (!retryable_error) {
+                    stop(ret)
+                }
+
+                if (attempt < max_attempts) {
+                    .log_warn(
+                        "Parallel connectivity batch ", batch_start, "-", batch_end,
+                        " failed with recoverable future error (attempt ", attempt,
+                        "/", max_attempts,
+                        "). Reinitializing parallel backend and retrying. Error: ",
+                        conditionMessage(ret)
+                    )
+                    .cleanupParallelState()
+                    .setupParallel()
+                    attempt <- attempt + 1L
+                    next
+                }
+
+                if (fallback_to_sequential) {
+                    .log_warn(
+                        "Parallel connectivity batch ", batch_start, "-", batch_end,
+                        " failed after ", max_attempts,
+                        " attempt(s). Falling back to sequential processing for remaining chunks. Last error: ",
+                        conditionMessage(ret)
+                    )
+                    use_parallel <- FALSE
+                    .cleanupParallelState()
+                    ret <- NULL
+                    break
+                }
+
+                stop(ret)
+            }
+
+            if (!use_parallel && is.null(ret)) {
+                for (split_ind in batch_inds) {
+                    .applyChunkResult(fun(split_ind, beta_handler))
+                }
+                next
+            }
+
             for (item in ret) {
                 .applyChunkResult(item)
             }
             rm(ret)
         }
-        .finalizeParallel()
     }
 
     connected_vec[bridge_mask] <- TRUE
