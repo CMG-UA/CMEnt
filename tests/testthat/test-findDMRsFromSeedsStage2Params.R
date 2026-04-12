@@ -261,7 +261,16 @@ test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and ch
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
-    withr::local_options(list(DMRsegal.parallel_dmr_chunk_size = 1L))
+    withr::local_options(list(
+        DMRsegal.parallel_dmr_chunk_size = 1L,
+        DMRsegal.parallel_merge_aggregations = TRUE,
+        DMRsegal.parallel_merge_min_hits = 1L,
+        DMRsegal.parallel_merge_chunk_size = 1L,
+        DMRsegal.parallel_merge_cpgs_min_rows = 1L,
+        DMRsegal.parallel_merge_cpgs_chunk_size = 1L,
+        DMRsegal.parallel_beta_agg_min_groups = 1L,
+        DMRsegal.parallel_beta_agg_chunk_size = 1L
+    ))
 
     args <- list(
         .score_dmrs = FALSE,

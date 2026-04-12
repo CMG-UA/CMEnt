@@ -1951,6 +1951,144 @@
     ret
 }
 
+#' @keywords internal
+#' @noRd
+.aggregateMergedDMRRow <- function(hit_idx, qh, sh, orig_mcols, aggfun) {
+    inds <- sh[qh == hit_idx]
+    cols_vals <- orig_mcols[inds, , drop = FALSE]
+    agg_seeds <- unique(unlist(lapply(cols_vals$seeds, .splitCsvValues), use.names = FALSE))
+    agg_upstream_cpgs <- unique(unlist(lapply(cols_vals$upstream_cpgs, .splitCsvValues), use.names = FALSE))
+    agg_downsteam_cpgs <- unique(unlist(lapply(cols_vals$downstream_cpgs, .splitCsvValues), use.names = FALSE))
+    list(
+        idx = as.integer(hit_idx),
+        start_seed = as.character(cols_vals$start_seed[[1]]),
+        end_seed = as.character(cols_vals$end_seed[[length(inds)]]),
+        start_seed_pos = as.numeric(cols_vals$start_seed_pos[[1]]),
+        end_seed_pos = as.numeric(cols_vals$end_seed_pos[[length(inds)]]),
+        seeds = paste(agg_seeds, collapse = ","),
+        seeds_num = as.integer(length(agg_seeds)),
+        connection_corr_pval = aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE),
+        stop_connection_reason = paste(cols_vals$stop_connection_reason, collapse = ","),
+        start_cpg = as.character(cols_vals$start_cpg[[1]]),
+        end_cpg = as.character(cols_vals$end_cpg[[length(inds)]]),
+        upstream_cpg_expansion = paste(cols_vals$upstream_cpg_expansion, collapse = ","),
+        upstream_cpgs = paste(agg_upstream_cpgs, collapse = ","),
+        upstream_cpg_expansion_stop_reason = paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ","),
+        downstream_cpg_expansion = paste(cols_vals$downstream_cpg_expansion, collapse = ","),
+        downstream_cpgs = paste(agg_downsteam_cpgs, collapse = ","),
+        downstream_cpg_expansion_stop_reason = paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ","),
+        merged_dmrs_num = as.integer(length(inds))
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.aggregateMergedDMRChunk <- function(hit_indices, qh, sh, orig_mcols, aggfun) {
+    if (length(hit_indices) == 0L) {
+        return(list())
+    }
+    lapply(
+        hit_indices,
+        .aggregateMergedDMRRow,
+        qh = qh,
+        sh = sh,
+        orig_mcols = orig_mcols,
+        aggfun = aggfun
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.collapseMergedDMRCpGsChunk <- function(components_df) {
+    if (is.null(components_df) || nrow(components_df) == 0L) {
+        return(character(0))
+    }
+    vapply(
+        seq_len(nrow(components_df)),
+        function(i) {
+            vals <- unique(unlist(lapply(components_df[i, ], .splitCsvValues), use.names = FALSE))
+            paste(vals, collapse = ",")
+        },
+        character(1)
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.aggregateDMRBetaStatsChunk <- function(beta_stats_chunk, aggfun) {
+    if (is.null(beta_stats_chunk) || nrow(beta_stats_chunk) == 0L) {
+        return(data.frame(
+            dmr_id = integer(0),
+            cases_beta = numeric(0),
+            controls_beta = numeric(0),
+            cases_beta_sd = numeric(0),
+            controls_beta_sd = numeric(0),
+            cases_beta_min = numeric(0),
+            cases_beta_max = numeric(0),
+            controls_beta_min = numeric(0),
+            controls_beta_max = numeric(0)
+        ))
+    }
+    as.data.frame(data.table::as.data.table(beta_stats_chunk)[, .(
+        cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
+        controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
+        cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
+        controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
+        cases_beta_min = min(cases_beta, na.rm = TRUE),
+        cases_beta_max = max(cases_beta, na.rm = TRUE),
+        controls_beta_min = min(controls_beta, na.rm = TRUE),
+        controls_beta_max = max(controls_beta, na.rm = TRUE)
+    ), by = dmr_id])
+}
+
+#' @keywords internal
+#' @noRd
+.aggregateDMRBetaStats <- function(beta_stats_df,
+                                   aggfun,
+                                   njobs = 1L,
+                                   parallel_enabled = TRUE,
+                                   min_groups_for_parallel = 1000L,
+                                   chunk_size = NULL) {
+    if (is.null(beta_stats_df) || nrow(beta_stats_df) == 0L) {
+        return(.aggregateDMRBetaStatsChunk(beta_stats_df, aggfun))
+    }
+    beta_stats_dt <- data.table::as.data.table(beta_stats_df)
+    groups <- sort(unique(beta_stats_dt$dmr_id))
+    ngroups <- length(groups)
+    if (!(parallel_enabled && njobs > 1L && ngroups >= min_groups_for_parallel)) {
+        ret <- .aggregateDMRBetaStatsChunk(beta_stats_dt, aggfun)
+        ret <- ret[order(ret$dmr_id), , drop = FALSE]
+        rownames(ret) <- NULL
+        return(ret)
+    }
+    if (is.null(chunk_size)) {
+        chunk_size <- as.integer(ceiling(ngroups / max(1L, njobs * 4L)))
+    } else {
+        chunk_size <- as.integer(chunk_size)
+    }
+    if (!is.finite(chunk_size) || is.na(chunk_size) || chunk_size < 1L) {
+        chunk_size <- 1L
+    }
+    group_chunks <- split(groups, ceiling(seq_along(groups) / chunk_size))
+    dt_chunks <- lapply(group_chunks, function(ids) beta_stats_dt[dmr_id %in% ids, , drop = FALSE])
+    .setupParallel()
+    on.exit(.finalizeParallel(), add = TRUE)
+    ret_chunks <- future.apply::future_lapply(
+        X = dt_chunks,
+        FUN = .aggregateDMRBetaStatsChunk,
+        aggfun = aggfun,
+        future.seed = TRUE,
+        future.stdout = NA,
+        future.globals = c(
+            ".aggregateDMRBetaStatsChunk"
+        )
+    )
+    ret <- as.data.frame(data.table::rbindlist(ret_chunks, use.names = TRUE, fill = TRUE))
+    ret <- ret[order(ret$dmr_id), , drop = FALSE]
+    rownames(ret) <- NULL
+    ret
+}
+
 .checkResult <- function(dmrs, stage, start_col = "start", end_col = "end") {
     end_less_than_start <- dmrs[[end_col]] - dmrs[[start_col]] < 0
 
@@ -2856,35 +2994,109 @@ findDMRsFromSeeds <- function(
 
     multiple_hits <- which(tqh > 1)
     .log_info("Merging ", length(multiple_hits), " overlapping extended DMRs...", level = 2)
-    for (i in multiple_hits) {
-        inds <- sh[qh == i]
-        cols_vals <- orig_mcols[inds, ]
-        agg_df[i, "start_seed"] <- cols_vals$start_seed[[1]]
-        agg_df[i, "end_seed"] <- cols_vals$end_seed[[length(inds)]]
-        agg_df[i, "start_seed_pos"] <- cols_vals$start_seed_pos[[1]]
-        agg_df[i, "end_seed_pos"] <- cols_vals$end_seed_pos[[length(inds)]]
-        agg_seeds <- unique(unlist(lapply(cols_vals$seeds, .splitCsvValues), use.names = FALSE))
-        agg_df[i, "seeds"] <- paste(agg_seeds, collapse = ",")
-        agg_df[i, "seeds_num"] <- length(agg_seeds)
-        agg_df[i, "connection_corr_pval"] <- aggfun(as.double(cols_vals$connection_corr_pval), na.rm = TRUE)
-        agg_df[i, "stop_connection_reason"] <- paste(cols_vals$stop_connection_reason, collapse = ",")
-        agg_df[i, "start_cpg"] <- cols_vals$start_cpg[[1]]
-        agg_df[i, "end_cpg"] <- cols_vals$end_cpg[[length(inds)]]
-
-        agg_upstream_cpgs <- unique(unlist(lapply(cols_vals$upstream_cpgs, .splitCsvValues), use.names = FALSE))
-        agg_df[i, "upstream_cpg_expansion"] <- paste(cols_vals$upstream_cpg_expansion, collapse = ",")
-        agg_df[i, "upstream_cpgs"] <- paste(agg_upstream_cpgs, collapse = ",")
-        agg_df[i, "upstream_cpg_expansion_stop_reason"] <- paste(cols_vals$upstream_cpg_expansion_stop_reason, collapse = ",")
-        agg_downsteam_cpgs <- unique(unlist(lapply(cols_vals$downstream_cpgs, .splitCsvValues), use.names = FALSE))
-        agg_df[i, "downstream_cpg_expansion"] <- paste(cols_vals$downstream_cpg_expansion, collapse = ",")
-        agg_df[i, "downstream_cpgs"] <- paste(agg_downsteam_cpgs, collapse = ",")
-        agg_df[i, "downstream_cpg_expansion_stop_reason"] <- paste(cols_vals$downstream_cpg_expansion_stop_reason, collapse = ",")
-        agg_df[i, "merged_dmrs_num"] <- length(inds)
+    parallel_merge_enabled <- isTRUE(getOption("DMRsegal.parallel_merge_aggregations", TRUE))
+    parallel_merge_min_hits <- as.integer(getOption("DMRsegal.parallel_merge_min_hits", 64L))
+    if (!is.finite(parallel_merge_min_hits) || is.na(parallel_merge_min_hits) || parallel_merge_min_hits < 1L) {
+        parallel_merge_min_hits <- 1L
     }
-    agg_df[, "cpgs"] <- apply(agg_df[, c("upstream_cpgs", "seeds", "downstream_cpgs")], 1, function(x) {
-        vals <- unique(unlist(lapply(x, .splitCsvValues), use.names = FALSE))
-        paste(vals, collapse = ",")
-    })
+    if (length(multiple_hits) > 0L) {
+        use_parallel_merge <- parallel_merge_enabled && njobs > 1L && length(multiple_hits) >= parallel_merge_min_hits
+        if (use_parallel_merge) {
+            merge_chunk_size <- as.integer(getOption(
+                "DMRsegal.parallel_merge_chunk_size",
+                max(1L, ceiling(length(multiple_hits) / max(1L, njobs * 4L)))
+            ))
+            if (!is.finite(merge_chunk_size) || is.na(merge_chunk_size) || merge_chunk_size < 1L) {
+                merge_chunk_size <- 1L
+            }
+            multiple_hit_chunks <- split(multiple_hits, ceiling(seq_along(multiple_hits) / merge_chunk_size))
+            .setupParallel()
+            merge_rows_chunks <- future.apply::future_lapply(
+                X = multiple_hit_chunks,
+                FUN = .aggregateMergedDMRChunk,
+                qh = qh,
+                sh = sh,
+                orig_mcols = orig_mcols,
+                aggfun = aggfun,
+                future.seed = TRUE,
+                future.stdout = NA,
+                future.globals = c(
+                    ".aggregateMergedDMRChunk",
+                    ".aggregateMergedDMRRow",
+                    ".splitCsvValues"
+                )
+            )
+            .finalizeParallel()
+            merge_rows <- unlist(merge_rows_chunks, recursive = FALSE, use.names = FALSE)
+        } else {
+            merge_rows <- .aggregateMergedDMRChunk(
+                hit_indices = multiple_hits,
+                qh = qh,
+                sh = sh,
+                orig_mcols = orig_mcols,
+                aggfun = aggfun
+            )
+        }
+
+        merge_idx <- vapply(merge_rows, function(x) x$idx, integer(1))
+        if (!identical(merge_idx, as.integer(multiple_hits))) {
+            ord <- match(multiple_hits, merge_idx)
+            if (anyNA(ord)) {
+                stop("Merged overlap aggregation lost rows during chunk combination.")
+            }
+            merge_rows <- merge_rows[ord]
+        }
+
+        char_cols <- c(
+            "start_seed", "end_seed", "seeds", "stop_connection_reason",
+            "start_cpg", "end_cpg", "upstream_cpg_expansion", "upstream_cpgs",
+            "upstream_cpg_expansion_stop_reason", "downstream_cpg_expansion",
+            "downstream_cpgs", "downstream_cpg_expansion_stop_reason"
+        )
+        num_cols <- c(
+            "start_seed_pos", "end_seed_pos", "seeds_num",
+            "connection_corr_pval", "merged_dmrs_num"
+        )
+        for (col in char_cols) {
+            agg_df[multiple_hits, col] <- vapply(merge_rows, function(x) as.character(x[[col]]), character(1))
+        }
+        for (col in num_cols) {
+            agg_df[multiple_hits, col] <- vapply(merge_rows, function(x) as.numeric(x[[col]]), numeric(1))
+        }
+    }
+
+    agg_cpg_components <- agg_df[, c("upstream_cpgs", "seeds", "downstream_cpgs"), drop = FALSE]
+    parallel_cpgs_min_rows <- as.integer(getOption("DMRsegal.parallel_merge_cpgs_min_rows", 2000L))
+    if (!is.finite(parallel_cpgs_min_rows) || is.na(parallel_cpgs_min_rows) || parallel_cpgs_min_rows < 1L) {
+        parallel_cpgs_min_rows <- 1L
+    }
+    use_parallel_cpgs <- parallel_merge_enabled && njobs > 1L && nrow(agg_cpg_components) >= parallel_cpgs_min_rows
+    if (use_parallel_cpgs) {
+        cpg_chunk_size <- as.integer(getOption(
+            "DMRsegal.parallel_merge_cpgs_chunk_size",
+            max(1L, ceiling(nrow(agg_cpg_components) / max(1L, njobs * 4L)))
+        ))
+        if (!is.finite(cpg_chunk_size) || is.na(cpg_chunk_size) || cpg_chunk_size < 1L) {
+            cpg_chunk_size <- 1L
+        }
+        cpg_row_chunks <- split(seq_len(nrow(agg_cpg_components)), ceiling(seq_len(nrow(agg_cpg_components)) / cpg_chunk_size))
+        cpg_components_chunks <- lapply(cpg_row_chunks, function(ix) agg_cpg_components[ix, , drop = FALSE])
+        .setupParallel()
+        cpg_chunks <- future.apply::future_lapply(
+            X = cpg_components_chunks,
+            FUN = .collapseMergedDMRCpGsChunk,
+            future.seed = TRUE,
+            future.stdout = NA,
+            future.globals = c(
+                ".collapseMergedDMRCpGsChunk",
+                ".splitCsvValues"
+            )
+        )
+        .finalizeParallel()
+        agg_df[, "cpgs"] <- unlist(cpg_chunks, use.names = FALSE)
+    } else {
+        agg_df[, "cpgs"] <- .collapseMergedDMRCpGsChunk(agg_cpg_components)
+    }
     agg_df[, "supporting_cpgs_num"] <- vapply(agg_df$cpgs, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
@@ -3010,16 +3222,31 @@ findDMRsFromSeeds <- function(
     beta_stats_seeds <- beta_stats[dmr_seeds_indices, , drop = FALSE]
     beta_stats_seeds$dmr_id <- dmr_seeds_groups
 
-    seeds_agg <- data.table::as.data.table(beta_stats_seeds)[, .(
-        cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
-        controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
-        cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
-        controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
-        cases_beta_min = min(cases_beta, na.rm = TRUE),
-        cases_beta_max = max(cases_beta, na.rm = TRUE),
-        controls_beta_min = min(controls_beta, na.rm = TRUE),
-        controls_beta_max = max(controls_beta, na.rm = TRUE)
-    ), by = dmr_id]
+    parallel_merge_enabled <- isTRUE(getOption("DMRsegal.parallel_merge_aggregations", TRUE))
+    parallel_beta_agg_min_groups <- as.integer(getOption("DMRsegal.parallel_beta_agg_min_groups", 1000L))
+    if (!is.finite(parallel_beta_agg_min_groups) || is.na(parallel_beta_agg_min_groups) || parallel_beta_agg_min_groups < 1L) {
+        parallel_beta_agg_min_groups <- 1L
+    }
+    parallel_beta_agg_chunk_size <- getOption("DMRsegal.parallel_beta_agg_chunk_size", NULL)
+    if (!is.null(parallel_beta_agg_chunk_size)) {
+        parallel_beta_agg_chunk_size <- as.integer(parallel_beta_agg_chunk_size)
+        if (!is.finite(parallel_beta_agg_chunk_size) || is.na(parallel_beta_agg_chunk_size) || parallel_beta_agg_chunk_size < 1L) {
+            parallel_beta_agg_chunk_size <- NULL
+        }
+    }
+    seeds_agg <- .aggregateDMRBetaStats(
+        beta_stats_df = beta_stats_seeds,
+        aggfun = aggfun,
+        njobs = njobs,
+        parallel_enabled = parallel_merge_enabled,
+        min_groups_for_parallel = parallel_beta_agg_min_groups,
+        chunk_size = parallel_beta_agg_chunk_size
+    )
+    seeds_match <- match(seq_len(nrow(annotated_dmrs)), seeds_agg$dmr_id)
+    if (anyNA(seeds_match)) {
+        stop("Internal error while aggregating seed beta statistics: missing dmr_id rows.")
+    }
+    seeds_agg <- seeds_agg[seeds_match, , drop = FALSE]
 
     annotated_dmrs$cases_beta <- seeds_agg$cases_beta
     annotated_dmrs$controls_beta <- seeds_agg$controls_beta
@@ -3038,26 +3265,29 @@ findDMRsFromSeeds <- function(
     beta_stats_cpgs <- beta_stats[dmr_cpgs, , drop = FALSE]
     beta_stats_cpgs$dmr_id <- dmr_cpgs_groups
 
-    cpgs_agg <- data.table::as.data.table(beta_stats_cpgs)[, .(
-        cpgs_cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
-        cpgs_controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
-        cpgs_cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
-        cpgs_controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
-        cpgs_cases_beta_min = min(cases_beta, na.rm = TRUE),
-        cpgs_cases_beta_max = max(cases_beta, na.rm = TRUE),
-        cpgs_controls_beta_min = min(controls_beta, na.rm = TRUE),
-        cpgs_controls_beta_max = max(controls_beta, na.rm = TRUE)
-    ), by = dmr_id]
+    cpgs_agg <- .aggregateDMRBetaStats(
+        beta_stats_df = beta_stats_cpgs,
+        aggfun = aggfun,
+        njobs = njobs,
+        parallel_enabled = parallel_merge_enabled,
+        min_groups_for_parallel = parallel_beta_agg_min_groups,
+        chunk_size = parallel_beta_agg_chunk_size
+    )
+    cpgs_match <- match(seq_len(nrow(annotated_dmrs)), cpgs_agg$dmr_id)
+    if (anyNA(cpgs_match)) {
+        stop("Internal error while aggregating CpG beta statistics: missing dmr_id rows.")
+    }
+    cpgs_agg <- cpgs_agg[cpgs_match, , drop = FALSE]
 
-    annotated_dmrs$cpgs_cases_beta <- cpgs_agg$cpgs_cases_beta
-    annotated_dmrs$cpgs_controls_beta <- cpgs_agg$cpgs_controls_beta
+    annotated_dmrs$cpgs_cases_beta <- cpgs_agg$cases_beta
+    annotated_dmrs$cpgs_controls_beta <- cpgs_agg$controls_beta
     annotated_dmrs$cpgs_delta_beta <- annotated_dmrs$cpgs_cases_beta - annotated_dmrs$cpgs_controls_beta
-    annotated_dmrs$cpgs_cases_beta_sd <- cpgs_agg$cpgs_cases_beta_sd
-    annotated_dmrs$cpgs_controls_beta_sd <- cpgs_agg$cpgs_controls_beta_sd
-    annotated_dmrs$cpgs_cases_beta_min <- cpgs_agg$cpgs_cases_beta_min
-    annotated_dmrs$cpgs_cases_beta_max <- cpgs_agg$cpgs_cases_beta_max
-    annotated_dmrs$cpgs_controls_beta_min <- cpgs_agg$cpgs_controls_beta_min
-    annotated_dmrs$cpgs_controls_beta_max <- cpgs_agg$cpgs_controls_beta_max
+    annotated_dmrs$cpgs_cases_beta_sd <- cpgs_agg$cases_beta_sd
+    annotated_dmrs$cpgs_controls_beta_sd <- cpgs_agg$controls_beta_sd
+    annotated_dmrs$cpgs_cases_beta_min <- cpgs_agg$cases_beta_min
+    annotated_dmrs$cpgs_cases_beta_max <- cpgs_agg$cases_beta_max
+    annotated_dmrs$cpgs_controls_beta_min <- cpgs_agg$controls_beta_min
+    annotated_dmrs$cpgs_controls_beta_max <- cpgs_agg$controls_beta_max
 
     .log_success("DMR delta-beta information added.", level = 2)
 
