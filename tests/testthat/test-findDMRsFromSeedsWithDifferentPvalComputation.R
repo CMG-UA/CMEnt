@@ -198,8 +198,8 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
             max_lookup_dist = 1000,
             pval_mode = "empirical",
             ntries = 0
-        ), "No DMRs passed"
-    })
+        )
+    }, "No DMRs passed")
 
     # Test with ntries = 50
     dmrs_ntries_50 <- findDMRsFromSeeds(
