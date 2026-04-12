@@ -511,8 +511,13 @@
         }
         return(list(connectivity_array = ret, splits = NULL, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
     }
-    beta_chr <- as.character(beta_locs[, "chr"])
-    chr_ends <- as.integer(vapply(split(seq_len(n_sites), beta_chr), max, integer(1)))
+    beta_chr_factor <- as.factor(beta_locs[, "chr"])
+    beta_chr_levels <- levels(beta_chr_factor)
+    beta_chr_ids <- as.integer(beta_chr_factor)
+    chr_runs <- rle(beta_chr_ids)
+    chr_run_ends <- cumsum(chr_runs$lengths)
+    chr_run_starts <- chr_run_ends - chr_runs$lengths + 1L
+    chr_ends <- as.integer(chr_run_ends)
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
 
@@ -653,23 +658,14 @@
     }
 
     .buildAllPairRanges <- function() {
-        out <- vector("list", length(unique(beta_chr)))
-        out_n <- 0L
-        for (chr in unique(beta_chr)) {
-            chr_inds <- which(beta_chr == chr)
-            if (length(chr_inds) < 2L) {
-                next
-            }
-            out_n <- out_n + 1L
-            out[[out_n]] <- data.frame(
-                start_pair = min(chr_inds),
-                end_pair = max(chr_inds) - 1L
-            )
-        }
-        if (out_n == 0L) {
+        keep_runs <- chr_runs$lengths >= 2L
+        if (!any(keep_runs)) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
-        do.call(rbind, out[seq_len(out_n)])
+        data.frame(
+            start_pair = as.integer(chr_run_starts[keep_runs]),
+            end_pair = as.integer(chr_run_ends[keep_runs] - 1L)
+        )
     }
 
     .build_window_pair_ranges <- function() {
@@ -677,15 +673,17 @@
         if (nrow(wins) == 0L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
-        pair_ranges <- vector("list", length(unique(beta_chr)))
+        pair_ranges <- vector("list", length(unique(beta_chr_ids)))
         pair_n <- 0L
         beta_start <- as.integer(beta_locs[, "start"])
-        for (chr in intersect(unique(wins$chr), unique(beta_chr))) {
-            chr_inds <- which(beta_chr == chr)
+        win_chr_ids <- match(unique(wins$chr), beta_chr_levels)
+        win_chr_ids <- unique(win_chr_ids[!is.na(win_chr_ids)])
+        for (chr_id in win_chr_ids) {
+            chr_inds <- which(beta_chr_ids == chr_id)
             if (length(chr_inds) < 2L) {
                 next
             }
-            chr_wins <- wins[wins$chr == chr, , drop = FALSE]
+            chr_wins <- wins[wins$chr == beta_chr_levels[[chr_id]], , drop = FALSE]
             if (nrow(chr_wins) == 0L) {
                 next
             }
@@ -900,8 +898,8 @@
     }
 
     gc()
-    beta_chr_vec <- beta_chr
-    beta_start_vec <- as.numeric(beta_locs[, "start"])
+    beta_chr_vec <- beta_chr_ids
+    beta_start_vec <- as.integer(beta_locs[, "start"])
     if (use_numeric_row_index) {
         beta_row_ids <- NULL
     }
