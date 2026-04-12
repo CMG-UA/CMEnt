@@ -380,6 +380,83 @@
 
 #' @keywords internal
 #' @noRd
+.connectivityChunkWorker <- function(
+    split,
+    beta_handler,
+    beta_chr_vec,
+    beta_start_vec,
+    group_inds,
+    pheno,
+    pval_mode_per_group,
+    empirical_strategy_per_group,
+    col_names = NULL,
+    max_pval = 0.05,
+    min_delta_beta = 0,
+    covariates = NULL,
+    max_lookup_dist = 1000,
+    entanglement = "strong",
+    aggfun = median,
+    ntries = 500,
+    mid_p = TRUE,
+    checked_pairs = NULL,
+    use_numeric_row_index = TRUE,
+    beta_row_ids = NULL
+) {
+    pair_start <- as.integer(split[[1]])
+    pair_end <- as.integer(split[[2]])
+    site_start <- pair_start
+    site_end <- pair_end + 1L
+    inds <- site_start:site_end
+
+    if (!is.null(checked_pairs)) {
+        pair_mask <- checked_pairs$before >= site_start & checked_pairs$after <= site_end
+        if (!any(pair_mask)) {
+            return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
+        }
+        chunk_pairs <- checked_pairs[pair_mask, c("before", "after"), drop = FALSE]
+        inds <- as.vector(t(as.matrix(chunk_pairs)))
+    }
+
+    locs <- data.frame(
+        chr = beta_chr_vec[inds],
+        start = beta_start_vec[inds],
+        stringsAsFactors = FALSE
+    )
+    row_ids <- if (use_numeric_row_index) inds else beta_row_ids[inds]
+    chunk_beta <- beta_handler$getBeta(
+        row_names = row_ids,
+        col_names = col_names
+    )
+    x <- .testConnectivityBatch(
+        sites_beta = as.matrix(chunk_beta),
+        group_inds = group_inds,
+        pheno = pheno,
+        covariates = covariates,
+        max_pval = max_pval,
+        min_delta_beta = min_delta_beta,
+        max_lookup_dist = max_lookup_dist,
+        sites_locs = locs,
+        entanglement = entanglement,
+        aggfun = aggfun,
+        pval_mode_per_group = pval_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group,
+        ntries = ntries,
+        mid_p = mid_p,
+        check_non_overlapping = !is.null(checked_pairs)
+    )
+    rm(chunk_beta)
+    if (!is.null(checked_pairs) && length(inds) > 0L) {
+        # attach to result so outer loop can map back exactly
+        # keep only mod 2 = 1
+        inds <- inds[seq_along(inds) %% 2 == 1]
+        attr(x, "recomputed_pairs") <- inds
+    }
+    list(pair_start = pair_start, pair_end = pair_end, result = x)
+}
+
+
+#' @keywords internal
+#' @noRd
 .buildConnectivityArraySinglePass <- function(
     beta_handler,
     beta_locs = NULL,
@@ -766,6 +843,7 @@
         level = 3
     )
     verbose <- getOption("DMRsegal.verbose", 1)
+    p_ext <- NULL
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
     }
@@ -827,59 +905,29 @@
     if (use_numeric_row_index) {
         beta_row_ids <- NULL
     }
-    fun <- function(split_ind, beta_handler) {
-        split <- splits[split_ind, ]
-        pair_start <- as.integer(split[1])
-        pair_end <- as.integer(split[2])
-        site_start <- pair_start
-        site_end <- pair_end + 1L
-        inds <- site_start:site_end
-        if (!is.null(checked_pairs)) {
-            pair_mask <- checked_pairs$before >= site_start & checked_pairs$after <= site_end
-            if (!any(pair_mask)) {
-                return(list(pair_start = pair_start, pair_end = pair_end, result = data.frame()))
-            }
-            chunk_pairs <- checked_pairs[pair_mask, c("before", "after"), drop = FALSE]
-            inds <- as.vector(t(as.matrix(chunk_pairs)))
-        }
-        locs <- data.frame(
-            chr = beta_chr_vec[inds],
-            start = beta_start_vec[inds],
-            stringsAsFactors = FALSE
-        )
-        row_ids <- if (use_numeric_row_index) inds else beta_row_ids[inds]
-        chunk_beta <- beta_handler$getBeta(
-            row_names = row_ids,
-            col_names = col_names
-        )
-        x <- .testConnectivityBatch(
-            sites_beta = as.matrix(chunk_beta),
+    .runConnectivityChunk <- function(split, checked_pairs_local = checked_pairs) {
+        .connectivityChunkWorker(
+            split = split,
+            beta_handler = beta_handler,
+            beta_chr_vec = beta_chr_vec,
+            beta_start_vec = beta_start_vec,
             group_inds = group_inds,
             pheno = pheno,
-            covariates = covariates,
-            max_pval = max_pval,
-            min_delta_beta = min_delta_beta,
-            max_lookup_dist = max_lookup_dist,
-            sites_locs = locs,
-            entanglement = entanglement,
-            aggfun = aggfun,
             pval_mode_per_group = pval_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
+            col_names = col_names,
+            max_pval = max_pval,
+            min_delta_beta = min_delta_beta,
+            covariates = covariates,
+            max_lookup_dist = max_lookup_dist,
+            entanglement = entanglement,
+            aggfun = aggfun,
             ntries = ntries,
             mid_p = mid_p,
-            check_non_overlapping = !is.null(checked_pairs)
+            checked_pairs = checked_pairs_local,
+            use_numeric_row_index = use_numeric_row_index,
+            beta_row_ids = beta_row_ids
         )
-        rm(chunk_beta)
-        if (!is.null(checked_pairs) && length(inds) > 0L) {
-            # attach to result so outer loop can map back exactly
-            # keep only mod 2 = 1
-            inds <- inds[seq_along(inds) %% 2 == 1]
-            attr(x, "recomputed_pairs") <- inds
-        }
-        if (verbose > 0) {
-            p_ext()
-        }
-        list(pair_start = pair_start, pair_end = pair_end, result = x)
     }
     # Work with local vectors to avoid repeated data.frame copy-on-modify in the hot loop.
     connected_vec <- connectivity_array$connected
@@ -893,6 +941,9 @@
     recheck <- rep(FALSE, n_sites)
 
     .applyChunkResult <- function(item) {
+        if (!is.null(p_ext)) {
+            p_ext()
+        }
         x <- item$result
         if (nrow(x) == 0L) {
             return(invisible(NULL))
@@ -939,33 +990,49 @@
         invisible(NULL)
     }
 
-    .futureBatchConnectivity <- function(batch_inds) {
+    .futureBatchConnectivity <- function(batch_splits, batch_checked_pairs = checked_pairs) {
         future.apply::future_lapply(
-            X = batch_inds,
+            X = batch_splits,
             future.seed = TRUE,
             future.stdout = NA,
             future.globals = c(
-                "splits",
-                "group_inds",
-                "pheno",
-                "covariates",
-                "max_pval",
-                "min_delta_beta",
-                "max_lookup_dist",
-                "entanglement",
-                "aggfun",
-                "pval_mode_per_group",
-                "empirical_strategy_per_group",
-                "ntries",
-                "mid_p",
-                "checked_pairs",
-                "verbose",
-                "p_ext",
+                ".connectivityChunkWorker",
                 ".testConnectivityBatch"
             ),
+            FUN = .connectivityChunkWorker,
             beta_handler = beta_handler,
-            FUN = fun
+            beta_chr_vec = beta_chr_vec,
+            beta_start_vec = beta_start_vec,
+            group_inds = group_inds,
+            pheno = pheno,
+            pval_mode_per_group = pval_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            col_names = col_names,
+            max_pval = max_pval,
+            min_delta_beta = min_delta_beta,
+            covariates = covariates,
+            max_lookup_dist = max_lookup_dist,
+            entanglement = entanglement,
+            aggfun = aggfun,
+            ntries = ntries,
+            mid_p = mid_p,
+            checked_pairs = batch_checked_pairs,
+            use_numeric_row_index = use_numeric_row_index,
+            beta_row_ids = beta_row_ids
         )
+    }
+
+    .subsetCheckedPairsForBatch <- function(batch_inds) {
+        if (is.null(checked_pairs) || length(batch_inds) == 0L) {
+            return(checked_pairs)
+        }
+        batch_pair_start <- min(splits[batch_inds, 1])
+        batch_pair_end <- max(splits[batch_inds, 2]) + 1L
+        checked_pairs[
+            checked_pairs$before >= batch_pair_start & checked_pairs$after <= batch_pair_end,
+            c("before", "after"),
+            drop = FALSE
+        ]
     }
 
     .isRetryableFutureBatchError <- function(e) {
@@ -982,7 +1049,7 @@
 
     if (njobs == 1L) {
         for (split_ind in seq_len(nrow(splits))) {
-            .applyChunkResult(fun(split_ind, beta_handler))
+            .applyChunkResult(.runConnectivityChunk(splits[split_ind, ], checked_pairs_local = checked_pairs))
         }
     } else {
         .setupParallel()
@@ -1004,9 +1071,11 @@
         for (batch_start in seq.int(1L, length(all_split_inds), by = batch_size)) {
             batch_end <- min(batch_start + batch_size - 1L, length(all_split_inds))
             batch_inds <- all_split_inds[batch_start:batch_end]
+            batch_splits <- lapply(batch_inds, function(i) as.integer(splits[i, ]))
+            batch_checked_pairs <- .subsetCheckedPairsForBatch(batch_inds)
             if (!use_parallel) {
-                for (split_ind in batch_inds) {
-                    .applyChunkResult(fun(split_ind, beta_handler))
+                for (split in batch_splits) {
+                    .applyChunkResult(.runConnectivityChunk(split, checked_pairs_local = batch_checked_pairs))
                 }
                 next
             }
@@ -1015,7 +1084,7 @@
             ret <- NULL
             repeat {
                 ret <- tryCatch(
-                    .futureBatchConnectivity(batch_inds),
+                    .futureBatchConnectivity(batch_splits, batch_checked_pairs = batch_checked_pairs),
                     error = function(e) e
                 )
                 if (!inherits(ret, "error")) {
@@ -1058,8 +1127,8 @@
             }
 
             if (!use_parallel && is.null(ret)) {
-                for (split_ind in batch_inds) {
-                    .applyChunkResult(fun(split_ind, beta_handler))
+                for (split in batch_splits) {
+                    .applyChunkResult(.runConnectivityChunk(split, checked_pairs_local = batch_checked_pairs))
                 }
                 next
             }
