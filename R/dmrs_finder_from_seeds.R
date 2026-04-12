@@ -2037,18 +2037,43 @@ findDMRsFromSeeds <- function(
     }
     pheno_all <- pheno[beta_col_names, , drop = FALSE]
     beta_locs <- beta_handler$getBetaLocs()
-    lapply(
-        split(beta_locs, beta_locs[, "chr"]),
-        function(df) {
-            ord <- str_order(df[, "start"], numeric = TRUE)
-            if (!all(ord == seq_len(nrow(df)))) {
-                stop(
-                    "Beta locations are not sorted within chromosome ", unique(df[, "chr"]), ". Ensure the beta input is ordered by genomic start position.",
-                    call. = FALSE
-                )
-            }
+    beta_chr <- as.character(beta_locs[, "chr"])
+    beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
+    if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
+        stop(
+            "Beta locations contain missing chromosome labels. Ensure the beta input includes valid chromosome values.",
+            call. = FALSE
+        )
+    }
+    if (anyNA(beta_start)) {
+        stop(
+            "Beta locations contain missing or non-numeric start positions. Ensure the beta input includes numeric genomic start coordinates.",
+            call. = FALSE
+        )
+    }
+    if (length(beta_chr) > 1L) {
+        chr_runs <- rle(beta_chr)
+        if (anyDuplicated(chr_runs$values)) {
+            dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
+            stop(
+                "Beta locations are not grouped by chromosome: ", dup_chr,
+                " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
+                call. = FALSE
+            )
         }
-    )
+
+        same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
+        unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
+        if (any(unsorted_adj, na.rm = TRUE)) {
+            bad_idx <- which(unsorted_adj)[1L] + 1L
+            stop(
+                "Beta locations are not sorted within chromosome ", beta_chr[bad_idx],
+                " around positions ", beta_start[bad_idx - 1L], " -> ", beta_start[bad_idx],
+                ". Ensure the beta input is ordered by genomic start position.",
+                call. = FALSE
+            )
+        }
+    }
 
     samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups)
     if ("case" %in% ignored_sample_groups) {
