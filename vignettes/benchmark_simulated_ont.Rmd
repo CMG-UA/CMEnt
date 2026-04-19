@@ -418,12 +418,13 @@ if (!file.exists(dmrsegal_file)) {
             max_bridge_extension_gaps = 3L, # Increase default gap bridging for NGS data to improve sensitivity, especially with fewer seeds.
             max_pval = 0.1, # Use a more lenient p-value threshold, as the simulation does not have real biological variability and we want to capture more candidates for evaluation.
             min_seeds = 2,
-            min_cpgs = 3,
-            max_lookup_dist = 10000,
+            min_cpgs = 2,
+            min_cpg_delta_beta = 0.05, # Require a minimum effect size for CpGs to be included in DMRs, which can help filter out very small changes
+            max_lookup_dist = 100000, # Use a larger lookup distance (10k is the default)
             chunk_size = 1e6L,
             entanglement = "weak",
             annotate_with_genes = FALSE,
-            .score_dmrs = TRUE,
+            extract_motifs = FALSE,
             njobs = dmrsegal_njobs
         )
     )
@@ -544,7 +545,12 @@ run_dmrcate_bsseq <- function(
                     NULL
                 }
             )
-
+            cat(sprintf(
+                "DMRcate chunk %d/%d found %d DMRs\n",
+                chunk_i,
+                length(chunk_starts),
+                length(chunk_out)
+            ))
             chr_chunk_dmrs[[chunk_i]] <- chunk_out
             rm(chunk_bs, chunk_out)
             gc(verbose = FALSE)
@@ -1003,7 +1009,7 @@ knitr::kable(regions_truth_eval, digits = 4, caption = "Macro (Region-level) Per
 knitr::kable(bp_truth_eval, digits = 4, caption = "Micro (Base-pair-level) Performance Against Ground Truth")
 ```
 
-### DMRsegal Sensitivity Analysis (Optional)
+### DMRsegal Sensitivity Analysis
 
 This section quantifies how much of the ONT performance gap can be reduced by relaxing
 DMRsegal's seed/extension constraints. It is intentionally optional because each rerun can
@@ -1209,7 +1215,11 @@ if (is.null(sensitivity_ret)) {
         digits = 4,
         caption = "DMRsegal sensitivity grid (plus dmrseq reference)"
     )
-
+}
+```
+    
+```{r}
+if (!is.null(sensitivity_ret)) {
     dmrseq_ref_f1 <- sensitivity_table$F1_bp[sensitivity_table$Scenario == "dmrseq_reference"]
     plot_df <- sensitivity_table[sensitivity_table$Scenario != "dmrseq_reference", , drop = FALSE]
     plot_df$Scenario <- factor(plot_df$Scenario, levels = plot_df$Scenario[order(plot_df$F1_bp)])
