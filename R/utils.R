@@ -311,7 +311,6 @@
         dur <- ""
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
-    gc(verbose = FALSE)
     # if level is equal or greater than 2, report memory usage in MBs as well
     if (level >= 2) {
         mem_used <- format(pryr::mem_used(), units = "MB", digits = 2)
