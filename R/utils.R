@@ -311,6 +311,25 @@
     sum(gc()[, 1] * c(.node_size(), 8))
 }
 
+
+.format_mem_used <- function(digits = 3, ...) {
+    x <- .mem_used()
+    power <- min(floor(log(abs(x), 1000)), 4)
+    if (power < 1) {
+        unit <- "B"
+    } else {
+        unit <- c("kB", "MB", "GB", "TB")[[power]]
+        x <- x / (1000^power)
+    }
+
+    formatted <- format(signif(x, digits = digits),
+        big.mark = ",",
+        scientific = FALSE
+    )
+
+    paste(formatted, unit)
+}
+
 #' @keywords internal
 #' @noRd
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
@@ -326,8 +345,7 @@
     msg <- paste0(paste0(..., collapse = ""), dur)
     # if level is equal or greater than 2, report memory usage in MBs as well
     if (level >= 2) {
-        mem <- format(.mem_used(), units = "GB", digits = 3)
-        msg <- paste0(msg, " [mem: ", mem, " GB]")
+        msg <- paste0(msg, " [mem: ", .format_mem_used(), "]")
     }
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))
@@ -1423,7 +1441,8 @@ sortBetaFileByCoordinates <- function(beta_file,
     if (from_genome == to_genome) {
         return(granges)
     }
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir", 
+    cache_dir <- getOption(
+        "DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("DMRsegal", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
@@ -1915,7 +1934,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         return(unlist(cpg_counts))
     }
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir", 
+        "DMRsegal.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
