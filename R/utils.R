@@ -1603,8 +1603,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     locs
 }
 
-#'
-#' @description Orders a vector of indices according to their corresponding genomic
+#' Orders a vector of indices according to their corresponding genomic
 #' locations (chromosome and position). This function is useful for sorting CpG
 #' sites or other genomic features by their physical positions.
 #'

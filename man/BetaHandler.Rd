@@ -39,6 +39,7 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
 \item \href{#method-BetaHandler-getBetaLocs}{\code{BetaHandler$getBetaLocs()}}
 \item \href{#method-BetaHandler-getBetaChunkSize}{\code{BetaHandler$getBetaChunkSize()}}
 \item \href{#method-BetaHandler-isArrayBased}{\code{BetaHandler$isArrayBased()}}
+\item \href{#method-BetaHandler-subset}{\code{BetaHandler$subset()}}
 \item \href{#method-BetaHandler-getBeta}{\code{BetaHandler$getBeta()}}
 \item \href{#method-BetaHandler-clone}{\code{BetaHandler$clone()}}
 }
@@ -188,6 +189,30 @@ Check if the beta data is array-based (i.e. does not have row names in 'chr:pos'
 
 \subsection{Returns}{
 Logical indicating if the beta data is array-based
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-BetaHandler-subset"></a>}}
+\if{latex}{\out{\hypertarget{method-BetaHandler-subset}{}}}
+\subsection{Method \code{subset()}}{
+Build a compact BetaHandler view for a subset of rows/columns
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{BetaHandler$subset(row_names = NULL, col_names = NULL, allow_missing = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{row_names}}{Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows}
+
+\item{\code{col_names}}{Character vector of sample IDs to keep; NULL keeps all columns}
+
+\item{\code{allow_missing}}{Logical; if TRUE, silently drops missing row names}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A BetaHandler object scoped to the requested subset
 }
 }
 \if{html}{\out{<hr>}}

@@ -3,14 +3,14 @@
 #' @name findDMRsFromSeeds
 #' @description This function identifies Differentially Methylated Regions (DMRs) from pre-computed
 #' Differentially Methylated Positions (seeds) using a correlation-based approach. It expands
-#' significant seeds into regions, considering both statistical significance and biological
+#' seeds into regions, considering both statistical significance and biological
 #' relevance of methylation changes.
 #'
 #' @section Important Note on Input Data:
 #' Do not apply heavy filtering to your seeds prior to using this function, particularly based on
-#' beta values or effect sizes. The function works by expanding regions around significant seeds
+#' beta values or effect sizes. The function works by expanding regions around seeds
 #' and connecting nearby CpGs into larger regions. Filtering out seeds with smaller effect sizes
-#' may remove important CpGs that could serve as "bridges" to connect more significant seeds into
+#' may remove important CpGs that could serve as "bridges" to connect more seeds into
 #' larger, biologically meaningful DMRs. For optimal results, include all statistically
 #' significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 #' and filtering internally using the min_cpg_delta_beta parameter if needed.
@@ -2138,7 +2138,7 @@
 #' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param .score_dmrs Logical. Whether to score DMRs based on significance and effect size. Default is TRUE.
+#' @param .score_dmrs Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.
 #' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
@@ -2148,6 +2148,21 @@
 #' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".
 #'
 #' @return Data frame of identified DMRs.
+#' 
+#' @examples
+#' \dontrun{
+#' beta <- loadExampleInputDataChr5And11("beta")
+#' dmps <- loadExampleInputDataChr5And11("dmps")
+#' pheno <- loadExampleInputDataChr5And11("pheno")
+#' array_type <- loadExampleInputDataChr5And11("array_type")
+#' dmrs <- findDMRsFromSeeds(
+#'   beta = beta,
+#'   seeds = seeds,
+#'   pheno = pheno,
+#'   array = array_type,
+#'   sample_group_col = "Sample_Group"
+#' )
+#' }
 #' @export
 findDMRsFromSeeds <- function(
     beta,
@@ -3124,7 +3139,7 @@ findDMRsFromSeeds <- function(
     if (min_cpgs > 1 || min_seeds > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
             GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
-                GenomicRanges::mcols(merged_dmrs_ranges)$cpgs_num >= min_cpgs
+                GenomicRanges::mcols(merged_dmrs_ranges)$supporting_cpgs_num >= min_cpgs
         ]
         .log_info(
             "Keeping ",
@@ -3133,9 +3148,9 @@ findDMRsFromSeeds <- function(
             length(merged_dmrs_ranges),
             " with at least ",
             min_seeds,
-            " supporting seeds and ",
+            " supporting seeds or ",
             min_cpgs,
-            " CpGs.",
+            " supporting CpGs.",
             level = 1
         )
     } else {

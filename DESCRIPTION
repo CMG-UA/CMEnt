@@ -141,5 +141,6 @@ Collate:
     'shiny_modules.R'
     'shiny_app.R'
     'augment_bsseq.R'
+    'helpers.R'
     'zzz.R'
 NeedsCompilation: no

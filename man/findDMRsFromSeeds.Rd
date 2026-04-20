@@ -106,7 +106,7 @@ findDMRsFromSeeds(
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
-\item{.score_dmrs}{Logical. Whether to score DMRs based on significance and effect size. Default is TRUE.}
+\item{.score_dmrs}{Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.}
 
 \item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 
@@ -125,4 +125,19 @@ Data frame of identified DMRs.
 }
 \description{
 This function identifies DMRs from a given set of seeds and a beta value file.
+}
+\examples{
+\dontrun{
+beta <- loadExampleInputDataChr5And11("beta")
+dmps <- loadExampleInputDataChr5And11("dmps")
+pheno <- loadExampleInputDataChr5And11("pheno")
+array_type <- loadExampleInputDataChr5And11("array_type")
+dmrs <- findDMRsFromSeeds(
+  beta = beta,
+  seeds = seeds,
+  pheno = pheno,
+  array = array_type,
+  sample_group_col = "Sample_Group"
+)
+}
 }
