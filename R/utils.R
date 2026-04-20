@@ -313,8 +313,8 @@
     msg <- paste0(paste0(..., collapse = ""), dur)
     # if level is equal or greater than 2, report memory usage in MBs as well
     if (level >= 2) {
-        mem_used <- format(pryr::mem_used(), units = "MB", digits = 2)
-        msg <- paste0(msg, " [mem: ", mem_used, "]")
+        mem_used <- format(pryr::mem_used(), units = "GB", digits = 3)
+        msg <- paste0(msg, " [mem: ", mem_used, " GB]")
     }
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))

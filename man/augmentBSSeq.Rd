@@ -4,7 +4,15 @@
 \alias{augmentBSSeq}
 \title{Augment BSseq Object}
 \usage{
-augmentBSSeq(bs, n_new_samples, seed = NULL, min_samples = 2)
+augmentBSSeq(
+  bs,
+  n_new_samples,
+  seed = NULL,
+  min_samples = 2,
+  calibrate_correlation = TRUE,
+  calibration_iterations = 8,
+  calibration_samples = NULL
+)
 }
 \arguments{
 \item{bs}{A BSseq object}
@@ -14,6 +22,18 @@ augmentBSSeq(bs, n_new_samples, seed = NULL, min_samples = 2)
 \item{seed}{Random seed for reproducibility}
 
 \item{min_samples}{Minimum number of samples with coverage required per site}
+
+\item{calibrate_correlation}{Logical. If \code{TRUE}, iteratively adjusts the
+latent Gaussian length scales so adjacent-CpG correlations are matched
+after transforming back through the observed coverage and methylation
+sampling layers.}
+
+\item{calibration_iterations}{Maximum number of bisection iterations used
+for each correlation calibration.}
+
+\item{calibration_samples}{Number of synthetic samples used internally for
+correlation calibration. If \code{NULL}, a capped conservative default is
+chosen from the input and requested output sample sizes.}
 }
 \value{
 A BSseq object with original and synthetic samples

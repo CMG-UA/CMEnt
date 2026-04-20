@@ -12,6 +12,15 @@
 #' @param n_new_samples Number of new synthetic samples to generate
 #' @param seed Random seed for reproducibility
 #' @param min_samples Minimum number of samples with coverage required per site
+#' @param calibrate_correlation Logical. If `TRUE`, iteratively adjusts the
+#'   latent Gaussian length scales so adjacent-CpG correlations are matched
+#'   after transforming back through the observed coverage and methylation
+#'   sampling layers.
+#' @param calibration_iterations Maximum number of bisection iterations used
+#'   for each correlation calibration.
+#' @param calibration_samples Number of synthetic samples used internally for
+#'   correlation calibration. If `NULL`, a capped conservative default is
+#'   chosen from the input and requested output sample sizes.
 #' @importFrom SummarizedExperiment assays
 #' @return A BSseq object with original and synthetic samples
 #' @export
@@ -22,16 +31,41 @@
 #' # Augment with 5 synthetic samples
 #' augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5, seed = 123)
 #' }
-augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
+augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2,
+                         calibrate_correlation = TRUE,
+                         calibration_iterations = 8,
+                         calibration_samples = NULL) {
     if (!is.null(seed)) set.seed(seed)
     n_new_samples <- as.integer(n_new_samples)
     min_samples <- as.integer(min_samples)
+    calibrate_correlation <- as.logical(calibrate_correlation)
+    calibration_iterations <- as.integer(calibration_iterations)
 
     if (length(n_new_samples) != 1L || is.na(n_new_samples) || n_new_samples < 1L) {
         stop("'n_new_samples' must be a positive integer")
     }
     if (length(min_samples) != 1L || is.na(min_samples) || min_samples < 1L) {
         stop("'min_samples' must be a positive integer")
+    }
+    if (length(calibrate_correlation) != 1L || is.na(calibrate_correlation)) {
+        stop("'calibrate_correlation' must be TRUE or FALSE")
+    }
+    if (
+        length(calibration_iterations) != 1L ||
+            is.na(calibration_iterations) ||
+            calibration_iterations < 0L
+    ) {
+        stop("'calibration_iterations' must be a non-negative integer")
+    }
+    if (!is.null(calibration_samples)) {
+        calibration_samples <- as.integer(calibration_samples)
+        if (
+            length(calibration_samples) != 1L ||
+                is.na(calibration_samples) ||
+                calibration_samples < 3L
+        ) {
+            stop("'calibration_samples' must be NULL or an integer >= 3")
+        }
     }
 
     # Keep only sites with coverage in at least min_samples
@@ -54,6 +88,9 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     n_orig_samples <- ncol(cov)
     chr <- as.character(seqnames(bsseq_filtered))
     pos <- start(bsseq_filtered)
+    if (is.null(calibration_samples)) {
+        calibration_samples <- min(max(50L, n_orig_samples, n_new_samples), 200L)
+    }
 
     # Coverage: compute mean per site (excluding zeros)
     cov_nonzero <- cov
@@ -104,13 +141,13 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     if (!is.finite(default_gap)) default_gap <- 1
     default_length <- max(5 * default_gap, 50)
 
-    estimate_length_scale <- function(signal, fallback_length) {
+    adjacent_pair_correlations <- function(signal) {
         pair_idx <- which(same_chr)
-        if (length(pair_idx) == 0L || n_orig_samples < 2L) {
-            return(fallback_length)
+        if (length(pair_idx) == 0L || ncol(signal) < 3L) {
+            return(numeric())
         }
 
-        pair_corr <- vapply(pair_idx, function(i) {
+        vapply(pair_idx, function(i) {
             x <- signal[i, ]
             y <- signal[i + 1L, ]
             keep <- is.finite(x) & is.finite(y)
@@ -122,7 +159,23 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
             }
             suppressWarnings(stats::cor(x[keep], y[keep]))
         }, numeric(1))
+    }
 
+    median_pair_correlation <- function(pair_corr, min_pairs = 5L) {
+        valid <- is.finite(pair_corr)
+        if (sum(valid) < min_pairs) {
+            return(NA_real_)
+        }
+        stats::median(pair_corr[valid], na.rm = TRUE)
+    }
+
+    estimate_length_scale <- function(signal, fallback_length) {
+        pair_idx <- which(same_chr)
+        if (length(pair_idx) == 0L || n_orig_samples < 3L) {
+            return(fallback_length)
+        }
+
+        pair_corr <- adjacent_pair_correlations(signal)
         valid <- is.finite(pair_corr) & pair_corr > 0
         if (sum(valid) < 5L) {
             return(fallback_length)
@@ -139,6 +192,193 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
         shrink_w <- sum(valid) / (sum(valid) + 25)
         ell <- shrink_w * ell + (1 - shrink_w) * fallback_length
         max(ell, 1)
+    }
+
+    clamp_unit_interval <- function(x) {
+        pmin(pmax(x, 1e-10), 1 - 1e-10)
+    }
+
+    row_correlations <- function(x, y) {
+        x_centered <- x - rowMeans(x)
+        y_centered <- y - rowMeans(y)
+        numerator <- rowSums(x_centered * y_centered)
+        denominator <- sqrt(rowSums(x_centered^2) * rowSums(y_centered^2))
+        out <- numerator / denominator
+        out[!is.finite(out) | denominator <= 0] <- NA_real_
+        out
+    }
+
+    select_calibration_pairs <- function(pair_idx, max_pairs = 2000L) {
+        if (length(pair_idx) <= max_pairs) {
+            return(pair_idx)
+        }
+        pair_idx[unique(round(seq(1, length(pair_idx), length.out = max_pairs)))]
+    }
+
+    latent_pair_components <- function(pair_idx, length_scale, base_noise, innovation_noise) {
+        if (length(pair_idx) == 0L || !is.finite(length_scale) || length_scale <= 0) {
+            return(list(z1 = base_noise, z2 = innovation_noise))
+        }
+
+        phi <- exp(-pmax(adjacent_gaps[pair_idx], 1) / length_scale)
+        innovation_sd <- sqrt(pmax(1 - phi^2, 1e-8))
+        z2 <- sweep(base_noise, 1, phi, `*`) +
+            sweep(innovation_noise, 1, innovation_sd, `*`)
+        list(z1 = base_noise, z2 = z2)
+    }
+
+    simulate_pair_coverage <- function(length_scale, pair_idx, base_noise, innovation_noise) {
+        n_pairs <- length(pair_idx)
+        n_samples <- ncol(base_noise)
+        latent <- latent_pair_components(pair_idx, length_scale, base_noise, innovation_noise)
+        u1 <- clamp_unit_interval(stats::pnorm(latent$z1))
+        u2 <- clamp_unit_interval(stats::pnorm(latent$z2))
+
+        cov_1 <- matrix(
+            stats::qpois(c(u1), lambda = rep(lambda_per_site[pair_idx], n_samples)),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+        cov_2 <- matrix(
+            stats::qpois(c(u2), lambda = rep(lambda_per_site[pair_idx + 1L], n_samples)),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+
+        list(cov_1 = pmax(cov_1, 1L), cov_2 = pmax(cov_2, 1L))
+    }
+
+    evaluate_coverage_pair_correlation <- function(length_scale, pair_idx, base_noise, innovation_noise) {
+        pair_cov <- simulate_pair_coverage(length_scale, pair_idx, base_noise, innovation_noise)
+        median_pair_correlation(row_correlations(log1p(pair_cov$cov_1), log1p(pair_cov$cov_2)))
+    }
+
+    evaluate_methylation_pair_correlation <- function(length_scale, pair_idx, base_noise,
+                                                      innovation_noise, binom_u_1,
+                                                      binom_u_2, pair_cov) {
+        n_pairs <- length(pair_idx)
+        n_samples <- ncol(base_noise)
+        latent <- latent_pair_components(pair_idx, length_scale, base_noise, innovation_noise)
+        u1 <- clamp_unit_interval(stats::pnorm(latent$z1))
+        u2 <- clamp_unit_interval(stats::pnorm(latent$z2))
+
+        prob_1 <- matrix(
+            stats::qbeta(
+                c(u1),
+                shape1 = rep(alpha_per_site[pair_idx], n_samples),
+                shape2 = rep(beta_per_site[pair_idx], n_samples)
+            ),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+        prob_2 <- matrix(
+            stats::qbeta(
+                c(u2),
+                shape1 = rep(alpha_per_site[pair_idx + 1L], n_samples),
+                shape2 = rep(beta_per_site[pair_idx + 1L], n_samples)
+            ),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+
+        meth_1 <- matrix(
+            stats::qbinom(c(binom_u_1), size = c(pair_cov$cov_1), prob = c(prob_1)),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+        meth_2 <- matrix(
+            stats::qbinom(c(binom_u_2), size = c(pair_cov$cov_2), prob = c(prob_2)),
+            nrow = n_pairs,
+            ncol = n_samples
+        )
+
+        signal_1 <- qlogis(clamp_unit_interval((meth_1 + 0.5) / (pair_cov$cov_1 + 1)))
+        signal_2 <- qlogis(clamp_unit_interval((meth_2 + 0.5) / (pair_cov$cov_2 + 1)))
+        median_pair_correlation(row_correlations(signal_1, signal_2))
+    }
+
+    calibrate_length_scale <- function(initial_length, target_corr, evaluate_corr,
+                                       max_iterations, tolerance = 0.02,
+                                       min_target_corr = 0.05) {
+        if (
+            !is.finite(initial_length) ||
+                !is.finite(target_corr) ||
+                target_corr <= min_target_corr ||
+                max_iterations < 1L
+        ) {
+            return(initial_length)
+        }
+
+        target_corr <- pmin(target_corr, 0.99)
+        max_gap <- suppressWarnings(max(adjacent_gaps[same_chr], na.rm = TRUE))
+        if (!is.finite(max_gap)) max_gap <- default_gap
+        max_length <- max(default_length, initial_length, max_gap, 1) * 1000
+
+        candidate_lengths <- numeric()
+        candidate_corrs <- numeric()
+        evaluate <- function(length_scale) {
+            corr <- evaluate_corr(length_scale)
+            candidate_lengths <<- c(candidate_lengths, length_scale)
+            candidate_corrs <<- c(candidate_corrs, corr)
+            corr
+        }
+        best_length <- function() {
+            valid <- is.finite(candidate_corrs)
+            if (!any(valid)) {
+                return(initial_length)
+            }
+            candidate_lengths[valid][which.min(abs(candidate_corrs[valid] - target_corr))]
+        }
+
+        initial_corr <- evaluate(initial_length)
+        if (!is.finite(initial_corr) || abs(initial_corr - target_corr) <= tolerance) {
+            return(best_length())
+        }
+
+        if (initial_corr < target_corr) {
+            lower <- max(initial_length, 1)
+            lower_corr <- initial_corr
+            upper <- lower
+            upper_corr <- lower_corr
+            while (upper_corr < target_corr && upper < max_length) {
+                upper <- min(upper * 2, max_length)
+                upper_corr <- evaluate(upper)
+                if (!is.finite(upper_corr)) {
+                    return(best_length())
+                }
+            }
+        } else {
+            lower <- 1
+            lower_corr <- evaluate(lower)
+            upper <- max(initial_length, 1)
+            upper_corr <- initial_corr
+        }
+
+        if (
+            !is.finite(lower_corr) ||
+                !is.finite(upper_corr) ||
+                lower_corr > target_corr ||
+                upper_corr < target_corr
+        ) {
+            return(best_length())
+        }
+
+        for (iteration in seq_len(max_iterations)) {
+            mid <- sqrt(lower * upper)
+            mid_corr <- evaluate(mid)
+            if (!is.finite(mid_corr) || abs(mid_corr - target_corr) <= tolerance) {
+                return(best_length())
+            }
+            if (mid_corr < target_corr) {
+                lower <- mid
+                lower_corr <- mid_corr
+            } else {
+                upper <- mid
+                upper_corr <- mid_corr
+            }
+        }
+
+        best_length()
     }
 
     simulate_latent_field <- function(chr_pos, n_samples, length_scale) {
@@ -167,7 +407,86 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2) {
     meth_length <- estimate_length_scale(meth_signal, fallback_length = default_length)
     cov_length <- estimate_length_scale(cov_signal, fallback_length = default_length)
 
-    original_names <- colnames(cov)
+    # Marginal Poisson/Beta/Binomial sampling attenuates latent Gaussian
+    # dependence, so calibrate on observed adjacent-pair correlations.
+    if (calibrate_correlation && calibration_iterations > 0L) {
+        calibration_pair_idx <- select_calibration_pairs(which(same_chr))
+        if (length(calibration_pair_idx) >= 5L) {
+            n_calibration_pairs <- length(calibration_pair_idx)
+            cov_target_corr <- median_pair_correlation(adjacent_pair_correlations(cov_signal))
+            meth_target_corr <- median_pair_correlation(adjacent_pair_correlations(meth_signal))
+
+            cov_base_noise <- matrix(
+                stats::rnorm(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            cov_innovation_noise <- matrix(
+                stats::rnorm(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            cov_length <- calibrate_length_scale(
+                cov_length,
+                cov_target_corr,
+                function(length_scale) {
+                    evaluate_coverage_pair_correlation(
+                        length_scale,
+                        calibration_pair_idx,
+                        cov_base_noise,
+                        cov_innovation_noise
+                    )
+                },
+                calibration_iterations
+            )
+
+            calibration_cov <- simulate_pair_coverage(
+                cov_length,
+                calibration_pair_idx,
+                cov_base_noise,
+                cov_innovation_noise
+            )
+
+            meth_base_noise <- matrix(
+                stats::rnorm(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            meth_innovation_noise <- matrix(
+                stats::rnorm(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            binom_u_1 <- matrix(
+                stats::runif(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            binom_u_2 <- matrix(
+                stats::runif(n_calibration_pairs * calibration_samples),
+                nrow = n_calibration_pairs,
+                ncol = calibration_samples
+            )
+            meth_length <- calibrate_length_scale(
+                meth_length,
+                meth_target_corr,
+                function(length_scale) {
+                    evaluate_methylation_pair_correlation(
+                        length_scale,
+                        calibration_pair_idx,
+                        meth_base_noise,
+                        meth_innovation_noise,
+                        binom_u_1,
+                        binom_u_2,
+                        calibration_cov
+                    )
+                },
+                calibration_iterations
+            )
+        }
+    }
+
+    original_names <- colnames(bsseq_filtered)
     if (is.null(original_names)) {
         original_names <- paste0("sample_", seq_len(n_orig_samples))
     }

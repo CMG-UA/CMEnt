@@ -186,11 +186,12 @@ knitr::kable(
 
 #### Adjusting parameters for NGS simulation
 ```{r}
-max_bridge_seeds_gaps <- 1L # Allow bridging across up to 1 seed CpG to form larger candidate regions during stage 1.
-max_bridge_extension_gaps <- 3L # Increase default gap bridging for NGS data to improve sensitivity.
-max_lookup_dist <- 100000 # Use a larger lookup distance (10k is the default)
 min_seeds <- 2L
-min_cpgs <- 2L # Reduce minimum CpGs per DMR to 2 for simulated data, which may have DMRs with few CpGs.
+min_cpgs <- 3L
+max_pval <- 0.1 # Due too smaller sample size and effect sizes, we relax the p-value threshold.
+max_bridge_seeds_gaps <- 1L
+max_bridge_extension_gaps <- 2L
+max_lookup_dist <- 100000L # Use a larger lookup distance (10k is the default)
 ```
 
 #### Extract Methylation Matrix and Generate Seeds
@@ -358,6 +359,7 @@ if (!file.exists(dmrsegal_file)) {
             max_bridge_extension_gaps = max_bridge_extension_gaps,
             min_seeds = min_seeds,
             min_cpgs = min_cpgs,
+            max_pval = max_pval,
             max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
             chunk_size = 1e6L,
             entanglement = "weak",
