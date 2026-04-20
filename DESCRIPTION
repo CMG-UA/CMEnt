@@ -37,6 +37,7 @@ Imports:
     AnnotationDbi,
     bedr,
     BiocGenerics,
+    BiocParallel,
     Biostrings,
     bslib (>= 0.5.0),
     bsseq,

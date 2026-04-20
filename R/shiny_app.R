@@ -622,7 +622,6 @@ launchDMRsegalViewer <- function(
 }
 
 .createViewerTaskController <- function(session, data) {
-    use_fork_backend <- identical(.Platform$OS.type, "unix")
     active_task <- shiny::reactiveVal(NULL)
     task_state <- shiny::reactiveVal(list(
         active = FALSE,
@@ -695,12 +694,7 @@ launchDMRsegalViewer <- function(
             detail = "Stopping background process...",
             cancelable = FALSE
         )
-        if (identical(current$backend, "fork")) {
-            try(tools::pskill(current$job$pid), silent = TRUE)
-            try(parallel::mccollect(current$job, wait = FALSE, timeout = 0), silent = TRUE)
-        } else {
-            close_worker()
-        }
+        close_worker()
         active_task(NULL)
         set_task_state()
         if (is.function(callback)) {
@@ -710,11 +704,6 @@ launchDMRsegalViewer <- function(
     }
 
     shutdown <- function() {
-        current <- get_active_task()
-        if (!is.null(current) && identical(current$backend, "fork")) {
-            try(tools::pskill(current$job$pid), silent = TRUE)
-            try(parallel::mccollect(current$job, wait = FALSE, timeout = 0), silent = TRUE)
-        }
         active_task(NULL)
         set_task_state()
         close_worker()
@@ -739,57 +728,6 @@ launchDMRsegalViewer <- function(
         }
 
         descriptor <- .viewerTaskMessage(task_type)
-        if (isTRUE(use_fork_backend)) {
-            job <- tryCatch(
-                parallel::mcparallel(
-                    {
-                        suppressMessages(
-                            DMRsegal:::.viewerRunBackgroundTaskFromData(
-                                task_type = task_type,
-                                data = data,
-                                params = params
-                            )
-                        )
-                    },
-                    silent = TRUE
-                ),
-                error = function(e) e
-            )
-
-            if (inherits(job, "error")) {
-                if (is.function(on_error)) {
-                    on_error(job)
-                } else {
-                    shiny::showNotification(
-                        paste0("Unable to start viewer task: ", job$message),
-                        type = "error",
-                        duration = NULL
-                    )
-                }
-                return(FALSE)
-            }
-
-            active_task(list(
-                backend = "fork",
-                job = job,
-                task_type = task_type,
-                message = descriptor$message,
-                detail = descriptor$detail,
-                cancelable = TRUE,
-                on_success = on_success,
-                on_error = on_error,
-                on_cancel = on_cancel
-            ))
-            set_task_state(
-                active = TRUE,
-                task_type = task_type,
-                message = descriptor$message,
-                detail = descriptor$detail,
-                cancelable = TRUE
-            )
-            return(TRUE)
-        }
-
         worker <- tryCatch(
             ensure_worker(),
             error = function(e) e
@@ -885,67 +823,48 @@ launchDMRsegalViewer <- function(
         }
 
         shiny::invalidateLater(250, session)
-        if (identical(current$backend, "fork")) {
-            fork_result <- tryCatch(
-                parallel::mccollect(current$job, wait = FALSE, timeout = 0),
-                error = function(e) e
-            )
-            if (inherits(fork_result, "error")) {
-                task_error <- fork_result
-                task_result <- NULL
-            } else if (is.null(fork_result)) {
-                return()
+        worker <- current$worker
+        worker_state <- tryCatch(worker$get_state(), error = function(e) "finished")
+        if (worker_state %in% c("starting", "busy")) {
+            return()
+        }
+
+        task_error <- NULL
+        task_result <- NULL
+
+        repeat {
+            next_event <- tryCatch(worker$read(), error = function(e) e)
+            if (inherits(next_event, "error")) {
+                task_error <- next_event
+                break
+            }
+            if (is.null(next_event)) {
+                break
+            }
+
+            if (identical(next_event$code, worker$status$MSG)) {
+                next
+            }
+
+            if (identical(next_event$code, worker$status$DONE)) {
+                task_result <- next_event$result
+                task_error <- next_event$error
+                break
+            }
+
+            if (next_event$code %in% c(worker$status$EXITED, worker$status$CRASHED, worker$status$CLOSED)) {
+                task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+                close_worker()
+                break
+            }
+        }
+
+        if (is.null(task_result) && is.null(task_error)) {
+            if (identical(worker_state, "finished")) {
+                task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+                close_worker()
             } else {
-                task_error <- NULL
-                task_result <- unname(fork_result)[[1]]
-                if (is.null(task_result)) {
-                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
-                }
-            }
-        } else {
-            worker <- current$worker
-            worker_state <- tryCatch(worker$get_state(), error = function(e) "finished")
-            if (worker_state %in% c("starting", "busy")) {
                 return()
-            }
-
-            task_error <- NULL
-            task_result <- NULL
-
-            repeat {
-                next_event <- tryCatch(worker$read(), error = function(e) e)
-                if (inherits(next_event, "error")) {
-                    task_error <- next_event
-                    break
-                }
-                if (is.null(next_event)) {
-                    break
-                }
-
-                if (identical(next_event$code, worker$status$MSG)) {
-                    next
-                }
-
-                if (identical(next_event$code, worker$status$DONE)) {
-                    task_result <- next_event$result
-                    task_error <- next_event$error
-                    break
-                }
-
-                if (next_event$code %in% c(worker$status$EXITED, worker$status$CRASHED, worker$status$CLOSED)) {
-                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
-                    close_worker()
-                    break
-                }
-            }
-
-            if (is.null(task_result) && is.null(task_error)) {
-                if (identical(worker_state, "finished")) {
-                    task_error <- simpleError("Viewer background worker stopped unexpectedly.")
-                    close_worker()
-                } else {
-                    return()
-                }
             }
         }
 
@@ -972,9 +891,6 @@ launchDMRsegalViewer <- function(
 
     list(
         initialize = function() {
-            if (isTRUE(use_fork_backend)) {
-                return(invisible(TRUE))
-            }
             invisible(try(ensure_worker(), silent = TRUE))
         },
         start = start,

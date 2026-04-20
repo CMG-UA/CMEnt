@@ -15,7 +15,7 @@ findDMPsBSSeq(
   covariates = NULL,
   fdr_thres = 0.05,
   output_file = NULL,
-  njobs = max(1L, parallel::detectCores() - 1L)
+  njobs = max(1L, BiocParallel::bpnworkers(BiocParallel::bpparam()) - 1L)
 )
 }
 \arguments{
@@ -23,7 +23,7 @@ findDMPsBSSeq(
 
 \item{samplesheet}{A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.}
 
-\item{samplesheet_sep}{The separator used in the samplesheet file if a file path is provided. Default is tab ("\t").}
+\item{samplesheet_sep}{The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").}
 
 \item{group_col}{The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".}
 

@@ -311,6 +311,11 @@
         dur <- ""
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
+    # if level is equal or greater than 2, report memory usage in MBs as well
+    if (level >= 2) {
+        mem_used <- format(utils::object.size(.GlobalEnv), units = "Mb")
+        msg <- paste0(msg, " [mem: ", mem_used, "]")
+    }
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))
     invisible()
@@ -346,6 +351,32 @@
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
     invisible()
+}
+
+#' @keywords internal
+#' @noRd
+.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE) {
+    workers <- suppressWarnings(as.integer(njobs))
+    if (length(workers) == 0L || is.na(workers) || workers < 1L) {
+        stop("njobs must be a positive integer.", call. = FALSE)
+    }
+
+    if (!is.null(n_tasks)) {
+        n_tasks <- suppressWarnings(as.integer(n_tasks))
+        if (length(n_tasks) > 0L && !is.na(n_tasks) && n_tasks > 0L) {
+            workers <- min(workers, n_tasks)
+        }
+    }
+
+    if (workers <= 1L) {
+        return(BiocParallel::SerialParam(progressbar = progressbar))
+    }
+
+    if (identical(.Platform$OS.type, "unix")) {
+        BiocParallel::MulticoreParam(workers = workers, progressbar = progressbar)
+    } else {
+        BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = progressbar)
+    }
 }
 
 #' @keywords internal
@@ -2006,28 +2037,12 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
     }
 
     if (njobs > 1 && n_batches > 1) {
-        if (!requireNamespace("parallel", quietly = TRUE)) {
-            warning("parallel package not available, using single core processing")
-            njobs <- 1
-        }
-    }
-
-    if (njobs > 1 && n_batches > 1) {
-        cl <- parallel::makeCluster(min(njobs, n_batches))
-        on.exit(parallel::stopCluster(cl), add = TRUE)
-
-        parallel::clusterExport(cl, c("base_url", "genome", "batch_size", "n_dmrs", "dmrs"),
-            envir = environment()
+        bp_param <- .makeBiocParallelParam(njobs, n_tasks = n_batches)
+        batch_results <- BiocParallel::bplapply(
+            seq_len(n_batches),
+            fetch_batch,
+            BPPARAM = bp_param
         )
-        parallel::clusterEvalQ(cl, {
-            suppressPackageStartupMessages({
-            library(GenomicRanges)
-            library(GenomeInfoDb)
-            library(jsonlite)
-            })
-        })
-
-        batch_results <- parallel::parLapply(cl, seq_len(n_batches), fetch_batch)
         sequences <- unlist(batch_results)
     } else {
         sequences <- character(n_dmrs)

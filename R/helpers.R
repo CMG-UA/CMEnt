@@ -8,7 +8,7 @@
 #'
 #' @param bsseq A BSseq object or a file path to a saved BSseq object (RDS format).
 #' @param samplesheet A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.
-#' @param samplesheet_sep The separator used in the samplesheet file if a file path is provided. Default is tab ("\t").
+#' @param samplesheet_sep The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").
 #' @param group_col The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".
 #' @param id_col The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".
 #' @param chr A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
@@ -55,7 +55,7 @@ findDMPsBSSeq <- function(
     covariates = NULL,
     fdr_thres = 0.05,
     output_file = NULL,
-    njobs = max(1L, parallel::detectCores() - 1L)
+    njobs = max(1L, BiocParallel::bpnworkers(BiocParallel::bpparam()) - 1L)
 ) {
     if (!requireNamespace("bsseq", quietly = TRUE)) {
         BiocManager::install("bsseq", update = FALSE, ask = FALSE)
@@ -63,9 +63,6 @@ findDMPsBSSeq <- function(
     if (!requireNamespace("DSS", quietly = TRUE)) {
         BiocManager::install("DSS", update = FALSE, ask = FALSE)
     }
-    library(bsseq)
-    library(DSS)
-    library(parallel)
     if (chr == "auto") {
         chr <- paste0("chr", c(1:22))
     } else if (chr == "all") {
@@ -171,7 +168,7 @@ findDMPsBSSeq <- function(
             return(NULL)
         }
         suppressMessages({
-            fit <- DMLfit.multiFactor(
+            fit <- DSS::DMLfit.multiFactor(
                 BSobj = bsseq_chr,
                 design = pheno,
                 formula = formula
@@ -191,11 +188,12 @@ findDMPsBSSeq <- function(
         dml_chr
     }
 
-    dml_by_chr <- if (.Platform$OS.type == "unix" && nworkers > 1L) {
-        parallel::mclapply(chr_in_bsseq, run_dss_for_chr, mc.cores = nworkers)
-    } else {
-        lapply(chr_in_bsseq, run_dss_for_chr)
-    }
+    bp_param <- .makeBiocParallelParam(nworkers, n_tasks = length(chr_in_bsseq))
+    dml_by_chr <- BiocParallel::bplapply(
+        chr_in_bsseq,
+        run_dss_for_chr,
+        BPPARAM = bp_param
+    )
     dml_by_chr <- Filter(Negate(is.null), dml_by_chr)
     if (length(dml_by_chr) == 0L) {
         stop("DSS::DMLtest returned no chromosome-level results.")
