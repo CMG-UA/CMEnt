@@ -298,6 +298,19 @@
     invisible()
 }
 
+.node_size <- function() {
+    bit <- 8L * .Machine$sizeof.pointer
+    if (!(bit == 32L || bit == 64L)) {
+        stop("Unknown architecture", call. = FALSE)
+    }
+
+    if (bit == 32L) 28L else 56L
+}
+
+.mem_used <- function() {
+    sum(gc()[, 1] * c(.node_size(), 8))
+}
+
 #' @keywords internal
 #' @noRd
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
@@ -313,8 +326,8 @@
     msg <- paste0(paste0(..., collapse = ""), dur)
     # if level is equal or greater than 2, report memory usage in MBs as well
     if (level >= 2) {
-        mem_used <- format(pryr::mem_used(), units = "GB", digits = 3)
-        msg <- paste0(msg, " [mem: ", mem_used, " GB]")
+        mem <- format(.mem_used(), units = "GB", digits = 3)
+        msg <- paste0(msg, " [mem: ", mem, " GB]")
     }
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
     message(paste(lead, msg))

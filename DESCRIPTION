@@ -73,7 +73,6 @@ Imports:
     Organism.dplyr,
     progressr,
     plotly,
-    pryr,
     R.utils,
     R6,
     rhdf5,
