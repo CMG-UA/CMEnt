@@ -721,8 +721,8 @@ minmaxscale <- function(x) {
         return(ret)
     }
 
-    top_n <- as.integer(getOption("DMRsegal.plotDMR_top_motif_interactions", 5L))
-    pool_size <- as.integer(getOption("DMRsegal.plotDMR_interaction_pool_size", 300L))
+    top_n <- as.integer(getOption("CMEnt.plotDMR_top_motif_interactions", 5L))
+    pool_size <- as.integer(getOption("CMEnt.plotDMR_interaction_pool_size", 300L))
     top_n <- ifelse(is.na(top_n) || top_n < 1, 5L, top_n)
     pool_size <- ifelse(is.na(pool_size) || pool_size < 2, min(300L, length(dmrs)), pool_size)
     pool_size <- min(pool_size, length(dmrs))

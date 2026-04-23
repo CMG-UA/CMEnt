@@ -1,11 +1,11 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("plotDMRsCircos creates a circos plot", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
@@ -30,7 +30,7 @@ test_that("plotDMRsCircos works with interactions", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
@@ -56,7 +56,7 @@ test_that("plotDMRsCircos handles BetaHandler input", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
@@ -83,7 +83,7 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
@@ -107,7 +107,7 @@ test_that("plotDMRsCircos validates inputs", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
@@ -145,7 +145,7 @@ test_that("plotDMRsCircos supports chromosome and region filters", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
@@ -190,7 +190,7 @@ test_that(".filterDMRsByScopeForCircos preserves GRanges when some regions are e
         ranges = IRanges::IRanges(start = c(100L, 1000L), width = c(80L, 80L))
     )
 
-    scoped <- DMRsegal:::.filterDMRsByScopeForCircos(
+    scoped <- CMEnt:::.filterDMRsByScopeForCircos(
         dmrs,
         region_df = data.frame(
             chr = c("chr3", "chr1"),
@@ -436,7 +436,7 @@ test_that(".selectCircosRegions respects region caps and block priority", {
     S4Vectors::mcols(dmrs)$delta_beta <- c(0.4, 0.3, 0.1, 0.35, 0.34, 0.2)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_b1", "chr1_b1", "chr1_b2", "chr2_b1", "chr2_b1", NA)
 
-    selected <- DMRsegal:::.selectCircosRegions(
+    selected <- CMEnt:::.selectCircosRegions(
         dmrs = dmrs,
         method = "blocks",
         n_regions = 3,
@@ -472,7 +472,7 @@ test_that(".selectCircosRegions supports component and hybrid candidate selectio
     )
     components$indices <- list(c(1, 3, 5), c(2, 4))
 
-    selected_components <- DMRsegal:::.selectCircosRegions(
+    selected_components <- CMEnt:::.selectCircosRegions(
         dmrs = dmrs,
         method = "components",
         n_regions = 3,
@@ -481,7 +481,7 @@ test_that(".selectCircosRegions supports component and hybrid candidate selectio
         min_inter_region_bp = 1000,
         components = components
     )
-    selected_hybrid <- DMRsegal:::.selectCircosRegions(
+    selected_hybrid <- CMEnt:::.selectCircosRegions(
         dmrs = dmrs,
         method = "hybrid",
         n_regions = 3,
@@ -518,7 +518,7 @@ test_that(".selectCircosRegions accepts serialized component index strings", {
         stringsAsFactors = FALSE
     )
 
-    selected <- DMRsegal:::.selectCircosRegions(
+    selected <- CMEnt:::.selectCircosRegions(
         dmrs = dmrs,
         method = "components",
         n_regions = 2,
@@ -538,7 +538,7 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
@@ -570,7 +570,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
@@ -613,7 +613,7 @@ test_that("plotAutoDMRsCircos supports components and hybrid selection", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
 
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }

@@ -119,12 +119,12 @@
 
 comparePWMToJaspar <- function(pwm_queries) {
     cache <- getOption(
-        "DMRsegal.jaspar_cache_dir",
-        .getOSCacheDir(file.path("R", "DMRsegal", "jaspar_cache"))
+        "CMEnt.jaspar_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
     )
-    tax_group <- getOption("DMRsegal.jaspar_tax_group", "vertebrates")
-    jaspar_version <- getOption("DMRsegal.jaspar_version", 2024)
-    corr_threshold <- getOption("DMRsegal.jaspar_corr_threshold", 0.9)
+    tax_group <- getOption("CMEnt.jaspar_tax_group", "vertebrates")
+    jaspar_version <- getOption("CMEnt.jaspar_version", 2024)
+    corr_threshold <- getOption("CMEnt.jaspar_corr_threshold", 0.9)
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
     pwms_file <- file.path(cache, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
     if (file.exists(pwms_file)) {
@@ -206,8 +206,8 @@ comparePWMToJaspar <- function(pwm_queries) {
 
 
 getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5, .sorted_locs = NULL) {
-    cache_dir <- getOption("DMRsegal.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+    cache_dir <- getOption("CMEnt.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
     )
     dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
     cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", motif_cpg_flank_size, ".rds"))
@@ -230,6 +230,12 @@ getBackgroundArrayMotif <- function(genome, array, motif_cpg_flank_size = 5, .so
             .log_warn(sum(!valid_cpg_seqs), " background motif windows had unexpected length and were ignored.")
         }
         cpg_seqs <- cpg_seqs[valid_cpg_seqs]
+        cpg_center_base <- toupper(substr(cpg_seqs, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 1L))
+        valid_cpg_center <- cpg_center_base == "C"
+        if (!all(valid_cpg_center)) {
+            .log_warn(sum(!valid_cpg_center), " background motif windows were not centered on C and were ignored.")
+        }
+        cpg_seqs <- cpg_seqs[valid_cpg_center]
         if (length(cpg_seqs) == 0) {
             stop("Could not compute background motif PWM: no valid motif windows were extracted.")
         }
@@ -333,13 +339,22 @@ extractDMRMotifs <- function(
         }
 
         sequence <- sequences[[i]]
-        start_loc_base <- start_locs[[1]]
+        # `sequence` is extracted from the DMR range plus flanks, so seed
+        # coordinates must be projected relative to the DMR start, not the
+        # first seed. DMRs can extend upstream of their first seed.
+        start_loc_base <- GenomicRanges::start(dmrs)[[i]]
         seq_cpg_inds <- start_locs - start_loc_base + 1 + motif_cpg_flank_size
         cpg_seqs <- substring(sequence, seq_cpg_inds - motif_cpg_flank_size, seq_cpg_inds + motif_cpg_flank_size + 1)
         valid_cpg_seqs <- !is.na(cpg_seqs) & nchar(cpg_seqs) == expected_len
         if (!all(valid_cpg_seqs)) {
             .log_warn(sum(!valid_cpg_seqs), " motif windows had unexpected length and were ignored for one DMR.")
             cpg_seqs <- cpg_seqs[valid_cpg_seqs]
+        }
+        cpg_center_base <- toupper(substr(cpg_seqs, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 1L))
+        valid_cpg_center <- cpg_center_base == "C"
+        if (!all(valid_cpg_center)) {
+            .log_warn(sum(!valid_cpg_center), " motif window(s) were not centered on C and were ignored for one DMR.")
+            cpg_seqs <- cpg_seqs[valid_cpg_center]
         }
         if (length(cpg_seqs) == 0) {
             next
@@ -371,13 +386,23 @@ extractDMRMotifs <- function(
     if (length(pwms) == 0) {
         return(matrix(0, nrow = 0, ncol = 0))
     }
+    valid_pwms <- vapply(pwms, function(x) {
+        is.matrix(x) &&
+            nrow(x) == length(Biostrings::DNA_BASES) &&
+            ncol(x) >= 2 * motif_cpg_flank_size + 2L
+    }, logical(1))
+    ret <- matrix(0, nrow = length(pwms), ncol = length(pwms))
+    if (!any(valid_pwms)) {
+        return(ret)
+    }
     cpg_cols <- c(motif_cpg_flank_size + 1, motif_cpg_flank_size + 2)
     # Compare motifs with a position-aware centered cosine:
     # 1) remove central CpG positions,
     # 2) center base frequencies around 0.25,
     # 3) normalize each position independently,
     # 4) average similarity over positions.
-    pwm_vectors <- lapply(pwms, function(x) {
+    valid_pwm_list <- pwms[valid_pwms]
+    pwm_vectors <- lapply(valid_pwm_list, function(x) {
         keep_cols <- setdiff(seq_len(ncol(x)), cpg_cols)
         x <- x[, keep_cols, drop = FALSE] - 0.25
         col_norms <- sqrt(colSums(x^2))
@@ -386,10 +411,11 @@ extractDMRMotifs <- function(
         as.vector(x)
     })
     pwm_matrix <- do.call(cbind, pwm_vectors)
-    num_positions <- max(1, ncol(pwms[[1]]) - 2)
-    ret <- crossprod(pwm_matrix) / num_positions
-    ret[ret > 1] <- 1
-    ret[ret < -1] <- -1
+    num_positions <- max(1, ncol(valid_pwm_list[[1]]) - 2)
+    valid_ret <- crossprod(pwm_matrix) / num_positions
+    valid_ret[valid_ret > 1] <- 1
+    valid_ret[valid_ret < -1] <- -1
+    ret[valid_pwms, valid_pwms] <- valid_ret
     ret
 }
 
@@ -442,7 +468,7 @@ computeDMRsInteraction <- function(
     dmrs,
     genome = "hg38",
     array = "450K",
-    min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
+    min_similarity = getOption("CMEnt.min_motif_similarity", 0.8),
     beta_locs = NULL,
     motif_cpg_flank_size = 5,
     find_components = TRUE,

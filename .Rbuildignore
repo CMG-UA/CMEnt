@@ -1,4 +1,4 @@
-^DMRsegal\.Rproj$
+^CMEnt\.Rproj$
 ^\.Rproj\.user$
 ^\.DS_Store$
 ^LICENSE\.md$
@@ -7,7 +7,7 @@
 ^README\.html$
 ^\.here$
 ^\.lintr$
-^dmrsegaldata$
+^cmentdata$
 ^data-raw$
 ^debug$
 ^examples$
@@ -15,6 +15,6 @@
 ^\.RData$
 ^\.Rprofile$
 ^\.vscode$
-^DMRsegal\.Rcheck$
+^CMEnt\.Rcheck$
 ^vignettes/.*\.(md|html)$
 ^codecov\.yml$

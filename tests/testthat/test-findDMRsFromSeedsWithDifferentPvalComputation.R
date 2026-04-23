@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
     skip_on_ci()
     beta <- loadExampleInputDataChr5And11("beta")
@@ -132,7 +132,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         empirical_strategy = "montecarlo",
         ntries = 50
     )
-    options("DMRsegal.random_seed" = 42)
+    options("CMEnt.random_seed" = 42)
     dmrs_seed1_run2 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -149,7 +149,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         ntries = 50
     )
     # Run with different seed
-    options("DMRsegal.random_seed" = 123)
+    options("CMEnt.random_seed" = 123)
     dmrs_seed2 <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -234,7 +234,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
     pheno[["__casecontrol__"]] <- c(rep(0, 6), rep(1, 6))
     group_inds <- list(g1 = 1:6, g2 = 7:12)
     expect_warning(
-        ret_strong <- DMRsegal:::.testConnectivityBatch(
+        ret_strong <- CMEnt:::.testConnectivityBatch(
             sites_beta = sites_beta,
             group_inds = group_inds,
             pheno = pheno,
@@ -252,7 +252,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
     expect_true(all(ret_strong$pval == 1))
 
     expect_warning(
-        ret_weak <- DMRsegal:::.testConnectivityBatch(
+        ret_weak <- CMEnt:::.testConnectivityBatch(
             sites_beta = sites_beta,
             group_inds = group_inds,
             pheno = pheno,

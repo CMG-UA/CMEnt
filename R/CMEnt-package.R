@@ -1,6 +1,6 @@
-#' DMRsegal: Differentially Methylated Regions SEed Guided AssembLy
+#' CMEnt: Characterization of Methylation using positional ENTanglement
 #'
-#' DMRsegal is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
+#' CMEnt is a comprehensive tool for identifying Differentially Methylated Regions (DMRs)
 #' from genomic seeds, commonly Differentially Methylated Positions (DMPs). The package uses a
 #' correlation-based approach to expand regions around significant seeds, considering both
 #' statistical significance and biological relevance of methylation changes.

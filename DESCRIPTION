@@ -1,6 +1,6 @@
-Package: DMRsegal
+Package: CMEnt
 Type: Package
-Title: Differentially Methylated Regions SEed Guided AssembLy
+Title: Characterization of Methylation using positional ENTanglement
 Version: 0.99.0
 Authors@R: c(
     person(given   = "Vasileios",
@@ -12,7 +12,7 @@ Authors@R: c(
            role = c("cph", "fnd")),
     person("Stichting Tegen Kanker",
            role = "fnd"))
-Description: DMRsegal implements a correlation-based method for identifying 
+Description: CMEnt implements a correlation-based method for identifying 
     Differentially Methylated Regions (DMRs) from genomic seeds, commonly 
     Differentially Methylated Positions (DMPs). The package expands regions 
     around significant seeds considering both statistical significance and 
@@ -21,8 +21,8 @@ Description: DMRsegal implements a correlation-based method for identifying
     provides DMR interaction analysis via motif similarity, and includes 
     comprehensive visualization tools including circos plots and beta value 
     heatmaps.
-URL: https://github.com/CMG-UA/DMRsegal
-BugReports: https://github.com/CMG-UA/DMRsegal/issues
+URL: https://github.com/CMG-UA/CMEnt
+BugReports: https://github.com/CMG-UA/CMEnt/issues
 License: GPL (>= 2)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -136,12 +136,13 @@ Collate:
     'dmrs_interaction.R'
     'dmrs_scoring.R'
     'cli.R'
-    'DMRsegal-package.R'
+    'CMEnt-package.R'
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
     'shiny_modules.R'
     'shiny_app.R'
     'augment_bsseq.R'
+    'simulate_dmrs_bsseq.R'
     'helpers.R'
     'zzz.R'
 NeedsCompilation: no

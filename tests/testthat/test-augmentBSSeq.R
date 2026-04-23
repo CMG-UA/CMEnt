@@ -1,9 +1,9 @@
 suppressPackageStartupMessages({
     library(testthat)
-    library(DMRsegal)
+    library(CMEnt)
     library(bsseq)
 })
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 #' Create a mock BSseq object for testing
 #'

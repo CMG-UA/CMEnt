@@ -19,8 +19,8 @@ scoreDMRs(
   block_gap_multiplier = 1.5,
   block_gap_min_bp = 2500,
   block_gap_max_bp = 50000,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  verbose = getOption("DMRsegal.verbose", 1L)
+  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+  verbose = getOption("CMEnt.verbose", 1L)
 )
 }
 \arguments{
@@ -81,7 +81,7 @@ and specified gap rules.
 \details{
 The function uses stratified k-fold cross-prediction to ensure balanced representation
 of sample groups in each fold. The number of folds can be controlled using the
-option "DMRsegal.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
+option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 SVM is trained on the beta values of CpG sites within each DMR.
 
 The \code{score} combines classification correctness and margin confidence,
@@ -96,7 +96,7 @@ beta <- loadExampleInputData("beta")
 pheno <- loadExampleInputData("pheno")
 
 # Load pre-computed DMRs
-dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
+dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "CMEnt"))
 
 # score DMRs
 scoring_dmrs <- scoreDMRs(

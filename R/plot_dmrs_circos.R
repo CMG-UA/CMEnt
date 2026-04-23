@@ -468,7 +468,7 @@
     }
 
     if (!is.null(verbose)) {
-        options("DMRsegal.verbose" = verbose)
+        options("CMEnt.verbose" = verbose)
     }
 
     cytoband <- .getCytobandData(genome)
@@ -592,7 +592,7 @@
 
     cytoband <- prepared_state$cytoband
     if (!is.null(verbose)) {
-        options("DMRsegal.verbose" = verbose)
+        options("CMEnt.verbose" = verbose)
     }
     region_df <- .normalizeCircosRegion(region, cytoband)
     dmrs <- .filterDMRsByScopeForCircos(
@@ -1624,9 +1624,9 @@ plotDMRsCircos <- function(dmrs,
     cytoband <- .getCytobandData(genome)
 
     if (!is.null(verbose)) {
-        options("DMRsegal.verbose" = verbose)
+        options("CMEnt.verbose" = verbose)
     }
-    verbose <- getOption("DMRsegal.verbose", default = 2)
+    verbose <- getOption("CMEnt.verbose", default = 2)
     beta_handler <- getBetaHandler(
         beta = beta,
         array = array,
@@ -1708,7 +1708,7 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving DMR arcs data to debug/circos_arc_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(arc_data, file = "debug/circos_arc_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
@@ -1738,7 +1738,7 @@ plotDMRsCircos <- function(dmrs,
     }
     .log_success("Heatmap data prepared", level = 2)
     .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving heatmap data to debug/circos_heatmap_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(heatmap_df, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
@@ -1759,7 +1759,7 @@ plotDMRsCircos <- function(dmrs,
         interactions = interactions
     )
     .log_success("DMR links data prepared", level = 2)
-    if (getOption("DMRsegal.make_debug_dir", FALSE) && !is.null(link_data) && nrow(link_data) > 0) {
+    if (getOption("CMEnt.make_debug_dir", FALSE) && !is.null(link_data) && nrow(link_data) > 0) {
         .log_info("Saving DMR links data to debug/circos_link_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(link_data, file = "debug/circos_link_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
@@ -2306,7 +2306,7 @@ plotAutoDMRsCircos <- function(dmrs,
 }
 
 .getCytobandData <- function(genome) {
-    cache_dir <- tools::R_user_dir("DMRsegal", which = "cache")
+    cache_dir <- tools::R_user_dir("CMEnt", which = "cache")
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE)
     }
@@ -2442,7 +2442,7 @@ plotAutoDMRsCircos <- function(dmrs,
                 group_beta <- group_beta[, non_zero_cols, drop = FALSE]
                 group_beta <- t(group_beta)
                 pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
-                set.seed(getOption("DMRsegal.random_seed", 42))
+                set.seed(getOption("CMEnt.random_seed", 42))
                 kmeans <- stats::kmeans(
                     pcs,
                     centers = max_num_samples_per_group,

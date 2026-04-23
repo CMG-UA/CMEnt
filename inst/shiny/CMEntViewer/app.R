@@ -1,15 +1,15 @@
-# DMRsegal Viewer - Standalone Shiny Application
+# CMEnt Viewer - Standalone Shiny Application
 # This file allows running the viewer as a standalone app
-# Usage: shiny::runApp(system.file("shiny/DMRsegalViewer", package = "DMRsegal"))
+# Usage: shiny::runApp(system.file("shiny/CMEntViewer", package = "CMEnt"))
 
 suppressPackageStartupMessages({
-    library(DMRsegal)
+    library(CMEnt)
     library(shiny)
     library(bslib)
     library(DT)
 })
 
-output_prefix <- Sys.getenv("DMRSEGAL_OUTPUT_PREFIX", unset = "")
+output_prefix <- Sys.getenv("CMENT_OUTPUT_PREFIX", unset = "")
 
 if (output_prefix == "") {
     ui <- fluidPage(
@@ -19,16 +19,16 @@ if (output_prefix == "") {
             class = "container",
             div(
                 class = "alert alert-info",
-                h4("DMRsegal Viewer Configuration"),
+                h4("CMEnt Viewer Configuration"),
                 p("Please set the following environment variable before running this app:"),
                 tags$ul(
-                    tags$li(tags$code("DMRSEGAL_OUTPUT_PREFIX"), " - Path prefix for output files created by findDMRsFromSeeds()")
+                    tags$li(tags$code("CMENT_OUTPUT_PREFIX"), " - Path prefix for output files created by findDMRsFromSeeds()")
                 ),
                 hr(),
                 p("The viewer loads phenotype, array, and genome information from ", tags$code(".meta.rds"), " automatically."),
-                p("Alternatively, use the ", tags$code("launchDMRsegalViewer()"), " function from R:"),
+                p("Alternatively, use the ", tags$code("launchCMEntViewer()"), " function from R:"),
                 pre(
-                    "launchDMRsegalViewer(\n",
+                    "launchCMEntViewer(\n",
                     "  output_prefix = 'path/to/output'\n",
                     ")"
                 )
@@ -37,7 +37,7 @@ if (output_prefix == "") {
     )
     server <- function(input, output, session) {}
 } else {
-    validation <- DMRsegal:::.validateOutputPrefix(output_prefix)
+    validation <- CMEnt:::.validateOutputPrefix(output_prefix)
     if (!validation$valid) {
         ui <- fluidPage(
             theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
@@ -46,7 +46,7 @@ if (output_prefix == "") {
                 class = "container",
                 div(
                     class = "alert alert-danger",
-                    h4("DMRsegal Viewer Configuration Error"),
+                    h4("CMEnt Viewer Configuration Error"),
                     p("The configured output prefix is missing required viewer files:"),
                     tags$ul(lapply(validation$errors, tags$li)),
                     hr(),
@@ -61,9 +61,9 @@ if (output_prefix == "") {
                 warning(w)
             }
         }
-        data <- DMRsegal:::.loadDMRsegalData(output_prefix)
-        ui <- DMRsegal:::.createViewerUI()
-        server <- DMRsegal:::.createViewerServer(data)
+        data <- CMEnt:::.loadCMEntData(output_prefix)
+        ui <- CMEnt:::.createViewerUI()
+        server <- CMEnt:::.createViewerServer(data)
     }
 }
 

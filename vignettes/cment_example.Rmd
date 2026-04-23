@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal End-to-End Example"
-author: "DMRsegal Package"
+title: "CMEnt End-to-End Example"
+author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output:
   BiocStyle::html_document:
     code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal End-to-End Example}
+  %\VignetteIndexEntry{CMEnt End-to-End Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -39,14 +39,14 @@ cat("
 
 ## Goal
 
-This notebook showcases all DMRsegal capabilities, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. 
+This notebook showcases all CMEnt capabilities, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. 
 
 ## Setup
 
 ```{r setup}
 try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(DMRsegal), silent = TRUE)
+    try(library(CMEnt), silent = TRUE)
     library(GenomicRanges)
     library(dplyr)
     library(ggplot2)
@@ -105,7 +105,7 @@ dmrs <- findDMRsFromSeeds(
     entanglement = "weak", # The entanglement strategy to use, either demand at least a  single group seeds to be correlated ("weak", slower), or demand that all groups  seeds are correlated ("strong", the default, quicker).
     genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
     array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
-    output_prefix = "tmp/DMRsegal_example" # The prefix for the output files. It is required to provide this if you want to use the DMRsegalViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
+    output_prefix = "tmp/CMEnt_example" # The prefix for the output files. It is required to provide this if you want to use the CMEntViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
 )
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
 cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))
@@ -255,7 +255,7 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
-A circos plot consisting of the extracted information from DMRsegal is drawn along the genome or a specified region, here from chromosome 17 to 19. 
+A circos plot consisting of the extracted information from CMEnt is drawn along the genome or a specified region, here from chromosome 17 to 19. 
 The information includes:
 
 - The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
@@ -333,11 +333,11 @@ if (!circos_region_plotted) {
 }
 ```
 
-### DMRsegal interactive Shiny App
-The DMRsegal interactive Shiny app can be launched with the `launchDMRsegalViewer` function, 
+### CMEnt interactive Shiny App
+The CMEnt interactive Shiny app can be launched with the `launchCMEntViewer` function, 
 which allows for interactive exploration of the DMRs and the aforementioned plots. In order to use it, the `output_prefix` argument should be provided in the `findDMRsFromSeeds` function, as the app looks for the output files with this prefix.
 ```{r launch_shiny_app, eval=FALSE}
-launchDMRsegalViewer("tmp/DMRsegal_example")
+launchCMEntViewer("tmp/CMEnt_example")
 ```
 
 ## Session Info

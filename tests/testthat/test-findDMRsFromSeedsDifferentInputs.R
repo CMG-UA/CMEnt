@@ -2,7 +2,7 @@ suppressPackageStartupMessages({
     library(bsseq)
     library(GenomicRanges)
 })
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 
 create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
@@ -67,7 +67,7 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 500)
+    options("CMEnt.beta_in_mem_threshold_mb" = 500)
     suppressWarnings(
         dmrs <- findDMRsFromSeeds(
             .score_dmrs = FALSE,
@@ -114,8 +114,8 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
-    options("DMRsegal.use_tabix_cache" = FALSE)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 1)
+    options("CMEnt.use_tabix_cache" = FALSE)
+    options("CMEnt.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -157,8 +157,8 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     withr::defer(unlink(sorted_beta_file))
 
     withr::local_options(list(
-        DMRsegal.use_tabix_cache = FALSE,
-        DMRsegal.beta_in_mem_threshold_mb = 1
+        CMEnt.use_tabix_cache = FALSE,
+        CMEnt.beta_in_mem_threshold_mb = 1
     ))
     tabix_handler <- getBetaHandler(sorted_beta_file, array = "450K", genome = "hg19", njobs = 1)
 
@@ -228,9 +228,9 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
     withr::local_options(list(
-        DMRsegal.parallel_result_batch_size = 2L,
-        DMRsegal.parallel_batch_beta_subset = FALSE,
-        DMRsegal.njobs = 2L
+        CMEnt.parallel_result_batch_size = 2L,
+        CMEnt.parallel_batch_beta_subset = FALSE,
+        CMEnt.njobs = 2L
     ))
     connectivity_no_subset <- .buildConnectivityArraySinglePass(
         beta_handler = mem_handler,
@@ -252,10 +252,10 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
     )[["connectivity_array"]]
 
     withr::local_options(list(
-        DMRsegal.parallel_result_batch_size = 2L,
-        DMRsegal.parallel_batch_beta_subset = TRUE,
-        DMRsegal.parallel_batch_beta_subset_min_rows = 1L,
-        DMRsegal.njobs = 2L
+        CMEnt.parallel_result_batch_size = 2L,
+        CMEnt.parallel_batch_beta_subset = TRUE,
+        CMEnt.parallel_batch_beta_subset_min_rows = 1L,
+        CMEnt.njobs = 2L
     ))
     connectivity_with_subset <- .buildConnectivityArraySinglePass(
         beta_handler = mem_handler,
@@ -341,8 +341,8 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
-    options("DMRsegal.use_tabix_cache" = FALSE)
-    options("DMRsegal.beta_in_mem_threshold_mb" = 0.1)
+    options("CMEnt.use_tabix_cache" = FALSE)
+    options("CMEnt.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
         extract_motifs = FALSE,

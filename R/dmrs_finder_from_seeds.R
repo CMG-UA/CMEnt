@@ -482,7 +482,7 @@
     min_delta_beta = 0,
     covariates = NULL,
     max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    chunk_size = getOption("CMEnt.chunk_size", 1000),
     entanglement = "strong",
     aggfun = median,
     ntries = 500,
@@ -541,11 +541,11 @@
     } else {
         length(beta_handler$getBetaColNames())
     }
-    chunk_mem_mb <- getOption("DMRsegal.max_chunk_memory_mb", 256)
+    chunk_mem_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
     if (!is.numeric(chunk_mem_mb) || length(chunk_mem_mb) != 1L || is.na(chunk_mem_mb) || chunk_mem_mb <= 0) {
         chunk_mem_mb <- Inf
     }
-    chunk_mem_multiplier <- getOption("DMRsegal.chunk_memory_multiplier", 12)
+    chunk_mem_multiplier <- getOption("CMEnt.chunk_memory_multiplier", 12)
     if (!is.numeric(chunk_mem_multiplier) || length(chunk_mem_multiplier) != 1L || is.na(chunk_mem_multiplier) || chunk_mem_multiplier <= 0) {
         chunk_mem_multiplier <- 12
     }
@@ -568,7 +568,7 @@
             " to fit the connectivity memory budget (",
             as.numeric(chunk_mem_mb), " MB per worker, ", n_cols_for_chunk,
             " sample columns, multiplier=", chunk_mem_multiplier, ").",
-            level = 2
+            level = 3
         )
     }
 
@@ -853,7 +853,7 @@
         "; chunks to evaluate: ", nrow(splits), ".",
         level = 3
     )
-    verbose <- getOption("DMRsegal.verbose", 1)
+    verbose <- getOption("CMEnt.verbose", 1)
     p_ext <- NULL
     if (verbose > 0) {
         p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
@@ -1060,8 +1060,8 @@
         ]
     }
 
-    batch_subset_enabled <- isTRUE(getOption("DMRsegal.parallel_batch_beta_subset", TRUE))
-    batch_subset_min_rows <- as.integer(getOption("DMRsegal.parallel_batch_beta_subset_min_rows", 5000L))
+    batch_subset_enabled <- isTRUE(getOption("CMEnt.parallel_batch_beta_subset", TRUE))
+    batch_subset_min_rows <- as.integer(getOption("CMEnt.parallel_batch_beta_subset_min_rows", 5000L))
     if (!is.finite(batch_subset_min_rows) || is.na(batch_subset_min_rows) || batch_subset_min_rows < 1L) {
         batch_subset_min_rows <- 1L
     }
@@ -1129,14 +1129,14 @@
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
         all_split_inds <- seq_len(nrow(splits))
-        batch_size <- as.integer(getOption("DMRsegal.parallel_result_batch_size", max(njobs * 4L, 16L)))
+        batch_size <- as.integer(getOption("CMEnt.parallel_result_batch_size", max(njobs * 4L, 16L)))
         batch_size <- max(1L, batch_size)
-        max_parallel_retries <- as.integer(getOption("DMRsegal.parallel_batch_retries", 1L))
+        max_parallel_retries <- as.integer(getOption("CMEnt.parallel_batch_retries", 1L))
         if (!is.finite(max_parallel_retries) || is.na(max_parallel_retries) || max_parallel_retries < 0L) {
             max_parallel_retries <- 1L
         }
         max_attempts <- max_parallel_retries + 1L
-        fallback_to_sequential <- getOption("DMRsegal.parallel_fallback_to_sequential", TRUE)
+        fallback_to_sequential <- getOption("CMEnt.parallel_fallback_to_sequential", TRUE)
         if (is.null(fallback_to_sequential)) {
             fallback_to_sequential <- TRUE
         }
@@ -1285,7 +1285,7 @@
     min_delta_beta = 0,
     covariates = NULL,
     max_lookup_dist = 1000,
-    chunk_size = getOption("DMRsegal.chunk_size", 1000),
+    chunk_size = getOption("CMEnt.chunk_size", 1000),
     entanglement = "strong",
     aggfun = median,
     ntries = 500,
@@ -1805,7 +1805,7 @@
             # Only compute for rows that are still connected and have finite cors
             mask <- is.finite(cors) & g_mask
             if (any(mask)) {
-                set.seed(getOption("DMRsegal.random_seed", 42))
+                set.seed(getOption("CMEnt.random_seed", 42))
                 counts_ge <- integer(sn_pairs)
                 counts_eq <- integer(sn_pairs)
                 # Number of samples in this group
@@ -2143,9 +2143,9 @@
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
 #' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
-#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".
+#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
-#' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".
+#' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "CMEnt.chunk_size".
 #'
 #' @return Data frame of identified DMRs.
 #' 
@@ -2192,8 +2192,8 @@ findDMRsFromSeeds <- function(
     aggfun = c("median", "mean"),
     ignored_sample_groups = NULL,
     output_prefix = NULL,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    chunk_size = getOption("DMRsegal.chunk_size", 10000),
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    chunk_size = getOption("CMEnt.chunk_size", 10000),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
     .score_dmrs = TRUE,
@@ -2201,7 +2201,7 @@ findDMRsFromSeeds <- function(
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
     bed_start_col = "start",
-    verbose = getOption("DMRsegal.verbose", 1),
+    verbose = getOption("CMEnt.verbose", 1),
     .load_debug = FALSE
 ) {
     pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
@@ -2219,12 +2219,12 @@ findDMRsFromSeeds <- function(
         wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
         withr::defer(wait())
     }
-    options(DMRsegal.verbose = verbose)
+    options(CMEnt.verbose = verbose)
     options(cli.num_colors = cli::num_ansi_colors())
     options(future.globals.maxSize = Inf)
 
     # Set up future plan for parallel processing
-    options("DMRsegal.njobs" = njobs)
+    options("CMEnt.njobs" = njobs)
     .log_info("Resetting parallel state from previous runs...", level = 2)
     .cleanupParallelState()
     withr::defer(.cleanupParallelState(), envir = environment())
@@ -2720,6 +2720,9 @@ findDMRsFromSeeds <- function(
             stringsAsFactors = FALSE
         )
         dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+        if (min_seeds > 0) {
+            .log_info("Number of DMRs after filtering by min_seeds: ", nrow(dmrs), level = 2)
+        }
         dmrs <- merge(dmrs, connected_seeds_connection_corr_pval, by = "id", all.x = TRUE)
         colnames(dmrs)[colnames(dmrs) == "pval"] <- "connection_corr_pval"
         dmrs <- merge(dmrs, dmrs_seeds, by = "id", all.x = TRUE)
@@ -2736,7 +2739,7 @@ findDMRsFromSeeds <- function(
             }
             return(NULL)
         }
-        if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+        if (getOption("CMEnt.make_debug_dir", FALSE)) {
             .log_info("Saving initial DMRs from connected seeds to debug/01_dmrs_from_connected_seeds.tsv", level = 1)
             dir.create("debug", showWarnings = FALSE)
             write.table(dmrs,
@@ -2832,7 +2835,7 @@ findDMRsFromSeeds <- function(
     }
     .log_success("Connectivity array built.", level = 2)
     .log_info("Number of underlying connected CpGs found: ", sum(connectivity_array$connected), level = 1)
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving connectivity array to debug/connectivity_array.rds", level = 1)
         dir.create("debug", showWarnings = FALSE)
         saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
@@ -2878,7 +2881,7 @@ findDMRsFromSeeds <- function(
 
         chr_dmr_inds <- seq_len(nrow(chr_dmrs))
         default_dmr_chunk_size <- max(1L, ceiling(length(chr_dmr_inds) / max(njobs * 4L, 1L)))
-        dmr_chunk_size <- as.integer(getOption("DMRsegal.parallel_dmr_chunk_size", default_dmr_chunk_size))[1]
+        dmr_chunk_size <- as.integer(getOption("CMEnt.parallel_dmr_chunk_size", default_dmr_chunk_size))[1]
         if (!is.finite(dmr_chunk_size) || dmr_chunk_size < 1L) {
             dmr_chunk_size <- default_dmr_chunk_size
         }
@@ -2966,7 +2969,7 @@ findDMRsFromSeeds <- function(
     .checkResult(extended_dmrs, "2", start_col = "start", end_col = "end")
     .log_success("Post-processing complete.", level = 2)
     .log_success("DMR expansion complete.", level = 1)
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving extended DMRs prior to filtering to debug/03_extended_dmrs.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
@@ -3009,8 +3012,8 @@ findDMRsFromSeeds <- function(
 
     multiple_hits <- which(tqh > 1)
     .log_info("Merging ", length(multiple_hits), " overlapping extended DMRs...", level = 2)
-    parallel_merge_enabled <- isTRUE(getOption("DMRsegal.parallel_merge_aggregations", TRUE))
-    parallel_merge_min_hits <- as.integer(getOption("DMRsegal.parallel_merge_min_hits", 64L))
+    parallel_merge_enabled <- isTRUE(getOption("CMEnt.parallel_merge_aggregations", TRUE))
+    parallel_merge_min_hits <- as.integer(getOption("CMEnt.parallel_merge_min_hits", 64L))
     if (!is.finite(parallel_merge_min_hits) || is.na(parallel_merge_min_hits) || parallel_merge_min_hits < 1L) {
         parallel_merge_min_hits <- 1L
     }
@@ -3018,7 +3021,7 @@ findDMRsFromSeeds <- function(
         use_parallel_merge <- parallel_merge_enabled && njobs > 1L && length(multiple_hits) >= parallel_merge_min_hits
         if (use_parallel_merge) {
             merge_chunk_size <- as.integer(getOption(
-                "DMRsegal.parallel_merge_chunk_size",
+                "CMEnt.parallel_merge_chunk_size",
                 max(1L, ceiling(length(multiple_hits) / max(1L, njobs * 4L)))
             ))
             if (!is.finite(merge_chunk_size) || is.na(merge_chunk_size) || merge_chunk_size < 1L) {
@@ -3081,14 +3084,14 @@ findDMRsFromSeeds <- function(
     }
 
     agg_cpg_components <- agg_df[, c("upstream_cpgs", "seeds", "downstream_cpgs"), drop = FALSE]
-    parallel_cpgs_min_rows <- as.integer(getOption("DMRsegal.parallel_merge_cpgs_min_rows", 2000L))
+    parallel_cpgs_min_rows <- as.integer(getOption("CMEnt.parallel_merge_cpgs_min_rows", 2000L))
     if (!is.finite(parallel_cpgs_min_rows) || is.na(parallel_cpgs_min_rows) || parallel_cpgs_min_rows < 1L) {
         parallel_cpgs_min_rows <- 1L
     }
     use_parallel_cpgs <- parallel_merge_enabled && njobs > 1L && nrow(agg_cpg_components) >= parallel_cpgs_min_rows
     if (use_parallel_cpgs) {
         cpg_chunk_size <- as.integer(getOption(
-            "DMRsegal.parallel_merge_cpgs_chunk_size",
+            "CMEnt.parallel_merge_cpgs_chunk_size",
             max(1L, ceiling(nrow(agg_cpg_components) / max(1L, njobs * 4L)))
         ))
         if (!is.finite(cpg_chunk_size) || is.na(cpg_chunk_size) || cpg_chunk_size < 1L) {
@@ -3122,7 +3125,7 @@ findDMRsFromSeeds <- function(
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 1)
     merged_dmrs <- convertToDataFrame(merged_dmrs_ranges)
 
-    if (getOption("DMRsegal.make_debug_dir", FALSE)) {
+    if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(merged_dmrs,
@@ -3237,12 +3240,12 @@ findDMRsFromSeeds <- function(
     beta_stats_seeds <- beta_stats[dmr_seeds_indices, , drop = FALSE]
     beta_stats_seeds$dmr_id <- dmr_seeds_groups
 
-    parallel_merge_enabled <- isTRUE(getOption("DMRsegal.parallel_merge_aggregations", TRUE))
-    parallel_beta_agg_min_groups <- as.integer(getOption("DMRsegal.parallel_beta_agg_min_groups", 1000L))
+    parallel_merge_enabled <- isTRUE(getOption("CMEnt.parallel_merge_aggregations", TRUE))
+    parallel_beta_agg_min_groups <- as.integer(getOption("CMEnt.parallel_beta_agg_min_groups", 1000L))
     if (!is.finite(parallel_beta_agg_min_groups) || is.na(parallel_beta_agg_min_groups) || parallel_beta_agg_min_groups < 1L) {
         parallel_beta_agg_min_groups <- 1L
     }
-    parallel_beta_agg_chunk_size <- getOption("DMRsegal.parallel_beta_agg_chunk_size", NULL)
+    parallel_beta_agg_chunk_size <- getOption("CMEnt.parallel_beta_agg_chunk_size", NULL)
     if (!is.null(parallel_beta_agg_chunk_size)) {
         parallel_beta_agg_chunk_size <- as.integer(parallel_beta_agg_chunk_size)
         if (!is.finite(parallel_beta_agg_chunk_size) || is.na(parallel_beta_agg_chunk_size) || parallel_beta_agg_chunk_size < 1L) {

@@ -8,7 +8,7 @@ computeDMRsInteraction(
   dmrs,
   genome = "hg38",
   array = "450K",
-  min_similarity = getOption("DMRsegal.min_motif_similarity", 0.8),
+  min_similarity = getOption("CMEnt.min_motif_similarity", 0.8),
   beta_locs = NULL,
   motif_cpg_flank_size = 5,
   find_components = TRUE,

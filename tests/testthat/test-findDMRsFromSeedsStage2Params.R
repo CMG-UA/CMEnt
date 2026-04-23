@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps parameters", {
     beta <- loadExampleInputDataChr5And11("beta")
@@ -28,7 +28,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
         dmr_df <- as.data.frame(dmrs_expanded)
         # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
-        win_df <- DMRsegal:::.buildConnectivityWindowsFromDMRs(
+        win_df <- CMEnt:::.buildConnectivityWindowsFromDMRs(
             dmrs = data.frame(
                 chr = as.character(dmr_df$seqnames),
                 start_seed_pos = dmr_df$start_seed_pos,
@@ -262,14 +262,14 @@ test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and ch
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     withr::local_options(list(
-        DMRsegal.parallel_dmr_chunk_size = 1L,
-        DMRsegal.parallel_merge_aggregations = TRUE,
-        DMRsegal.parallel_merge_min_hits = 1L,
-        DMRsegal.parallel_merge_chunk_size = 1L,
-        DMRsegal.parallel_merge_cpgs_min_rows = 1L,
-        DMRsegal.parallel_merge_cpgs_chunk_size = 1L,
-        DMRsegal.parallel_beta_agg_min_groups = 1L,
-        DMRsegal.parallel_beta_agg_chunk_size = 1L
+        CMEnt.parallel_dmr_chunk_size = 1L,
+        CMEnt.parallel_merge_aggregations = TRUE,
+        CMEnt.parallel_merge_min_hits = 1L,
+        CMEnt.parallel_merge_chunk_size = 1L,
+        CMEnt.parallel_merge_cpgs_min_rows = 1L,
+        CMEnt.parallel_merge_cpgs_chunk_size = 1L,
+        CMEnt.parallel_beta_agg_min_groups = 1L,
+        CMEnt.parallel_beta_agg_chunk_size = 1L
     ))
 
     args <- list(

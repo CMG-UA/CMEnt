@@ -1,5 +1,5 @@
-#' @title Helper functions for DMRsegal
-#' @description A collection of helper functions for the DMRsegal package.
+#' @title Helper functions for CMEnt
+#' @description A collection of helper functions for the CMEnt package.
 
 
 #' Find DMPs using DSS on BSseq objects

@@ -10,7 +10,7 @@ library(testthat)
 
 if (identical(tolower(Sys.getenv("R_COVR")), "true")) {
     # Keep coverage runs deterministic and avoid spawning instrumented workers by default.
-    options(DMRsegal.njobs = 1L)
+    options(CMEnt.njobs = 1L)
 }
 
-test_check("DMRsegal")
+test_check("CMEnt")

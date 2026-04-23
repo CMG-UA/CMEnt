@@ -11,33 +11,33 @@
 
 
 update_package_option <- future:::update_package_option
-update_package_option("DMRsegal.random_seed", mode = "numeric", default = 42)
-update_package_option("DMRsegal.njobs", mode = "numeric", default = min(8, future::availableCores() - 1))
-update_package_option("DMRsegal.beta_in_mem_threshold_mb", mode = "numeric", default = 500)
-update_package_option("DMRsegal.verbose", mode = "numeric", default = 1)
-update_package_option("DMRsegal.use_bed_cache", mode = "logical", default = FALSE)
-update_package_option("DMRsegal.bed_cache_dir", mode = "character",
-    default =  .getOSCacheDir(file.path("R", "DMRsegal", "bed_cache"))
+update_package_option("CMEnt.random_seed", mode = "numeric", default = 42)
+update_package_option("CMEnt.njobs", mode = "numeric", default = min(8, future::availableCores() - 1))
+update_package_option("CMEnt.beta_in_mem_threshold_mb", mode = "numeric", default = 500)
+update_package_option("CMEnt.verbose", mode = "numeric", default = 1)
+update_package_option("CMEnt.use_bed_cache", mode = "logical", default = FALSE)
+update_package_option("CMEnt.bed_cache_dir", mode = "character",
+    default =  .getOSCacheDir(file.path("R", "CMEnt", "bed_cache"))
 )
-update_package_option("DMRsegal.use_tabix_cache", mode = "logical", default = TRUE)
-update_package_option("DMRsegal.tabix_cache_dir", mode = "character",
-    default =  .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
+update_package_option("CMEnt.use_tabix_cache", mode = "logical", default = TRUE)
+update_package_option("CMEnt.tabix_cache_dir", mode = "character",
+    default =  .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
 )
-update_package_option("DMRsegal.use_annotation_cache", mode = "logical", default = TRUE)
-update_package_option("DMRsegal.annotation_cache_dir", mode = "character",
-    default = .getOSCacheDir(file.path("R", "DMRsegal", "annotation_cache"))
+update_package_option("CMEnt.use_annotation_cache", mode = "logical", default = TRUE)
+update_package_option("CMEnt.annotation_cache_dir", mode = "character",
+    default = .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
 )
-update_package_option("DMRsegal.h5_cache_dir", mode = "character",
-    default = .getOSCacheDir(file.path("R", "DMRsegal", "h5_cache"))
+update_package_option("CMEnt.h5_cache_dir", mode = "character",
+    default = .getOSCacheDir(file.path("R", "CMEnt", "h5_cache"))
 )
 update_package_option(
-    "DMRsegal.jaspar_cache_dir", mode = "character",
-    default = .getOSCacheDir(file.path("R", "DMRsegal", "jaspar_cache"))
+    "CMEnt.jaspar_cache_dir", mode = "character",
+    default = .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
 )
-update_package_option("DMRsegal.scoring_nfold", mode = "numeric", default = 5)
-update_package_option("DMRsegal.min_motif_similarity", mode = "numeric", default = 0.8)
-update_package_option("DMRsegal.jaspar_version", mode = "numeric", default = 2024)
-update_package_option("DMRsegal.jaspar_tax_group", mode = "character", default = "vertebrates")
-update_package_option("DMRsegal.jaspar_corr_threshold", mode = "numeric", default = 0.9)
-update_package_option("DMRsegal.make_debug_dir", mode = "logical", default = FALSE)
-update_package_option("DMRsegal.debug_dir", mode = "character", default = file.path(tempdir(), "DMRsegal_debug"))
+update_package_option("CMEnt.scoring_nfold", mode = "numeric", default = 5)
+update_package_option("CMEnt.min_motif_similarity", mode = "numeric", default = 0.8)
+update_package_option("CMEnt.jaspar_version", mode = "numeric", default = 2024)
+update_package_option("CMEnt.jaspar_tax_group", mode = "character", default = "vertebrates")
+update_package_option("CMEnt.jaspar_corr_threshold", mode = "numeric", default = 0.9)
+update_package_option("CMEnt.make_debug_dir", mode = "logical", default = FALSE)
+update_package_option("CMEnt.debug_dir", mode = "character", default = file.path(tempdir(), "CMEnt_debug"))

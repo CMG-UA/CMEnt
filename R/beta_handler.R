@@ -152,7 +152,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 # Check file size
                 file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
-                mem_thres <- getOption("DMRsegal.beta_in_mem_threshold_mb", 500)
+                mem_thres <- getOption("CMEnt.beta_in_mem_threshold_mb", 500)
                 if (file_size_mb < mem_thres ) {
                     private$.beta_file_in_memory <- tryCatch(
                         {
@@ -160,7 +160,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                                 private$.beta_file,
                                 header = TRUE,
                                 data.table = FALSE,
-                                showProgress = getOption("DMRsegal.verbose", 0) > 1
+                                showProgress = getOption("CMEnt.verbose", 0) > 1
                             )
 
                             # Set rownames from first column
@@ -302,7 +302,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (length(private$.beta_row_names) == 0) {
                 stop("No row names could be read from the beta input!")
             }
-            .log_success("Row names read: ", length(private$.beta_row_names), level = 2)
+            .log_info("Row names read: ", length(private$.beta_row_names), level = 2)
             private$.beta_row_names
         },
 
@@ -800,7 +800,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            sorted_locs = NULL,
                            chrom_col = "#chrom",
                            start_col = "start",
-                           njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
+                           njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
     }

@@ -1,8 +1,8 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 test_that("plotDMRsManhattan returns a ggplot object", {
     skip_if_not_installed("ggplot2")
 
-    dmrs_path <- system.file("extdata/example_output.rds", package = "DMRsegal")
+    dmrs_path <- system.file("extdata/example_output.rds", package = "CMEnt")
     if (!nzchar(dmrs_path) || !file.exists(dmrs_path)) {
         skip("Benchmark DMRs not available")
     }
@@ -73,7 +73,7 @@ test_that("Manhattan plotting spans use full chromosome lengths", {
     S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
 
-    spans <- DMRsegal:::.resolveManhattanPlotSpans(dmrs, genome = "hg19")
+    spans <- CMEnt:::.resolveManhattanPlotSpans(dmrs, genome = "hg19")
 
     expect_equal(spans$chr, c("chr1", "chr2"))
     expect_equal(spans$plot_start, c(1, 1))
@@ -95,7 +95,7 @@ test_that("Manhattan plotting region controls the plotted scope", {
     S4Vectors::mcols(dmrs)$in_promoter_of <- c("GENE1", NA, NA)
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
 
-    spans <- DMRsegal:::.resolveManhattanPlotSpans(
+    spans <- CMEnt:::.resolveManhattanPlotSpans(
         dmrs,
         genome = "hg19",
         region = "chr1:200-800"
@@ -113,7 +113,7 @@ test_that("Manhattan plotting region controls the plotted scope", {
 })
 
 test_that(".normalizeCircosRegion parses region strings", {
-    region_df <- DMRsegal:::.normalizeCircosRegion("chr7:1000-2500")
+    region_df <- CMEnt:::.normalizeCircosRegion("chr7:1000-2500")
     expect_equal(nrow(region_df), 1)
     expect_equal(region_df$chr[1], "chr7")
     expect_equal(region_df$start[1], 1000)
@@ -129,7 +129,7 @@ test_that(".selectCircosInteractions prioritizes JASPAR-matched interactions", {
         stringsAsFactors = FALSE
     )
 
-    selected <- DMRsegal:::.selectCircosInteractions(link_data, max_components = 3)
+    selected <- CMEnt:::.selectCircosInteractions(link_data, max_components = 3)
     expect_equal(nrow(selected), 3)
     expect_equal(sum(selected$has_jaspar_match), 2)
     expect_true(all(selected$has_jaspar_match[seq_len(2)]))

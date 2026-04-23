@@ -1,10 +1,10 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("scoreDMRs adds score column to DMRs", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
-    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
@@ -55,7 +55,7 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
 test_that("scoreDMRs accepts a BetaHandler input", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
-    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
     beta_handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
 
     scoring_dmrs <- scoreDMRs(
@@ -100,7 +100,7 @@ test_that("scoreDMRs score values are meaningful", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
-    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
@@ -120,11 +120,11 @@ test_that("scoreDMRs works with different nfold values", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
-    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
-    options(DMRsegal.scoring_nfold = 3)
+    options(CMEnt.scoring_nfold = 3)
     scoring_dmrs_3fold <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
@@ -133,7 +133,7 @@ test_that("scoreDMRs works with different nfold values", {
         sample_group_col = "Sample_Group"
     )
 
-    options(DMRsegal.scoring_nfold = 5)
+    options(CMEnt.scoring_nfold = 5)
     scoring_dmrs_5fold <- scoreDMRs(
         dmrs = dmrs,
         beta = beta,
@@ -151,7 +151,7 @@ test_that("scoreDMRs returns DMRs ordered by p-value", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
 
-    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
+    example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
     mcols(dmrs)$score <- NULL
 
@@ -183,7 +183,7 @@ test_that(".assignDMRBlocksFromScores detects increase-plateau-decrease blocks",
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs)
+    with_blocks <- CMEnt:::.assignDMRBlocksFromScores(dmrs)
     block_ids <- S4Vectors::mcols(with_blocks)$block_id
 
     expect_true(any(!is.na(block_ids)))
@@ -198,7 +198,7 @@ test_that(".assignDMRBlocksFromScores keeps singleton chromosome entries as NA",
     )
     S4Vectors::mcols(dmrs)$score <- c(0.6, 0.61, 0.9)
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs)
+    with_blocks <- CMEnt:::.assignDMRBlocksFromScores(dmrs)
     expect_true(is.na(S4Vectors::mcols(with_blocks)$block_id[3]))
 })
 
@@ -206,14 +206,14 @@ test_that(".computeChromosomeGapThreshold supports adaptive, fixed, and none mod
     dense_x <- seq(1, by = 10000, length.out = 100)
     sparse_x <- seq(1, by = 500000, length.out = 100)
 
-    thr_dense <- DMRsegal:::.computeChromosomeGapThreshold(dense_x, mode = "adaptive")
-    thr_sparse <- DMRsegal:::.computeChromosomeGapThreshold(sparse_x, mode = "adaptive")
+    thr_dense <- CMEnt:::.computeChromosomeGapThreshold(dense_x, mode = "adaptive")
+    thr_sparse <- CMEnt:::.computeChromosomeGapThreshold(sparse_x, mode = "adaptive")
     expect_true(thr_sparse > thr_dense)
 
-    thr_fixed <- DMRsegal:::.computeChromosomeGapThreshold(dense_x, mode = "fixed", fixed_bp = 123456)
+    thr_fixed <- CMEnt:::.computeChromosomeGapThreshold(dense_x, mode = "fixed", fixed_bp = 123456)
     expect_equal(thr_fixed, 123456)
 
-    thr_none <- DMRsegal:::.computeChromosomeGapThreshold(dense_x, mode = "none")
+    thr_none <- CMEnt:::.computeChromosomeGapThreshold(dense_x, mode = "none")
     expect_true(is.infinite(thr_none))
 })
 
@@ -235,8 +235,8 @@ test_that("distance-constrained mode removes over-bridging blocks", {
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    no_gap <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
-    fixed_gap <- DMRsegal:::.assignDMRBlocksFromScores(
+    no_gap <- CMEnt:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
+    fixed_gap <- CMEnt:::.assignDMRBlocksFromScores(
         dmrs,
         block_gap_mode = "fixed",
         block_gap_fixed_bp = 1e6
@@ -244,7 +244,7 @@ test_that("distance-constrained mode removes over-bridging blocks", {
     expect_true(any(!is.na(S4Vectors::mcols(no_gap)$block_id)))
     expect_true(all(is.na(S4Vectors::mcols(fixed_gap)$block_id)))
 
-    details <- DMRsegal:::.computeDMRBlockFormationForChromosome(
+    details <- CMEnt:::.computeDMRBlockFormationForChromosome(
         chr = "chr1",
         chr_idx = seq_along(x),
         x_chr = x,
@@ -273,8 +273,8 @@ test_that("none mode matches effectively unlimited fixed threshold", {
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    none_mode <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
-    huge_fixed <- DMRsegal:::.assignDMRBlocksFromScores(
+    none_mode <- CMEnt:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "none")
+    huge_fixed <- CMEnt:::.assignDMRBlocksFromScores(
         dmrs,
         block_gap_mode = "fixed",
         block_gap_fixed_bp = 1e12
@@ -286,7 +286,7 @@ test_that("none mode matches effectively unlimited fixed threshold", {
 })
 
 test_that("adaptive mode enforces maximum internal gap per chromosome block", {
-    dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "DMRsegal")
+    dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     if (!nzchar(dmrs_path) || !file.exists(dmrs_path)) {
         skip("Benchmark DMRs not available")
     }
@@ -295,14 +295,14 @@ test_that("adaptive mode enforces maximum internal gap per chromosome block", {
         skip("Benchmark DMRs with score not available")
     }
 
-    with_blocks <- DMRsegal:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "adaptive")
+    with_blocks <- CMEnt:::.assignDMRBlocksFromScores(dmrs, block_gap_mode = "adaptive")
     midpoints <- floor((GenomicRanges::start(with_blocks) + GenomicRanges::end(with_blocks)) / 2)
     chrs <- as.character(GenomicRanges::seqnames(with_blocks))
     block_ids <- as.character(S4Vectors::mcols(with_blocks)$block_id)
 
     for (chr in unique(chrs)) {
         chr_idx <- which(chrs == chr)
-        threshold <- DMRsegal:::.computeChromosomeGapThreshold(
+        threshold <- CMEnt:::.computeChromosomeGapThreshold(
             midpoints[chr_idx],
             mode = "adaptive",
             quantile = 0.95,

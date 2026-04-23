@@ -32,8 +32,8 @@ findDMRsFromSeeds(
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-  chunk_size = getOption("DMRsegal.chunk_size", 10000),
+  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+  chunk_size = getOption("CMEnt.chunk_size", 10000),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   .score_dmrs = TRUE,
@@ -41,7 +41,7 @@ findDMRsFromSeeds(
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
   bed_start_col = "start",
-  verbose = getOption("DMRsegal.verbose", 1),
+  verbose = getOption("CMEnt.verbose", 1),
   .load_debug = FALSE
 )
 }
@@ -100,7 +100,7 @@ findDMRsFromSeeds(
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{chunk_size}{Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "DMRsegal.chunk_size".}
+\item{chunk_size}{Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "CMEnt.chunk_size".}
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
@@ -116,7 +116,7 @@ findDMRsFromSeeds(
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
 
-\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "DMRsegal.verbose".}
+\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".}
 
 \item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 }

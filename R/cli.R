@@ -2,7 +2,7 @@
 
 .findDMRsFromSeedsCLIOptionList <- function() {
     if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for DMRsegal CLI support.", call. = FALSE)
+        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
     }
 
     list(
@@ -97,7 +97,7 @@
         optparse::make_option(
             "--genome",
             default = NULL,
-            help = "Reference genome identifier. If omitted, DMRsegal infers hg19 for 450K, 27K, and EPIC arrays, otherwise hg38."
+            help = "Reference genome identifier. If omitted, CMEnt infers hg19 for 450K, 27K, and EPIC arrays, otherwise hg38."
         ),
         optparse::make_option("--beta_row_names_file", default = NULL),
         optparse::make_option(
@@ -170,9 +170,9 @@
     )
 }
 
-.launchDMRsegalViewerCLIOptionList <- function() {
+.launchCMEntViewerCLIOptionList <- function() {
     if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for DMRsegal CLI support.", call. = FALSE)
+        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
     }
 
     list(
@@ -235,7 +235,7 @@
 #'
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
-    options("DMRsegal.verbose" = args$verbose)
+    options("CMEnt.verbose" = args$verbose)
     pheno <- .processSamplesheet(args)$samplesheet
     array <- args$array
     covariates <- args$covariates
@@ -288,8 +288,8 @@ findDMRsFromSeedsCLI <- function(args) {
     invisible(do.call(findDMRsFromSeeds, input_args))
 }
 
-launchDMRsegalViewerCLI <- function(args) {
-    invisible(launchDMRsegalViewer(
+launchCMEntViewerCLI <- function(args) {
+    invisible(launchCMEntViewer(
         output_prefix = args$output_prefix,
         launch_browser = args$launch_browser,
         port = args$port,
@@ -298,23 +298,23 @@ launchDMRsegalViewerCLI <- function(args) {
     ))
 }
 
-.dmrsegalCLICommandAliases <- function() {
+.cmentCLICommandAliases <- function() {
     c(
         findDMRsFromSeeds = "findDMRsFromSeeds",
         find = "findDMRsFromSeeds",
         find_dmrs_from_seeds = "findDMRsFromSeeds",
-        launchDMRsegalViewer = "launchDMRsegalViewer",
-        viewer = "launchDMRsegalViewer",
-        launch_dmrsegal_viewer = "launchDMRsegalViewer"
+        launchCMEntViewer = "launchCMEntViewer",
+        viewer = "launchCMEntViewer",
+        launch_cment_viewer = "launchCMEntViewer"
     )
 }
 
-.normalizeDMRsegalCLICommand <- function(command) {
+.normalizeCMEntCLICommand <- function(command) {
     if (is.null(command) || length(command) != 1 || !nzchar(command)) {
         return(NULL)
     }
 
-    aliases <- .dmrsegalCLICommandAliases()
+    aliases <- .cmentCLICommandAliases()
     if (!command %in% names(aliases)) {
         return(NULL)
     }
@@ -322,9 +322,9 @@ launchDMRsegalViewerCLI <- function(args) {
     unname(aliases[[command]])
 }
 
-.topLevelDMRsegalCLIHelp <- function(script_name = NULL) {
+.topLevelCMEntCLIHelp <- function(script_name = NULL) {
     if (is.null(script_name) || !nzchar(script_name)) {
-        script_name <- "run_dmrsegal.R"
+        script_name <- "run_cment.R"
     } else {
         script_name <- basename(script_name)
     }
@@ -333,28 +333,28 @@ launchDMRsegalViewerCLI <- function(args) {
     }
 
     paste(
-        "DMRsegal command line interface",
+        "CMEnt command line interface",
         "",
         "Usage:",
         paste0("  ", script_name, " <command> [options]"),
         "",
         "Commands:",
         "  findDMRsFromSeeds      Identify DMRs from genomic seeds.",
-        "  launchDMRsegalViewer   Launch the interactive viewer for saved outputs.",
+        "  launchCMEntViewer   Launch the interactive viewer for saved outputs.",
         "",
         "Compatibility:",
         "  Passing options without a command defaults to findDMRsFromSeeds.",
         "",
         "Examples:",
         paste0("  ", script_name, " findDMRsFromSeeds --beta beta.tsv.gz --seeds_file seeds.tsv --samplesheet samplesheet.tsv"),
-        paste0("  ", script_name, " launchDMRsegalViewer --output_prefix results/my_analysis"),
+        paste0("  ", script_name, " launchCMEntViewer --output_prefix results/my_analysis"),
         "",
         paste0("Run '", script_name, " help <command>' for command-specific options."),
         sep = "\n"
     )
 }
 
-.resolveDMRsegalCLIInvocation <- function(cli_args) {
+.resolveCMEntCLIInvocation <- function(cli_args) {
     cli_args <- as.character(cli_args)
 
     if (length(cli_args) == 0) {
@@ -372,11 +372,11 @@ launchDMRsegalViewerCLI <- function(args) {
             return(list(command = NULL, command_args = character(), top_level_help = TRUE))
         }
 
-        command <- .normalizeDMRsegalCLICommand(cli_args[[2]])
+        command <- .normalizeCMEntCLICommand(cli_args[[2]])
         if (is.null(command)) {
             stop(
-                "Unknown DMRsegal command '", cli_args[[2]], "'.\n\n",
-                .topLevelDMRsegalCLIHelp(),
+                "Unknown CMEnt command '", cli_args[[2]], "'.\n\n",
+                .topLevelCMEntCLIHelp(),
                 call. = FALSE
             )
         }
@@ -396,11 +396,11 @@ launchDMRsegalViewerCLI <- function(args) {
         ))
     }
 
-    command <- .normalizeDMRsegalCLICommand(first_arg)
+    command <- .normalizeCMEntCLICommand(first_arg)
     if (is.null(command)) {
         stop(
-            "Unknown DMRsegal command '", first_arg, "'.\n\n",
-            .topLevelDMRsegalCLIHelp(),
+            "Unknown CMEnt command '", first_arg, "'.\n\n",
+            .topLevelCMEntCLIHelp(),
             call. = FALSE
         )
     }
@@ -412,13 +412,13 @@ launchDMRsegalViewerCLI <- function(args) {
     )
 }
 
-.makeDMRsegalCLIParser <- function(command, script_name = NULL) {
+.makeCMEntCLIParser <- function(command, script_name = NULL) {
     if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for DMRsegal CLI support.", call. = FALSE)
+        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
     }
 
     if (is.null(script_name) || !nzchar(script_name)) {
-        script_name <- "run_dmrsegal.R"
+        script_name <- "run_cment.R"
     } else {
         script_name <- basename(script_name)
     }
@@ -431,13 +431,13 @@ launchDMRsegalViewerCLI <- function(args) {
             description = "Identify differentially methylated regions from genomic seeds.",
             option_list = .findDMRsFromSeedsCLIOptionList()
         ),
-        launchDMRsegalViewer = optparse::OptionParser(
-            usage = "usage: %prog launchDMRsegalViewer [options]",
+        launchCMEntViewer = optparse::OptionParser(
+            usage = "usage: %prog launchCMEntViewer [options]",
             prog = script_name,
-            description = "Launch the DMRsegal interactive viewer for a saved output prefix.",
-            option_list = .launchDMRsegalViewerCLIOptionList()
+            description = "Launch the CMEnt interactive viewer for a saved output prefix.",
+            option_list = .launchCMEntViewerCLIOptionList()
         ),
-        stop("Unsupported DMRsegal command '", command, "'.", call. = FALSE)
+        stop("Unsupported CMEnt command '", command, "'.", call. = FALSE)
     )
 }
 
@@ -459,15 +459,15 @@ launchDMRsegalViewerCLI <- function(args) {
     }
 }
 
-.runDMRsegalCLI <- function(cli_args = commandArgs(trailingOnly = TRUE), script_name = NULL) {
-    invocation <- .resolveDMRsegalCLIInvocation(cli_args)
+.runCMEntCLI <- function(cli_args = commandArgs(trailingOnly = TRUE), script_name = NULL) {
+    invocation <- .resolveCMEntCLIInvocation(cli_args)
 
     if (isTRUE(invocation$top_level_help)) {
-        cat(.topLevelDMRsegalCLIHelp(script_name), "\n")
+        cat(.topLevelCMEntCLIHelp(script_name), "\n")
         return(invisible(0L))
     }
 
-    parser <- .makeDMRsegalCLIParser(invocation$command, script_name = script_name)
+    parser <- .makeCMEntCLIParser(invocation$command, script_name = script_name)
     parsed_args <- optparse::parse_args(
         parser,
         args = invocation$command_args,
@@ -485,9 +485,9 @@ launchDMRsegalViewerCLI <- function(args) {
             .requireCLIOptions(parsed_args, c("beta", "seeds_file", "samplesheet"))
             invisible(findDMRsFromSeedsCLI(parsed_args))
         },
-        launchDMRsegalViewer = {
+        launchCMEntViewer = {
             .requireCLIOptions(parsed_args, "output_prefix")
-            invisible(launchDMRsegalViewerCLI(parsed_args))
+            invisible(launchCMEntViewerCLI(parsed_args))
         }
     )
 }

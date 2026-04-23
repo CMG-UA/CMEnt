@@ -1,10 +1,10 @@
 suppressPackageStartupMessages({
     library(testthat)
-    library(DMRsegal)
+    library(CMEnt)
     library(bsseq)
     library(GenomicRanges)
 })
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("BetaHandler can be created from BSseq object", {
     set.seed(123)

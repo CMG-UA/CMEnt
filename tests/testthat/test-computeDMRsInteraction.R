@@ -21,7 +21,7 @@
 }
 
 test_that("computeDMRsInteraction returns correct structure with valid input", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -60,7 +60,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 })
 
 test_that("computeDMRsInteraction handles GRanges input", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -79,7 +79,7 @@ test_that("computeDMRsInteraction handles GRanges input", {
 })
 
 test_that("computeDMRsInteraction works with not precomputed motifs", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .reduceAndClearMotifs(dmrs)
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
@@ -94,7 +94,7 @@ test_that("computeDMRsInteraction works with not precomputed motifs", {
 })
 
 test_that("computeDMRsInteraction handles different similarity thresholds", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_high <- suppressWarnings(computeDMRsInteraction(
@@ -120,10 +120,10 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
 })
 
 test_that("computeDMRsInteraction returns NULL when no interactions found", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
     result <- suppressWarnings(computeDMRsInteraction(
@@ -141,7 +141,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
 })
 
 test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_default <- suppressWarnings(computeDMRsInteraction(
@@ -163,7 +163,7 @@ test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
 })
 
 test_that("computeDMRsInteraction does not collapse into a giant component at strict threshold", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -181,7 +181,7 @@ test_that("computeDMRsInteraction does not collapse into a giant component at st
 })
 
 test_that("computeDMRsInteraction validates similarity values", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -198,7 +198,7 @@ test_that("computeDMRsInteraction validates similarity values", {
 })
 
 test_that("computeDMRsInteraction assigns contiguous positive component IDs when scores exist", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     mcols(dmrs)$score <- seq_along(dmrs)
@@ -225,7 +225,7 @@ test_that("computeDMRsInteraction assigns contiguous positive component IDs when
 })
 
 test_that("computeDMRsInteraction components are ordered by size", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -243,7 +243,7 @@ test_that("computeDMRsInteraction components are ordered by size", {
 })
 
 test_that("computeDMRsInteraction consensus sequences are valid", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -262,7 +262,7 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
 })
 
 test_that("computeDMRsInteraction works with different array types", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -287,7 +287,7 @@ test_that("computeDMRsInteraction works with different array types", {
 })
 
 test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -313,7 +313,7 @@ test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
 })
 
 test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -364,20 +364,131 @@ test_that("extractDMRMotifs keeps seeds grouped per DMR", {
     expect_true(all(vapply(out$pwm, ncol, integer(1)) == 12))
 })
 
+test_that("extractDMRMotifs centers seed windows when DMR starts upstream of first seed", {
+    motif_cpg_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_cpg = "cg_upstream",
+        end_cpg = "cg_seed2",
+        start_seed = "cg_seed1",
+        end_seed = "cg_seed2",
+        seeds = "cg_seed1,cg_seed2",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(110L, 130L),
+        end = c(111L, 131L),
+        row.names = c("cg_seed1", "cg_seed2"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_cpg_flank_size + motif_cpg_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    cpg_positions <- beta_locs$start - dmrs$start + 1L + motif_cpg_flank_size
+    seq_chars[cpg_positions] <- "C"
+    seq_chars[cpg_positions + 1L] <- "G"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    out <- extractDMRMotifs(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        beta_locs = beta_locs,
+        motif_cpg_flank_size = motif_cpg_flank_size
+    )
+
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACGAAAAA")
+    expect_equal(substr(consensus_seq, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 2L), "CG")
+})
+
+test_that("extractDMRMotifs ignores seed windows not centered on C", {
+    motif_cpg_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_cpg = "cg_seed1",
+        end_cpg = "cg_seed3",
+        start_seed = "cg_seed1",
+        end_seed = "cg_seed3",
+        seeds = "cg_seed1,cg_seed2,cg_seed3",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = rep("chr1", 3),
+        start = c(110L, 120L, 130L),
+        end = c(111L, 121L, 131L),
+        row.names = c("cg_seed1", "cg_seed2", "cg_seed3"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_cpg_flank_size + motif_cpg_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    center_positions <- beta_locs$start - dmrs$start + 1L + motif_cpg_flank_size
+    seq_chars[center_positions[3]] <- "C"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    out <- suppressWarnings(extractDMRMotifs(
+        dmrs,
+        genome = "hg38",
+        array = NULL,
+        beta_locs = beta_locs,
+        motif_cpg_flank_size = motif_cpg_flank_size
+    ))
+
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACAAAAAA")
+    expect_equal(substr(consensus_seq, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 1L), "C")
+})
+
+test_that("motif similarity tolerates DMRs without valid PWMs", {
+    pwm <- matrix(
+        rep(c(0, 1, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(Biostrings::DNA_BASES, NULL)
+    )
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = rep("chr1", 2),
+        ranges = IRanges::IRanges(start = c(100, 200), width = 20),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    mcols(dmrs)$pwm <- list(pwm, NULL)
+
+    sim <- CMEnt:::.extractMotifsSimilarity(dmrs, motif_cpg_flank_size = 5)
+
+    expect_equal(dim(sim), c(2L, 2L))
+    expect_equal(sim[1, 2], 0)
+    expect_equal(sim[2, 1], 0)
+})
+
 test_that("getBackgroundArrayMotif uses start-anchored CpG windows for array probes", {
-    cache_dir <- tempfile("dmrsegal-bg-cache-")
+    cache_dir <- tempfile("cment-bg-cache-")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    withr::local_options(list(DMRsegal.annotation_cache_dir = cache_dir))
+    withr::local_options(list(CMEnt.annotation_cache_dir = cache_dir))
 
     locs <- getSortedGenomicLocs(array = "450K", genome = "hg19")
     skip_if(nrow(locs) == 0, "Annotation locations not available")
     expect_true(all((locs$end - locs$start + 1L) == 2L))
 
-    bg_pwm <- getBackgroundArrayMotif(
+    bg_pwm <- suppressWarnings(getBackgroundArrayMotif(
         genome = "hg19", array = "450K",
         motif_cpg_flank_size = 5,
         .sorted_locs = locs[seq_len(1000), , drop = FALSE]
-    )
+    ))
 
     expect_true(is.matrix(bg_pwm))
     expect_equal(dim(bg_pwm), c(4, 12))

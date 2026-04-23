@@ -1,10 +1,10 @@
-citHeader("To cite DMRsegal in publications use:")
+citHeader("To cite CMEnt in publications use:")
 
 bibentry(
   bibtype = "Manual",
-  title   = "DMRsegal: Differentially Methylated Regions SEed Guided AssembLy",
+  title   = "CMEnt: Characterization of Methylation using positional ENTanglement",
   author  = c(person("Vasileios", "Lemonidis")),
   year    = "2026",
   note    = "R package version 0.99.0",
-  url     = "https://github.com/CMG-UA/DMRsegal"
+  url     = "https://github.com/CMG-UA/CMEnt"
 )

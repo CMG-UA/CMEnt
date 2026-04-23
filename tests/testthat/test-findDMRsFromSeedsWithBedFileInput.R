@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
     seed_row_names <- rownames(seeds)

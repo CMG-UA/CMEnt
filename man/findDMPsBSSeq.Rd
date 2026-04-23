@@ -2,7 +2,7 @@
 % Please edit documentation in R/helpers.R
 \name{findDMPsBSSeq}
 \alias{findDMPsBSSeq}
-\title{Helper functions for DMRsegal}
+\title{Helper functions for CMEnt}
 \usage{
 findDMPsBSSeq(
   bsseq,
@@ -45,7 +45,7 @@ findDMPsBSSeq(
 A data frame of identified DMPs with columns for chromosome, position, CpG ID, p-value, q-value, delta beta, and DMP score.
 }
 \description{
-A collection of helper functions for the DMRsegal package.
+A collection of helper functions for the CMEnt package.
 Find DMPs using DSS on BSseq objects
 
 This helper function identifies differentially methylated positions (DMPs) from a BSseq object using the DSS package. It allows for flexible specification of sample groups, covariates, and chromosome filtering.

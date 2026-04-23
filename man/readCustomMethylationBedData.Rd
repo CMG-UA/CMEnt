@@ -31,7 +31,7 @@ present in both the pheno rownames and BED file header will be processed}
 (default: "start")}
 
 \item{output_dir}{Character. Directory for caching processed files. If NULL, uses
-a default cache directory at \verb{USER_CACHE_DIR/R/DMRsegal/tabix_cache/} (default: NULL)}
+a default cache directory at \verb{USER_CACHE_DIR/R/CMEnt/tabix_cache/} (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
 efficiency (default: 50000)}
@@ -48,7 +48,7 @@ Reads methylation data from a custom BED file format, converts it to
 a tabix-indexed format for efficient random access, and creates genomic location
 indices. This function is designed to handle custom methylation array data or
 sequencing-based methylation data in BED format, making it compatible with the
-DMRsegal workflow.
+CMEnt workflow.
 }
 \details{
 The function performs the following workflow:

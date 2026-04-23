@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with ugap", {
     set.seed(1)
@@ -18,7 +18,7 @@ test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with
     conn$reason[10] <- "end-of-input"
     splits <- matrix(c(1, 8), ncol = 2)
     expect_no_error(
-        DMRsegal:::.buildConnectivityArraySinglePass(
+        CMEnt:::.buildConnectivityArraySinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno, group_inds = gi,
             pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -56,7 +56,7 @@ test_that("end-of-input is not bridged", {
         stringsAsFactors = FALSE
     )
     splits <- matrix(c(1, 3), ncol = 2)
-    ret <- DMRsegal:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildConnectivityArraySinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -100,7 +100,7 @@ test_that("upstream gap recheck skips out-of-bounds runs without warnings", {
     )
     splits <- matrix(c(1, 3), ncol = 2)
     ret <- expect_no_warning(
-        DMRsegal:::.buildConnectivityArraySinglePass(
+        CMEnt:::.buildConnectivityArraySinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno,
             group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -145,7 +145,7 @@ test_that("downstream gap recheck skips out-of-bounds runs", {
     )
     splits <- matrix(c(1, 3), ncol = 2)
     ret <- expect_no_warning(
-        DMRsegal:::.buildConnectivityArraySinglePass(
+        CMEnt:::.buildConnectivityArraySinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno,
             group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -180,12 +180,12 @@ test_that("chunk_size is capped by memory budget option", {
     gi <- list(A = 1:3, B = 4:6)
 
     withr::local_options(list(
-        DMRsegal.max_chunk_memory_mb = 1,
-        DMRsegal.chunk_memory_multiplier = 12,
-        DMRsegal.verbose = 0
+        CMEnt.max_chunk_memory_mb = 1,
+        CMEnt.chunk_memory_multiplier = 12,
+        CMEnt.verbose = 0
     ))
 
-    ret <- DMRsegal:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildConnectivityArraySinglePass(
         beta_handler = bh,
         beta_locs = locs,
         pheno = pheno,

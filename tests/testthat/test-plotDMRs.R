@@ -1,9 +1,9 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 test_that("plotDMR creates a gtable object", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -17,8 +17,8 @@ test_that("plotDMR creates a gtable object", {
 test_that("plotDMR handles invalid dmr_index", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -37,8 +37,8 @@ test_that("plotDMR handles invalid dmr_index", {
 test_that("plotDMR works without a title", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -51,8 +51,8 @@ test_that("plotDMR works without a title", {
 test_that("plotDMRs creates a combined plot", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -65,8 +65,8 @@ test_that("plotDMRs creates a combined plot", {
 
 test_that("plotDMRs handles NULL dmr_indices", {
     skip_if_not_installed("ggplot2")
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -79,8 +79,8 @@ test_that("plotDMRs handles NULL dmr_indices", {
 test_that("plotDMRs respects ncol parameter", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -95,8 +95,8 @@ test_that("plotDMRs respects ncol parameter", {
 test_that("plotDMR handles DMRs with no extended CpGs", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -114,8 +114,8 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
 test_that("plotDMR handles DMRs with multiple seeds", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -180,7 +180,7 @@ test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangl
     S4Vectors::mcols(dmrs)$in_promoter_of <- NA_character_
     S4Vectors::mcols(dmrs)$in_gene_body_of <- NA_character_
 
-    ret <- DMRsegal:::.plotDMRStructure(
+    ret <- CMEnt:::.plotDMRStructure(
         dmrs = dmrs,
         dmr_index = 1,
         beta_locs = sorted_locs,
@@ -210,8 +210,8 @@ test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangl
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
 
@@ -234,7 +234,7 @@ test_that(".plotPWM clarifies when a motif logo is consensus-only", {
     S4Vectors::mcols(dmr)$consensus_seq <- "AAAAAAAAAAAA"
     S4Vectors::mcols(dmr)$seeds <- "cg00000001"
 
-    p <- DMRsegal:::.plotPWM(dmr, genome = "hg19", array = NULL, beta_locs = NULL)
+    p <- CMEnt:::.plotPWM(dmr, genome = "hg19", array = NULL, beta_locs = NULL)
 
     expect_s3_class(p, "ggplot")
     expect_match(p$labels$subtitle, "Consensus-only logo", fixed = TRUE)
@@ -245,8 +245,8 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
     skip_if_not_installed("ggplot2")
     skip_if_not_installed("BSgenome.Hsapiens.UCSC.hg19")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "DMRsegal", mustWork = FALSE))) {
+    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
         skip("Benchmark DMRs not available")
     }
     pheno <- loadExampleInputData("pheno")

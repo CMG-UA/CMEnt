@@ -1,8 +1,8 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 test_that("validateOutputPrefix detects missing files", {
     temp_dir <- tempdir()
     fake_prefix <- file.path(temp_dir, "nonexistent_analysis")
-    result <- DMRsegal:::.validateOutputPrefix(fake_prefix)
+    result <- CMEnt:::.validateOutputPrefix(fake_prefix)
     expect_false(result$valid)
     expect_true(length(result$errors) >= 2)
     expect_true(any(grepl("DMRs file not found", result$errors)))
@@ -43,7 +43,7 @@ test_that("validateOutputPrefix warns about missing optional files", {
         array = "450K"
     ), meta_file)
 
-    result <- DMRsegal:::.validateOutputPrefix(prefix)
+    result <- CMEnt:::.validateOutputPrefix(prefix)
     expect_true(result$valid)
     expect_equal(length(result$errors), 0)
     expect_true(length(result$warnings) >= 2)
@@ -55,16 +55,16 @@ test_that("validateOutputPrefix warns about missing optional files", {
 })
 
 test_that("Shiny module UI functions return tagList", {
-    expect_s3_class(DMRsegal:::.overviewUI("test"), "shiny.tag.list")
-    expect_s3_class(DMRsegal:::.plotDMRUI("test"), "shiny.tag.list")
-    expect_s3_class(DMRsegal:::.plotDMRsUI("test"), "shiny.tag.list")
-    expect_s3_class(DMRsegal:::.manhattanUI("test"), "shiny.tag.list")
-    expect_s3_class(DMRsegal:::.blockFormationUI("test"), "shiny.tag.list")
-    expect_s3_class(DMRsegal:::.circosUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.overviewUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.plotDMRUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.plotDMRsUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.manhattanUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.blockFormationUI("test"), "shiny.tag.list")
+    expect_s3_class(CMEnt:::.circosUI("test"), "shiny.tag.list")
 })
 
 test_that("Manhattan UI exposes an optional plotting region input", {
-    ui_html <- as.character(DMRsegal:::.manhattanUI("test"))
+    ui_html <- as.character(CMEnt:::.manhattanUI("test"))
 
     expect_match(ui_html, "Plotting Region (optional)", fixed = TRUE)
     expect_match(ui_html, "chr7:100000-2000000", fixed = TRUE)
@@ -73,37 +73,37 @@ test_that("Manhattan UI exposes an optional plotting region input", {
 test_that("Viewer UI uses shinycssloaders instead of the custom busy overlay", {
     skip_if_not_installed("shinycssloaders")
 
-    ui <- DMRsegal:::.createViewerUI()
+    ui <- CMEnt:::.createViewerUI()
     ui_html <- as.character(ui)
 
     expect_true(grepl("shiny-spinner-output-container", ui_html, fixed = TRUE))
-    expect_false(grepl("dmrsegal-viewer-busy-overlay", ui_html, fixed = TRUE))
+    expect_false(grepl("cment-viewer-busy-overlay", ui_html, fixed = TRUE))
     expect_false(grepl("busy-overlay.js", ui_html, fixed = TRUE))
 })
 
 test_that("Viewer spinner helpers delegate to shinycssloaders page spinners", {
-    show_helper <- paste(deparse(body(DMRsegal:::.viewerShowPageSpinner)), collapse = "\n")
-    hide_helper <- paste(deparse(body(DMRsegal:::.viewerHidePageSpinner)), collapse = "\n")
+    show_helper <- paste(deparse(body(CMEnt:::.viewerShowPageSpinner)), collapse = "\n")
+    hide_helper <- paste(deparse(body(CMEnt:::.viewerHidePageSpinner)), collapse = "\n")
 
     expect_match(show_helper, "showPageSpinner", fixed = TRUE)
     expect_match(hide_helper, "hidePageSpinner", fixed = TRUE)
 })
 
 test_that("Viewer no longer ships the custom busy overlay script", {
-    script_path <- test_path("..", "..", "inst", "shiny", "DMRsegalViewer", "www", "busy-overlay.js")
+    script_path <- test_path("..", "..", "inst", "shiny", "CMEntViewer", "www", "busy-overlay.js")
     expect_false(file.exists(script_path))
 })
 
 test_that("Circos viewer falls back to lightweight interactive settings without precomputed interactions", {
     params <- list(mode = "auto", method = "components")
 
-    sanitized <- DMRsegal:::.sanitizeViewerCircosParams(
+    sanitized <- CMEnt:::.sanitizeViewerCircosParams(
         params,
         has_precomputed_interactions = FALSE
     )
 
-    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(list()))
-    expect_equal(DMRsegal:::.circosViewerAutoMethodChoices(FALSE), c("blocks" = "blocks", "quick" = "quick"))
+    expect_false(CMEnt:::.viewerHasPrecomputedCircosInteractions(list()))
+    expect_equal(CMEnt:::.circosViewerAutoMethodChoices(FALSE), c("blocks" = "blocks", "quick" = "quick"))
     expect_equal(sanitized$method, "blocks")
     expect_false(sanitized$query_components_with_jaspar)
     expect_false(sanitized$use_precomputed_interactions)
@@ -127,17 +127,17 @@ test_that("Circos viewer recognizes usable precomputed interaction caches", {
         interactions = data.frame(component_id = 1L, index1 = 1L, index2 = 2L)
     )
 
-    expect_true(DMRsegal:::.viewerHasUsableCircosComponents(precomputed$components))
-    expect_false(DMRsegal:::.viewerHasUsableCircosComponents(broken_components$components))
-    expect_true(DMRsegal:::.viewerHasPrecomputedCircosCache(precomputed))
-    expect_true(DMRsegal:::.viewerHasPrecomputedCircosCache(empty_cache))
-    expect_false(DMRsegal:::.viewerHasPrecomputedCircosCache(list()))
-    expect_true(DMRsegal:::.viewerHasPrecomputedCircosInteractions(precomputed))
-    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(empty_cache))
-    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(list()))
-    expect_false(DMRsegal:::.viewerHasPrecomputedCircosInteractions(broken_components))
+    expect_true(CMEnt:::.viewerHasUsableCircosComponents(precomputed$components))
+    expect_false(CMEnt:::.viewerHasUsableCircosComponents(broken_components$components))
+    expect_true(CMEnt:::.viewerHasPrecomputedCircosCache(precomputed))
+    expect_true(CMEnt:::.viewerHasPrecomputedCircosCache(empty_cache))
+    expect_false(CMEnt:::.viewerHasPrecomputedCircosCache(list()))
+    expect_true(CMEnt:::.viewerHasPrecomputedCircosInteractions(precomputed))
+    expect_false(CMEnt:::.viewerHasPrecomputedCircosInteractions(empty_cache))
+    expect_false(CMEnt:::.viewerHasPrecomputedCircosInteractions(list()))
+    expect_false(CMEnt:::.viewerHasPrecomputedCircosInteractions(broken_components))
 
-    interaction_args <- DMRsegal:::.viewerCircosInteractionArgs(
+    interaction_args <- CMEnt:::.viewerCircosInteractionArgs(
         list(),
         has_precomputed_interactions = FALSE
     )
@@ -149,19 +149,19 @@ test_that("Circos viewer recognizes usable precomputed interaction caches", {
 })
 
 test_that("Circos viewer status UI reflects cache availability and actions", {
-    missing_status <- DMRsegal:::.circosInteractionStatusUI(
+    missing_status <- CMEnt:::.circosInteractionStatusUI(
         ns = shiny::NS("test"),
         has_precomputed_cache = FALSE,
         has_precomputed_interactions = FALSE,
         is_computing_interactions = FALSE
     )
-    empty_status <- DMRsegal:::.circosInteractionStatusUI(
+    empty_status <- CMEnt:::.circosInteractionStatusUI(
         ns = shiny::NS("test"),
         has_precomputed_cache = TRUE,
         has_precomputed_interactions = FALSE,
         is_computing_interactions = FALSE
     )
-    ready_status <- DMRsegal:::.circosInteractionStatusUI(
+    ready_status <- CMEnt:::.circosInteractionStatusUI(
         ns = shiny::NS("test"),
         has_precomputed_cache = TRUE,
         has_precomputed_interactions = TRUE,
@@ -176,7 +176,7 @@ test_that("Circos viewer status UI reflects cache availability and actions", {
 })
 
 test_that("Circos UI renders the static in-app viewer", {
-    ui <- DMRsegal:::.circosUI("test")
+    ui <- CMEnt:::.circosUI("test")
     ui_html <- as.character(ui)
 
     expect_match(ui_html, "This viewer uses the static circlize plot in the app.", fixed = TRUE)
@@ -201,7 +201,7 @@ test_that("plotly viewer preserves Manhattan chromosome tick labels", {
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2", NA)
     S4Vectors::mcols(dmrs)$block_id <- c("chr1_block1", "chr1_block1", NA)
 
-    widget <- DMRsegal:::.configureViewerPlotly(
+    widget <- CMEnt:::.configureViewerPlotly(
         plotDMRsManhattan(dmrs, genome = "hg19")
     )
     built_widget <- plotly::plotly_build(widget)
@@ -224,7 +224,7 @@ test_that("viewer background Manhattan task forwards region scope", {
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2")
 
     expect_error(
-        DMRsegal:::.viewerRunBackgroundTaskFromData(
+        CMEnt:::.viewerRunBackgroundTaskFromData(
             task_type = "manhattan_plot",
             data = list(dmrs = dmrs, genome = "hg19"),
             params = list(
@@ -256,7 +256,7 @@ test_that("plotly viewer converts full-height block rectangles to finite ranges"
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    widget <- DMRsegal:::.configureViewerPlotly(
+    widget <- CMEnt:::.configureViewerPlotly(
         plotDMRBlockFormation(
             dmrs = dmrs,
             chromosome = "chr1",
@@ -293,7 +293,7 @@ test_that("plotly viewer keeps block-formation line traces ordered", {
     )
     S4Vectors::mcols(dmrs)$score <- y
 
-    widget <- DMRsegal:::.configureViewerPlotly(
+    widget <- CMEnt:::.configureViewerPlotly(
         plotDMRBlockFormation(
             dmrs = dmrs,
             chromosome = "chr1",
@@ -325,7 +325,7 @@ test_that("loadViewerCircosCache treats blank cache files as empty tables", {
     writeLines("", interactions_file)
     writeLines("", components_file)
 
-    cache <- DMRsegal:::.loadViewerCircosCache(prefix)
+    cache <- CMEnt:::.loadViewerCircosCache(prefix)
 
     expect_s3_class(cache$interactions, "data.frame")
     expect_s3_class(cache$components, "data.frame")
@@ -350,7 +350,7 @@ test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", 
         end = c(100L, 200L, 300L),
         row.names = c("cg1", "cg2", "cg3")
     )
-    beta_handler <- DMRsegal::getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    beta_handler <- CMEnt::getBetaHandler(beta = beta, sorted_locs = sorted_locs)
     pheno <- data.frame(
         Sample_Group = c("case", "control"),
         row.names = c("S1", "S2")
@@ -364,7 +364,7 @@ test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", 
 
     heatmap_data <- NULL
     expect_warning(
-        heatmap_data <- DMRsegal:::.prepareCircosHeatmapData(
+        heatmap_data <- CMEnt:::.prepareCircosHeatmapData(
             dmrs = dmrs,
             beta_handler = beta_handler,
             pheno = pheno,
@@ -383,13 +383,13 @@ test_that("plotDMR restores showtext auto hooks after drawing", {
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
     array_type <- loadExampleInputDataChr5And11("array_type")
-    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "DMRsegal"))
+    dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
         skip("No DMRs available for testing")
     }
 
-    orig_showtext_auto <- DMRsegal:::.isShowtextAutoEnabled()
+    orig_showtext_auto <- CMEnt:::.isShowtextAutoEnabled()
     orig_device <- grDevices::dev.cur()
     on.exit({
         showtext::showtext_auto(enable = orig_showtext_auto)
@@ -399,7 +399,7 @@ test_that("plotDMR restores showtext auto hooks after drawing", {
     }, add = TRUE)
 
     showtext::showtext_auto(enable = FALSE)
-    expect_false(DMRsegal:::.isShowtextAutoEnabled())
+    expect_false(CMEnt:::.isShowtextAutoEnabled())
 
     expect_no_error(
         plotDMR(
@@ -414,5 +414,5 @@ test_that("plotDMR restores showtext auto hooks after drawing", {
         )
     )
 
-    expect_false(DMRsegal:::.isShowtextAutoEnabled())
+    expect_false(CMEnt:::.isShowtextAutoEnabled())
 })

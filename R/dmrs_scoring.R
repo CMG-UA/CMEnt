@@ -1,18 +1,18 @@
 #' @keywords internal
 #' @noRd
-.buildStratifiedFolds <- function(groups, nfold = getOption("DMRsegal.scoring_nfold", 5)) {
+.buildStratifiedFolds <- function(groups, nfold = getOption("CMEnt.scoring_nfold", 5)) {
     groups <- as.factor(groups)
     if (nlevels(groups) < 2) {
         stop("scoring requires at least two classes in '__casecontrol__'.")
     }
-    set.seed(getOption("DMRsegal.random_seed", 42))
+    set.seed(getOption("CMEnt.random_seed", 42))
     group_folds <- split(seq_along(groups), groups)
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
             gsize <- length(group_folds[[g]])
             stop(paste0(
                 "Number of samples in group (", gsize, ") '", g, "' is less than nfold = ", nfold,
-                ". Cannot perform stratified cross-prediction. Reduce nfold using options(DMRsegal.scoring_nfold=", gsize,
+                ". Cannot perform stratified cross-prediction. Reduce nfold using options(CMEnt.scoring_nfold=", gsize,
                 ") or increase number of samples in this group."
             ))
         }
@@ -27,7 +27,7 @@
 
 #' @keywords internal
 #' @noRd
-.performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("DMRsegal.scoring_nfold", 5)) {
+.performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("CMEnt.scoring_nfold", 5)) {
     groups <- as.factor(groups)
     if (ncol(beta_mat) != length(groups)) {
         stop(
@@ -660,8 +660,8 @@
     block_gap_min_bp = 250000,
     block_gap_max_bp = 5000000,
     return_details = FALSE,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    verbose = getOption("DMRsegal.verbose", 1L)
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    verbose = getOption("CMEnt.verbose", 1L)
 ) {
     if (!inherits(dmrs, "GRanges")) {
         stop("dmrs must be a GRanges object.")
@@ -832,7 +832,7 @@
 #' @details
 #' The function uses stratified k-fold cross-prediction to ensure balanced representation
 #' of sample groups in each fold. The number of folds can be controlled using the
-#' option "DMRsegal.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
+#' option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
 #' SVM is trained on the beta values of CpG sites within each DMR.
 #'
 #' The `score` combines classification correctness and margin confidence,
@@ -847,7 +847,7 @@
 #' pheno <- loadExampleInputData("pheno")
 #'
 #' # Load pre-computed DMRs
-#' dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "DMRsegal"))
+#' dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "CMEnt"))
 #'
 #' # score DMRs
 #' scoring_dmrs <- scoreDMRs(
@@ -868,10 +868,10 @@ scoreDMRs <- function(
     block_gap_multiplier = 1.5,
     block_gap_min_bp = 2500,
     block_gap_max_bp = 50000,
-    njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1)),
-    verbose = getOption("DMRsegal.verbose", 1L)
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    verbose = getOption("CMEnt.verbose", 1L)
 ) {
-    options("DMRsegal.verbose" = verbose)
+    options("CMEnt.verbose" = verbose)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
@@ -894,7 +894,7 @@ scoreDMRs <- function(
         stop("scoring requires at least two classes in '__casecontrol__'.")
     }
     groups <- pheno[, "__casecontrol__"]
-    nfold <- getOption("DMRsegal.scoring_nfold", 5)
+    nfold <- getOption("CMEnt.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     dmr_cpgs <- base::strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)

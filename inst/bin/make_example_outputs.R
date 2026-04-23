@@ -9,10 +9,10 @@ if (length(files_to_make) == 0) {
     quit(save = "no")
 }
 progressr::handlers("cli")
-options("DMRsegal.verbose" = 1)
-options("DMRsegal.njobs" = 8)
+options("CMEnt.verbose" = 1)
+options("CMEnt.njobs" = 8)
 for (case in names(files_to_make)) {
-    dmrsegal_file <- files_to_make[[case]]
+    cment_file <- files_to_make[[case]]
     if (case == "example_outputChr5And11") {
         fun <- loadExampleInputDataChr5And11
     } else {
@@ -22,7 +22,7 @@ for (case in names(files_to_make)) {
     dmps <- fun("dmps")
     pheno <- fun("pheno")
     pheno[, "casecontrol"] <- pheno$Sample_Group == "cancer"
-    dmrs_dmrsegal <- progressr::with_progress(DMRsegal::findDMRsFromSeeds(
+    dmrs_cment <- progressr::with_progress(CMEnt::findDMRsFromSeeds(
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -42,5 +42,5 @@ for (case in names(files_to_make)) {
         output_prefix = paste0("inst/extdata/", case),
         .score_dmrs = TRUE
     ))
-    saveRDS(dmrs_dmrsegal, dmrsegal_file)
+    saveRDS(dmrs_cment, cment_file)
 }

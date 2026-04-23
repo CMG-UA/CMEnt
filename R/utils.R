@@ -237,7 +237,7 @@
 # Lightweight styled logging helpers -----------------------------------------
 
 # Internal state for timing steps
-.DMRsegal_log_env <- local({ # nolint
+.CMEnt_log_env <- local({ # nolint
     e <- new.env(parent = emptyenv())
     e$last_step_time <- list()
     e
@@ -333,11 +333,11 @@
 #' @keywords internal
 #' @noRd
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 0) < level) {
+    if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
-    if (level <= length(.DMRsegal_log_env$last_step_time)) {
-        dur <- .fmt_dur(.DMRsegal_log_env$last_step_time[[level]])
+    if (level <= length(.CMEnt_log_env$last_step_time)) {
+        dur <- .fmt_dur(.CMEnt_log_env$last_step_time[[level]])
     } else {
         .log_warn("No previous step time recorded for level ", level, " to calculate duration.")
         dur <- ""
@@ -355,7 +355,7 @@
 #' @keywords internal
 #' @noRd
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 0) < level) {
+    if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
     # Suppress output from parallel workers
@@ -374,10 +374,10 @@
 #' @keywords internal
 #' @noRd
 .log_step <- function(..., .envir = parent.frame(), level = 1) {
-    if (getOption("DMRsegal.verbose", 0) < level) {
+    if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
-    .DMRsegal_log_env$last_step_time[[level]] <- Sys.time() # nolint
+    .CMEnt_log_env$last_step_time[[level]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
     message(paste(lead, msg))
@@ -447,12 +447,12 @@
 
 .getTabixCacheDir <- function(output_dir) {
     if (is.null(output_dir)) {
-        use_cache <- getOption("DMRsegal.bed_cache_dir", NULL)
+        use_cache <- getOption("CMEnt.bed_cache_dir", NULL)
         if (!is.null(use_cache) && !isFALSE(use_cache)) {
             if (is.character(use_cache)) {
                 cache_dir <- use_cache
             } else {
-                cache_dir <- .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
+                cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
             }
         } else {
             cache_dir <- tempdir()
@@ -580,7 +580,7 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     if (is.data.frame(obj)) {
         return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
     }
-    cache_dir <- getOption("DMRsegal.h5_cache_dir", .getOSCacheDir(file.path("R", "DMRsegal", "h5_cache")))
+    cache_dir <- getOption("CMEnt.h5_cache_dir", .getOSCacheDir(file.path("R", "CMEnt", "h5_cache")))
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -605,7 +605,7 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #'
 #' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
+#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `USER_CACHE_DIR/R/CMEnt/tabix_cache/` (default: NULL)
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
@@ -619,7 +619,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     }
     cache_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
 
-    if (file.exists(cache_file) && getOption("DMRsegal.use_tabix_cache", FALSE)) {
+    if (file.exists(cache_file) && getOption("CMEnt.use_tabix_cache", FALSE)) {
         return(readRDS(cache_file))
     }
     renaming <- c("chr", "start")
@@ -647,7 +647,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             chunk_size = chunk_size
         )
     }
-    if (getOption("DMRsegal.use_tabix_cache", FALSE)) {
+    if (getOption("CMEnt.use_tabix_cache", FALSE)) {
         saveRDS(sorted_locs, file = cache_file)
     }
     sorted_locs
@@ -660,7 +660,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' a tabix-indexed format for efficient random access, and creates genomic location
 #' indices. This function is designed to handle custom methylation array data or
 #' sequencing-based methylation data in BED format, making it compatible with the
-#' DMRsegal workflow.
+#' CMEnt workflow.
 #'
 #' @param bed_file Character. Path to the input BED file containing methylation data.
 #'   The file should have chromosome and position columns, plus sample columns with
@@ -673,7 +673,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `USER_CACHE_DIR/R/DMRsegal/tabix_cache/` (default: NULL)
+#'   a default cache directory at `USER_CACHE_DIR/R/CMEnt/tabix_cache/` (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
 #'
@@ -895,7 +895,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #'
 #' The chunk-based processing ensures that even very large beta files (millions of CpGs)
 #' can be converted without running out of memory. The cache directory is located at
-#' \code{tempdir()/DMRsegal_tabix_cache/} and persists for the duration of the c session.
+#' \code{tempdir()/CMEnt_tabix_cache/} and persists for the duration of the c session.
 #' Files are named based on the MD5 hash of the input beta file, ensuring that identical
 #' files reuse the same cached version.
 #'
@@ -943,8 +943,8 @@ convertBetaToTabix <- function(beta_file,
     if (is.null(output_file)) {
         # Create cache directory in temp folder
         cache_dir <- getOption(
-            "DMRsegal.tabix_cache_dir",
-            .getOSCacheDir(file.path("R", "DMRsegal", "tabix_cache"))
+            "CMEnt.tabix_cache_dir",
+            .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
         )
         if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -956,11 +956,11 @@ convertBetaToTabix <- function(beta_file,
         output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
 
         # Check if tabix file already exists in cache
-        if (getOption("DMRsegal.use_tabix_cache", TRUE) && file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
+        if (getOption("CMEnt.use_tabix_cache", TRUE) && file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
             .log_info("Using cached tabix file: ", basename(output_file), level = 2)
             return(output_file)
         }
-        if (!getOption("DMRsegal.use_tabix_cache", TRUE)) {
+        if (!getOption("CMEnt.use_tabix_cache", TRUE)) {
             output_file <- file.path(tempdir(), paste0("beta_", beta_hash, ".bed.gz"))
             .log_info("Tabix caching disabled; will create new tabix file at a temporary location: ", basename(output_file), level = 2)
         }
@@ -1307,7 +1307,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     .log_step("Reading beta file", beta_file, level = 2)
     # Read the beta file
-    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("DMRsegal.verbose", 0) > 1)
+    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("CMEnt.verbose", 0) > 1)
 
     # Get row names (CpG IDs) from first column
     cpg_ids <- beta_data[[1]]
@@ -1442,8 +1442,8 @@ sortBetaFileByCoordinates <- function(beta_file,
         return(granges)
     }
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir",
-        .getOSCacheDir(file.path("DMRsegal", "annotations"))
+        "CMEnt.annotation_cache_dir",
+        .getOSCacheDir(file.path("CMEnt", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1547,8 +1547,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     }
     array <- strex::match_arg(array, ignore_case = TRUE)
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+        "CMEnt.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -1560,7 +1560,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         array, "_", genome,
         "_locations.rds"
     ))
-    if (getOption("DMRsegal.use_annotation_cache", TRUE) && file.exists(cache_file)) {
+    if (getOption("CMEnt.use_annotation_cache", TRUE) && file.exists(cache_file)) {
         .log_info("Using cached annotation file: ", basename(cache_file), level = 3)
         locs <- readRDS(cache_file)
         return(locs)
@@ -1934,8 +1934,8 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         return(unlist(cpg_counts))
     }
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+        "CMEnt.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2157,7 +2157,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
 #'   to define promoter region (default: 200)
 #' @param njobs Integer. Number of parallel jobs used to annotate promoter and
-#'   gene-body overlaps (default: `getOption("DMRsegal.njobs")`)
+#'   gene-body overlaps (default: `getOption("CMEnt.njobs")`)
 #'
 #' @return The input Dataframe/GRanges object with additional metadata columns:
 #' \itemize{
@@ -2166,7 +2166,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 #' }
 #'
 #' @details
-#' The function uses genome-appropriate TxDb packages. For `hs1`, DMRsegal
+#' The function uses genome-appropriate TxDb packages. For `hs1`, CMEnt
 #' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
 #' Gene symbols are retrieved from the appropriate org.*.eg.db package.
 #' Multiple overlapping genes are concatenated with commas.
@@ -2193,10 +2193,10 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
 annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200,
-                                  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))) {
+                                  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
     cache_dir <- getOption(
-        "DMRsegal.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "DMRsegal", "annotations"))
+        "CMEnt.annotation_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
     )
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
@@ -2246,7 +2246,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     # Load them from cache if available
     suppressMessages({
         genes_file <- file.path(cache_dir, paste0("genes_", genome, ".rds"))
-        if (file.exists(genes_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
+        if (file.exists(genes_file) && getOption("CMEnt.use_annotation_cache", TRUE)) {
             .log_info("Loading cached genes from ", genes_file, level = 2)
             genes <- readRDS(genes_file)
         } else {
@@ -2278,7 +2278,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             )
         }
         promoters_file <- file.path(cache_dir, paste0("promoters_", genome, ".rds"))
-        if (file.exists(promoters_file) && getOption("DMRsegal.use_annotation_cache", TRUE)) {
+        if (file.exists(promoters_file) && getOption("CMEnt.use_annotation_cache", TRUE)) {
             .log_info("Loading cached promoters from ", promoters_file, level = 2)
             promoters <- readRDS(promoters_file)
         } else {
@@ -2326,7 +2326,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
         )
     )
     if (!is.null(njobs) && is.finite(njobs) && as.integer(njobs) > 1L) {
-        withr::local_options(list(DMRsegal.njobs = as.integer(njobs)))
+        withr::local_options(list(CMEnt.njobs = as.integer(njobs)))
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
         annotation_results <- future.apply::future_lapply(
@@ -2407,7 +2407,7 @@ convertToGRanges <- function(obj, genome) {
     obj
 }
 
-.serializedOutputPrefix <- "DMRsegal:serialized_base64:"
+.serializedOutputPrefix <- "CMEnt:serialized_base64:"
 
 #' @keywords internal
 #' @noRd
@@ -2497,7 +2497,7 @@ convertToDataFrame <- function(gr) {
 }
 
 .already_logged_dir <- tempdir()
-.already_logged_file <- file.path(.already_logged_dir, "dmrsegal_already_logged_parallel.txt")
+.already_logged_file <- file.path(.already_logged_dir, "cment_already_logged_parallel.txt")
 #' @keywords internal
 #' @noRd
 .cleanupParallelState <- function() {
@@ -2509,13 +2509,13 @@ convertToDataFrame <- function(gr) {
 
     # Optional deep cleanup for stale multisession clusters.
     # Disabled by default because stopping dead clusters may block.
-    if (isTRUE(getOption("DMRsegal.force_cluster_cleanup", FALSE))) {
+    if (isTRUE(getOption("CMEnt.force_cluster_cleanup", FALSE))) {
         reg <- tryCatch(
             getFromNamespace("clusterRegistry", "future"),
             error = function(e) NULL
         )
         if (is.list(reg) && is.function(reg$stopCluster)) {
-            timeout_sec <- getOption("DMRsegal.cluster_cleanup_timeout_sec", 2)
+            timeout_sec <- getOption("CMEnt.cluster_cleanup_timeout_sec", 2)
             # Keep cleanup bounded so we don't stall before any progress is shown.
             setTimeLimit(elapsed = timeout_sec, transient = TRUE)
             on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
@@ -2542,7 +2542,7 @@ convertToDataFrame <- function(gr) {
         future::plan(future::sequential)
         return()
     }
-    njobs <- getOption("DMRsegal.njobs")
+    njobs <- getOption("CMEnt.njobs")
     if (njobs < 0) {
         njobs <- future::availableCores() + njobs
     }
@@ -2651,11 +2651,11 @@ convertToDataFrame <- function(gr) {
 #' @keywords internal
 #' @noRd
 .summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
-    min_nvalid_q10 <- getOption("DMRsegal.auto_pval_min_nvalid_q10", 10)
-    corr_delta_threshold <- getOption("DMRsegal.auto_pval_corr_delta_threshold", 0.10)
-    skew_threshold <- getOption("DMRsegal.auto_pval_skew_threshold", 2)
-    excess_kurtosis_threshold <- getOption("DMRsegal.auto_pval_excess_kurtosis_threshold", 7)
-    pilot_max_pairs <- as.integer(getOption("DMRsegal.auto_pval_pilot_pairs", 2000L))
+    min_nvalid_q10 <- getOption("CMEnt.auto_pval_min_nvalid_q10", 10)
+    corr_delta_threshold <- getOption("CMEnt.auto_pval_corr_delta_threshold", 0.10)
+    skew_threshold <- getOption("CMEnt.auto_pval_skew_threshold", 2)
+    excess_kurtosis_threshold <- getOption("CMEnt.auto_pval_excess_kurtosis_threshold", 7)
+    pilot_max_pairs <- as.integer(getOption("CMEnt.auto_pval_pilot_pairs", 2000L))
     pilot_max_pairs <- max(1L, pilot_max_pairs)
 
     q10_n_valid <- if (length(n_valid) > 0L) {
@@ -2768,7 +2768,7 @@ convertToDataFrame <- function(gr) {
     )
 }
 
-#' Load DMRsegal Data Resources
+#' Load CMEnt Data Resources
 #'
 #' @description Helper function to load data resources from the package data folder.
 #' Resources are lazy loaded when the package is loaded, so they exist in the package
@@ -2823,11 +2823,11 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
 
     # First, try using data() to load the resource
     # This works even during coverage-instrumented runs.
-    verbose_setting <- getOption("DMRsegal.verbose", 1)
+    verbose_setting <- getOption("CMEnt.verbose", 1)
     tryCatch(
         {
             # Suppress data() output
-            invisible(utils::data(list = resource, package = "DMRsegal", envir = environment()))
+            invisible(utils::data(list = resource, package = "CMEnt", envir = environment()))
             if (exists(resource, inherits = FALSE)) {
                 if (verbose_setting >= 2) {
                     .log_info("Loaded ", resource, " using data()", level = 2)
@@ -2841,16 +2841,16 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
     )
 
     # Second, check if the resource exists in the package namespace (lazy loaded)
-    if (exists(resource, envir = asNamespace("DMRsegal"), inherits = FALSE)) {
+    if (exists(resource, envir = asNamespace("CMEnt"), inherits = FALSE)) {
         if (verbose_setting >= 2) {
             .log_info("Loading ", resource, " from package namespace (lazy loaded)", level = 2)
         }
-        return(get(resource, envir = asNamespace("DMRsegal"), inherits = FALSE))
+        return(get(resource, envir = asNamespace("CMEnt"), inherits = FALSE))
     }
 
     # Third, try to load from data file directly
     data_file <- paste0(resource, ".rda")
-    data_path <- system.file("data", data_file, package = "DMRsegal", mustWork = FALSE)
+    data_path <- system.file("data", data_file, package = "CMEnt", mustWork = FALSE)
     if (file.exists(data_path)) {
         if (verbose_setting >= 2) {
             .log_info("Loading ", resource, " from package data file", level = 2)
@@ -2878,10 +2878,10 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
                     cache <- ExperimentHub::getExperimentHubOption("CACHE")
                     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
                     eh <- ExperimentHub::ExperimentHub()
-                    # Query for DMRsegaldata resources
-                    dmrsegal_resources <- AnnotationHub::query(eh, "DMRsegaldata")
+                    # Query for CMEntdata resources
+                    cment_resources <- AnnotationHub::query(eh, "CMEntdata")
                     # Find the specific resource
-                    resource_match <- dmrsegal_resources[grepl(resource, dmrsegal_resources$title, ignore.case = TRUE)]
+                    resource_match <- cment_resources[grepl(resource, cment_resources$title, ignore.case = TRUE)]
                     if (length(resource_match) > 0) {
                         if (verbose_setting >= 2) {
                             .log_success("Found resource in ExperimentHub", level = 2)

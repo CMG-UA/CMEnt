@@ -1,12 +1,12 @@
 ---
-title: "DMRsegal vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data"
-author: "DMRsegal Package"
+title: "CMEnt vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data"
+author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output:
     BiocStyle::html_document:
         code_folding: hide
 vignette: >
-  %\VignetteIndexEntry{DMRsegal vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data}
+  %\VignetteIndexEntry{CMEnt vs DMRcate vs dmrseq vs hummingbird on Simulated ONT BSseq Data}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -17,8 +17,8 @@ knitr::opts_chunk$set(
     echo = TRUE,
     warning = FALSE,
     message = FALSE,
-    fig.width = 12,
-    fig.height = 8,
+    fig.width = 8,
+    fig.height = 6,
     dpi = 300
 )
 ```
@@ -29,7 +29,7 @@ This vignette benchmarks DMR detection on simulated ONT-style methylation data w
 
 Methods:
 
-- **DMRsegal** seed-guided, correlation-based DMR assembly
+- **CMEnt** seed-guided, correlation-based DMR assembly
 - **DMRcate** Gaussian Kernel smoothing-based DMR detection
 - **dmrseq** BSseq-native region-level inference
 - **hummingbird** HMM-based DMR detection
@@ -41,7 +41,7 @@ Data:
 
 Primary goal:
 
-- assess DMRsegal performance against ground truth
+- assess CMEnt performance against ground truth
 - compare with DMRcate, dmrseq, and hummingbird using the same dataset
 
 ## Setup and Dependencies
@@ -49,7 +49,7 @@ Primary goal:
 ```{r}
 try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(DMRsegal), silent = TRUE)
+    try(library(CMEnt), silent = TRUE)
     library(bsseq)
     library(data.table)
     library(ggplot2)
@@ -66,7 +66,7 @@ options(progressr.enable = TRUE)
 get_benchmark_file <- function(filename) {
     folder = "simulated_ont"
     benchmark_file <- ""
-    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "DMRsegal"), silent = TRUE)
+    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "CMEnt"), silent = TRUE)
     if (benchmark_file == "") {
         if (getwd() == "vignettes") {
             benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
@@ -125,13 +125,13 @@ sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 if (!file.exists(sim_bs_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/19442263/files/sim_bs_1000.rds?download=1",
+        url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
         destfile = sim_bs_path
     )
 }
 if (!file.exists(sim_truth_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/19442263/files/sim_dmrs_1000.tsv?download=1",
+        url = "https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1",
         destfile = sim_truth_path
     )
 }
@@ -182,28 +182,35 @@ knitr::kable(
 
 ## Benchmarking DMR Detection Methods
 
-### DMRsegal
+### CMEnt
 
 #### Adjusting parameters for NGS simulation
 ```{r}
-min_seeds <- 2L
-min_cpgs <- 3L
-max_pval <- 0.1 # Due too smaller sample size and effect sizes, we relax the p-value threshold.
+min_seeds <- 1L
+min_cpgs <- 5L
+max_pval <- 0.1
+pval_mode  <- "auto"
+min_cpg_delta_beta  <- 0.1
 max_bridge_seeds_gaps <- 1L
-max_bridge_extension_gaps <- 2L
-max_lookup_dist <- 100000L # Use a larger lookup distance (10k is the default)
+max_bridge_extension_gaps <- 5L
+max_lookup_dist <- 1000L
 ```
 
 #### Extract Methylation Matrix and Generate Seeds
-This step is crucial for DMRsegal, which relies on seed CpGs to guide DMR assembly.
-We use a limma-based approach to identify candidate seeds based on differential methylation evidence.
-We extend beyond strict FDR significance to capture a broader set of potential seeds, 
-which may improve sensitivity in DMRsegal's region assembly.
-We score seeds by a combined score of p-value and effect size (delta beta) to prioritize biologically relevant candidates.
-
-
+This step is crucial for CMEnt, which relies on seed CpGs to guide DMR assembly.
+We use a DSS approach to identify candidate seeds based on differential methylation evidence. We keep the FDR threshold relatively lenient (0.1), to account for the low sample size.
 ```{r seeds_calculation}
-
+# Seeds were generated using the simulateDMRsBSSeq function with the following parameters:
+# simulateDMRsBSSeq(
+#     bs = base_bs,
+#     num_dmrs = 1000,
+#     delta_max0 = 0.35,
+#     min_cpgs = 10L,
+#     max_cpgs = 500L,
+#     truth_min_delta_beta = 0.1,
+#     profile = "triweight",
+#     seed = 42
+# )
 seeds_tsv <- get_benchmark_file("seeds.tsv.gz")
 if (!file.exists(seeds_tsv)) {
     seeds <- findDMPsBSSeq(
@@ -213,7 +220,7 @@ if (!file.exists(seeds_tsv)) {
         id_col = "Sample_ID",
         case_group = "Condition2",
         covariates = NULL,
-        fdr_thres = 0.05,
+        fdr_thres = max_pval,
         output_file = seeds_tsv
     )
 } else {
@@ -228,7 +235,7 @@ seed_dist <- unlist(lapply(split(seeds$start, seeds$chr), function(x) {
     diff(x)
 }))
 seeds_qs <- round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)))
-cat(sprintf("Number of seeds for DMRsegal: %d\n", nrow(seeds)))
+cat(sprintf("Number of seeds for CMEnt: %d\n", nrow(seeds)))
 knitr::kable(
     seeds_qs,
     digits = 2,
@@ -246,7 +253,7 @@ Metrics explanation:
 - Seeds_Overlap_Pct: Percentage of seed CpGs that overlap ground-truth DMRs.
 - Truth_DMRs_Total: Total number of ground-truth DMRs.
 - Truth_DMRs_With_Seed_Pct: Percentage of ground-truth DMRs that have at least one overlapping seed CpG.
-- Truth_DMRs_With_Enough_Seeds_Pct: Percentage of ground-truth DMRs that have enough overlapping seed CpGs to be captured by DMRsegal.
+- Truth_DMRs_With_Enough_Seeds_Pct: Percentage of ground-truth DMRs that have enough overlapping seed CpGs to be captured by CMEnt.
 - Median_Seeds_Per_Truth_DMR: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
 - Median_Seeds_Per_Hit_Truth_DMR: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
 - Max_Seeds_In_Truth_DMR: Maximum number of overlapping seeds in any single ground-truth DMR.
@@ -335,46 +342,50 @@ knitr::kable(
 )
 ```
 
-```{r dmrsegal}
-dmrsegal_file <- get_benchmark_file("dmrs.DMRsegal.rds")
+```{r cment}
+cment_file <- get_benchmark_file("dmrs.CMEnt.rds")
 
-if (!file.exists(dmrsegal_file)) {
-    dmrsegal_njobs <- max(1L, min(8L, future::availableCores() - 1L))
-    options("DMRsegal.njobs" = dmrsegal_njobs)
-    options("DMRsegal.verbose" = 2)
+if (!file.exists(cment_file)) {
+    cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    options("CMEnt.njobs" = cment_njobs)
+    options("CMEnt.verbose" = 2)
     start_time <- Sys.time()
 
-    beta_handler <- DMRsegal::getBetaHandler(
+    beta_handler <- CMEnt::getBetaHandler(
         beta = sim_bs
     )
-    dmrs_segal <- progressr::with_progress(
-        DMRsegal::findDMRsFromSeeds(
+    dmrs_cment <- progressr::with_progress(
+        CMEnt::findDMRsFromSeeds(
             beta = beta_handler,
             seeds = seeds,
             pheno = pheno,
             seeds_id_col = "cpg_id",
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
+            genome = "hg38",
+            array = "NULL",
+            entanglement = "weak",
+            pval_mode = pval_mode,
             max_bridge_seeds_gaps = max_bridge_seeds_gaps,
             max_bridge_extension_gaps = max_bridge_extension_gaps,
             min_seeds = min_seeds,
             min_cpgs = min_cpgs,
             max_pval = max_pval,
+            min_cpg_delta_beta = min_cpg_delta_beta,
             max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
             chunk_size = 1e6L,
-            entanglement = "weak",
             annotate_with_genes = FALSE,
             extract_motifs = FALSE,
-            njobs = dmrsegal_njobs
+            njobs = cment_njobs
         )
     )
     end_time <- Sys.time()
-    time_dmrsegal <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_segal, time = time_dmrsegal), dmrsegal_file)
+    time_cment <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
 } else {
-    ret <- readRDS(dmrsegal_file)
-    dmrs_segal <- ret$dmrs
-    time_dmrsegal <- ret$time
+    ret <- readRDS(cment_file)
+    dmrs_cment <- ret$dmrs
+    time_cment <- ret$time
 }
 
 ```
@@ -394,10 +405,49 @@ run_dmrcate_bsseq <- function(
         warning("DMRcate not installed; returning empty set.")
         return(GenomicRanges::GRanges())
     }
-    dmrcate_design <- design
+    dmrcate_design <- as.matrix(design)
+    if (nrow(dmrcate_design) != ncol(bs_obj)) {
+        warning(sprintf(
+            "DMRcate design rows (%d) do not match BSseq samples (%d); returning empty set.",
+            nrow(dmrcate_design),
+            ncol(bs_obj)
+        ))
+        return(GenomicRanges::GRanges())
+    }
+    if (ncol(dmrcate_design) < 2L) {
+        warning("DMRcate requires at least two groups in the design matrix; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
     colnames(dmrcate_design) <- gsub("Sample_Group", "", colnames(dmrcate_design))
     colnames(dmrcate_design)[1] <- "Intercept"
     dmrcate_design <- edgeR::modelMatrixMeth(dmrcate_design)
+
+    coef_names <- colnames(dmrcate_design)
+    sample_cols <- grepl("^Sample[0-9]+$", coef_names)
+    intercept_cols <- coef_names %in% c("Intercept", "(Intercept)")
+    contrast_candidates <- coef_names[!(sample_cols | intercept_cols)]
+
+    if (length(contrast_candidates) == 0) {
+        warning(sprintf(
+            "DMRcate could not infer a contrast coefficient from methdesign columns (%s); returning empty set.",
+            paste(coef_names, collapse = ", ")
+        ))
+        return(GenomicRanges::GRanges())
+    }
+
+    preferred_coef <- c("Condition2_vs_Condition1", "Condition2", "cancer_vs_normal")
+    selected_coef_name <- preferred_coef[preferred_coef %in% contrast_candidates][1]
+    if (is.na(selected_coef_name)) {
+        selected_coef_name <- contrast_candidates[length(contrast_candidates)]
+    }
+    selected_coef <- match(selected_coef_name, coef_names)
+    cat(sprintf(
+        "DMRcate contrast coefficient: %s (column %d of methdesign)\n",
+        selected_coef_name,
+        selected_coef
+    ))
+
     all_gr <- bsseq::granges(bs_obj)
     all_seqnames <- as.character(GenomicRanges::seqnames(all_gr))
     all_pos <- GenomicRanges::start(all_gr)
@@ -447,14 +497,21 @@ run_dmrcate_bsseq <- function(
             ))
 
             chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+            if (nrow(chunk_bs) < 3L) {
+                chr_chunk_dmrs[[chunk_i]] <- GenomicRanges::GRanges()
+                rm(chunk_bs)
+                gc(verbose = FALSE)
+                next
+            }
+
             chunk_out <- tryCatch(
                 {
                     ann <- DMRcate::sequencing.annotate(
                         obj = chunk_bs,
                         all.cov = TRUE,
                         methdesign = dmrcate_design,
-                        coef = "Condition2_vs_Condition1",
-                        fdr = 0.05
+                        coef = selected_coef,
+                        fdr = max_pval
                     )
                     dmrcate_res <- DMRcate::dmrcate(
                         ann,
@@ -482,7 +539,7 @@ run_dmrcate_bsseq <- function(
                         length(chunk_starts),
                         e$message
                     ))
-                    NULL
+                    GenomicRanges::GRanges()
                 }
             )
             cat(sprintf(
@@ -519,6 +576,7 @@ run_dmrcate_bsseq <- function(
 
 if (!file.exists(dmrcate_file)) {
     start_time <- Sys.time()
+    design <- model.matrix(~ Sample_Group, data = colData(sim_bs))
     dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg38")
     end_time <- Sys.time()
     time_dmrcate <- end_time - start_time
@@ -814,7 +872,7 @@ if (!file.exists(hummingbird_file)) {
 ```
 
 ```{r}
-cat(sprintf("**DMRsegal**: Found %d DMRs in %d seconds\n", length(dmrs_segal), round(as.numeric(time_dmrsegal, units = "secs"))))
+cat(sprintf("**CMEnt**: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
 cat(sprintf("**DMRcate**: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
 cat(sprintf("**dmrseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
 cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummingbird), round(as.numeric(time_hummingbird, units = "secs"))))
@@ -824,7 +882,7 @@ cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummin
 
 ```{r}
 methods_list <- list(
-    DMRsegal = dmrs_segal,
+    CMEnt = dmrs_cment,
     DMRcate = dmrs_dmrcate,
     dmrseq = dmrs_dmrseq,
     hummingbird = dmrs_hummingbird
@@ -990,19 +1048,19 @@ knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row
 knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
 ```
 
-### DMRsegal Stage 1 Quality Assessment (Seed Linkage)
+### CMEnt Stage 1 Quality Assessment (Seed Linkage)
 Assessing seed-space recoverability and seed capture efficiency.
 
 Metrics explanation:
 
 - Truth_DMRs_Total: Total number of ground truth DMRs.
 - Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed CpG.
-- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs, which is the minimum for DMRsegal stage 1 to potentially recover the region.
-- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs that also overlap DMRsegal-predicted DMRs, indicating they are potentially recoverable and captured by the method.
-- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed CpGs are captured by DMRsegal-predicted DMRs, indicating ideal stage 1 capture.
-- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed CpGs that overlap truth DMRs that are also captured by DMRsegal-predicted DMRs.
-- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed CpG, the median percentage of those seed CpGs that are captured by DMRsegal-predicted DMRs.
-- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed CpG that is not captured by DMRsegal-predicted DMRs.
+- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs, which is the minimum for CMEnt stage 1 to potentially recover the region.
+- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs that also overlap CMEnt-predicted DMRs, indicating they are potentially recoverable and captured by the method.
+- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed CpGs are captured by CMEnt-predicted DMRs, indicating ideal stage 1 capture.
+- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed CpGs that overlap truth DMRs that are also captured by CMEnt-predicted DMRs.
+- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed CpG, the median percentage of those seed CpGs that are captured by CMEnt-predicted DMRs.
+- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed CpG that is not captured by CMEnt-predicted DMRs.
 - Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed CpGs.
 - Max_Missed_Run_Observed: The maximum length of consecutive missed seed CpGs observed across all truth DMRs.
 
@@ -1013,10 +1071,10 @@ seed_gr <- sort(seed_gr)
 mcols(seed_gr)$index <- seq_along(seed_gr)
 seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
 
-if (length(dmrs_segal) > 0) {
-    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_segal, ignore.strand = TRUE)
-    seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_segal, ignore.strand = TRUE)
-    seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_segal, ignore.strand = TRUE, invert = TRUE)
+if (length(dmrs_cment) > 0) {
+    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE, invert = TRUE)
 } else {
     seeds_in_dmrs <- seed_gr[0]
     seeds_in_truth_and_dmrs <- seed_gr[0]
@@ -1086,35 +1144,35 @@ for (col in colnames(run_overview)) {
 
 ```
 
-### DMRsegal Stage 2-4 Quality Assessment (Extension and Merging)
+### CMEnt Stage 2-4 Quality Assessment (Extension and Merging)
 Assessing truth-side recovery and prediction-side fragmentation/purity after extension and merging.
 Metrics explanation:
 
-- Pred_DMRs_Total: Total number of DMRsegal DMRs.
-- Pred_DMRs_Overlapping_Truth: Number of DMRsegal DMRs that overlap at least one truth DMR.
-- Pred_DMRs_BPPrecision_ge50pct: Number of DMRsegal DMRs with base-pair precision >= 50% (i.e., at least 50% of the DMRsegal DMR's base pairs overlap with truth DMRs).
-- Pred_DMRs_BPPrecision_ge80pct: Number of DMRsegal DMRs with base-pair precision >= 80%.
+- Pred_DMRs_Total: Total number of CMEnt DMRs.
+- Pred_DMRs_Overlapping_Truth: Number of CMEnt DMRs that overlap at least one truth DMR.
+- Pred_DMRs_BPPrecision_ge50pct: Number of CMEnt DMRs with base-pair precision >= 50% (i.e., at least 50% of the CMEnt DMR's base pairs overlap with truth DMRs).
+- Pred_DMRs_BPPrecision_ge80pct: Number of CMEnt DMRs with base-pair precision >= 80%.
 - Truth_DMRs_Total: Total number of truth DMRs.
-- Truth_DMRs_Hit: Number of truth DMRs that have at least one overlapping DMRsegal DMR.
-- Truth_DMRs_BPRecall_ge50pct: Number of truth DMRs with base-pair recall >= 50% (i.e., at least 50% of the truth DMR's base pairs are covered by DMRsegal DMRs).
+- Truth_DMRs_Hit: Number of truth DMRs that have at least one overlapping CMEnt DMR.
+- Truth_DMRs_BPRecall_ge50pct: Number of truth DMRs with base-pair recall >= 50% (i.e., at least 50% of the truth DMR's base pairs are covered by CMEnt DMRs).
 - Truth_DMRs_BPRecall_ge80pct: Number of truth DMRs with base-pair recall >= 80%.
-- Median_Truth_BPRecall_Pct_Hit: Median base-pair recall percentage among truth DMRs that have at least one overlapping DMRsegal DMR.
-- Median_Pred_BPPrecision_Pct_Overlap: Median base-pair precision percentage among DMRsegal DMRs that have at least some overlap with truth DMRs.
-- Truth_DMRs_With_Multiple_Pred: Number of truth DMRs that have 2 or more overlapping DMRsegal DMRs, indicating potential fragmentation.
-- Median_Preds_Per_Hit_Truth: Median number of overlapping DMRsegal DMRs among truth DMRs that have at least one overlapping DMRsegal DMR.
-- Max_Preds_On_Truth: Maximum number of overlapping DMRsegal DMRs observed on any single truth DMR.
+- Median_Truth_BPRecall_Pct_Hit: Median base-pair recall percentage among truth DMRs that have at least one overlapping CMEnt DMR.
+- Median_Pred_BPPrecision_Pct_Overlap: Median base-pair precision percentage among CMEnt DMRs that have at least some overlap with truth DMRs.
+- Truth_DMRs_With_Multiple_Pred: Number of truth DMRs that have 2 or more overlapping CMEnt DMRs, indicating potential fragmentation.
+- Median_Preds_Per_Hit_Truth: Median number of overlapping CMEnt DMRs among truth DMRs that have at least one overlapping CMEnt DMR.
+- Max_Preds_On_Truth: Maximum number of overlapping CMEnt DMRs observed on any single truth DMR.
 
 Metrics values:
 
 ```{r}
-truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_segal, ignore.strand = TRUE)
+truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_cment, ignore.strand = TRUE)
 preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
 
 truth_overlap_bp <- numeric(length(truth_dmrs))
 if (length(truth_to_pred_hits) > 0) {
     truth_intersections <- pintersect(
         truth_dmrs[queryHits(truth_to_pred_hits)],
-        dmrs_segal[subjectHits(truth_to_pred_hits)]
+        dmrs_cment[subjectHits(truth_to_pred_hits)]
     )
     truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
     truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
@@ -1125,11 +1183,11 @@ if (length(truth_to_pred_hits) > 0) {
 }
 truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
 
-pred_to_truth_hits <- findOverlaps(dmrs_segal, truth_dmrs, ignore.strand = TRUE)
-pred_overlap_bp <- numeric(length(dmrs_segal))
+pred_to_truth_hits <- findOverlaps(dmrs_cment, truth_dmrs, ignore.strand = TRUE)
+pred_overlap_bp <- numeric(length(dmrs_cment))
 if (length(pred_to_truth_hits) > 0) {
     pred_intersections <- pintersect(
-        dmrs_segal[queryHits(pred_to_truth_hits)],
+        dmrs_cment[queryHits(pred_to_truth_hits)],
         truth_dmrs[subjectHits(pred_to_truth_hits)]
     )
     pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
@@ -1139,11 +1197,11 @@ if (length(pred_to_truth_hits) > 0) {
         numeric(1)
     )
 }
-pred_bp_precision <- ifelse(width(dmrs_segal) > 0, pred_overlap_bp / width(dmrs_segal), 0)
+pred_bp_precision <- ifelse(width(dmrs_cment) > 0, pred_overlap_bp / width(dmrs_cment), 0)
 
 stage24_quality <- data.frame(
-    Pred_DMRs_Total = length(dmrs_segal),
-    Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_segal, truth_dmrs)),
+    Pred_DMRs_Total = length(dmrs_cment),
+    Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_cment, truth_dmrs)),
     Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
     Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
     Truth_DMRs_Total = length(truth_dmrs),
@@ -1159,59 +1217,6 @@ stage24_quality <- data.frame(
 for (col in names(stage24_quality)) {
     cat(sprintf("- **%s**: %s\n", col, stage24_quality[[col]]))
 }
-```
-
-DMRsegal DMR multiplicity per truth DMR.
-Point color encodes truth-side base-pair recall (%)
-
-```{r, fig.width=8, fig.height=6, dpi=300}
-dmrs_in_truth_counts_df <- data.frame(
-    Truth_DMR_Index = seq_along(truth_dmrs),
-    DMRsegal_DMR_Count = as.integer(preds_per_truth),
-    Truth_BP_Recall_Pct = 100 * truth_bp_recall
-)
-dmrs_in_truth_counts_df[dmrs_in_truth_counts_df[, "Truth_BP_Recall_Pct"] == 0, "Truth_BP_Recall_Pct"] <- NA
-dmrs_points_df <- dmrs_in_truth_counts_df[
-    dmrs_in_truth_counts_df$DMRsegal_DMR_Count > 0,
-    ,
-    drop = FALSE
-]
-color_upper <- as.numeric(stats::quantile(
-    dmrs_points_df$Truth_BP_Recall_Pct,
-    probs = 0.95,
-    na.rm = TRUE,
-    names = FALSE
-))
-color_lower <- suppressWarnings(min(dmrs_points_df$Truth_BP_Recall_Pct, na.rm = TRUE))
-if (!is.finite(color_lower) || !is.finite(color_upper)) {
-    color_lower <- 0
-    color_upper <- 1
-}
-if (color_upper <= color_lower) {
-    color_upper <- color_lower + 1e-6
-}
-
-ggplot(dmrs_in_truth_counts_df,
-    aes(x = Truth_DMR_Index, y = DMRsegal_DMR_Count, color = Truth_BP_Recall_Pct)
-    ) +
-    scale_y_continuous(breaks = scales::breaks_pretty()) +
-    geom_point(data = dmrs_points_df, size = 0.6, alpha = 0.7, na.rm = TRUE) +
-    scale_color_viridis_c(
-        option = "C",
-        limits = c(color_lower, color_upper),
-        oob = scales::squish
-    ) +
-    theme_minimal() +
-    theme(
-        legend.position = "right",
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank()
-    ) +
-    labs(
-        x = "Truth DMRs",
-        y = "Count of DMRsegal DMRs",
-        color = "Truth BP recall (%)"
-    )
 ```
 
 ## Visualizations
@@ -1296,14 +1301,14 @@ if (nrow(truth_eval) > 0) {
         best_iou$Method, best_iou$IoU_bp
     ))
 
-    if ("DMRsegal" %in% truth_eval$Method) {
-        seg <- truth_eval[truth_eval$Method == "DMRsegal", ]
+    if ("CMEnt" %in% truth_eval$Method) {
+        seg <- truth_eval[truth_eval$Method == "CMEnt", ]
         cat(sprintf(
-            "- **DMRsegal** region metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f\n",
+            "- **CMEnt** region metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f\n",
             seg$Precision_regions, seg$Recall_regions, seg$F1_regions
         ))
         cat(sprintf(
-            "- **DMRsegal** base-pair metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f, IoU = %.3f\n",
+            "- **CMEnt** base-pair metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f, IoU = %.3f\n",
             seg$Precision_bp, seg$Recall_bp, seg$F1_bp, seg$IoU_bp
         ))
     }

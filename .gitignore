@@ -23,7 +23,7 @@ debug
 tests/testthat/test*.loader
 tests/testthat/Rplots.pdf
 Rplots.pdf
-DMRsegal.Rcheck/
+CMEnt.Rcheck/
 ..Rcheck/00check.log
 
 # Generated documentation files ----
@@ -44,7 +44,7 @@ figure-html
 reports/*
 .vscode
 *R_x86_64-pc-linux-gnu.tar.gz
-DMRsegal_0.99.0_R_x86_64-pc-linux-gnu.Rcheck/*
+CMEnt_0.99.0_R_x86_64-pc-linux-gnu.Rcheck/*
 ..Rcheck/
 tmp/
 .codex

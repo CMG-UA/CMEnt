@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 .makeOrderingInput <- function(locs) {
     cpg_ids <- rownames(locs)

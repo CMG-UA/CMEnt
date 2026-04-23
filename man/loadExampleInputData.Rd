@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{loadExampleInputData}
 \alias{loadExampleInputData}
-\title{Load DMRsegal Data Resources}
+\title{Load CMEnt Data Resources}
 \usage{
 loadExampleInputData(resource, use_experiment_hub = TRUE)
 }

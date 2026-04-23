@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 test_that("findDMRsFromSeeds works with weak entanglement", {
     beta <- loadExampleInputDataChr5And11("beta")

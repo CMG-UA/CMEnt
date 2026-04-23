@@ -1,4 +1,4 @@
-#' Launch DMRsegal Interactive Viewer
+#' Launch CMEnt Interactive Viewer
 #'
 #' Launches a Shiny application for interactive exploration of DMR analysis
 #' results from \code{\link{findDMRsFromSeeds}}.
@@ -36,7 +36,7 @@
 #' @examples
 #' \dontrun{
 #' # After running findDMRsFromSeeds with output_prefix = "my_analysis"
-#' launchDMRsegalViewer(
+#' launchCMEntViewer(
 #'   output_prefix = "results/my_analysis"
 #' )
 #' }
@@ -44,7 +44,7 @@
 #' @seealso \code{\link{findDMRsFromSeeds}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}
 #'
 #' @export
-launchDMRsegalViewer <- function(
+launchCMEntViewer <- function(
     output_prefix,
     launch_browser = TRUE,
     port = NULL,
@@ -61,7 +61,7 @@ launchDMRsegalViewer <- function(
         }
     }
 
-    data <- .loadDMRsegalData(output_prefix)
+    data <- .loadCMEntData(output_prefix)
 
     ui <- .createViewerUI(diagnostic = diagnostic)
     server <- .createViewerServer(data)
@@ -204,7 +204,7 @@ launchDMRsegalViewer <- function(
     stop("Viewer metadata phenotype table does not contain a usable sample group column.")
 }
 
-.loadDMRsegalViewerMeta <- function(output_prefix) {
+.loadCMEntViewerMeta <- function(output_prefix) {
     meta_file <- .viewerOutputFiles(output_prefix)$meta_file
 
     .log_step("Loading viewer metadata from ", meta_file, "...", level = 1)
@@ -251,9 +251,9 @@ launchDMRsegalViewer <- function(
     )
 }
 
-.loadDMRsegalData <- function(output_prefix) {
+.loadCMEntData <- function(output_prefix) {
     files <- .viewerOutputFiles(output_prefix)
-    meta <- .loadDMRsegalViewerMeta(output_prefix)
+    meta <- .loadCMEntViewerMeta(output_prefix)
     pheno <- meta$pheno
     genome <- meta$genome
     array <- meta$array
@@ -293,10 +293,10 @@ launchDMRsegalViewer <- function(
     )
 }
 
-.viewerAssetPrefix <- "dmrsegal-viewer-assets"
+.viewerAssetPrefix <- "cment-viewer-assets"
 
 .registerViewerAssets <- function() {
-    asset_dir <- system.file("shiny/DMRsegalViewer/www", package = "DMRsegal")
+    asset_dir <- system.file("shiny/CMEntViewer/www", package = "CMEnt")
     if (!nzchar(asset_dir) || !dir.exists(asset_dir)) {
         return(NULL)
     }
@@ -350,23 +350,23 @@ launchDMRsegalViewer <- function(
     github_link <- shiny::tags$a(
         shiny::icon("github"),
         shiny::tags$span("GitHub"),
-        href = "https://github.com/CMG-UA/DMRsegal",
+        href = "https://github.com/CMG-UA/CMEnt",
         target = "_blank",
-        class = "dmrsegal-viewer-github"
+        class = "cment-viewer-github"
     )
 
     logo <- if (!is.null(asset_dir) && file.exists(file.path(asset_dir, "logo.png"))) {
         shiny::tags$img(
             src = .viewerAssetHref("logo.png"),
-            alt = "DMRsegal logo",
-            class = "dmrsegal-viewer-logo"
+            alt = "CMEnt logo",
+            class = "cment-viewer-logo"
         )
     } else {
-        shiny::tags$span("DMRsegal", class = "dmrsegal-viewer-wordmark")
+        shiny::tags$span("CMEnt", class = "cment-viewer-wordmark")
     }
 
     shiny::tags$div(
-        class = "dmrsegal-viewer-brand",
+        class = "cment-viewer-brand",
         github_link,
         logo
     )
@@ -402,7 +402,7 @@ launchDMRsegalViewer <- function(
 }
 
 .viewerDevPackagePath <- function() {
-    ns_path <- tryCatch(getNamespaceInfo(asNamespace("DMRsegal"), "path"), error = function(e) NA_character_)
+    ns_path <- tryCatch(getNamespaceInfo(asNamespace("CMEnt"), "path"), error = function(e) NA_character_)
     cwd_path <- tryCatch(normalizePath(getwd(), winslash = "/", mustWork = TRUE), error = function(e) NA_character_)
     candidate_paths <- unique(c(ns_path, cwd_path))
     candidate_paths <- candidate_paths[!is.na(candidate_paths) & nzchar(candidate_paths)]
@@ -414,7 +414,7 @@ launchDMRsegalViewer <- function(
         }
 
         pkg_name <- tryCatch(unname(as.character(read.dcf(desc_file, fields = "Package")[1, 1])), error = function(e) NA_character_)
-        if (!identical(pkg_name, "DMRsegal")) {
+        if (!identical(pkg_name, "CMEnt")) {
             next
         }
 
@@ -524,7 +524,7 @@ launchDMRsegalViewer <- function(
 }
 
 .viewerRunBackgroundTask <- function(task_type, output_prefix, params) {
-    data <- .loadDMRsegalData(output_prefix)
+    data <- .loadCMEntData(output_prefix)
     .viewerRunBackgroundTaskFromData(
         task_type = task_type,
         data = data,
@@ -549,10 +549,10 @@ launchDMRsegalViewer <- function(
                     attach_testthat = FALSE
                 )
             } else {
-                base::suppressPackageStartupMessages(base::library(DMRsegal))
+                base::suppressPackageStartupMessages(base::library(CMEnt))
             }
 
-            DMRsegal:::.viewerRunBackgroundTask(
+            CMEnt:::.viewerRunBackgroundTask(
                 task_type = task_type,
                 output_prefix = output_prefix,
                 params = params
@@ -591,13 +591,13 @@ launchDMRsegalViewer <- function(
                             attach_testthat = FALSE
                         )
                     } else {
-                        base::suppressPackageStartupMessages(base::library(DMRsegal))
+                        base::suppressPackageStartupMessages(base::library(CMEnt))
                     }
 
                     assign(
-                        ".dmrsegal_viewer_worker_data",
+                        ".cment_viewer_worker_data",
                         suppressMessages(
-                            DMRsegal:::.loadDMRsegalData(output_prefix)
+                            CMEnt:::.loadCMEntData(output_prefix)
                         ),
                         envir = .GlobalEnv
                     )
@@ -751,12 +751,12 @@ launchDMRsegalViewer <- function(
                 worker$call(
                     func = function(task_type, params) {
                         suppressMessages({
-                            if (!exists(".dmrsegal_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
+                            if (!exists(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
                                 stop("Viewer worker data is not initialized.", call. = FALSE)
                             }
 
-                            data <- get(".dmrsegal_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
-                            result <- DMRsegal:::.viewerRunBackgroundTaskFromData(
+                            data <- get(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
+                            result <- CMEnt:::.viewerRunBackgroundTaskFromData(
                                 task_type = task_type,
                                 data = data,
                                 params = params
@@ -765,7 +765,7 @@ launchDMRsegalViewer <- function(
                             if (identical(task_type, "circos_cache_compute") && is.list(result$cache)) {
                                 data$interactions <- result$cache$interactions
                                 data$components <- result$cache$components
-                                assign(".dmrsegal_viewer_worker_data", data, envir = .GlobalEnv)
+                                assign(".cment_viewer_worker_data", data, envir = .GlobalEnv)
                             }
 
                             result
@@ -946,7 +946,7 @@ launchDMRsegalViewer <- function(
     }
     navbar <- do.call(bslib::page_navbar, c(
         list(
-            title = "DMRsegal Viewer",
+            title = "CMEnt Viewer",
             id = "navbar",
             theme = bslib::bs_theme(version = 5, bootswatch = "flatly"),
             fillable = TRUE
@@ -1011,7 +1011,7 @@ launchDMRsegalViewer <- function(
                 try(.viewerHidePageSpinner(), silent = TRUE)
             }
             try(task_controller$shutdown(), silent = TRUE)
-            .log_info("DMRsegal Viewer session ended.", level = 1)
+            .log_info("CMEnt Viewer session ended.", level = 1)
         })
     }
 }

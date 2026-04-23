@@ -10,12 +10,12 @@ test_that("non-tabular DMR output columns round-trip through TSV serialization",
         matrix(c(0.1, 0.4, 0.4, 0.1), nrow = 2)
     )
 
-    encoded <- DMRsegal:::.encodeNonTabularColumns(dmrs_df)
+    encoded <- CMEnt:::.encodeNonTabularColumns(dmrs_df)
 
     expect_equal(encoded$encoded_columns, "pwm")
     expect_true("pwm" %in% colnames(encoded$data))
     expect_true(is.character(encoded$data$pwm))
-    expect_true(all(startsWith(encoded$data$pwm, DMRsegal:::.serializedOutputPrefix)))
+    expect_true(all(startsWith(encoded$data$pwm, CMEnt:::.serializedOutputPrefix)))
 
     tsv_file <- tempfile(fileext = ".tsv.gz")
     gz <- gzfile(tsv_file, "w")
@@ -31,7 +31,7 @@ test_that("non-tabular DMR output columns round-trip through TSV serialization",
     close(gz)
 
     reloaded_df <- read.delim(gzfile(tsv_file), check.names = FALSE, stringsAsFactors = FALSE)
-    roundtrip <- DMRsegal:::convertToGRanges(reloaded_df, genome = "hg38")
+    roundtrip <- CMEnt:::convertToGRanges(reloaded_df, genome = "hg38")
 
     expect_true("pwm" %in% names(S4Vectors::mcols(roundtrip)))
     expect_true(is.matrix(S4Vectors::mcols(roundtrip)$pwm[[1]]))

@@ -1,4 +1,4 @@
-/* DMRsegal Viewer Custom Styles */
+/* CMEnt Viewer Custom Styles */
 
 .value-box {
     min-height: 100px;
@@ -28,14 +28,14 @@
     vertical-align: middle;
 }
 
-.dmrsegal-viewer-brand {
+.cment-viewer-brand {
     display: flex;
     align-items: center;
     gap: 0.85rem;
     padding-right: 0.25rem;
 }
 
-.dmrsegal-viewer-github {
+.cment-viewer-github {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -44,18 +44,18 @@
     font-weight: 600;
 }
 
-.dmrsegal-viewer-github:hover,
-.dmrsegal-viewer-github:focus {
+.cment-viewer-github:hover,
+.cment-viewer-github:focus {
     color: var(--bs-navbar-hover-color);
 }
 
-.dmrsegal-viewer-logo {
+.cment-viewer-logo {
     display: block;
     height: 42px;
     width: auto;
 }
 
-.dmrsegal-viewer-wordmark {
+.cment-viewer-wordmark {
     font-weight: 700;
     letter-spacing: 0.02em;
 }

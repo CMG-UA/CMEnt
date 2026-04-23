@@ -9,7 +9,7 @@ annotateDMRsWithGenes(
   genome = "hg38",
   promoter_upstream = 2000,
   promoter_downstream = 200,
-  njobs = getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))
+  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
 )
 }
 \arguments{
@@ -24,7 +24,7 @@ define promoter region (default: 2000)}
 to define promoter region (default: 200)}
 
 \item{njobs}{Integer. Number of parallel jobs used to annotate promoter and
-gene-body overlaps (default: \code{getOption("DMRsegal.njobs")})}
+gene-body overlaps (default: \code{getOption("CMEnt.njobs")})}
 }
 \value{
 The input Dataframe/GRanges object with additional metadata columns:
@@ -39,7 +39,7 @@ using TxDb annotations. For each DMR, identifies genes whose promoters or
 gene bodies overlap with the DMR coordinates.
 }
 \details{
-The function uses genome-appropriate TxDb packages. For \code{hs1}, DMRsegal
+The function uses genome-appropriate TxDb packages. For \code{hs1}, CMEnt
 uses hg38 gene models and lifts them to \code{hs1} before computing overlaps.
 Gene symbols are retrieved from the appropriate org.*.eg.db package.
 Multiple overlapping genes are concatenated with commas.

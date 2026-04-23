@@ -1,4 +1,4 @@
-options("DMRsegal.verbose" = 0)
+options("CMEnt.verbose" = 0)
 
 
 test_that("findDMRsFromSeeds work with covariates adjustment", {
@@ -36,7 +36,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         genome <- "hg19"
 
 
-        beta_handler <- DMRsegal::getBetaHandler(beta, array = array_type, genome = genome)
+        beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
         beta_mat <- as.matrix(beta_handler$getBeta())
         locs <- beta_handler$getBetaLocs()
         mvalues <- minfi::logit2(beta_mat)
@@ -54,8 +54,8 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
         # Filter significant DMPs
         sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-        # Run DMRsegal with same parameters as benchmark
-        dmrs_segal <- findDMRsFromSeeds(
+        # Run CMEnt with same parameters as benchmark
+        dmrs_cment <- findDMRsFromSeeds(
             .score_dmrs = FALSE,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE,
@@ -75,13 +75,13 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         )
 
         # Assertions
-        expect_s4_class(dmrs_segal, "GRanges")
-        expect_equal(length(dmrs_segal), 143)
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_segal))))
+        expect_s4_class(dmrs_cment, "GRanges")
+        expect_equal(length(dmrs_cment), 143)
+        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_cment))))
 
         # Check that all DMRs meet the criteria
-        expect_true(all(mcols(dmrs_segal)$seeds_num >= 2))
-        expect_true(all(mcols(dmrs_segal)$cpgs_num >= 3))
+        expect_true(all(mcols(dmrs_cment)$seeds_num >= 2))
+        expect_true(all(mcols(dmrs_cment)$cpgs_num >= 3))
     })
 })
 
@@ -239,7 +239,7 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
-    output_prefix <- file.path(tempdir(), paste0("dmrsegal-test-", as.integer(Sys.time())))
+    output_prefix <- file.path(tempdir(), paste0("cment-test-", as.integer(Sys.time())))
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
         beta = beta,
@@ -270,9 +270,9 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
 
     dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
     saved_beta <- read.delim(gzfile(beta_file), row.names = 1, check.names = FALSE)
-    supporting_cpgs <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$cpgs), DMRsegal:::.splitCsvValues), use.names = FALSE))
+    supporting_cpgs <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$cpgs), CMEnt:::.splitCsvValues), use.names = FALSE))
     expect_setequal(rownames(saved_beta), supporting_cpgs)
 
-    loaded_dmrs <- DMRsegal:::.loadDMRsegalData(output_prefix)$dmrs
+    loaded_dmrs <- CMEnt:::.loadCMEntData(output_prefix)$dmrs
     expect_equal(length(loaded_dmrs), length(dmrs))
 })

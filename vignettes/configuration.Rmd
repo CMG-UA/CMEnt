@@ -1,10 +1,10 @@
 ---
-title: "DMRsegal Configuration"
-author: "DMRsegal Package"
+title: "CMEnt Configuration"
+author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output: BiocStyle::html_document
 vignette: >
-  %\VignetteIndexEntry{DMRsegal Configuration}
+  %\VignetteIndexEntry{CMEnt Configuration}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -12,7 +12,7 @@ vignette: >
 ```{r setup, include=FALSE}
 try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(DMRsegal), silent = TRUE)
+    try(library(CMEnt), silent = TRUE)
 })
 knitr::opts_chunk$set(
     echo = TRUE,
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(
 
 # Overview
 
-This vignette provides a comprehensive guide to the configuration available in DMRsegal. Understanding these parameters will help you optimize the package for your specific analysis needs.
+This vignette provides a comprehensive guide to the configuration available in CMEnt. Understanding these parameters will help you optimize the package for your specific analysis needs.
 
 # Function Parameters
 
@@ -35,7 +35,7 @@ This vignette provides a comprehensive guide to the configuration available in D
 **Required:** Yes  
 **Description:** Input methylation data. Can be:
 
-- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("DMRsegal.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
+- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("CMEnt.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
 - A beta matrix with CpG IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
@@ -428,7 +428,7 @@ dmrs <- findDMRsFromSeeds(
 
 ### `njobs`
 **Type:** Integer  
-**Default:** `getOption("DMRsegal.njobs", min(8, future::availableCores() - 1))`  
+**Default:** `getOption("CMEnt.njobs", min(8, future::availableCores() - 1))`  
 **Description:** Number of parallel jobs to use for computation.
 
 **Recommendation:**
@@ -448,7 +448,7 @@ dmrs <- findDMRsFromSeeds(
 
 ### `chunk_size`
 **Type:** Integer
-**Default:** `getOption("DMRsegal.chunk_size", 1000)`
+**Default:** `getOption("CMEnt.chunk_size", 1000)`
 **Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
 
 **Example:**
@@ -464,7 +464,7 @@ dmrs <- findDMRsFromSeeds(
 ### `verbose`
 **Type:** Integer  
 **Range:** 0 to 5  
-**Default:** `getOption("DMRsegal.verbose", 1)`  
+**Default:** `getOption("CMEnt.verbose", 1)`  
 **Description:** Level of verbosity for logging messages:
 
 - `0`: No messages
@@ -601,8 +601,8 @@ dmrs <- findDMRsFromSeeds(
 
 **Details:**
 - Uses stratified k-fold cross-validation (default: 5-fold)
-- Number of folds can be controlled with `options(DMRsegal.scoring_nfold = 5)`
-- Random seed is controlled with `options(DMRsegal.random_seed = 42)`
+- Number of folds can be controlled with `options(CMEnt.scoring_nfold = 5)`
+- Random seed is controlled with `options(CMEnt.random_seed = 42)`
 - Accuracy values range from 0 to 1, where higher values indicate better discriminative power
 - Requires the `e1071` package for SVM classification
 
@@ -625,184 +625,184 @@ dmrs_scoring <- scoreDMRs(
 
 # Global Package Options
 
-DMRsegal uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
+CMEnt uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
 
 ## Parallelism
 
-### Option: `DMRsegal.njobs`
+### Option: `CMEnt.njobs`
 **Type:** Integer  
 **Default:** `min(8, future::availableCores() - 1)`  
 **Description:** Number of parallel jobs (defaults to the minimum of 8 and one less than the number of available CPU cores).
 
 ```{r}
-options("DMRsegal.njobs" = 4)
+options("CMEnt.njobs" = 4)
 ```
 
 ## Verbosity
 
-### Option: `DMRsegal.verbose`
+### Option: `CMEnt.verbose`
 **Type:** Integer  
 **Default:** `1`  
 **Description:** Default verbosity level.
 
 ```{r}
-options("DMRsegal.verbose" = 2)
+options("CMEnt.verbose" = 2)
 ```
 
 ## Reproducibility
 
-### Option: `DMRsegal.random_seed`
+### Option: `CMEnt.random_seed`
 **Type:** Integer  
 **Default:** `42`  
 **Description:** Random seed for reproducibility.
 
 ```{r}
-options("DMRsegal.random_seed" = 123)
+options("CMEnt.random_seed" = 123)
 ```
 
 
 ## Memory Management
 
-### Option: `DMRsegal.beta_in_mem_threshold_mb`
+### Option: `CMEnt.beta_in_mem_threshold_mb`
 **Type:** Integer  
 **Default:** `500`  
 **Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
 
 ```{r}
-options("DMRsegal.beta_in_mem_threshold_mb" = 200)
+options("CMEnt.beta_in_mem_threshold_mb" = 200)
 ```
 
 
-### Option: `DMRsegal.chunk_size`
+### Option: `CMEnt.chunk_size`
 **Type:** Integer  
 **Default:** `1000`  
 **Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
 
 ```{r}
-options("DMRsegal.chunk_size" = 10000)
+options("CMEnt.chunk_size" = 10000)
 ```
 
 ## Caching
 
-### Option: `DMRsegal.use_bed_cache`
+### Option: `CMEnt.use_bed_cache`
 **Type:** Logical  
 **Default:** `FALSE`  
 **Description:** Enable caching of BED file conversions. Useful for repeated analyses (e.g., with different parameters) of large datasets.
 
 ```{r}
-options("DMRsegal.use_bed_cache" = TRUE)
+options("CMEnt.use_bed_cache" = TRUE)
 ```
 
-### Option: `DMRsegal.bed_cache_dir`
+### Option: `CMEnt.bed_cache_dir`
 **Type:** Character  
-**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
+**Default:** `USER_CACHE_DIR/R/CMEnt/tabix_cache`  
 **Description:** Directory for BED file cache.
 
 ```{r}
-options("DMRsegal.bed_cache_dir" = "/path/to/cache")
+options("CMEnt.bed_cache_dir" = "/path/to/cache")
 ```
 
-### Option: `DMRsegal.use_tabix_cache`
+### Option: `CMEnt.use_tabix_cache`
 **Type:** Logical  
 **Default:** `FALSE`  
 **Description:** Enable caching of tabix-indexed files. Useful for repeated analyses (e.g., with different parameters) of large datasets.
 
 ```{r}
-options("DMRsegal.use_tabix_cache" = TRUE)
+options("CMEnt.use_tabix_cache" = TRUE)
 ```
 
-### Option: `DMRsegal.tabix_cache_dir`
+### Option: `CMEnt.tabix_cache_dir`
 **Type:** Character  
-**Default:** `USER_CACHE_DIR/R/DMRsegal/tabix_cache`  
+**Default:** `USER_CACHE_DIR/R/CMEnt/tabix_cache`  
 **Description:** Directory for tabix file cache.
 
 ```{r}
-options("DMRsegal.tabix_cache_dir" = "/path/to/cache")
+options("CMEnt.tabix_cache_dir" = "/path/to/cache")
 ```
 
-### Option: `DMRsegal.use_annotation_cache`
+### Option: `CMEnt.use_annotation_cache`
 **Type:** Logical  
 **Default:** `TRUE`  
 **Description:** Enable caching of gene annotations.
 
 ```{r}
-options("DMRsegal.use_annotation_cache" = TRUE)
+options("CMEnt.use_annotation_cache" = TRUE)
 ```
 
-### Option: `DMRsegal.annotation_cache_dir`
+### Option: `CMEnt.annotation_cache_dir`
 **Type:** Character  
-**Default:** `USER_CACHE_DIR/R/DMRsegal/annotation_cache`  
+**Default:** `USER_CACHE_DIR/R/CMEnt/annotation_cache`  
 **Description:** Directory for annotation cache.
 
 ```{r}
-options("DMRsegal.annotation_cache_dir" = "/path/to/cache")
+options("CMEnt.annotation_cache_dir" = "/path/to/cache")
 ```
 
-### Option: `DMRsegal.jaspar_cache_dir`
+### Option: `CMEnt.jaspar_cache_dir`
 **Type:** Character  
-**Default:** `USER_CACHE_DIR/R/DMRsegal/jaspar_cache`  
+**Default:** `USER_CACHE_DIR/R/CMEnt/jaspar_cache`  
 **Description:** Directory for JASPAR motif database cache.
 
 ```{r}
-options("DMRsegal.jaspar_cache_dir" = "/path/to/cache")
+options("CMEnt.jaspar_cache_dir" = "/path/to/cache")
 ```
 
 ## Motif Analysis
 
-### Option: `DMRsegal.jaspar_version`
+### Option: `CMEnt.jaspar_version`
 **Type:** Integer  
 **Default:** `2024`  
 **Description:** JASPAR database version to use for motif analysis.
 
 ```{r}
-options("DMRsegal.jaspar_version" = 2024)
+options("CMEnt.jaspar_version" = 2024)
 ```
 
-### Option: `DMRsegal.jaspar_tax_group`
+### Option: `CMEnt.jaspar_tax_group`
 **Type:** Character  
 **Default:** `"vertebrates"`  
 **Description:** Taxonomic group for JASPAR motif filtering.
 
 ```{r}
-options("DMRsegal.min_motif_similarity" = 0.75)
+options("CMEnt.min_motif_similarity" = 0.75)
 ```
 
-### Option: `DMRsegal.min_motif_similarity`
+### Option: `CMEnt.min_motif_similarity`
 **Type:** Numeric  
 **Default:** `0.8`  
 **Description:** Minimum motif similarity threshold for DMR interaction analysis.
 
 ```{r}
-options("DMRsegal.jaspar_tax_group" = "vertebrates")
+options("CMEnt.jaspar_tax_group" = "vertebrates")
 ```
 
-### Option: `DMRsegal.jaspar_corr_threshold`
+### Option: `CMEnt.jaspar_corr_threshold`
 **Type:** Numeric  
 **Default:** `0.9`  
 **Description:** Correlation threshold for JASPAR motif similarity.
 
 ```{r}
-options("DMRsegal.jaspar_corr_threshold" = 0.85)
+options("CMEnt.jaspar_corr_threshold" = 0.85)
 ```
 
-### Option: `DMRsegal.make_debug_dir`
+### Option: `CMEnt.make_debug_dir`
 **Type:** Logical  
 **Default:** `FALSE`  
 **Description:** Create debug directory for troubleshooting.
 
 ```{r}
-options("DMRsegal.make_debug_dir" = TRUE)
+options("CMEnt.make_debug_dir" = TRUE)
 ```
 
 ## DMR scoring
 
-### Option: `DMRsegal.scoring_nfold`
+### Option: `CMEnt.scoring_nfold`
 **Type:** Integer  
 **Default:** `5`  
 **Description:** Number of folds for cross-validation when scoring DMRs.
 
 ```{r}
-options("DMRsegal.scoring_nfold" = 3)
+options("CMEnt.scoring_nfold" = 3)
 ```
 
 # Configuration Examples
@@ -861,7 +861,7 @@ dmrs <- findDMRsFromSeeds(
 ## Example 4: Memory-Efficient Processing for Large Datasets
 
 ```{r}
-options("DMRsegal.use_tabix_cache" = TRUE)
+options("CMEnt.use_tabix_cache" = TRUE)
 
 dmrs <- findDMRsFromSeeds(
     beta = "large_dataset.bed.gz",
@@ -898,7 +898,7 @@ dmrs <- findDMRsFromSeeds(
 
 3. **For WGBS data**, keep `min_cpgs` higher (50+) to ensure robust regions.
 
-4. **Avoid heavy pre-filtering** of seeds based on effect size. Let DMRsegal handle filtering internally.
+4. **Avoid heavy pre-filtering** of seeds based on effect size. Let CMEnt handle filtering internally.
 
 5. **Use empirical p-values** for small sample sizes (<10 per group) or when normality assumptions are questionable.
 
@@ -916,7 +916,7 @@ dmrs <- findDMRsFromSeeds(
 
 **Solution:**
 - Decrease `njobs`
-- Decrease `getOption("DMRsegal.beta_in_mem_threshold_mb")` (default 500) to enable disk-based processing
+- Decrease `getOption("CMEnt.beta_in_mem_threshold_mb")` (default 500) to enable disk-based processing
 - Use tabix-indexed files for very large datasets
 - Enable caching options
 
