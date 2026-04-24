@@ -9,7 +9,8 @@
 #' counts are constructed first, then the same simulation mechanism is applied.
 #'
 #' @param beta A BSseq object, a [BetaHandler] object, a beta matrix/data
-#'   frame, or a path to a beta/tabix file.
+#'   frame, a path to a beta/tabix file, or a path to an `.rds` file
+#'   containing a BSseq object.
 #' @param num_dmrs Number of DMRs to spike in.
 #' @param delta_max0 Baseline maximum beta-scale effect size near the center of
 #'   each DMR.
@@ -31,13 +32,6 @@
 #' @param profile_degree Degree used by the triweight profile.
 #' @param flank_fraction Fraction of the selected cluster width added on both
 #'   sides before evaluating the triweight profile.
-#' @param neutral_region_sd Optional logit-scale regional sample effect applied
-#'   to both groups before the differential shift. The default is `0`, which
-#'   avoids adding DMR-specific correlation beyond what is already present in
-#'   the input.
-#' @param matched_null_regions Number of non-DMR candidate clusters per DMR that
-#'   should receive only the neutral regional sample effect when
-#'   `neutral_region_sd > 0`.
 #' @param seed Optional random seed.
 #' @param rename_samples If `TRUE`, samples are reordered and renamed using the
 #'   `dmrseq::simDMRs()` convention: controls first as `Condition1_Rep1`,
@@ -57,13 +51,11 @@
 #' @param chrom_col Chromosome column name for tabix inputs.
 #' @param start_col Start column name for tabix inputs.
 #' @param njobs Number of parallel jobs for loading non-BSseq inputs.
-#' @param pseudo_cov Integer pseudo-coverage used to map beta values to counts
-#'   for non-BSseq inputs.
 #'
-#' @return A list with simulated output (`simulated`), assay-specific outputs
-#'   (`bs` for BSseq inputs or `beta`/`beta_locs` for non-BSseq inputs), and
-#'   dmrseq-like metadata: `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`,
-#'   `selected_regions`, `groups`, and `case_group`.
+#' @return A list with simulated output (`simulated`), optional genomic
+#'   locations for non-BSseq inputs (`beta_locs`), and dmrseq-like metadata:
+#'   `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`, `selected_regions`,
+#'   `groups`, and `case_group`.
 #' @export
 simulateDMRs <- function(
     beta,
@@ -79,8 +71,6 @@ simulateDMRs <- function(
     profile = c("triweight", "flat"),
     profile_degree = 4L,
     flank_fraction = 0.2,
-    neutral_region_sd = 0,
-    matched_null_regions = 0L,
     seed = NULL,
     rename_samples = TRUE,
     resample_counts = TRUE,
@@ -90,8 +80,7 @@ simulateDMRs <- function(
     beta_row_names_file = NULL,
     chrom_col = "#chrom",
     start_col = "start",
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
-    pseudo_cov = 100L
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
 ) {
     if (!is.null(seed)) {
         set.seed(seed)
@@ -103,8 +92,6 @@ simulateDMRs <- function(
     min_cpgs <- as.integer(min_cpgs)
     max_cpgs <- as.integer(max_cpgs)
     profile_degree <- as.integer(profile_degree)
-    matched_null_regions <- as.integer(matched_null_regions)
-    pseudo_cov <- as.integer(pseudo_cov)
 
     if (length(num_dmrs) != 1L || is.na(num_dmrs) || num_dmrs < 1L) {
         stop("'num_dmrs' must be a positive integer.")
@@ -133,15 +120,6 @@ simulateDMRs <- function(
     if (length(flank_fraction) != 1L || !is.finite(flank_fraction) || flank_fraction < 0) {
         stop("'flank_fraction' must be a non-negative numeric scalar.")
     }
-    if (length(neutral_region_sd) != 1L || !is.finite(neutral_region_sd) || neutral_region_sd < 0) {
-        stop("'neutral_region_sd' must be a non-negative numeric scalar.")
-    }
-    if (length(matched_null_regions) != 1L || is.na(matched_null_regions) || matched_null_regions < 0L) {
-        stop("'matched_null_regions' must be a non-negative integer.")
-    }
-    if (length(pseudo_cov) != 1L || is.na(pseudo_cov) || pseudo_cov < 1L) {
-        stop("'pseudo_cov' must be a positive integer.")
-    }
 
     input <- .prepareSimulationInput(
         beta = beta,
@@ -151,8 +129,7 @@ simulateDMRs <- function(
         beta_row_names_file = beta_row_names_file,
         chrom_col = chrom_col,
         start_col = start_col,
-        njobs = njobs,
-        pseudo_cov = pseudo_cov
+        njobs = njobs
     )
 
     meth_mat <- input$meth
@@ -247,29 +224,6 @@ simulateDMRs <- function(
     dmr_cluster_pos <- sample(seq_along(eligible), num_dmrs, replace = FALSE, prob = cluster_weights)
     dmr_cluster_ids <- eligible[dmr_cluster_pos]
     dmr_indices <- index_by_cluster[dmr_cluster_ids]
-
-    null_indices <- list()
-    if (neutral_region_sd > 0 && matched_null_regions > 0L) {
-        null_pool <- setdiff(eligible, dmr_cluster_ids)
-        n_null <- min(length(null_pool), num_dmrs * matched_null_regions)
-        if (n_null > 0L) {
-            null_indices <- index_by_cluster[sample(null_pool, n_null, replace = FALSE)]
-        }
-    }
-
-    touched_indices <- c(null_indices, dmr_indices)
-    if (neutral_region_sd > 0 && length(touched_indices) > 0L) {
-        for (idx in touched_indices) {
-            eta <- .simulationLogitFromCounts(meth_mat[idx, , drop = FALSE], cov_mat[idx, , drop = FALSE])
-            prof <- .simulationEffectProfile(pos[idx], profile, profile_degree, flank_fraction)
-            eta <- eta + neutral_region_sd * outer(prof, stats::rnorm(n_samples))
-            meth_mat[idx, ] <- .simulationCountsFromEta(
-                eta = eta,
-                cov = cov_mat[idx, , drop = FALSE],
-                resample_counts = resample_counts
-            )
-        }
-    }
 
     truth_rows <- vector("list", num_dmrs)
     truth_gr <- vector("list", num_dmrs)
@@ -401,23 +355,9 @@ simulateDMRs <- function(
         case_group = output_case_group,
         input_groups = stats::setNames(as.character(groups)[output_order], sample_names),
         input_case_group = case_group,
-        duplicate_loci_collapsed = collapsed_input$n_collapsed,
-        null_regions = if (length(null_indices) == 0L) GenomicRanges::GRanges() else {
-            suppressWarnings(do.call(c, lapply(null_indices, function(idx) {
-                GenomicRanges::GRanges(
-                    seqnames = chr[idx[[1L]]],
-                    ranges = IRanges::IRanges(start = min(pos[idx]), end = max(end_pos[idx]))
-                )
-            })))
-        }
+        duplicate_loci_collapsed = collapsed_input$n_collapsed
     )
 
-    if (!is.null(output$bs)) {
-        result$bs <- output$bs
-    }
-    if (!is.null(output$beta)) {
-        result$beta <- output$beta
-    }
     if (!is.null(output$beta_locs)) {
         result$beta_locs <- output$beta_locs
     }
@@ -432,8 +372,19 @@ simulateDMRs <- function(
                                     beta_row_names_file,
                                     chrom_col,
                                     start_col,
-                                    njobs,
-                                    pseudo_cov) {
+                                    njobs) {
+    if (
+        is.character(beta) &&
+            length(beta) == 1L &&
+            file.exists(beta) &&
+            tolower(tools::file_ext(beta)) == "rds"
+    ) {
+        beta_rds <- readRDS(beta)
+        if (inherits(beta_rds, "BSseq")) {
+            beta <- beta_rds
+        }
+    }
+
     if (inherits(beta, "BSseq")) {
         bs <- sort(beta)
         meth_mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
@@ -506,7 +457,7 @@ simulateDMRs <- function(
     beta_mat <- .clampSimulationBeta(beta_mat)
 
     cov_mat <- matrix(
-        as.integer(pseudo_cov),
+        100L,
         nrow = nrow(beta_mat),
         ncol = ncol(beta_mat),
         dimnames = dimnames(beta_mat)
@@ -563,8 +514,6 @@ simulateDMRs <- function(
         )
         return(list(
             simulated = bs_new,
-            bs = bs_new,
-            beta = NULL,
             beta_locs = NULL
         ))
     }
@@ -582,8 +531,6 @@ simulateDMRs <- function(
 
     list(
         simulated = beta_new,
-        bs = NULL,
-        beta = beta_new,
         beta_locs = beta_locs
     )
 }

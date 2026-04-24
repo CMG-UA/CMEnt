@@ -18,8 +18,6 @@ simulateDMRs(
   profile = c("triweight", "flat"),
   profile_degree = 4L,
   flank_fraction = 0.2,
-  neutral_region_sd = 0,
-  matched_null_regions = 0L,
   seed = NULL,
   rename_samples = TRUE,
   resample_counts = TRUE,
@@ -29,13 +27,13 @@ simulateDMRs(
   beta_row_names_file = NULL,
   chrom_col = "#chrom",
   start_col = "start",
-  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
-  pseudo_cov = 100L
+  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
 )
 }
 \arguments{
 \item{beta}{A BSseq object, a \code{BetaHandler} object, a beta matrix/data
-frame, or a path to a beta/tabix file.}
+frame, a path to a beta/tabix file, or a path to an \code{.rds} file
+containing a BSseq object.}
 
 \item{num_dmrs}{Number of DMRs to spike in.}
 
@@ -70,15 +68,6 @@ selected cluster.}
 \item{flank_fraction}{Fraction of the selected cluster width added on both
 sides before evaluating the triweight profile.}
 
-\item{neutral_region_sd}{Optional logit-scale regional sample effect applied
-to both groups before the differential shift. The default is \code{0}, which
-avoids adding DMR-specific correlation beyond what is already present in
-the input.}
-
-\item{matched_null_regions}{Number of non-DMR candidate clusters per DMR that
-should receive only the neutral regional sample effect when
-\code{neutral_region_sd > 0}.}
-
 \item{seed}{Optional random seed.}
 
 \item{rename_samples}{If \code{TRUE}, samples are reordered and renamed using the
@@ -107,15 +96,12 @@ non-BSseq file inputs.}
 \item{start_col}{Start column name for tabix inputs.}
 
 \item{njobs}{Number of parallel jobs for loading non-BSseq inputs.}
-
-\item{pseudo_cov}{Integer pseudo-coverage used to map beta values to counts
-for non-BSseq inputs.}
 }
 \value{
-A list with simulated output (\code{simulated}), assay-specific outputs
-(\code{bs} for BSseq inputs or \code{beta}/\code{beta_locs} for non-BSseq inputs), and
-dmrseq-like metadata: \code{gr.dmrs}, \code{dmr.mncov}, \code{dmr.L}, \code{delta}, \code{truth},
-\code{selected_regions}, \code{groups}, and \code{case_group}.
+A list with simulated output (\code{simulated}), optional genomic
+locations for non-BSseq inputs (\code{beta_locs}), and dmrseq-like metadata:
+\code{gr.dmrs}, \code{dmr.mncov}, \code{dmr.L}, \code{delta}, \code{truth}, \code{selected_regions},
+\code{groups}, and \code{case_group}.
 }
 \description{
 This simulator is inspired by \code{dmrseq::simDMRs()}, but adds differential

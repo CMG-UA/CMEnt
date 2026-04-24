@@ -74,17 +74,16 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
 
     expect_equal(sim$assay, "BSseq")
     expect_s4_class(sim$simulated, "BSseq")
-    expect_s4_class(sim$bs, "BSseq")
     expect_s4_class(sim$gr.dmrs, "GRanges")
     expect_equal(length(sim$gr.dmrs), 4)
-    expect_equal(ncol(sim$bs), ncol(bs))
+    expect_equal(ncol(sim$simulated), ncol(bs))
     expect_equal(
-        colnames(sim$bs),
+        colnames(sim$simulated),
         c(paste0("Condition1_Rep", seq_len(3)), paste0("Condition2_Rep", seq_len(3)))
     )
     expect_equal(nrow(sim$truth), 4)
     expect_true(all(c("seqnames", "start", "end", "delta_beta", "num_cpgs") %in% colnames(sim$truth)))
-    expect_true(all(bsseq::getCoverage(sim$bs, type = "M") <= bsseq::getCoverage(sim$bs, type = "Cov")))
+    expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
 test_that("simulateDMRs is reproducible with seed for BSseq input", {
@@ -92,7 +91,7 @@ test_that("simulateDMRs is reproducible with seed for BSseq input", {
     sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_cpgs = 5, max_cpgs = 20)
     sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_cpgs = 5, max_cpgs = 20)
 
-    expect_equal(bsseq::getCoverage(sim1$bs, type = "M"), bsseq::getCoverage(sim2$bs, type = "M"))
+    expect_equal(bsseq::getCoverage(sim1$simulated, type = "M"), bsseq::getCoverage(sim2$simulated, type = "M"))
     expect_equal(sim1$truth, sim2$truth)
 })
 
@@ -105,7 +104,7 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
         NA
     )
 
-    loc_key <- paste0(as.character(GenomicRanges::seqnames(sim$bs)), ":", GenomicRanges::start(sim$bs))
+    loc_key <- paste0(as.character(GenomicRanges::seqnames(sim$simulated)), ":", GenomicRanges::start(sim$simulated))
     expect_equal(anyDuplicated(loc_key), 0L)
     expect_equal(sim$duplicate_loci_collapsed, 1L)
 })
@@ -124,10 +123,10 @@ test_that("simulateDMRs uses simDMRs sample names for custom groups", {
     )
 
     expect_equal(
-        colnames(sim$bs),
+        colnames(sim$simulated),
         c(paste0("Condition1_Rep", seq_len(3)), paste0("Condition2_Rep", seq_len(3)))
     )
-    expect_equal(as.character(SummarizedExperiment::colData(sim$bs)$Sample_Group), rep(c("Condition1", "Condition2"), each = 3))
+    expect_equal(as.character(SummarizedExperiment::colData(sim$simulated)$Sample_Group), rep(c("Condition1", "Condition2"), each = 3))
     expect_equal(sim$case_group, "Condition2")
     expect_equal(sim$input_case_group, "treated")
     expect_equal(unname(sim$input_groups), c("untreated", "untreated", "untreated", "treated", "treated", "treated"))
@@ -147,12 +146,30 @@ test_that("simulateDMRs supports microarray beta input", {
     )
 
     expect_equal(sim$assay, "microarray")
-    expect_null(sim$bs)
     expect_true(is.matrix(sim$simulated))
-    expect_true(is.matrix(sim$beta))
     expect_true(is.data.frame(sim$beta_locs))
-    expect_equal(ncol(sim$beta), ncol(array_input$beta))
+    expect_equal(ncol(sim$simulated), ncol(array_input$beta))
     expect_equal(length(sim$gr.dmrs), 4)
-    expect_equal(rownames(sim$beta_locs), rownames(sim$beta))
-    expect_true(all(sim$beta >= 0 & sim$beta <= 1, na.rm = TRUE))
+    expect_equal(rownames(sim$beta_locs), rownames(sim$simulated))
+    expect_true(all(sim$simulated >= 0 & sim$simulated <= 1, na.rm = TRUE))
+})
+
+test_that("simulateDMRs supports BSseq input provided as an rds path", {
+    bs <- create_simulation_bsseq()
+    bs_rds <- tempfile(fileext = ".rds")
+    saveRDS(bs, bs_rds)
+    on.exit(unlink(bs_rds), add = TRUE)
+
+    sim <- simulateDMRs(
+        beta = bs_rds,
+        num_dmrs = 3,
+        delta_max0 = 0.25,
+        min_cpgs = 5,
+        max_cpgs = 20,
+        seed = 777
+    )
+
+    expect_equal(sim$assay, "BSseq")
+    expect_s4_class(sim$simulated, "BSseq")
+    expect_equal(ncol(sim$simulated), ncol(bs))
 })
