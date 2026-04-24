@@ -30,7 +30,7 @@ RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 biocViews: DNAMethylation, DifferentialMethylation, Epigenetics, StatisticalMethod, WorkflowStep, Annotation
 Depends:
-    R (>= 4.5.0)
+    R (>= 4.3.0)
 Imports:
     AnnotationDbi,
     bedr,
