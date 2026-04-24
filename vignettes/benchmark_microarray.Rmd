@@ -1335,10 +1335,6 @@ significance_method_specs$Included_In_Plots <- vapply(seq_len(nrow(significance_
     !is.na(spec$Column) && spec$Column %in% names(mcols(method_dmrs[[spec$Method]]))
 }, logical(1))
 
-knitr::kable(
-    significance_method_specs[, c("Method", "Metric", "N_DMRs", "Included_In_Plots")],
-    caption = "Method-Reported Region Significance Metrics Used for Comparison"
-)
 
 region_significance_summary <- region_significance_long |>
     group_by(Method, Metric) |>
@@ -1456,24 +1452,28 @@ knitr::kable(
 One best-overlap match per CMEnt DMR and method, selected by maximum Jaccard
 ```{r}
 if (exists("cment_significance_correlation_long") && nrow(cment_significance_correlation_long) > 0) {
-    cment_significance_correlation_long$NegLog10_Reported_Error_Capped <- pmin(
-        cment_significance_correlation_long$NegLog10_Reported_Error,
-        50
+    cment_significance_correlation_long$NegLog10_Reported_Error_Scaled <- group_by(cment_significance_correlation_long, Method) |>
+        mutate(NegLog10_Reported_Error_Scaled = scales::rescale(NegLog10_Reported_Error, to = c(0, 1))) |>
+        pull(NegLog10_Reported_Error_Scaled)
+    cment_significance_correlation_long$Correlation_Label <- sprintf(
+        "Spearman rho = %.3f\nPearson r = %.3f",
+        cment_significance_correlation_summary$Spearman_Rho[match(cment_significance_correlation_long$Method, cment_significance_correlation_summary$Method)],
+        cment_significance_correlation_summary$Pearson_R[match(cment_significance_correlation_long$Method, cment_significance_correlation_summary$Method)]
     )
-
+    cment_significance_correlation_long$MethodWithLabel <- paste0(cment_significance_correlation_long$Method, "\n", cment_significance_correlation_long$Correlation_Label)
     ggplot(
         cment_significance_correlation_long,
-        aes(x = CMEnt_Score, y = NegLog10_Reported_Error_Capped, color = Method)
+        aes(x = CMEnt_Score, y = NegLog10_Reported_Error_Scaled, color = Method)
     ) +
         geom_point(alpha = 0.18, size = 0.4) +
         geom_smooth(se = FALSE, linewidth = 1) +
-        facet_wrap(~Method, scales = "free_y") +
+        facet_wrap(~MethodWithLabel, scales = "free_y") +
         scale_color_manual(values = method_colors_sig) +
         theme_minimal() +
         labs(
             title = "CMEnt Score vs Best-Matched Overlapping Region Significance",
             x = "CMEnt Score",
-            y = expression(paste("Capped ", -log[10], "(Reported Error Metric)")),
+            y = expression(paste("Min-max Scaled ", -log[10], "Error Metric")),
             color = "Method"
         )
 }
