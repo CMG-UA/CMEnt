@@ -2,8 +2,8 @@ citHeader("To cite CMEnt in publications use:")
 
 bibentry(
   bibtype = "Manual",
-  title   = "CMEnt: Characterization of Methylation using positional ENTanglement",
-  author  = c(person("Vasileios", "Lemonidis")),
+  title   = "From DMPs to DMRs: CMEnt, Characterization of Methylation using positional ENTanglement",
+  author  = c(person("Vasileios", "Lemonidis"), person("Joe", "Ibrahim"), person("Joris", "Vermeesch"), person("Timon", "Vandamme"), person("Guy", "Van Camp"), person("Ken", "Op De Beeck")),
   year    = "2026",
   note    = "R package version 0.99.0",
   url     = "https://github.com/CMG-UA/CMEnt"

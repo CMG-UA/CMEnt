@@ -130,14 +130,14 @@ If you use CMEnt in your research, please cite:
 
     To cite package 'CMEnt' in publications use:
 
-      Lemonidis V (2026). CMEnt: Characterization of Methylation using positional ENTanglement. R package version 0.99.0.
+      Lemonidis et al (2026). CMEnt: Characterization of Methylation using positional Entanglement. R package version 0.99.0.
       University of Antwerp, Antwerp, Belgium.
 
     A BibTeX entry for LaTeX users is:
 
-      @Manual{,
-        title = {CMEnt: Characterization of Methylation using positional ENTanglement},
-        author = {Vasileios Lemonidis},
+      @Manual{
+        title = {From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement},
+        author = {Vasileios Lemonidis, Joe Ibrahim, Joris R Vermeesch, Timon Vandamme, Guy Van Camp, Ken op de Beeck},
         year = {2026},
         note = {R package version 0.99.0},
         url = {https://github.com/CMG-UA/CMEnt},
