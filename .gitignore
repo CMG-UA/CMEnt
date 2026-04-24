@@ -48,3 +48,5 @@ CMEnt_0.99.0_R_x86_64-pc-linux-gnu.Rcheck/*
 ..Rcheck/
 tmp/
 .codex
+.Rprofile
+.lintr
