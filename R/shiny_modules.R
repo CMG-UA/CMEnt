@@ -195,15 +195,21 @@ NULL
 
         shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs, input$dmr_index)
-            shiny::validate(
-                shiny::need(input$dmr_index >= 1 && input$dmr_index <= length(data$dmrs),
-                    "Invalid DMR index")
-            )
+            if (!isTRUE(input$dmr_index >= 1 && input$dmr_index <= length(data$dmrs))) {
+                shiny::showNotification(
+                    paste0("Choose a DMR index between 1 and ", length(data$dmrs), "."),
+                    type = "error",
+                    duration = 8,
+                    id = session$ns("dmr_plot_error")
+                )
+                return(invisible(FALSE))
+            }
             params <- list(
                 dmr_index = input$dmr_index,
                 max_cpgs = input$max_cpgs,
                 max_samples_per_group = input$max_samples_per_group
             )
+            shiny::removeNotification(id = session$ns("dmr_plot_error"))
             requested_params(params)
             plot_request(plot_request() + 1L)
         }, ignoreInit = TRUE)
@@ -237,7 +243,8 @@ NULL
                     shiny::showNotification(
                         paste0("DMR plot failed: ", conditionMessage(e)),
                         type = "error",
-                        duration = NULL
+                        duration = NULL,
+                        id = session$ns("dmr_plot_error")
                     )
                     stop(e)
                 }
@@ -485,11 +492,13 @@ NULL
 
         shiny::observeEvent(input$generate_plot, {
             shiny::req(data$dmrs)
+            region <- trimws(if (is.null(input$region)) "" else input$region)
             params <- list(
-                region = if (nzchar(trimws(input$region))) trimws(input$region) else NULL,
+                region = if (nzchar(region)) region else NULL,
                 point_size = input$point_size,
                 point_alpha = input$point_alpha
             )
+            shiny::removeNotification(id = session$ns("manhattan_plot_error"))
             requested_params(params)
             plot_request(plot_request() + 1L)
         }, ignoreInit = TRUE)
@@ -523,7 +532,8 @@ NULL
                     shiny::showNotification(
                         paste0("Manhattan plot failed: ", conditionMessage(e)),
                         type = "error",
-                        duration = NULL
+                        duration = NULL,
+                        id = session$ns("manhattan_plot_error")
                     )
                     stop(e)
                 }
@@ -609,13 +619,23 @@ NULL
         })
 
         shiny::observeEvent(input$generate_plot, {
-            shiny::req(data$dmrs, input$chromosome)
+            shiny::req(data$dmrs)
+            if (is.null(input$chromosome) || !nzchar(input$chromosome)) {
+                shiny::showNotification(
+                    "Choose a chromosome before generating the block formation plot.",
+                    type = "error",
+                    duration = 8,
+                    id = session$ns("block_plot_error")
+                )
+                return(invisible(FALSE))
+            }
             params <- list(
                 chromosome = input$chromosome,
                 block_gap_mode = input$block_gap_mode,
                 block_gap_fixed_bp = input$block_gap_fixed_bp,
                 k_neighbors = input$k_neighbors
             )
+            shiny::removeNotification(id = session$ns("block_plot_error"))
             plot_params(params)
             plot_request(plot_request() + 1L)
         }, ignoreInit = TRUE)
@@ -644,7 +664,8 @@ NULL
                     shiny::showNotification(
                         paste0("Block formation plot failed: ", conditionMessage(e)),
                         type = "error",
-                        duration = NULL
+                        duration = NULL,
+                        id = session$ns("block_plot_error")
                     )
                     stop(e)
                 }
@@ -1033,13 +1054,30 @@ NULL
 
         shiny::observeEvent(input$generate_plot, {
             shiny::req(viewer_data()$dmrs, viewer_data()$beta_handler, viewer_data()$pheno)
+            mode <- if (is.null(input$mode)) "auto" else input$mode
+            method <- if (is.null(input$method)) "blocks" else input$method
+            region <- trimws(if (is.null(input$region)) "" else input$region)
+            chromosomes <- if (is.null(input$chromosomes)) character() else input$chromosomes
+            if (
+                identical(mode, "manual") &&
+                !nzchar(region) &&
+                length(chromosomes) == 0
+            ) {
+                shiny::showNotification(
+                    "Enter a Circos region or select at least one chromosome.",
+                    type = "error",
+                    duration = 8,
+                    id = session$ns("circos_error")
+                )
+                return(invisible(FALSE))
+            }
             params <- .sanitizeViewerCircosParams(
                 list(
-                    mode = input$mode,
-                    method = input$method,
+                    mode = mode,
+                    method = method,
                     n_regions = input$n_regions,
-                    region = if (input$mode == "manual" && nzchar(trimws(input$region))) input$region else NULL,
-                    chromosomes = if (input$mode == "manual" && length(input$chromosomes) > 0) input$chromosomes else NULL,
+                    region = if (identical(mode, "manual") && nzchar(region)) region else NULL,
+                    chromosomes = if (identical(mode, "manual") && length(chromosomes) > 0) chromosomes else NULL,
                     max_dmrs_per_chr = input$max_dmrs_per_chr,
                     max_cpgs_per_dmr = input$max_cpgs_per_dmr,
                     min_similarity = input$min_similarity
@@ -1057,6 +1095,14 @@ NULL
             }
 
             shiny::removeNotification(id = session$ns("circos_error"))
+            if (isTRUE(params$method_fallback)) {
+                shiny::showNotification(
+                    "Component-aware Circos selection needs a usable interaction cache, so this plot will use block selection.",
+                    type = "warning",
+                    duration = 7,
+                    id = session$ns("circos_method_fallback")
+                )
+            }
             requested_params(params)
             plot_request(plot_request() + 1L)
         }, ignoreInit = TRUE)

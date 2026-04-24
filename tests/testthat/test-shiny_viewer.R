@@ -89,6 +89,56 @@ test_that("Viewer spinner helpers delegate to shinycssloaders page spinners", {
     expect_match(hide_helper, "hidePageSpinner", fixed = TRUE)
 })
 
+test_that("Viewer page spinner caption exposes a cancel action when requested", {
+    caption <- CMEnt:::.viewerPageSpinnerCaption(
+        message = "Processing...",
+        detail = "Working in the background.",
+        cancelable = TRUE,
+        cancel_input_id = "cancel_test_task"
+    )
+    caption_html <- as.character(caption)
+
+    expect_match(caption_html, "cancel_test_task", fixed = TRUE)
+    expect_match(caption_html, "Cancel", fixed = TRUE)
+})
+
+test_that("Viewer session-ended cleanup isolates spinner reactive state", {
+    server_body <- paste(deparse(body(CMEnt:::.createViewerServer(list()))), collapse = "\n")
+
+    expect_match(server_body, "shiny::isolate(page_spinner_visible())", fixed = TRUE)
+})
+
+test_that("Viewer worker polling consumes completed callr session events", {
+    skip_if_not_installed("callr")
+
+    worker <- callr::r_session$new(wait = TRUE)
+    on.exit(try(worker$close(), silent = TRUE), add = TRUE)
+
+    worker$call(function() {
+        Sys.sleep(0.1)
+        42L
+    })
+
+    task_status <- NULL
+    deadline <- Sys.time() + 5
+    repeat {
+        task_status <- CMEnt:::.readViewerWorkerTask(worker)
+        if (isTRUE(task_status$done)) {
+            break
+        }
+        if (Sys.time() > deadline) {
+            stop("Timed out waiting for callr worker test task.")
+        }
+        Sys.sleep(0.05)
+    }
+
+    expect_true(task_status$done)
+    expect_equal(task_status$result, 42L)
+    expect_null(task_status$error)
+    expect_false(task_status$close_worker)
+    expect_equal(worker$get_state(), "idle")
+})
+
 test_that("Viewer no longer ships the custom busy overlay script", {
     script_path <- test_path("..", "..", "inst", "shiny", "CMEntViewer", "www", "busy-overlay.js")
     expect_false(file.exists(script_path))

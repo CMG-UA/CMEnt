@@ -324,21 +324,47 @@ launchCMEntViewer <- function(
     )
 }
 
-.viewerPageSpinnerCaption <- function(message = "Processing...", detail = NULL) {
+.viewerPageSpinnerCaption <- function(
+    message = "Processing...",
+    detail = NULL,
+    cancelable = FALSE,
+    cancel_input_id = "viewer_cancel_task"
+) {
     detail <- trimws(if (is.null(detail)) "" else as.character(detail))
     shiny::tags$div(
         class = "text-center",
         shiny::tags$div(class = "fw-semibold", message),
-        if (nzchar(detail)) shiny::tags$div(class = "small text-muted mt-1", detail)
+        if (nzchar(detail)) shiny::tags$div(class = "small text-muted mt-1", detail),
+        if (isTRUE(cancelable)) {
+            shiny::tags$div(
+                class = "mt-3",
+                shiny::actionButton(
+                    cancel_input_id,
+                    "Cancel",
+                    icon = shiny::icon("ban"),
+                    class = "btn-outline-secondary btn-sm"
+                )
+            )
+        }
     )
 }
 
-.viewerShowPageSpinner <- function(message = "Processing...", detail = NULL) {
+.viewerShowPageSpinner <- function(
+    message = "Processing...",
+    detail = NULL,
+    cancelable = FALSE,
+    cancel_input_id = "viewer_cancel_task"
+) {
     shinycssloaders::showPageSpinner(
         type = 4,
         color = "#2C3E50",
         size = 0.9,
-        caption = .viewerPageSpinnerCaption(message = message, detail = detail)
+        caption = .viewerPageSpinnerCaption(
+            message = message,
+            detail = detail,
+            cancelable = cancelable,
+            cancel_input_id = cancel_input_id
+        )
     )
 }
 
@@ -621,6 +647,83 @@ launchCMEntViewer <- function(
     worker
 }
 
+.readViewerWorkerTask <- function(worker) {
+    task_error <- NULL
+    task_result <- NULL
+    close_worker <- FALSE
+    task_done <- FALSE
+
+    repeat {
+        next_event <- tryCatch(worker$read(), error = function(e) e)
+        if (inherits(next_event, "error")) {
+            task_error <- next_event
+            close_worker <- TRUE
+            task_done <- TRUE
+            break
+        }
+        if (is.null(next_event)) {
+            break
+        }
+
+        if (identical(next_event$code, worker$status$MSG)) {
+            next
+        }
+
+        if (identical(next_event$code, worker$status$DONE)) {
+            task_result <- next_event$result
+            task_error <- next_event$error
+            task_done <- TRUE
+            break
+        }
+
+        if (next_event$code %in% c(worker$status$EXITED, worker$status$CRASHED, worker$status$CLOSED)) {
+            task_error <- simpleError("Viewer background worker stopped unexpectedly.")
+            close_worker <- TRUE
+            task_done <- TRUE
+            break
+        }
+    }
+
+    if (!isTRUE(task_done)) {
+        worker_state <- tryCatch(worker$get_state(), error = function(e) "finished")
+        worker_alive <- isTRUE(tryCatch(worker$is_alive(), error = function(e) FALSE))
+
+        if (worker_state %in% c("starting", "busy") && worker_alive) {
+            return(list(
+                done = FALSE,
+                result = NULL,
+                error = NULL,
+                close_worker = FALSE
+            ))
+        }
+
+        if (!worker_alive || worker_state %in% c("finished", "closed")) {
+            return(list(
+                done = TRUE,
+                result = NULL,
+                error = simpleError("Viewer background worker stopped unexpectedly."),
+                close_worker = TRUE
+            ))
+        }
+
+        if (identical(worker_state, "idle")) {
+            return(list(
+                done = TRUE,
+                result = NULL,
+                error = simpleError("Viewer background task finished without returning a result."),
+                close_worker = FALSE
+            ))
+        }
+    }
+
+    list(
+        done = TRUE,
+        result = task_result,
+        error = task_error,
+        close_worker = close_worker
+    )
+}
+
 .createViewerTaskController <- function(session, data) {
     active_task <- shiny::reactiveVal(NULL)
     task_state <- shiny::reactiveVal(list(
@@ -632,6 +735,7 @@ launchCMEntViewer <- function(
     ))
     worker_session <- NULL
     worker_dev_pkg_path <- .viewerDevPackagePath()
+    task_counter <- 0L
 
     set_task_state <- function(
         active = FALSE,
@@ -728,79 +832,17 @@ launchCMEntViewer <- function(
         }
 
         descriptor <- .viewerTaskMessage(task_type)
-        worker <- tryCatch(
-            ensure_worker(),
-            error = function(e) e
-        )
-
-        if (inherits(worker, "error")) {
-            if (is.function(on_error)) {
-                on_error(worker)
-            } else {
-                shiny::showNotification(
-                    paste0("Unable to start viewer task: ", worker$message),
-                    type = "error",
-                    duration = NULL
-                )
-            }
-            return(FALSE)
-        }
-
-        launch_error <- tryCatch(
-            {
-                worker$call(
-                    func = function(task_type, params) {
-                        suppressMessages({
-                            if (!exists(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
-                                stop("Viewer worker data is not initialized.", call. = FALSE)
-                            }
-
-                            data <- get(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
-                            result <- CMEnt:::.viewerRunBackgroundTaskFromData(
-                                task_type = task_type,
-                                data = data,
-                                params = params
-                            )
-
-                            if (identical(task_type, "circos_cache_compute") && is.list(result$cache)) {
-                                data$interactions <- result$cache$interactions
-                                data$components <- result$cache$components
-                                assign(".cment_viewer_worker_data", data, envir = .GlobalEnv)
-                            }
-
-                            result
-                        })
-                    },
-                    args = list(
-                        task_type = task_type,
-                        params = params
-                    )
-                )
-                NULL
-            },
-            error = function(e) e
-        )
-
-        if (inherits(launch_error, "error")) {
-            close_worker()
-            if (is.function(on_error)) {
-                on_error(launch_error)
-            } else {
-                shiny::showNotification(
-                    paste0("Unable to start viewer task: ", launch_error$message),
-                    type = "error",
-                    duration = NULL
-                )
-            }
-            return(FALSE)
-        }
+        task_counter <<- task_counter + 1L
+        task_id <- task_counter
+        pending_detail <- "Starting background worker..."
 
         active_task(list(
-            backend = "session",
-            worker = worker,
+            backend = "pending",
+            worker = NULL,
+            task_id = task_id,
             task_type = task_type,
             message = descriptor$message,
-            detail = descriptor$detail,
+            detail = pending_detail,
             cancelable = TRUE,
             on_success = on_success,
             on_error = on_error,
@@ -810,9 +852,106 @@ launchCMEntViewer <- function(
             active = TRUE,
             task_type = task_type,
             message = descriptor$message,
-            detail = descriptor$detail,
+            detail = pending_detail,
             cancelable = TRUE
         )
+
+        session$onFlushed(function() {
+            current <- get_active_task()
+            if (is.null(current) || !identical(current$task_id, task_id)) {
+                return()
+            }
+
+            worker <- tryCatch(
+                ensure_worker(),
+                error = function(e) e
+            )
+
+            if (inherits(worker, "error")) {
+                active_task(NULL)
+                set_task_state()
+                if (is.function(on_error)) {
+                    on_error(worker)
+                } else {
+                    shiny::showNotification(
+                        paste0("Unable to start viewer task: ", conditionMessage(worker)),
+                        type = "error",
+                        duration = NULL
+                    )
+                }
+                return()
+            }
+
+            launch_error <- tryCatch(
+                {
+                    worker$call(
+                        func = function(task_type, params) {
+                            suppressMessages({
+                                if (!exists(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
+                                    stop("Viewer worker data is not initialized.", call. = FALSE)
+                                }
+
+                                data <- get(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
+                                result <- CMEnt:::.viewerRunBackgroundTaskFromData(
+                                    task_type = task_type,
+                                    data = data,
+                                    params = params
+                                )
+
+                                if (identical(task_type, "circos_cache_compute") && is.list(result$cache)) {
+                                    data$interactions <- result$cache$interactions
+                                    data$components <- result$cache$components
+                                    assign(".cment_viewer_worker_data", data, envir = .GlobalEnv)
+                                }
+
+                                result
+                            })
+                        },
+                        args = list(
+                            task_type = task_type,
+                            params = params
+                        )
+                    )
+                    NULL
+                },
+                error = function(e) e
+            )
+
+            if (inherits(launch_error, "error")) {
+                close_worker()
+                active_task(NULL)
+                set_task_state()
+                if (is.function(on_error)) {
+                    on_error(launch_error)
+                } else {
+                    shiny::showNotification(
+                        paste0("Unable to start viewer task: ", conditionMessage(launch_error)),
+                        type = "error",
+                        duration = NULL
+                    )
+                }
+                return()
+            }
+
+            current <- get_active_task()
+            if (is.null(current) || !identical(current$task_id, task_id)) {
+                close_worker()
+                return()
+            }
+
+            current$backend <- "session"
+            current$worker <- worker
+            current$detail <- descriptor$detail
+            active_task(current)
+            set_task_state(
+                active = TRUE,
+                task_type = task_type,
+                message = descriptor$message,
+                detail = descriptor$detail,
+                cancelable = TRUE
+            )
+        }, once = TRUE)
+
         TRUE
     }
 
@@ -824,59 +963,27 @@ launchCMEntViewer <- function(
 
         shiny::invalidateLater(250, session)
         worker <- current$worker
-        worker_state <- tryCatch(worker$get_state(), error = function(e) "finished")
-        if (worker_state %in% c("starting", "busy")) {
+        if (is.null(worker)) {
+            return()
+        }
+        task_status <- .readViewerWorkerTask(worker)
+        if (!isTRUE(task_status$done)) {
             return()
         }
 
-        task_error <- NULL
-        task_result <- NULL
-
-        repeat {
-            next_event <- tryCatch(worker$read(), error = function(e) e)
-            if (inherits(next_event, "error")) {
-                task_error <- next_event
-                break
-            }
-            if (is.null(next_event)) {
-                break
-            }
-
-            if (identical(next_event$code, worker$status$MSG)) {
-                next
-            }
-
-            if (identical(next_event$code, worker$status$DONE)) {
-                task_result <- next_event$result
-                task_error <- next_event$error
-                break
-            }
-
-            if (next_event$code %in% c(worker$status$EXITED, worker$status$CRASHED, worker$status$CLOSED)) {
-                task_error <- simpleError("Viewer background worker stopped unexpectedly.")
-                close_worker()
-                break
-            }
-        }
-
-        if (is.null(task_result) && is.null(task_error)) {
-            if (identical(worker_state, "finished")) {
-                task_error <- simpleError("Viewer background worker stopped unexpectedly.")
-                close_worker()
-            } else {
-                return()
-            }
+        if (isTRUE(task_status$close_worker)) {
+            close_worker()
         }
 
         active_task(NULL)
         set_task_state()
 
-        if (!is.null(task_error)) {
+        if (!is.null(task_status$error)) {
             if (is.function(current$on_error)) {
-                current$on_error(task_error)
+                current$on_error(task_status$error)
             } else {
                 shiny::showNotification(
-                    paste0("Viewer task failed: ", task_error$message),
+                    paste0("Viewer task failed: ", task_status$error$message),
                     type = "error",
                     duration = NULL
                 )
@@ -885,7 +992,7 @@ launchCMEntViewer <- function(
         }
 
         if (is.function(current$on_success)) {
-            current$on_success(task_result)
+            current$on_success(task_status$result)
         }
     })
 
@@ -968,24 +1075,43 @@ launchCMEntViewer <- function(
     function(input, output, session) {
         task_controller <- .createViewerTaskController(session, data)
         page_spinner_visible <- shiny::reactiveVal(FALSE)
-        task_controller$initialize()
+        page_spinner_state_key <- shiny::reactiveVal(NULL)
+
+        shiny::observeEvent(input$viewer_cancel_task, {
+            task_controller$cancel()
+        }, ignoreInit = TRUE)
 
         shiny::observe({
             state <- task_controller$state()
             spinner_visible <- page_spinner_visible()
+            spinner_state_key <- paste(
+                isTRUE(state$active),
+                if (is.null(state$task_type)) "" else state$task_type,
+                if (is.null(state$message)) "" else state$message,
+                if (is.null(state$detail)) "" else state$detail,
+                isTRUE(state$cancelable),
+                sep = "\r"
+            )
 
-            if (isTRUE(state$active) && !spinner_visible) {
+            if (
+                isTRUE(state$active) &&
+                (!spinner_visible || !identical(spinner_state_key, page_spinner_state_key()))
+            ) {
                 .viewerShowPageSpinner(
                     message = if (is.null(state$message)) "Processing..." else state$message,
-                    detail = state$detail
+                    detail = state$detail,
+                    cancelable = isTRUE(state$cancelable),
+                    cancel_input_id = "viewer_cancel_task"
                 )
                 page_spinner_visible(TRUE)
+                page_spinner_state_key(spinner_state_key)
                 return()
             }
 
             if (!isTRUE(state$active) && spinner_visible) {
                 .viewerHidePageSpinner()
                 page_spinner_visible(FALSE)
+                page_spinner_state_key(NULL)
             }
         })
 
@@ -1007,7 +1133,7 @@ launchCMEntViewer <- function(
         })
 
         session$onSessionEnded(function() {
-            if (isTRUE(page_spinner_visible())) {
+            if (isTRUE(shiny::isolate(page_spinner_visible()))) {
                 try(.viewerHidePageSpinner(), silent = TRUE)
             }
             try(task_controller$shutdown(), silent = TRUE)
