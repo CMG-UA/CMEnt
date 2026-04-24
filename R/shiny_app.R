@@ -391,7 +391,7 @@ launchCMEntViewer <- function(
             detail = ""
         ),
         circos_cache_compute = list(
-            message = "Computing precomputed Circos cache...",
+            message = "Computing interactions...",
             detail = ""
         ),
         list(
