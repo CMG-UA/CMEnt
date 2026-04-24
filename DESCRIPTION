@@ -142,7 +142,7 @@ Collate:
     'shiny_modules.R'
     'shiny_app.R'
     'augment_bsseq.R'
-    'simulate_dmrs_bsseq.R'
+    'simulate_dmrs.R'
     'helpers.R'
     'zzz.R'
 NeedsCompilation: no

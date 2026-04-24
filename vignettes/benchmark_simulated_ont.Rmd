@@ -200,8 +200,8 @@ max_lookup_dist <- 1000L
 This step is crucial for CMEnt, which relies on seed CpGs to guide DMR assembly.
 We use a DSS approach to identify candidate seeds based on differential methylation evidence. We keep the FDR threshold relatively lenient (0.1), to account for the low sample size.
 ```{r seeds_calculation}
-# Seeds were generated using the simulateDMRsBSSeq function with the following parameters:
-# simulateDMRsBSSeq(
+# Seeds were generated using the simulateDMRs function with the following parameters:
+# simulateDMRs(
 #     bs = base_bs,
 #     num_dmrs = 1000,
 #     delta_max0 = 0.35,

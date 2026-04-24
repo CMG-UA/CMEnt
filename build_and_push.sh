@@ -1,3 +1,3 @@
 #!/bin/bash
-docker build . -t vlemonidis/cment
-docker push vlemonidis/cment
+docker build . -t cmgantwerpen/cment
+docker push cmgantwerpen/cment

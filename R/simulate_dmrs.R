@@ -1,14 +1,15 @@
 # nolint start: object_name_linter
 
-#' Simulate DMRs in a BSseq object while preserving local structure
+#' Simulate DMRs while preserving local methylation structure
 #'
-#' This is a BSseq DMR simulator in the spirit of `dmrseq::simDMRs()`, but the
-#' differential signal is added on the logit methylation scale instead of by
-#' independently perturbing CpG-level beta values. Existing sample-to-sample and
-#' local CpG structure in the input object is therefore preserved inside the
-#' spiked regions, while the truth DMRs remain ordinary regional mean shifts.
+#' This simulator is inspired by `dmrseq::simDMRs()`, but adds differential
+#' signal on the logit methylation scale. The same regional perturbation engine
+#' is used across methylation assays by operating on methylated-count and
+#' coverage-count representations. For microarray-style beta values, pseudo
+#' counts are constructed first, then the same simulation mechanism is applied.
 #'
-#' @param bs A BSseq object.
+#' @param beta A BSseq object, a [BetaHandler] object, a beta matrix/data
+#'   frame, or a path to a beta/tabix file.
 #' @param num_dmrs Number of DMRs to spike in.
 #' @param delta_max0 Baseline maximum beta-scale effect size near the center of
 #'   each DMR.
@@ -29,32 +30,43 @@
 #'   `"flat"`.
 #' @param profile_degree Degree used by the triweight profile.
 #' @param flank_fraction Fraction of the selected cluster width added on both
-#'   sides before evaluating the triweight profile. This mimics
-#'   `dmrseq::simDMRs()` and avoids a hard zero at the cluster edges.
+#'   sides before evaluating the triweight profile.
 #' @param neutral_region_sd Optional logit-scale regional sample effect applied
 #'   to both groups before the differential shift. The default is `0`, which
 #'   avoids adding DMR-specific correlation beyond what is already present in
-#'   `bs`.
+#'   the input.
 #' @param matched_null_regions Number of non-DMR candidate clusters per DMR that
 #'   should receive only the neutral regional sample effect when
-#'   `neutral_region_sd > 0`. This can be used to avoid making local correlation
-#'   unique to true DMRs.
+#'   `neutral_region_sd > 0`.
 #' @param seed Optional random seed.
 #' @param rename_samples If `TRUE`, samples are reordered and renamed using the
 #'   `dmrseq::simDMRs()` convention: controls first as `Condition1_Rep1`,
 #'   `Condition1_Rep2`, etc., followed by cases as `Condition2_Rep1`,
 #'   `Condition2_Rep2`, etc.
 #' @param resample_counts If `TRUE`, methylated counts in touched regions are
-#'   redrawn from the shifted probabilities and original coverage. If `FALSE`,
-#'   counts are rounded deterministically.
-#' @param num.dmrs,deltamax0,delta.max0 Compatibility aliases for common
-#'   `dmrseq::simDMRs()` argument names.
+#'   redrawn from shifted probabilities and coverage. If `FALSE`, counts are
+#'   rounded deterministically.
+#' @param array Array platform type. Used only when `beta` is not a BSseq object
+#'   or a self-contained [BetaHandler].
+#' @param genome Reference genome. Used only when `beta` is not a BSseq object
+#'   or a self-contained [BetaHandler].
+#' @param sorted_locs Optional genomic locations with `chr`, `start`, and
+#'   optionally `end` columns. Used only for non-BSseq inputs.
+#' @param beta_row_names_file Optional file with beta row names. Used only for
+#'   non-BSseq file inputs.
+#' @param chrom_col Chromosome column name for tabix inputs.
+#' @param start_col Start column name for tabix inputs.
+#' @param njobs Number of parallel jobs for loading non-BSseq inputs.
+#' @param pseudo_cov Integer pseudo-coverage used to map beta values to counts
+#'   for non-BSseq inputs.
 #'
-#' @return A list with `bs`, `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`,
-#'   `truth`, `selected_regions`, `groups`, and `case_group`.
+#' @return A list with simulated output (`simulated`), assay-specific outputs
+#'   (`bs` for BSseq inputs or `beta`/`beta_locs` for non-BSseq inputs), and
+#'   dmrseq-like metadata: `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`,
+#'   `selected_regions`, `groups`, and `case_group`.
 #' @export
-simulateDMRsBSSeq <- function(
-    bs,
+simulateDMRs <- function(
+    beta,
     num_dmrs = 3000L,
     delta_max0 = 0.3,
     groups = NULL,
@@ -71,11 +83,16 @@ simulateDMRsBSSeq <- function(
     matched_null_regions = 0L,
     seed = NULL,
     rename_samples = TRUE,
-    resample_counts = TRUE
+    resample_counts = TRUE,
+    array = c("450K", "27K", "EPIC", "EPICv2"),
+    genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
+    sorted_locs = NULL,
+    beta_row_names_file = NULL,
+    chrom_col = "#chrom",
+    start_col = "start",
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    pseudo_cov = 100L
 ) {
-    if (!inherits(bs, "BSseq")) {
-        stop("'bs' must be a BSseq object.")
-    }
     if (!is.null(seed)) {
         set.seed(seed)
     }
@@ -87,6 +104,7 @@ simulateDMRsBSSeq <- function(
     max_cpgs <- as.integer(max_cpgs)
     profile_degree <- as.integer(profile_degree)
     matched_null_regions <- as.integer(matched_null_regions)
+    pseudo_cov <- as.integer(pseudo_cov)
 
     if (length(num_dmrs) != 1L || is.na(num_dmrs) || num_dmrs < 1L) {
         stop("'num_dmrs' must be a positive integer.")
@@ -121,11 +139,32 @@ simulateDMRsBSSeq <- function(
     if (length(matched_null_regions) != 1L || is.na(matched_null_regions) || matched_null_regions < 0L) {
         stop("'matched_null_regions' must be a non-negative integer.")
     }
+    if (length(pseudo_cov) != 1L || is.na(pseudo_cov) || pseudo_cov < 1L) {
+        stop("'pseudo_cov' must be a positive integer.")
+    }
 
-    bs <- sort(bs)
-    n_samples <- ncol(bs)
+    input <- .prepareSimulationInput(
+        beta = beta,
+        array = array,
+        genome = genome,
+        sorted_locs = sorted_locs,
+        beta_row_names_file = beta_row_names_file,
+        chrom_col = chrom_col,
+        start_col = start_col,
+        njobs = njobs,
+        pseudo_cov = pseudo_cov
+    )
+
+    meth_mat <- input$meth
+    cov_mat <- input$cov
+    chr <- input$chr
+    pos <- input$pos
+    end_pos <- input$end
+    row_ids <- input$row_ids
+
+    n_samples <- ncol(meth_mat)
     if (n_samples < 2L) {
-        stop("'bs' must contain at least two samples.")
+        stop("Input methylation data must contain at least two samples.")
     }
 
     groups <- .resolveSimulationGroups(
@@ -134,17 +173,13 @@ simulateDMRsBSSeq <- function(
         case_group = case_group
     )
     case_group <- attr(groups, "case_group")
-    group_levels <- unique(as.character(groups))
     case_samples <- which(groups == case_group)
     control_samples <- which(groups != case_group)
     if (length(case_samples) == 0L || length(control_samples) == 0L) {
         stop("'case_group' must define at least one case and one non-case sample.")
     }
 
-    sample_names <- colnames(bs)
-    if (is.null(sample_names)) {
-        sample_names <- paste0("sample_", seq_len(n_samples))
-    }
+    sample_names <- input$sample_names
     output_order <- seq_len(n_samples)
     output_groups <- as.character(groups)
     output_case_group <- case_group
@@ -157,12 +192,6 @@ simulateDMRsBSSeq <- function(
         output_case_group <- "Condition2"
         sample_names <- .makeSimulationSampleNames(output_groups)
     }
-
-    meth_mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
-    cov_mat <- as.matrix(bsseq::getCoverage(bs, type = "Cov"))
-    gr <- GenomicRanges::granges(bs)
-    chr <- as.character(GenomeInfoDb::seqnames(gr))
-    pos <- GenomicRanges::start(gr)
 
     meth_mat[is.na(meth_mat)] <- 0
     cov_mat[is.na(cov_mat)] <- 0
@@ -177,12 +206,16 @@ simulateDMRsBSSeq <- function(
         meth = meth_mat,
         cov = cov_mat,
         chr = chr,
-        pos = pos
+        pos = pos,
+        end = end_pos,
+        row_ids = row_ids
     )
     meth_mat <- collapsed_input$meth
     cov_mat <- collapsed_input$cov
     chr <- collapsed_input$chr
     pos <- collapsed_input$pos
+    end_pos <- collapsed_input$end
+    row_ids <- collapsed_input$row_ids
 
     clusters <- .makeSimulationClusters(chr = chr, pos = pos, max_gap = max_gap)
     index_by_cluster <- split(seq_along(clusters), clusters)
@@ -304,17 +337,17 @@ simulateDMRsBSSeq <- function(
 
         selected_gr[[dmr_i]] <- GenomicRanges::GRanges(
             seqnames = chr[idx[[1L]]],
-            ranges = IRanges::IRanges(start = min(pos[idx]), end = max(pos[idx]))
+            ranges = IRanges::IRanges(start = min(pos[idx]), end = max(end_pos[idx]))
         )
         truth_gr[[dmr_i]] <- GenomicRanges::GRanges(
             seqnames = chr[truth_idx[[1L]]],
-            ranges = IRanges::IRanges(start = min(pos[truth_idx]), end = max(pos[truth_idx]))
+            ranges = IRanges::IRanges(start = min(pos[truth_idx]), end = max(end_pos[truth_idx]))
         )
         truth_rows[[dmr_i]] <- data.frame(
             seqnames = chr[truth_idx[[1L]]],
             start = min(pos[truth_idx]),
-            end = max(pos[truth_idx]),
-            width = max(pos[truth_idx]) - min(pos[truth_idx]) + 1L,
+            end = max(end_pos[truth_idx]),
+            width = max(end_pos[truth_idx]) - min(pos[truth_idx]) + 1L,
             num_cpgs = length(truth_idx),
             cov = dmr_mncov[[dmr_i]],
             delta_beta = observed_delta,
@@ -341,26 +374,26 @@ simulateDMRsBSSeq <- function(
     meth_mat <- meth_mat[, output_order, drop = FALSE]
     cov_mat <- cov_mat[, output_order, drop = FALSE]
     colnames(meth_mat) <- colnames(cov_mat) <- sample_names
-    bs_new <- bsseq::BSseq(
+
+    output <- .buildSimulationOutputObject(
+        input = input,
+        meth = meth_mat,
+        cov = cov_mat,
         chr = chr,
         pos = pos,
-        M = meth_mat,
-        Cov = cov_mat,
-        sampleNames = sample_names
-    )
-    GenomeInfoDb::seqinfo(bs_new) <- GenomeInfoDb::seqinfo(bs)
-    SummarizedExperiment::colData(bs_new) <- S4Vectors::DataFrame(
-        Sample_ID = sample_names,
-        Sample_Group = output_groups,
-        casecontrol = output_groups == output_case_group,
-        row.names = sample_names
+        end_pos = end_pos,
+        row_ids = row_ids,
+        sample_names = sample_names,
+        output_groups = output_groups,
+        output_case_group = output_case_group
     )
 
-    list(
+    result <- list(
         gr.dmrs = gr_dmrs,
         dmr.mncov = dmr_mncov,
         dmr.L = dmr_lengths,
-        bs = bs_new,
+        simulated = output$simulated,
+        assay = input$assay,
         delta = deltas,
         truth = truth,
         selected_regions = selected_regions,
@@ -373,22 +406,206 @@ simulateDMRsBSSeq <- function(
             suppressWarnings(do.call(c, lapply(null_indices, function(idx) {
                 GenomicRanges::GRanges(
                     seqnames = chr[idx[[1L]]],
-                    ranges = IRanges::IRanges(start = min(pos[idx]), end = max(pos[idx]))
+                    ranges = IRanges::IRanges(start = min(pos[idx]), end = max(end_pos[idx]))
                 )
             })))
         }
     )
+
+    if (!is.null(output$bs)) {
+        result$bs <- output$bs
+    }
+    if (!is.null(output$beta)) {
+        result$beta <- output$beta
+    }
+    if (!is.null(output$beta_locs)) {
+        result$beta_locs <- output$beta_locs
+    }
+
+    result
 }
 
-.collapseSimulationDuplicateLoci <- function(meth, cov, chr, pos) {
+.prepareSimulationInput <- function(beta,
+                                    array,
+                                    genome,
+                                    sorted_locs,
+                                    beta_row_names_file,
+                                    chrom_col,
+                                    start_col,
+                                    njobs,
+                                    pseudo_cov) {
+    if (inherits(beta, "BSseq")) {
+        bs <- sort(beta)
+        meth_mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
+        cov_mat <- as.matrix(bsseq::getCoverage(bs, type = "Cov"))
+        gr <- GenomicRanges::granges(bs)
+        chr <- as.character(GenomeInfoDb::seqnames(gr))
+        pos <- GenomicRanges::start(gr)
+        end_pos <- GenomicRanges::end(gr)
+        row_ids <- paste0(chr, ":", pos)
+        sample_names <- colnames(bs)
+        if (is.null(sample_names)) {
+            sample_names <- paste0("sample_", seq_len(ncol(meth_mat)))
+        }
+        return(list(
+            assay = "BSseq",
+            source = bs,
+            seqinfo = GenomeInfoDb::seqinfo(bs),
+            sample_names = sample_names,
+            row_ids = row_ids,
+            chr = chr,
+            pos = pos,
+            end = end_pos,
+            meth = meth_mat,
+            cov = cov_mat
+        ))
+    }
+
+    beta_handler <- getBetaHandler(
+        beta = beta,
+        array = array,
+        genome = genome,
+        beta_row_names_file = beta_row_names_file,
+        sorted_locs = sorted_locs,
+        chrom_col = chrom_col,
+        start_col = start_col,
+        njobs = njobs
+    )
+
+    beta_mat <- as.matrix(beta_handler$getBeta())
+    beta_locs <- as.data.frame(beta_handler$getBetaLocs())
+    if (!all(c("chr", "start") %in% colnames(beta_locs))) {
+        stop("Non-BSseq simulation requires genomic locations with 'chr' and 'start' columns.")
+    }
+    if (!("end" %in% colnames(beta_locs))) {
+        beta_locs$end <- beta_locs$start
+    }
+
+    if (is.null(rownames(beta_locs)) || any(!nzchar(rownames(beta_locs)))) {
+        beta_locs_ids <- paste0(as.character(beta_locs$chr), ":", as.integer(beta_locs$start))
+        rownames(beta_locs) <- make.unique(beta_locs_ids)
+    }
+
+    if (is.null(rownames(beta_mat)) || any(!nzchar(rownames(beta_mat)))) {
+        if (nrow(beta_mat) != nrow(beta_locs)) {
+            stop("Unable to align non-BSseq beta values with genomic locations.")
+        }
+        rownames(beta_mat) <- rownames(beta_locs)
+    }
+
+    common_ids <- rownames(beta_locs)[rownames(beta_locs) %in% rownames(beta_mat)]
+    if (length(common_ids) == 0L) {
+        stop("No overlapping row identifiers between beta values and genomic locations.")
+    }
+    beta_locs <- beta_locs[common_ids, , drop = FALSE]
+    beta_mat <- beta_mat[common_ids, , drop = FALSE]
+
+    suppressWarnings(storage.mode(beta_mat) <- "double")
+    invalid_mask <- !is.finite(beta_mat)
+    beta_mat[invalid_mask] <- 0
+    beta_mat <- .clampSimulationBeta(beta_mat)
+
+    cov_mat <- matrix(
+        as.integer(pseudo_cov),
+        nrow = nrow(beta_mat),
+        ncol = ncol(beta_mat),
+        dimnames = dimnames(beta_mat)
+    )
+    cov_mat[invalid_mask] <- 0
+    meth_mat <- round(beta_mat * cov_mat)
+    meth_mat[invalid_mask] <- 0
+
+    sample_names <- colnames(beta_mat)
+    if (is.null(sample_names)) {
+        sample_names <- paste0("sample_", seq_len(ncol(beta_mat)))
+    }
+
+    list(
+        assay = "microarray",
+        source = beta_handler,
+        sample_names = sample_names,
+        row_ids = rownames(beta_mat),
+        chr = as.character(beta_locs$chr),
+        pos = as.integer(beta_locs$start),
+        end = as.integer(beta_locs$end),
+        meth = meth_mat,
+        cov = cov_mat,
+        beta_locs = beta_locs
+    )
+}
+
+.buildSimulationOutputObject <- function(input,
+                                         meth,
+                                         cov,
+                                         chr,
+                                         pos,
+                                         end_pos,
+                                         row_ids,
+                                         sample_names,
+                                         output_groups,
+                                         output_case_group) {
+    if (identical(input$assay, "BSseq")) {
+        bs_new <- bsseq::BSseq(
+            chr = chr,
+            pos = pos,
+            M = meth,
+            Cov = cov,
+            sampleNames = sample_names
+        )
+        if (!is.null(input$seqinfo)) {
+            GenomeInfoDb::seqinfo(bs_new) <- input$seqinfo
+        }
+        SummarizedExperiment::colData(bs_new) <- S4Vectors::DataFrame(
+            Sample_ID = sample_names,
+            Sample_Group = output_groups,
+            casecontrol = output_groups == output_case_group,
+            row.names = sample_names
+        )
+        return(list(
+            simulated = bs_new,
+            bs = bs_new,
+            beta = NULL,
+            beta_locs = NULL
+        ))
+    }
+
+    beta_new <- .simulationBetaFromCounts(meth = meth, cov = cov)
+    rownames(beta_new) <- row_ids
+    colnames(beta_new) <- sample_names
+    beta_locs <- data.frame(
+        chr = chr,
+        start = as.integer(pos),
+        end = as.integer(end_pos),
+        row.names = row_ids,
+        stringsAsFactors = FALSE
+    )
+
+    list(
+        simulated = beta_new,
+        bs = NULL,
+        beta = beta_new,
+        beta_locs = beta_locs
+    )
+}
+
+.collapseSimulationDuplicateLoci <- function(meth, cov, chr, pos, end = NULL, row_ids = NULL) {
     key <- paste(chr, pos, sep = "\t")
     duplicate_mask <- duplicated(key)
+    if (is.null(end)) {
+        end <- pos
+    }
+    if (is.null(row_ids)) {
+        row_ids <- paste0(chr, ":", pos)
+    }
+
     if (!any(duplicate_mask)) {
         return(list(
             meth = meth,
             cov = cov,
             chr = chr,
             pos = pos,
+            end = end,
+            row_ids = row_ids,
             n_collapsed = 0L
         ))
     }
@@ -399,11 +616,18 @@ simulateDMRsBSSeq <- function(
     colnames(meth_collapsed) <- colnames(meth)
     colnames(cov_collapsed) <- colnames(cov)
 
+    row_ids_collapsed <- as.character(row_ids[first_idx])
+    if (anyDuplicated(row_ids_collapsed) > 0L) {
+        row_ids_collapsed <- make.unique(row_ids_collapsed)
+    }
+
     list(
         meth = as.matrix(meth_collapsed),
         cov = as.matrix(cov_collapsed),
         chr = chr[first_idx],
         pos = pos[first_idx],
+        end = end[first_idx],
+        row_ids = row_ids_collapsed,
         n_collapsed = as.integer(sum(duplicate_mask))
     )
 }
@@ -418,7 +642,7 @@ simulateDMRsBSSeq <- function(
     }
     groups <- as.character(groups)
     if (length(groups) != n_samples) {
-        stop("'groups' must have length equal to ncol(bs).")
+        stop("'groups' must have length equal to the number of samples.")
     }
     if (anyNA(groups) || any(!nzchar(groups))) {
         stop("'groups' must not contain missing or empty values.")
