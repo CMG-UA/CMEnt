@@ -1269,43 +1269,212 @@ if (length(consensus_3plus) > 0) {
 }
 ```
 
-## CMEnt scoring Quality Assessment
+## Method-Reported Region Significance
 
 ```{r}
-if ("score" %in% names(mcols(dmrs_cment)) && length(dmrs_cment) > 10) {
-    dmrs_cment_scored <- dmrs_cment[order(mcols(dmrs_cment)$score, decreasing = TRUE)]
+significance_method_specs <- data.frame(
+    Method = c("CMEnt", "comb-p", "probeLasso", "DMRcate", "Bumphunter"),
+    Metric = c(
+        "Not available",
+        "Sidak-adjusted p-value",
+        "Reported DMR p-value",
+        "HMFDR",
+        "FWER"
+    ),
+    Column = c(NA, "z_sidak_p", "dmrP", "HMFDR", "fwer"),
+    stringsAsFactors = FALSE
+)
 
-    n_bins <- min(10, floor(length(dmrs_cment_scored) / 5))
-    bin_size <- ceiling(length(dmrs_cment_scored) / n_bins)
+method_dmrs <- list(
+    CMEnt = dmrs_cment,
+    `comb-p` = dmrs_combp,
+    probeLasso = dmrs_probelasso,
+    DMRcate = dmrs_dmrcate,
+    Bumphunter = dmrs_bumphunter
+)
+method_colors_sig <- c(
+    `comb-p` = "#377EB8",
+    probeLasso = "#4DAF4A",
+    DMRcate = "#984EA3",
+    Bumphunter = "#FF7F00"
+)
 
-    scoring_quality <- do.call(rbind, lapply(seq_len(n_bins), function(i) {
-        start_idx <- (i - 1) * bin_size + 1
-        end_idx <- min(i * bin_size, length(dmrs_cment_scored))
-        bin_dmrs <- dmrs_cment_scored[start_idx:end_idx]
+extract_region_significance <- function(dmrs, method, metric_label, value_col) {
+    if (is.na(value_col) || length(dmrs) == 0 || !value_col %in% names(mcols(dmrs))) {
+        return(NULL)
+    }
 
-        in_consensus <- sum(overlapsAny(bin_dmrs, consensus_2plus))
+    values <- suppressWarnings(as.numeric(mcols(dmrs)[[value_col]]))
+    values <- values[is.finite(values)]
+    if (length(values) == 0) {
+        return(NULL)
+    }
 
-        data.frame(
-            Score_Bin = sprintf("Top %d%%", i * 10),
-            Bin_Order = i,
-            N_DMRs = length(bin_dmrs),
-            In_Consensus = in_consensus,
-            Pct_In_Consensus = round(100 * in_consensus / length(bin_dmrs), 1)
-        )
-    }))
+    data.frame(
+        Method = method,
+        Metric = metric_label,
+        Reported_Error_Value = pmax(values, .Machine$double.xmin)
+    )
+}
 
-    knitr::kable(scoring_quality, caption = "CMEnt Scoring Quality: Consensus Overlap by Score Decile")
+region_significance_long <- do.call(rbind, Filter(Negate(is.null), lapply(seq_len(nrow(significance_method_specs)), function(i) {
+    spec <- significance_method_specs[i, ]
+    extract_region_significance(
+        dmrs = method_dmrs[[spec$Method]],
+        method = spec$Method,
+        metric_label = spec$Metric,
+        value_col = spec$Column
+    )
+})))
 
-    ggplot(scoring_quality, aes(x = reorder(Score_Bin, Bin_Order), y = Pct_In_Consensus)) +
-        geom_bar(stat = "identity", fill = "steelblue") +
-        geom_line(aes(group = 1), color = "red", size = 1) +
-        geom_point(color = "red", size = 3) +
+significance_method_specs$N_DMRs <- vapply(significance_method_specs$Method, function(method) {
+    length(method_dmrs[[method]])
+}, numeric(1))
+significance_method_specs$Included_In_Plots <- vapply(seq_len(nrow(significance_method_specs)), function(i) {
+    spec <- significance_method_specs[i, ]
+    !is.na(spec$Column) && spec$Column %in% names(mcols(method_dmrs[[spec$Method]]))
+}, logical(1))
+
+knitr::kable(
+    significance_method_specs[, c("Method", "Metric", "N_DMRs", "Included_In_Plots")],
+    caption = "Method-Reported Region Significance Metrics Used for Comparison"
+)
+
+region_significance_summary <- region_significance_long |>
+    group_by(Method, Metric) |>
+    summarise(
+        N_DMRs = n(),
+        Median_Reported_Value = signif(median(Reported_Error_Value), 3),
+        Median_NegLog10 = round(median(-log10(Reported_Error_Value)), 2),
+        Pct_Le_0_05 = round(100 * mean(Reported_Error_Value <= 0.05), 1),
+        Pct_Le_0_01 = round(100 * mean(Reported_Error_Value <= 0.01), 1),
+        .groups = "drop"
+    )
+
+knitr::kable(
+    region_significance_summary,
+    caption = "Summary of Method-Reported Region Significance Metrics"
+)
+```
+
+
+```{r}
+if (exists("region_significance_long") && nrow(region_significance_long) > 0) {
+    region_significance_long$NegLog10_Reported_Error <- pmin(-log10(region_significance_long$Reported_Error_Value), 50)
+
+    ggplot(region_significance_long, aes(x = Method, y = NegLog10_Reported_Error, fill = Method)) +
+        geom_boxplot(outlier.alpha = 0.2, width = 0.65) +
+        scale_fill_manual(values = method_colors_sig) +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         labs(
-            title = "CMEnt Scoring Quality Assessment",
-            subtitle = "Higher-scoring DMRs should have higher consensus overlap",
-            x = "Score Decile", y = "% in Consensus (2+ methods)"
+            title = "Method-Reported Region Significance Strength",
+            x = "", y = expression(paste("Capped ", -log[10], "(Reported Error Metric)")), fill = "Method"
+        )
+}
+```
+
+## CMEnt Score vs Overlapping Region Significance
+
+```{r}
+match_cment_to_method_significance <- function(cment_dmrs, method_dmrs, method, metric_label, value_col) {
+    if (length(cment_dmrs) == 0 || length(method_dmrs) == 0 || !value_col %in% names(mcols(method_dmrs))) {
+        return(NULL)
+    }
+
+    method_values <- suppressWarnings(as.numeric(mcols(method_dmrs)[[value_col]]))
+    keep_subjects <- is.finite(method_values)
+    if (!any(keep_subjects)) {
+        return(NULL)
+    }
+    method_dmrs <- method_dmrs[keep_subjects]
+    method_values <- pmax(method_values[keep_subjects], .Machine$double.xmin)
+
+    hits <- findOverlaps(cment_dmrs, method_dmrs, ignore.strand = TRUE)
+    if (length(hits) == 0) {
+        return(NULL)
+    }
+
+    query_idx <- queryHits(hits)
+    subject_idx <- subjectHits(hits)
+    intersection_start <- pmax(start(cment_dmrs)[query_idx], start(method_dmrs)[subject_idx])
+    intersection_end <- pmin(end(cment_dmrs)[query_idx], end(method_dmrs)[subject_idx])
+    intersection_width <- pmax(0L, intersection_end - intersection_start + 1L)
+    union_width <- width(cment_dmrs)[query_idx] + width(method_dmrs)[subject_idx] - intersection_width
+    jaccard <- intersection_width / union_width
+
+    overlap_tbl <- data.frame(
+        Query_Index = query_idx,
+        Subject_Index = subject_idx,
+        Jaccard = jaccard,
+        Reported_Error_Value = method_values[subject_idx]
+    ) |>
+        arrange(Query_Index, desc(Jaccard), Reported_Error_Value, Subject_Index) |>
+        distinct(Query_Index, .keep_all = TRUE)
+
+    data.frame(
+        Method = method,
+        Metric = metric_label,
+        Query_Index = overlap_tbl$Query_Index,
+        CMEnt_Score = as.numeric(mcols(cment_dmrs)$score[overlap_tbl$Query_Index]),
+        Reported_Error_Value = overlap_tbl$Reported_Error_Value,
+        NegLog10_Reported_Error = -log10(overlap_tbl$Reported_Error_Value),
+        Best_Jaccard = overlap_tbl$Jaccard
+    )
+}
+
+cment_significance_correlation_long <- do.call(rbind, Filter(Negate(is.null), lapply(seq_len(nrow(significance_method_specs)), function(i) {
+    spec <- significance_method_specs[i, ]
+    if (spec$Method == "CMEnt" || is.na(spec$Column)) {
+        return(NULL)
+    }
+    match_cment_to_method_significance(
+        cment_dmrs = dmrs_cment,
+        method_dmrs = method_dmrs[[spec$Method]],
+        method = spec$Method,
+        metric_label = spec$Metric,
+        value_col = spec$Column
+    )
+})))
+
+cment_significance_correlation_summary <- cment_significance_correlation_long |>
+    group_by(Method, Metric) |>
+    summarise(
+        N_Overlapping_CMEnt_DMRs = n(),
+        Spearman_Rho = round(cor(CMEnt_Score, NegLog10_Reported_Error, method = "spearman"), 3),
+        Pearson_R = round(cor(CMEnt_Score, NegLog10_Reported_Error, method = "pearson"), 3),
+        Median_Best_Jaccard = round(median(Best_Jaccard), 3),
+        Median_Reported_Value = signif(median(Reported_Error_Value), 3),
+        .groups = "drop"
+    )
+
+knitr::kable(
+    cment_significance_correlation_summary,
+    caption = "Correlation of CMEnt Score with Best-Matched Overlapping Region Significance"
+)
+```
+One best-overlap match per CMEnt DMR and method, selected by maximum Jaccard
+```{r}
+if (exists("cment_significance_correlation_long") && nrow(cment_significance_correlation_long) > 0) {
+    cment_significance_correlation_long$NegLog10_Reported_Error_Capped <- pmin(
+        cment_significance_correlation_long$NegLog10_Reported_Error,
+        50
+    )
+
+    ggplot(
+        cment_significance_correlation_long,
+        aes(x = CMEnt_Score, y = NegLog10_Reported_Error_Capped, color = Method)
+    ) +
+        geom_point(alpha = 0.18, size = 0.4) +
+        geom_smooth(se = FALSE, linewidth = 1) +
+        facet_wrap(~Method, scales = "free_y") +
+        scale_color_manual(values = method_colors_sig) +
+        theme_minimal() +
+        labs(
+            title = "CMEnt Score vs Best-Matched Overlapping Region Significance",
+            x = "CMEnt Score",
+            y = expression(paste("Capped ", -log[10], "(Reported Error Metric)")),
+            color = "Method"
         )
 }
 ```
