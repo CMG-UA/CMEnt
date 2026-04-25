@@ -365,18 +365,27 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             .log_info("Getting beta row names for validation...", level = 2)
             beta_row_names <- self$getBetaRowNames()
             if (is.null(private$.beta_file_in_memory)) {
-                    .log_step("Validating beta file sorting by position...", level = 2)
+                .log_step("Validating beta file sorting by position...", level = 2)
 
-                    # Validate that file is sorted
-                    if (!all(beta_row_names[
-                        orderByLoc(beta_row_names,
-                            genome = self$genome,
-                            genomic_locs = sorted_locs
-                        )
-                    ] == beta_row_names)) {
-                        stop("Provided beta file is not sorted by position!")
-                    }
-                    .log_success("Beta file sorting validated", level = 2)
+                # Validate that file is sorted
+                if (!all(beta_row_names[
+                    orderByLoc(beta_row_names,
+                        genome = self$genome,
+                        genomic_locs = sorted_locs
+                    )
+                ] == beta_row_names)) {
+                    warning("Provided beta file is not sorted by position. Sorting to a new temporary file for downstream use. This may take a while for large files")
+                    warning("Consider running sortBetaFileByCoordinates() on the original file and providing the sorted file to avoid this overhead in the future.")
+                    sorted_beta_file <- sortBetaFileByCoordinates(
+                        beta_file = private$.beta_file,
+                        sorted_locs = sorted_locs,
+                        genome = self$genome,
+                        output_file = tempfile(fileext = ".tsv.gz"),
+                        njobs = self$njobs
+                    )
+                    private$.beta_file <- sorted_beta_file
+                }
+                .log_success("Beta file sorting validated", level = 2)
             } else {
                 # Sort in-memory beta data
                 private$.beta_file_in_memory <- private$.beta_file_in_memory[
