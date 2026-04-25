@@ -143,6 +143,8 @@ stopifnot(inherits(sim_bs, "BSseq"))
 coverage <- bsseq::getCoverage(sim_bs, type = "Cov")
 valid_cpgs <- rowSums(coverage) > 0
 sim_bs <- sim_bs[valid_cpgs, ]
+rm(coverage, valid_cpgs)
+gc(verbose = FALSE)
 
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
@@ -349,11 +351,19 @@ if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.njobs" = cment_njobs)
     options("CMEnt.verbose" = 2)
+    options("CMEnt.parallel_batch_beta_subset" = "auto")
+    options("CMEnt.stage2_hdf5_beta_subset" = TRUE)
+    options("CMEnt.stage2_materialize_beta_subset" = FALSE)
+    options("CMEnt.stage2_hdf5_max_chunk_memory_mb" = 256)
+    options("CMEnt.stage2_hdf5_parallel_backend" = "multicore")
+    options("CMEnt.stage2_hdf5_restart_workers_each_batch" = FALSE)
     start_time <- Sys.time()
 
     beta_handler <- CMEnt::getBetaHandler(
         beta = sim_bs
     )
+    rm(sim_bs)
+    gc(verbose = FALSE)
     dmrs_cment <- progressr::with_progress(
         CMEnt::findDMRsFromSeeds(
             beta = beta_handler,
@@ -382,6 +392,15 @@ if (!file.exists(cment_file)) {
     end_time <- Sys.time()
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
+    rm(beta_handler)
+    sim_bs <- readRDS(sim_bs_path)
+    coverage <- bsseq::getCoverage(sim_bs, type = "Cov")
+    valid_cpgs <- rowSums(coverage) > 0
+    sim_bs <- sim_bs[valid_cpgs, ]
+    rm(coverage, valid_cpgs)
+    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    sim_bs <- sort(sim_bs)
+    gc(verbose = FALSE)
 } else {
     ret <- readRDS(cment_file)
     dmrs_cment <- ret$dmrs

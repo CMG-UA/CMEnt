@@ -8,6 +8,24 @@ is_bsseq <- function(obj) {
     inherits(obj, "BSseq")
 }
 
+.bsseqIsSorted <- function(obj) {
+    gr <- granges(obj)
+    if (length(gr) < 2L) {
+        return(TRUE)
+    }
+    chr <- as.character(seqnames(gr))
+    chr_rank <- match(chr, GenomeInfoDb::seqlevels(gr))
+    row_order <- order(chr_rank, start(gr), end(gr), na.last = TRUE)
+    identical(row_order, seq_along(row_order))
+}
+
+.prepareBSseqForBetaHandler <- function(obj) {
+    if (.bsseqIsSorted(obj)) {
+        return(obj)
+    }
+    sort(obj)
+}
+
 #' Beta Handler Class
 #'
 #' @description An R6 class to handle methylation beta value files efficiently,
@@ -83,7 +101,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
                 .log_step("Extracting genomic locations from BSseq object...", level = 2)
-                private$.bsseq_object <- sort(beta)
+                private$.bsseq_object <- .prepareBSseqForBetaHandler(beta)
                 self$beta <- NULL
                 gr <- granges(private$.bsseq_object)
                 .log_step("Constructing sorted_locs delayed data frame..", level = 3)
@@ -126,7 +144,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (!is.character(self$beta) && length(self$beta) > 0) {
                 if (is_bsseq(self$beta)) {
-                    private$.bsseq_object <- sort(self$beta)
+                    private$.bsseq_object <- .prepareBSseqForBetaHandler(self$beta)
                     self$beta <- NULL
                     private$.loaded <- TRUE
                     return(invisible(self))
@@ -364,7 +382,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             sorted_locs <- self$getGenomicLocs()
             .log_info("Getting beta row names for validation...", level = 2)
             beta_row_names <- self$getBetaRowNames()
-            if (is.null(private$.beta_file_in_memory)) {
+            if (!is.null(private$.bsseq_object)) {
+                if (!identical(beta_row_names, rownames(sorted_locs))) {
+                    stop("BSseq beta row names do not match the stored genomic locations.")
+                }
+                .log_success("BSseq beta locations validated", level = 2)
+            } else if (is.null(private$.beta_file_in_memory)) {
                 .log_step("Validating beta file sorting by position...", level = 2)
 
                 # Validate that file is sorted
@@ -387,14 +410,20 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 }
                 .log_success("Beta file sorting validated", level = 2)
             } else {
-                # Sort in-memory beta data
-                private$.beta_file_in_memory <- private$.beta_file_in_memory[
-                    orderByLoc(rownames(private$.beta_file_in_memory),
-                        genome = self$genome,
-                        genomic_locs = sorted_locs
-                    ), ,
-                    drop = FALSE
-                ]
+                if (private$.self_contained) {
+                    if (!identical(beta_row_names, rownames(sorted_locs))) {
+                        stop("Self-contained beta row names do not match the stored genomic locations.")
+                    }
+                } else {
+                    # Sort in-memory beta data when genomic locations come from an external annotation.
+                    private$.beta_file_in_memory <- private$.beta_file_in_memory[
+                        orderByLoc(rownames(private$.beta_file_in_memory),
+                            genome = self$genome,
+                            genomic_locs = sorted_locs
+                        ), ,
+                        drop = FALSE
+                    ]
+                }
                 private$.beta_row_names <- rownames(private$.beta_file_in_memory)
             }
             .log_info("Beta file validated.", level = 2)
@@ -436,16 +465,46 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             private$.is_array_based
         },
 
+        #' @description Return the storage backend used by this handler
+        #' @return Character scalar describing the backend
+        backendType = function() {
+            self$load()
+            if (!is.null(private$.bsseq_object)) {
+                return("bsseq")
+            }
+            if (!is.null(private$.beta_file_in_memory)) {
+                if (inherits(private$.beta_file_in_memory, "DelayedArray")) {
+                    return("delayed")
+                }
+                return("memory")
+            }
+            if (!is.null(private$.tabix_file)) {
+                return("tabix")
+            }
+            if (!is.null(private$.beta_file)) {
+                return("file")
+            }
+            "unknown"
+        },
+
+        #' @description Check whether numeric row indices are supported relative to this handler
+        #' @return Logical scalar
+        supportsNumericRowIndex = function() {
+            TRUE
+        },
+
         #' @description Build a compact BetaHandler view for a subset of rows/columns
         #' @param row_names Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows
         #' @param col_names Character vector of sample IDs to keep; NULL keeps all columns
         #' @param allow_missing Logical; if TRUE, silently drops missing row names
+        #' @param materialize Logical; if TRUE, in-memory and BSseq backends are copied into a compact matrix
         #' @return A BetaHandler object scoped to the requested subset
-        subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
+        subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, materialize = TRUE) {
             self$validate()
             all_row_names <- self$getBetaRowNames()
             if (is.null(row_names)) {
                 subset_row_names <- all_row_names
+                row_match <- seq_along(all_row_names)
             } else if (is.numeric(row_names)) {
                 row_idx <- as.integer(row_names)
                 n_all <- length(all_row_names)
@@ -464,11 +523,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     }
                 }
                 subset_row_names <- all_row_names[row_idx]
+                row_match <- row_idx
             } else {
                 subset_row_names <- as.character(row_names)
                 row_match <- match(subset_row_names, all_row_names)
                 if (allow_missing) {
-                    subset_row_names <- subset_row_names[!is.na(row_match)]
+                    keep <- !is.na(row_match)
+                    subset_row_names <- subset_row_names[keep]
+                    row_match <- row_match[keep]
                 } else if (any(is.na(row_match))) {
                     missing_rows <- unique(subset_row_names[is.na(row_match)])
                     stop(
@@ -494,7 +556,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
             subset_locs <- self$getBetaLocs()[subset_row_names, , drop = FALSE]
 
-            if (!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object)) {
+            if (materialize && (!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object))) {
                 # For in-memory/BSseq backends, materialize only the needed slice so workers do not
                 # inherit the full parent payload when this subset handler is serialized.
                 subset_beta <- self$getBeta(
@@ -517,6 +579,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             subset_handler$.__enclos_env__$private$.beta_locs <- subset_locs
             subset_handler$.__enclos_env__$private$.beta_row_names <- subset_row_names
             subset_handler$.__enclos_env__$private$.beta_col_names <- subset_col_names
+            subset_handler$.__enclos_env__$private$.beta_row_index_map <- as.integer(row_match)
             subset_handler$.__enclos_env__$private$.loaded <- TRUE
             subset_handler$.__enclos_env__$private$.validated <- TRUE
             subset_handler$.__enclos_env__$private$.self_contained <- TRUE
@@ -534,9 +597,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 stop("Cannot specify both row_names and chr for subsetting.")
             }
             self$validate()
-            # Fast-path numeric row indexing for non in-memory backends:
+            # Fast-path numeric row indexing for file/tabix backends:
             # convert indices to row names once and avoid repeated set operations downstream.
-            if (!is.null(row_names) && is.numeric(row_names) && is.null(private$.beta_file_in_memory)) {
+            if (!is.null(row_names) && is.numeric(row_names) &&
+                is.null(private$.beta_file_in_memory) && is.null(private$.bsseq_object)) {
                 row_idx <- as.integer(row_names)
                 all_row_names <- self$getBetaRowNames()
                 n_all <- length(all_row_names)
@@ -558,17 +622,25 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
-                if (!is.null(row_names)) {
-                    if (is.numeric(row_names)) {
-                        row_idx <- as.integer(row_names)
-                        n_rows <- nrow(private$.beta_file_in_memory)
+                resolve_memory_rows <- function(requested_rows, requested_chr = NULL) {
+                    handler_row_names <- self$getBetaRowNames()
+                    row_index_map <- private$.beta_row_index_map
+                    if (!is.null(requested_chr)) {
+                        all_locs <- self$getBetaLocs()
+                        requested_rows <- rownames(all_locs)[all_locs$chr %in% requested_chr]
+                    }
+                    if (is.null(requested_rows)) {
+                        view_idx <- seq_along(handler_row_names)
+                    } else if (is.numeric(requested_rows)) {
+                        view_idx <- as.integer(requested_rows)
+                        n_rows <- length(handler_row_names)
                         if (allow_missing) {
-                            keep <- !is.na(row_idx) & row_idx >= 1L & row_idx <= n_rows
-                            row_idx <- row_idx[keep]
+                            keep <- !is.na(view_idx) & view_idx >= 1L & view_idx <= n_rows
+                            view_idx <- view_idx[keep]
                         } else {
-                            bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_rows
+                            bad <- is.na(view_idx) | view_idx < 1L | view_idx > n_rows
                             if (any(bad)) {
-                                bad_idx <- unique(row_idx[bad])
+                                bad_idx <- unique(view_idx[bad])
                                 bad_idx <- bad_idx[!is.na(bad_idx)]
                                 stop(
                                     "Requested row indices out of bounds [1,", n_rows, "]: ",
@@ -576,33 +648,41 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                                 )
                             }
                         }
-                        beta_subset <- private$.beta_file_in_memory[row_idx, , drop = FALSE]
                     } else {
-                        rcmp <- rownames(private$.beta_file_in_memory)
+                        requested_rows <- as.character(requested_rows)
+                        view_idx <- match(requested_rows, handler_row_names)
                         if (allow_missing) {
-                            row_names <- intersect(row_names, rcmp)
-                        } else {
-                            missing_rows <- setdiff(row_names, rcmp)
-                            if (length(missing_rows) > 0) {
-                                stop(
-                                    "Requested CpG sites not found in beta data: ",
-                                    paste(missing_rows, collapse = ", ")
-                                )
-                            }
+                            view_idx <- view_idx[!is.na(view_idx)]
+                        } else if (anyNA(view_idx)) {
+                            missing_rows <- unique(requested_rows[is.na(view_idx)])
+                            stop(
+                                "Requested CpG sites not found in beta data: ",
+                                paste(missing_rows, collapse = ", ")
+                            )
                         }
-                        beta_subset <- private$.beta_file_in_memory[row_names, , drop = FALSE]
                     }
+                    if (!is.null(row_index_map)) {
+                        return(row_index_map[view_idx])
+                    }
+                    if (is.null(requested_rows) || is.numeric(requested_rows)) {
+                        return(view_idx)
+                    }
+                    rownames(private$.beta_file_in_memory)[view_idx]
+                }
+                if (!is.null(row_names)) {
+                    storage_rows <- resolve_memory_rows(row_names)
+                    beta_subset <- private$.beta_file_in_memory[storage_rows, , drop = FALSE]
                 } else if (!is.null(chr)) {
                     .log_info("Subsetting by chromosome from in-memory beta data..", level = 3)
-                    .log_info("Getting genomic locations for chromosome subsetting...", level = 4)
-                    all_locs <- self$getBetaLocs()
-                    .log_info("Performing chromosome subsetting...", level = 4)
-                    chr_rows <- rownames(all_locs)[all_locs$chr %in% chr]
-                    .log_info("Found ", length(chr_rows), " CpGs on specified chromosome(s)", level = 4)
-                    chr_rows <- intersect(chr_rows, rownames(private$.beta_file_in_memory))
-                    beta_subset <- private$.beta_file_in_memory[chr_rows, , drop = FALSE]
+                    storage_rows <- resolve_memory_rows(NULL, requested_chr = chr)
+                    .log_info("Found ", length(storage_rows), " CpGs on specified chromosome(s)", level = 4)
+                    beta_subset <- private$.beta_file_in_memory[storage_rows, , drop = FALSE]
                 } else {
-                    beta_subset <- private$.beta_file_in_memory
+                    storage_rows <- resolve_memory_rows(NULL)
+                    beta_subset <- private$.beta_file_in_memory[storage_rows, , drop = FALSE]
+                }
+                if (is.null(col_names) && !is.null(private$.beta_col_names)) {
+                    col_names <- private$.beta_col_names
                 }
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
@@ -686,11 +766,28 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     all_locs <- self$getBetaLocs()
                     chr_rows <- rownames(all_locs)[all_locs$chr %in% chr]
                     selected_row_names <- intersect(chr_rows, all_row_names)
-                    row_idx <- match(selected_row_names, all_row_names)
+                    view_idx <- match(selected_row_names, all_row_names)
+                    row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
                 } else if (!is.null(row_names)) {
                     if (is.numeric(row_names)) {
-                        row_idx <- row_names
-                        selected_row_names <- all_row_names[row_idx]
+                        view_idx <- as.integer(row_names)
+                        n_all <- length(all_row_names)
+                        if (allow_missing) {
+                            keep <- !is.na(view_idx) & view_idx >= 1L & view_idx <= n_all
+                            view_idx <- view_idx[keep]
+                        } else {
+                            bad <- is.na(view_idx) | view_idx < 1L | view_idx > n_all
+                            if (any(bad)) {
+                                bad_idx <- unique(view_idx[bad])
+                                bad_idx <- bad_idx[!is.na(bad_idx)]
+                                stop(
+                                    "Requested row indices out of bounds [1,", n_all, "]: ",
+                                    paste(head(bad_idx, 10), collapse = ", ")
+                                )
+                            }
+                        }
+                        row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
+                        selected_row_names <- all_row_names[view_idx]
                     } else {
                         if (allow_missing) {
                             selected_row_names <- intersect(row_names, all_row_names)
@@ -704,17 +801,22 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             }
                             selected_row_names <- row_names
                         }
-                        row_idx <- match(selected_row_names, all_row_names)
+                        view_idx <- match(selected_row_names, all_row_names)
+                        row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
                     }
                 } else {
                     selected_row_names <- all_row_names
-                    row_idx <- seq_along(all_row_names)
+                    view_idx <- seq_along(all_row_names)
+                    row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
                 }
 
                 all_col_names <- self$getBetaColNames()
+                storage_col_names <- sampleNames(private$.bsseq_object)
+                if (is.null(col_names) && !is.null(private$.beta_col_names)) {
+                    col_names <- private$.beta_col_names
+                }
                 if (is.null(col_names)) {
                     selected_col_names <- all_col_names
-                    col_idx <- seq_along(all_col_names)
                 } else {
                     missing_cols <- setdiff(col_names, all_col_names)
                     if (length(missing_cols) > 0) {
@@ -724,7 +826,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         )
                     }
                     selected_col_names <- col_names
-                    col_idx <- match(selected_col_names, all_col_names)
+                }
+                col_idx <- match(selected_col_names, storage_col_names)
+                if (anyNA(col_idx)) {
+                    stop(
+                        "Requested samples not found in BSseq storage: ",
+                        paste(selected_col_names[is.na(col_idx)], collapse = ", ")
+                    )
                 }
 
                 m_assay <- SummarizedExperiment::assay(private$.bsseq_object, "M", withDimnames = FALSE)
@@ -754,6 +862,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .is_array_based = NULL,
         .beta_file_in_memory = NULL,
         .bsseq_object = NULL,
+        .beta_row_index_map = NULL,
         .self_contained = FALSE,
         .regionsFromRowNames = function(row_names) {
             if (is.null(row_names)) {

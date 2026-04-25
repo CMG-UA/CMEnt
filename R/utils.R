@@ -2547,7 +2547,19 @@ convertToDataFrame <- function(gr) {
         njobs <- future::availableCores() + njobs
     }
     if (njobs > 1) {
-        if (future::availableCores("multicore") > 1L) {
+        parallel_backend <- getOption("CMEnt.parallel_backend", "auto")
+        parallel_backend <- as.character(parallel_backend)[1]
+        if (is.na(parallel_backend) || !nzchar(parallel_backend)) {
+            parallel_backend <- "auto"
+        }
+        parallel_backend <- tolower(parallel_backend)
+        if (!parallel_backend %in% c("auto", "multicore", "multisession")) {
+            warning("Unsupported CMEnt.parallel_backend='", parallel_backend, "'. Falling back to 'auto'.")
+            parallel_backend <- "auto"
+        }
+        use_multicore <- parallel_backend == "multicore" ||
+            (parallel_backend == "auto" && future::availableCores("multicore") > 1L)
+        if (use_multicore) {
             if (!file.exists(.already_logged_file)) {
                 .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
                 writeLines("TRUE", con = .already_logged_file)

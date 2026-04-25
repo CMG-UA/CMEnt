@@ -258,6 +258,169 @@
 
 #' @keywords internal
 #' @noRd
+.writeBetaSubsetToHDF5 <- function(beta_handler,
+                                   row_ids,
+                                   col_names,
+                                   subset_locs,
+                                   njobs = 1L) {
+    if (!requireNamespace("HDF5Array", quietly = TRUE) || !requireNamespace("rhdf5", quietly = TRUE)) {
+        stop("HDF5Array and rhdf5 are required for HDF5-backed beta subsets.")
+    }
+    n_rows <- length(row_ids)
+    n_cols <- length(col_names)
+    if (n_rows == 0L || n_cols == 0L) {
+        stop("Cannot create an HDF5 beta subset with zero rows or columns.")
+    }
+
+    h5_dir <- getOption("CMEnt.stage2_hdf5_dir", tempdir())
+    dir.create(h5_dir, recursive = TRUE, showWarnings = FALSE)
+    h5_file <- tempfile("cment_stage2_beta_", tmpdir = h5_dir, fileext = ".h5")
+    if (file.exists(h5_file)) {
+        unlink(h5_file)
+    }
+    rhdf5::h5createFile(h5_file)
+
+    chunk_rows <- as.integer(getOption("CMEnt.stage2_hdf5_chunk_rows", 50000L))
+    if (!is.finite(chunk_rows) || is.na(chunk_rows) || chunk_rows < 1L) {
+        chunk_rows <- 50000L
+    }
+    chunk_rows <- min(chunk_rows, n_rows)
+    compression_level <- as.integer(getOption("CMEnt.stage2_hdf5_compression_level", 1L))
+    if (!is.finite(compression_level) || is.na(compression_level) || compression_level < 0L) {
+        compression_level <- 1L
+    }
+
+    .log_info(
+        "Writing Stage 2 beta subset to HDF5-backed storage (",
+        format(n_rows, big.mark = ","), " CpGs x ", n_cols,
+        " samples; chunk_rows=", chunk_rows, ").",
+        level = 2
+    )
+    rhdf5::h5createDataset(
+        file = h5_file,
+        dataset = "beta",
+        dims = c(n_rows, n_cols),
+        chunk = c(chunk_rows, n_cols),
+        storage.mode = "double",
+        level = compression_level
+    )
+
+    for (chunk_start in seq.int(1L, n_rows, by = chunk_rows)) {
+        chunk_end <- min(chunk_start + chunk_rows - 1L, n_rows)
+        chunk_idx <- chunk_start:chunk_end
+        beta_chunk <- beta_handler$getBeta(
+            row_names = row_ids[chunk_idx],
+            col_names = col_names
+        )
+        beta_chunk <- as.matrix(beta_chunk)
+        storage.mode(beta_chunk) <- "double"
+        rhdf5::h5write(
+            beta_chunk,
+            file = h5_file,
+            name = "beta",
+            index = list(chunk_idx, seq_len(n_cols))
+        )
+        rm(beta_chunk)
+        if (chunk_end %% max(chunk_rows * 10L, 1L) == 0L || chunk_end == n_rows) {
+            gc(verbose = FALSE)
+        }
+    }
+
+    beta_da <- HDF5Array::HDF5Array(h5_file, "beta")
+    dimnames(beta_da) <- list(row_ids, col_names)
+    beta_subset_handler <- getBetaHandler(
+        beta = beta_da,
+        sorted_locs = subset_locs,
+        njobs = njobs
+    )
+    list(
+        beta_handler = beta_subset_handler,
+        worker_beta_handler = .makeHDF5NumericBetaAccessor(
+            h5_file = h5_file,
+            dataset = "beta",
+            col_names = col_names,
+            n_rows = n_rows,
+            n_cols = n_cols
+        ),
+        h5_file = h5_file
+    )
+}
+
+
+#' @keywords internal
+#' @noRd
+.makeHDF5NumericBetaAccessor <- function(h5_file,
+                                         dataset = "beta",
+                                         col_names,
+                                         n_rows,
+                                         n_cols) {
+    storage_col_names <- col_names
+    force(h5_file)
+    force(dataset)
+    force(storage_col_names)
+    force(n_rows)
+    force(n_cols)
+    structure(
+        list(
+            backendType = function() "delayed",
+            supportsNumericRowIndex = function() TRUE,
+            getBetaColNames = function() storage_col_names,
+            getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
+                if (!is.null(chr)) {
+                    stop("HDF5 numeric beta access does not support chromosome subsetting.")
+                }
+                if (is.null(row_names)) {
+                    row_idx <- seq_len(n_rows)
+                } else if (is.numeric(row_names)) {
+                    row_idx <- as.integer(row_names)
+                    if (allow_missing) {
+                        row_idx <- row_idx[!is.na(row_idx) & row_idx >= 1L & row_idx <= n_rows]
+                    } else {
+                        bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_rows
+                        if (any(bad)) {
+                            bad_idx <- unique(row_idx[bad])
+                            bad_idx <- bad_idx[!is.na(bad_idx)]
+                            stop(
+                                "Requested row indices out of bounds [1,", n_rows, "]: ",
+                                paste(head(bad_idx, 10), collapse = ", ")
+                            )
+                        }
+                    }
+                } else {
+                    stop("HDF5 numeric beta access requires numeric row indices.")
+                }
+
+                if (is.null(col_names)) {
+                    col_idx <- seq_len(n_cols)
+                    selected_col_names <- storage_col_names
+                } else {
+                    selected_col_names <- as.character(col_names)
+                    col_idx <- match(selected_col_names, storage_col_names)
+                    if (anyNA(col_idx)) {
+                        stop(
+                            "Requested samples not found in HDF5 beta storage: ",
+                            paste(selected_col_names[is.na(col_idx)], collapse = ", ")
+                        )
+                    }
+                }
+
+                beta_subset <- rhdf5::h5read(
+                    file = h5_file,
+                    name = dataset,
+                    index = list(row_idx, col_idx)
+                )
+                beta_subset <- as.matrix(beta_subset)
+                colnames(beta_subset) <- selected_col_names
+                beta_subset
+            }
+        ),
+        class = "CMEntHDF5NumericBetaAccessor"
+    )
+}
+
+
+#' @keywords internal
+#' @noRd
 .subsetStage2BetaToWindows <- function(beta_handler, beta_locs, col_names, expansion_windows, njobs = 1L) {
     wins <- .mergeGenomicWindows(expansion_windows)
     if (nrow(wins) == 0L) {
@@ -303,30 +466,46 @@
     subset_ids <- rownames(beta_locs)[subset_to_full_idx]
     rownames(subset_locs) <- subset_ids
 
-    subset_beta <- beta_handler$getBeta(
-        row_names = subset_ids,
-        col_names = col_names
-    )
-    if (!inherits(subset_beta, "DelayedDataFrame")) {
-        subset_beta <- DelayedDataFrame::DelayedDataFrame(subset_beta)
-    }
-    subset_beta_ddf <- subset_beta
-    rownames(subset_beta_ddf) <- subset_ids
-    if (!is.null(col_names)) {
-        colnames(subset_beta_ddf) <- col_names
+    if (is.null(col_names)) {
+        col_names <- beta_handler$getBetaColNames()
     }
 
-    subset_beta_handler <- getBetaHandler(
-        beta = subset_beta_ddf,
-        sorted_locs = subset_locs,
-        njobs = njobs
-    )
+    hdf5_min_rows <- as.integer(getOption("CMEnt.stage2_hdf5_min_rows", 100000L))[1]
+    if (!is.finite(hdf5_min_rows) || is.na(hdf5_min_rows) || hdf5_min_rows < 1L) {
+        hdf5_min_rows <- 100000L
+    }
+    use_hdf5_subset <- isTRUE(getOption("CMEnt.stage2_hdf5_beta_subset", TRUE)) &&
+        length(subset_ids) >= hdf5_min_rows &&
+        requireNamespace("HDF5Array", quietly = TRUE) &&
+        requireNamespace("rhdf5", quietly = TRUE)
+    h5_file <- NULL
+    if (use_hdf5_subset) {
+        h5_ret <- .writeBetaSubsetToHDF5(
+            beta_handler = beta_handler,
+            row_ids = subset_ids,
+            col_names = col_names,
+            subset_locs = subset_locs,
+            njobs = njobs
+        )
+        subset_beta_handler <- h5_ret$beta_handler
+        worker_beta_handler <- h5_ret$worker_beta_handler
+        h5_file <- h5_ret$h5_file
+    } else {
+        subset_beta_handler <- beta_handler$subset(
+            row_names = subset_ids,
+            col_names = col_names,
+            materialize = isTRUE(getOption("CMEnt.stage2_materialize_beta_subset", FALSE))
+        )
+        worker_beta_handler <- NULL
+    }
     list(
         beta_handler = subset_beta_handler,
+        worker_beta_handler = worker_beta_handler,
         beta_locs = subset_locs,
         expansion_windows = wins,
         subset_to_full_idx = subset_to_full_idx,
-        full_to_subset_idx = full_to_subset_idx
+        full_to_subset_idx = full_to_subset_idx,
+        h5_file = h5_file
     )
 }
 
@@ -651,18 +830,31 @@
             return(splits_mat)
         }
 
-        split_groups <- (cumsum(split_weights) - 1L) %/% chunk_size_eff
-        split_idx_groups <- split(seq_len(nrow(splits_mat)), split_groups)
-        pooled <- lapply(
-            split_idx_groups,
-            function(ix) {
-                c(
-                    min(splits_mat[ix, 1]),
-                    max(splits_mat[ix, 2])
-                )
+        pooled <- vector("list", nrow(splits_mat))
+        pooled_n <- 0L
+        cur_start <- as.integer(splits_mat[1L, 1L])
+        cur_end <- as.integer(splits_mat[1L, 2L])
+        cur_weight <- as.integer(split_weights[1L])
+        for (i in seq.int(2L, nrow(splits_mat))) {
+            next_start <- as.integer(splits_mat[i, 1L])
+            next_end <- as.integer(splits_mat[i, 2L])
+            next_weight <- as.integer(split_weights[i])
+            contiguous <- next_start <= cur_end + 1L
+            fits_budget <- cur_weight + next_weight <= chunk_size_eff
+            if (contiguous && fits_budget) {
+                cur_end <- max(cur_end, next_end)
+                cur_weight <- cur_weight + next_weight
+            } else {
+                pooled_n <- pooled_n + 1L
+                pooled[[pooled_n]] <- c(cur_start, cur_end)
+                cur_start <- next_start
+                cur_end <- next_end
+                cur_weight <- next_weight
             }
-        )
-        pooled <- do.call(rbind, pooled)
+        }
+        pooled_n <- pooled_n + 1L
+        pooled[[pooled_n]] <- c(cur_start, cur_end)
+        pooled <- do.call(rbind, pooled[seq_len(pooled_n)])
         if (is.null(dim(pooled))) {
             pooled <- matrix(pooled, ncol = 2L, byrow = TRUE)
         }
@@ -862,7 +1054,10 @@
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
     # all backends query the same CpGs during connectivity estimation.
-    use_numeric_row_index <- is.null(beta_row_ids_full) ||
+    prefer_numeric_row_index <- isTRUE(getOption("CMEnt.parallel_use_numeric_row_index", TRUE)) &&
+        isTRUE(tryCatch(beta_handler$supportsNumericRowIndex(), error = function(e) FALSE))
+    use_numeric_row_index <- prefer_numeric_row_index ||
+        is.null(beta_row_ids_full) ||
         length(beta_row_ids_full) != n_sites ||
         anyNA(beta_row_ids_full) ||
         any(!nzchar(beta_row_ids_full))
@@ -1060,7 +1255,13 @@
         ]
     }
 
-    batch_subset_enabled <- isTRUE(getOption("CMEnt.parallel_batch_beta_subset", TRUE))
+    beta_backend_type <- tryCatch(beta_handler$backendType(), error = function(e) "unknown")
+    batch_subset_option <- getOption("CMEnt.parallel_batch_beta_subset", "auto")
+    batch_subset_enabled <- if (identical(batch_subset_option, "auto")) {
+        beta_backend_type %in% c("file", "tabix")
+    } else {
+        isTRUE(batch_subset_option)
+    }
     batch_subset_min_rows <- as.integer(getOption("CMEnt.parallel_batch_beta_subset_min_rows", 5000L))
     if (!is.finite(batch_subset_min_rows) || is.na(batch_subset_min_rows) || batch_subset_min_rows < 1L) {
         batch_subset_min_rows <- 1L
@@ -1129,7 +1330,17 @@
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
         all_split_inds <- seq_len(nrow(splits))
-        batch_size <- as.integer(getOption("CMEnt.parallel_result_batch_size", max(njobs * 4L, 16L)))
+        default_batch_size <- max(njobs * 4L, 16L)
+        restart_workers_each_batch <- isTRUE(getOption("CMEnt.parallel_restart_workers_each_batch", FALSE))
+        if (identical(beta_backend_type, "delayed")) {
+            parallel_backend_now <- tolower(as.character(getOption("CMEnt.parallel_backend", "auto"))[1])
+            restart_default <- !identical(parallel_backend_now, "multicore")
+            restart_workers_each_batch <- isTRUE(getOption("CMEnt.stage2_hdf5_restart_workers_each_batch", restart_default))
+            if (restart_workers_each_batch) {
+                default_batch_size <- max(njobs, 1L)
+            }
+        }
+        batch_size <- as.integer(getOption("CMEnt.parallel_result_batch_size", default_batch_size))
         batch_size <- max(1L, batch_size)
         max_parallel_retries <- as.integer(getOption("CMEnt.parallel_batch_retries", 1L))
         if (!is.finite(max_parallel_retries) || is.na(max_parallel_retries) || max_parallel_retries < 0L) {
@@ -1237,6 +1448,18 @@
                 .applyChunkResult(item)
             }
             rm(ret)
+            rm(batch_worker_payload, batch_checked_pairs, batch_splits)
+            gc(verbose = FALSE)
+            if (restart_workers_each_batch && use_parallel && batch_end < length(all_split_inds)) {
+                .log_info(
+                    "Recycling parallel workers after connectivity batch ",
+                    batch_start, "-", batch_end,
+                    " to release worker memory.",
+                    level = 3
+                )
+                .cleanupParallelState()
+                .setupParallel()
+            }
         }
     }
 
@@ -1739,13 +1962,10 @@
         group_beta <- sites_beta[, idx, drop = FALSE]
         group_m <- .transformBeta(group_beta, pheno = pheno[idx, ], covariates = covariates)
 
-        # Extract pairs matrices
-        x_mat_full <- group_m[start_pair_inds, , drop = FALSE] # Sites i
-        y_mat_full <- group_m[end_pair_inds, , drop = FALSE] # Sites i+1
-
-        # Apply distance mask
-        x_mat <- x_mat_full[nexdist_mask, , drop = FALSE]
-        y_mat <- y_mat_full[nexdist_mask, , drop = FALSE]
+        # Extract only eligible pair rows; this avoids retaining full pair
+        # matrices for distance-filtered chunks.
+        x_mat <- group_m[start_pair_inds[nexdist_mask], , drop = FALSE]
+        y_mat <- group_m[end_pair_inds[nexdist_mask], , drop = FALSE]
 
         sn_pairs <- nrow(x_mat)
         if (sn_pairs == 0L) {
@@ -2617,6 +2837,8 @@ findDMRsFromSeeds <- function(
 
     .log_success("Subset size: ", paste(dim(seeds_beta), collapse = ","), level = 3)
     .log_info("Number of provided seeds: ", length(seeds), level = 2)
+    rm(seeds_beta)
+    gc(verbose = FALSE)
     resolved_min_cpg_delta_beta <- as.numeric(min_cpg_delta_beta)
 
     .log_info(
@@ -2797,9 +3019,23 @@ findDMRsFromSeeds <- function(
                 stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
             }
             stage2_beta_handler <- subset_ret$beta_handler
+            stage2_connectivity_beta_handler <- if (!is.null(subset_ret$worker_beta_handler)) {
+                subset_ret$worker_beta_handler
+            } else {
+                stage2_beta_handler
+            }
             stage2_beta_locs <- subset_ret$beta_locs
             stage2_subset_to_full_idx <- subset_ret$subset_to_full_idx
             expansion_windows <- subset_ret$expansion_windows
+            if (!is.null(subset_ret$h5_file)) {
+                withr::defer(unlink(subset_ret$h5_file), envir = environment())
+                beta_handler <- stage2_beta_handler
+                .log_info(
+                    "Using the HDF5-backed Stage 2 beta subset for downstream beta access; releasing the original beta handler from this run.",
+                    level = 2
+                )
+                gc(verbose = FALSE)
+            }
             .log_info(
                 "Stage 2 beta subset contains ",
                 format(nrow(stage2_beta_locs), big.mark = ","),
@@ -2810,8 +3046,40 @@ findDMRsFromSeeds <- function(
             )
         }
         .log_step("Building expansion connectivity array..", level = 2)
+        old_parallel_backend <- getOption("CMEnt.parallel_backend", "auto")
+        restore_parallel_backend <- FALSE
+        stage2_backend_type <- tryCatch(stage2_connectivity_beta_handler$backendType(), error = function(e) "unknown")
+        if (identical(stage2_backend_type, "delayed") &&
+            identical(tolower(as.character(old_parallel_backend)[1]), "auto")) {
+            stage2_parallel_backend <- getOption("CMEnt.stage2_hdf5_parallel_backend", "multicore")
+            stage2_parallel_backend <- tolower(as.character(stage2_parallel_backend)[1])
+            if (is.na(stage2_parallel_backend) || !stage2_parallel_backend %in% c("multicore", "multisession")) {
+                stage2_parallel_backend <- "multicore"
+            }
+            .log_info(
+                "Using ", stage2_parallel_backend,
+                " workers for HDF5-backed Stage 2 connectivity after releasing the original beta handler.",
+                level = 2
+            )
+            options(CMEnt.parallel_backend = stage2_parallel_backend)
+            restore_parallel_backend <- TRUE
+            withr::defer(options(CMEnt.parallel_backend = old_parallel_backend), envir = environment())
+        }
+        if (identical(stage2_backend_type, "delayed")) {
+            old_chunk_memory_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
+            stage2_chunk_memory_mb <- getOption("CMEnt.stage2_hdf5_max_chunk_memory_mb", 256)
+            stage2_chunk_memory_mb <- suppressWarnings(as.numeric(stage2_chunk_memory_mb)[1])
+            if (is.finite(stage2_chunk_memory_mb) && !is.na(stage2_chunk_memory_mb) && stage2_chunk_memory_mb > 0) {
+                current_chunk_memory_mb <- suppressWarnings(as.numeric(old_chunk_memory_mb)[1])
+                if (!is.finite(current_chunk_memory_mb) || is.na(current_chunk_memory_mb) || current_chunk_memory_mb <= 0) {
+                    current_chunk_memory_mb <- stage2_chunk_memory_mb
+                }
+                options(CMEnt.max_chunk_memory_mb = min(current_chunk_memory_mb, stage2_chunk_memory_mb))
+                withr::defer(options(CMEnt.max_chunk_memory_mb = old_chunk_memory_mb), envir = environment())
+            }
+        }
         ret <- .buildConnectivityArray(
-            beta_handler = stage2_beta_handler,
+            beta_handler = stage2_connectivity_beta_handler,
             beta_locs = stage2_beta_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
@@ -2831,6 +3099,9 @@ findDMRsFromSeeds <- function(
             expansion_windows = expansion_windows,
             max_bridge_gaps = max_bridge_extension_gaps
         )
+        if (restore_parallel_backend) {
+            options(CMEnt.parallel_backend = old_parallel_backend)
+        }
         connectivity_array <- ret$connectivity_array
     }
     .log_success("Connectivity array built.", level = 2)
@@ -3226,6 +3497,10 @@ findDMRsFromSeeds <- function(
         pheno = pheno_all,
         aggfun = aggfun
     )
+    if (is.null(output_prefix)) {
+        rm(all_selected_cpgs_beta)
+        gc(verbose = FALSE)
+    }
     .log_success("Per-CpG beta statistics calculated.", level = 2)
 
     beta_stats <- as.data.frame(beta_stats)
