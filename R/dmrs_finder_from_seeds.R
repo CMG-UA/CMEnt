@@ -470,14 +470,87 @@
         col_names <- beta_handler$getBetaColNames()
     }
 
+    .stage2BoolAutoOption <- function(value, default = "auto") {
+        if (is.null(value) || length(value) == 0L) {
+            return(default)
+        }
+        if (is.logical(value)) {
+            return(if (isTRUE(value[1])) "true" else "false")
+        }
+        value <- tolower(as.character(value)[1])
+        if (is.na(value) || !nzchar(value)) {
+            return(default)
+        }
+        if (value %in% c("auto", "true", "false")) {
+            return(value)
+        }
+        if (value %in% c("1", "yes", "y", "on")) {
+            return("true")
+        }
+        if (value %in% c("0", "no", "n", "off")) {
+            return("false")
+        }
+        default
+    }
+
     hdf5_min_rows <- as.integer(getOption("CMEnt.stage2_hdf5_min_rows", 100000L))[1]
     if (!is.finite(hdf5_min_rows) || is.na(hdf5_min_rows) || hdf5_min_rows < 1L) {
         hdf5_min_rows <- 100000L
     }
-    use_hdf5_subset <- isTRUE(getOption("CMEnt.stage2_hdf5_beta_subset", TRUE)) &&
-        length(subset_ids) >= hdf5_min_rows &&
-        requireNamespace("HDF5Array", quietly = TRUE) &&
+    hdf5_mode <- .stage2BoolAutoOption(
+        getOption("CMEnt.stage2_hdf5_beta_subset", "auto"),
+        default = "auto"
+    )
+    materialize_mode <- .stage2BoolAutoOption(
+        getOption("CMEnt.stage2_materialize_beta_subset", "auto"),
+        default = "auto"
+    )
+    materialize_max_mb <- suppressWarnings(as.numeric(
+        getOption("CMEnt.stage2_materialize_max_memory_mb", 2048)
+    )[1])
+    if (!is.finite(materialize_max_mb) || is.na(materialize_max_mb) || materialize_max_mb <= 0) {
+        materialize_max_mb <- Inf
+    }
+    estimated_subset_mb <- as.numeric(length(subset_ids)) * as.numeric(length(col_names)) * 8 / 1024^2
+    hdf5_available <- requireNamespace("HDF5Array", quietly = TRUE) &&
         requireNamespace("rhdf5", quietly = TRUE)
+    parallel_backend <- tolower(as.character(getOption("CMEnt.parallel_backend", "auto"))[1])
+    if (is.na(parallel_backend) || !parallel_backend %in% c("auto", "multicore", "multisession")) {
+        parallel_backend <- "auto"
+    }
+    can_share_memory_with_fork <- njobs > 1L &&
+        (identical(parallel_backend, "multicore") ||
+            (identical(parallel_backend, "auto") && future::availableCores("multicore") > 1L))
+
+    materialize_subset <- identical(materialize_mode, "true")
+    use_hdf5_subset <- !materialize_subset &&
+        hdf5_available &&
+        length(subset_ids) >= hdf5_min_rows &&
+        identical(hdf5_mode, "true")
+    if (!materialize_subset && !use_hdf5_subset && identical(materialize_mode, "auto")) {
+        materialize_subset <- can_share_memory_with_fork &&
+            estimated_subset_mb <= materialize_max_mb
+    }
+    if (!materialize_subset && !use_hdf5_subset) {
+        use_hdf5_subset <- hdf5_available &&
+            length(subset_ids) >= hdf5_min_rows &&
+            identical(hdf5_mode, "auto") &&
+            !can_share_memory_with_fork
+    }
+    subset_strategy <- if (use_hdf5_subset) {
+        "hdf5"
+    } else if (materialize_subset) {
+        "memory"
+    } else {
+        "view"
+    }
+    .log_info(
+        "Stage 2 beta subset strategy: ", subset_strategy,
+        " (estimated dense subset size: ", signif(estimated_subset_mb, 4),
+        " MB; multicore_shared_memory=", can_share_memory_with_fork, ").",
+        level = 2
+    )
+
     h5_file <- NULL
     if (use_hdf5_subset) {
         h5_ret <- .writeBetaSubsetToHDF5(
@@ -494,7 +567,7 @@
         subset_beta_handler <- beta_handler$subset(
             row_names = subset_ids,
             col_names = col_names,
-            materialize = isTRUE(getOption("CMEnt.stage2_materialize_beta_subset", FALSE))
+            materialize = materialize_subset
         )
         worker_beta_handler <- NULL
     }
@@ -505,7 +578,9 @@
         expansion_windows = wins,
         subset_to_full_idx = subset_to_full_idx,
         full_to_subset_idx = full_to_subset_idx,
-        h5_file = h5_file
+        h5_file = h5_file,
+        subset_strategy = subset_strategy,
+        releases_original = isTRUE(use_hdf5_subset) || isTRUE(materialize_subset)
     )
 }
 
@@ -555,6 +630,39 @@
     }
     list(pval_mode = pval_mode, empirical_strategy = empirical_strategy)
 }
+
+.permutationIndexMatrix <- local({
+    cache <- new.env(parent = emptyenv())
+    build <- function(n) {
+        if (n <= 1L) {
+            return(matrix(1L, nrow = 1L, ncol = 1L))
+        }
+        prev <- build(n - 1L)
+        out <- matrix(NA_integer_, nrow = nrow(prev) * n, ncol = n)
+        out_row <- 1L
+        for (i in seq_len(nrow(prev))) {
+            base_perm <- prev[i, ]
+            for (pos in seq_len(n)) {
+                before <- if (pos > 1L) base_perm[seq_len(pos - 1L)] else integer(0)
+                after <- if (pos <= length(base_perm)) base_perm[pos:length(base_perm)] else integer(0)
+                out[out_row, ] <- c(before, n, after)
+                out_row <- out_row + 1L
+            }
+        }
+        out
+    }
+    function(n) {
+        n <- as.integer(n)[1]
+        if (!is.finite(n) || is.na(n) || n < 1L) {
+            stop("n must be a positive integer.")
+        }
+        key <- as.character(n)
+        if (!exists(key, envir = cache, inherits = FALSE)) {
+            assign(key, build(n), envir = cache)
+        }
+        get(key, envir = cache, inherits = FALSE)
+    }
+})
 
 
 #' @keywords internal
@@ -840,6 +948,12 @@
             next_end <- as.integer(splits_mat[i, 2L])
             next_weight <- as.integer(split_weights[i])
             contiguous <- next_start <= cur_end + 1L
+            if (!contiguous && next_start == cur_end + 2L) {
+                boundary_pair <- cur_end + 1L
+                contiguous <- boundary_pair >= 1L &&
+                    next_start <= length(beta_chr_ids) &&
+                    beta_chr_ids[boundary_pair] == beta_chr_ids[next_start]
+            }
             fits_budget <- cur_weight + next_weight <= chunk_size_eff
             if (contiguous && fits_budget) {
                 cur_end <- max(cur_end, next_end)
@@ -1054,8 +1168,13 @@
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
     # all backends query the same CpGs during connectivity estimation.
+    handler_row_names_for_numeric <- tryCatch(beta_handler$getBetaRowNames(), error = function(e) NULL)
+    numeric_row_index_matches_locs <- is.null(handler_row_names_for_numeric) ||
+        (length(handler_row_names_for_numeric) >= n_sites &&
+            identical(handler_row_names_for_numeric[seq_len(n_sites)], beta_row_ids_full))
     prefer_numeric_row_index <- isTRUE(getOption("CMEnt.parallel_use_numeric_row_index", TRUE)) &&
-        isTRUE(tryCatch(beta_handler$supportsNumericRowIndex(), error = function(e) FALSE))
+        isTRUE(tryCatch(beta_handler$supportsNumericRowIndex(), error = function(e) FALSE)) &&
+        numeric_row_index_matches_locs
     use_numeric_row_index <- prefer_numeric_row_index ||
         is.null(beta_row_ids_full) ||
         length(beta_row_ids_full) != n_sites ||
@@ -1216,7 +1335,8 @@
             future.stdout = NA,
             future.globals = c(
                 ".connectivityChunkWorker",
-                ".testConnectivityBatch"
+                ".testConnectivityBatch",
+                ".permutationIndexMatrix"
             ),
             FUN = .connectivityChunkWorker,
             beta_handler = batch_beta_handler,
@@ -1991,9 +2111,10 @@
         sum_xy <- rowSums(x_centered * y_centered, na.rm = TRUE)
         sum_x2 <- rowSums(x_centered^2, na.rm = TRUE)
         sum_y2 <- rowSums(y_centered^2, na.rm = TRUE)
+        denom <- sqrt(sum_x2 * sum_y2)
 
         # Compute correlations (fully vectorized)
-        cors <- sum_xy / sqrt(sum_x2 * sum_y2)
+        cors <- sum_xy / denom
 
         # Compute degrees of freedom (vectorized)
         # Count non-NA pairs for each row
@@ -2055,27 +2176,53 @@
                             ntries <- 500
                         }
                     }
-                    maxval <- max(y_mat, na.rm = TRUE)
-                    minval <- min(y_mat, na.rm = TRUE)
+                    perm_matrix <- NULL
+                    if (do_permutations) {
+                        n_unique_perms <- factorial(m)
+                        if (is.finite(n_unique_perms) && n_unique_perms <= ntries) {
+                            perm_matrix <- .permutationIndexMatrix(m)
+                            ntries <- nrow(perm_matrix)
+                            .log_info(
+                                "Using all ", ntries,
+                                " unique sample-label permutations for group '", g,
+                                "' instead of redundant random draws.",
+                                level = 4
+                            )
+                        }
+                    }
                     abs_cors <- abs(cors)
+                    compare_tol <- suppressWarnings(as.numeric(
+                        getOption("CMEnt.permutation_compare_tolerance", sqrt(.Machine$double.eps))
+                    )[1])
+                    if (!is.finite(compare_tol) || is.na(compare_tol) || compare_tol < 0) {
+                        compare_tol <- sqrt(.Machine$double.eps)
+                    }
+                    maxval <- if (do_permutations) NA_real_ else max(y_mat, na.rm = TRUE)
+                    minval <- if (do_permutations) NA_real_ else min(y_mat, na.rm = TRUE)
                     for (b in seq_len(ntries)) {
                         # Permute sample labels (columns) only for y; x remains fixed
                         if (do_permutations) {
-                            perm <- sample.int(m, size = m, replace = FALSE)
-                            yp <- y_mat[, perm, drop = FALSE]
+                            perm <- if (is.null(perm_matrix)) {
+                                sample.int(m, size = m, replace = FALSE)
+                            } else {
+                                perm_matrix[b, ]
+                            }
+                            yc <- y_centered[, perm, drop = FALSE]
+                            sxy <- rowSums(x_centered * yc, na.rm = TRUE)
+                            rperm <- sxy / denom
                         } else {
                             yp <- matrix(stats::runif(n = nrow(y_mat) * m, min = minval, max = maxval), nrow = nrow(y_mat), ncol = m)
+                            yc <- yp - rowMeans(yp, na.rm = TRUE)
+                            sxy <- rowSums(x_centered * yc, na.rm = TRUE)
+                            sy2 <- rowSums(yc^2, na.rm = TRUE)
+                            rperm <- sxy / sqrt(sum_x2 * sy2)
                         }
-                        yc <- yp - rowMeans(yp, na.rm = TRUE)
-                        sxy <- rowSums(x_centered * yc, na.rm = TRUE)
-                        sy2 <- rowSums(yc^2, na.rm = TRUE)
-                        rperm <- sxy / sqrt(sum_x2 * sy2)
                         comp_mask <- is.finite(rperm)
                         if (any(comp_mask)) {
                             ap <- abs(rperm[comp_mask])
                             ao <- abs_cors[comp_mask]
-                            counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao)
-                            counts_eq[comp_mask] <- counts_eq[comp_mask] + (ap == ao)
+                            counts_ge[comp_mask] <- counts_ge[comp_mask] + (ap > ao + compare_tol)
+                            counts_eq[comp_mask] <- counts_eq[comp_mask] + (abs(ap - ao) <= compare_tol)
                         }
                     }
                     if (mid_p) {
@@ -2836,6 +2983,13 @@ findDMRsFromSeeds <- function(
     }
 
     .log_success("Subset size: ", paste(dim(seeds_beta), collapse = ","), level = 3)
+    seeds_beta_handler <- getBetaHandler(
+        beta = seeds_beta,
+        array = array,
+        genome = genome,
+        sorted_locs = seeds_locs,
+        njobs = njobs
+    )
     .log_info("Number of provided seeds: ", length(seeds), level = 2)
     rm(seeds_beta)
     gc(verbose = FALSE)
@@ -2864,7 +3018,7 @@ findDMRsFromSeeds <- function(
     } else {
         .log_step("Building seed connectivity array...", level = 2)
         ret <- .buildConnectivityArray(
-            beta_handler = beta_handler,
+            beta_handler = seeds_beta_handler,
             beta_locs = seeds_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
@@ -2884,6 +3038,8 @@ findDMRsFromSeeds <- function(
             expansion_windows = NULL,
             max_bridge_gaps = max_bridge_seeds_gaps
         )
+        rm(seeds_beta_handler)
+        gc(verbose = FALSE)
         seeds_connectivity_array <- ret$connectivity_array
         pval_mode_per_group <- ret$pval_mode_per_group
         empirical_strategy_per_group <- ret$empirical_strategy_per_group
@@ -3029,9 +3185,12 @@ findDMRsFromSeeds <- function(
             expansion_windows <- subset_ret$expansion_windows
             if (!is.null(subset_ret$h5_file)) {
                 withr::defer(unlink(subset_ret$h5_file), envir = environment())
+            }
+            if (isTRUE(subset_ret$releases_original)) {
                 beta_handler <- stage2_beta_handler
                 .log_info(
-                    "Using the HDF5-backed Stage 2 beta subset for downstream beta access; releasing the original beta handler from this run.",
+                    "Using the ", subset_ret$subset_strategy,
+                    " Stage 2 beta subset for downstream beta access; releasing the original beta handler from this run.",
                     level = 2
                 )
                 gc(verbose = FALSE)
@@ -3076,6 +3235,19 @@ findDMRsFromSeeds <- function(
                 }
                 options(CMEnt.max_chunk_memory_mb = min(current_chunk_memory_mb, stage2_chunk_memory_mb))
                 withr::defer(options(CMEnt.max_chunk_memory_mb = old_chunk_memory_mb), envir = environment())
+            }
+        } else if (identical(stage2_backend_type, "memory")) {
+            stage2_chunk_memory_mb <- getOption("CMEnt.stage2_memory_max_chunk_memory_mb", NA_real_)
+            stage2_chunk_memory_mb <- suppressWarnings(as.numeric(stage2_chunk_memory_mb)[1])
+            if (is.finite(stage2_chunk_memory_mb) && !is.na(stage2_chunk_memory_mb) && stage2_chunk_memory_mb > 0) {
+                old_chunk_memory_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
+                options(CMEnt.max_chunk_memory_mb = stage2_chunk_memory_mb)
+                withr::defer(options(CMEnt.max_chunk_memory_mb = old_chunk_memory_mb), envir = environment())
+                .log_info(
+                    "Using a ", stage2_chunk_memory_mb,
+                    " MB per-worker chunk memory budget for compact in-memory Stage 2 connectivity.",
+                    level = 2
+                )
             }
         }
         ret <- .buildConnectivityArray(
@@ -3422,7 +3594,7 @@ findDMRsFromSeeds <- function(
             length(merged_dmrs_ranges),
             " with at least ",
             min_seeds,
-            " supporting seeds or ",
+            " supporting seeds and at least ",
             min_cpgs,
             " supporting CpGs.",
             level = 1

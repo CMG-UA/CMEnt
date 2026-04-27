@@ -2593,7 +2593,7 @@ convertToDataFrame <- function(gr) {
 .calculateBetaStats <- function(beta_values, pheno, aggfun) {
     is_case <- pheno[, "__casecontrol__"] == 1
     cases <- beta_values[, is_case, drop = FALSE]
-    cases <- as.matrix(cases, ncol = ncol(cases))
+    cases <- as.matrix(cases)
 
     if (identical(aggfun, mean)) {
         cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
@@ -2608,7 +2608,7 @@ convertToDataFrame <- function(gr) {
 
     is_ctrl <- !is_case
     ctrl <- beta_values[, is_ctrl, drop = FALSE]
-    ctrl <- as.matrix(ctrl, ncol = ncol(ctrl))
+    ctrl <- as.matrix(ctrl)
     if (identical(aggfun, mean)) {
         controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
     } else if (identical(aggfun, stats::median)) {

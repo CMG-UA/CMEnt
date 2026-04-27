@@ -189,13 +189,13 @@ knitr::kable(
 #### Adjusting parameters for NGS simulation
 ```{r}
 min_seeds <- 1L
-min_cpgs <- 5L
+min_cpgs <- 2L
 max_pval <- 0.1
 pval_mode  <- "auto"
 min_cpg_delta_beta  <- 0.1
 max_bridge_seeds_gaps <- 1L
-max_bridge_extension_gaps <- 5L
-max_lookup_dist <- 1000L
+max_bridge_extension_gaps <- 3L
+max_lookup_dist <- 10000L
 ```
 
 #### Extract Methylation Matrix and Generate Seeds
@@ -351,9 +351,12 @@ if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.njobs" = cment_njobs)
     options("CMEnt.verbose" = 2)
+    options("CMEnt.parallel_backend" = "multicore")
     options("CMEnt.parallel_batch_beta_subset" = "auto")
-    options("CMEnt.stage2_hdf5_beta_subset" = TRUE)
-    options("CMEnt.stage2_materialize_beta_subset" = FALSE)
+    options("CMEnt.stage2_hdf5_beta_subset" = "auto")
+    options("CMEnt.stage2_materialize_beta_subset" = TRUE)
+    options("CMEnt.stage2_materialize_max_memory_mb" = 2048)
+    options("CMEnt.stage2_memory_max_chunk_memory_mb" = 2048)
     options("CMEnt.stage2_hdf5_max_chunk_memory_mb" = 256)
     options("CMEnt.stage2_hdf5_parallel_backend" = "multicore")
     options("CMEnt.stage2_hdf5_restart_workers_each_batch" = FALSE)
