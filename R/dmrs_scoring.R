@@ -920,8 +920,8 @@ scoreDMRs <- function(
     .log_success("DMR-specific beta matrices extracted", level = 2)
     process_args <- list(
         X = dmrs_m_values,
-        FUN = function(dmrs_m) {
-            cv_results <- .performCrossPrediction(dmrs_m, groups = groups, folds = folds, nfold = nfold)
+        FUN = function(m) {
+            cv_results <- .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
             if (verbose > 0 && !is.null(p_con)) p_con()
             cv_results
         }

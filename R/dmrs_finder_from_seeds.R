@@ -944,7 +944,6 @@
     verbose <- getOption("CMEnt.verbose", verbose)
     p_ext <- NULL
     if (verbose > 0) {
-        .log_info("Initializing connectivity computation progress bar.", level = 2)
         p_ext <- progressr::progressor(steps = nrow(splits), message = progress_message)
     }
     beta_row_ids_full <- rownames(beta_locs)
