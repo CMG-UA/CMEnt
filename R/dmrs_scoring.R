@@ -918,15 +918,7 @@ scoreDMRs <- function(
         dmrs_m[dmr_cpgs_i, , drop = FALSE]
     })
     .log_success("DMR-specific beta matrices extracted", level = 2)
-    process_args <- list(
-        X = dmrs_m_values,
-        FUN = function(m) {
-            cv_results <- .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
-            if (verbose > 0 && !is.null(p_con)) p_con()
-            cv_results
-        }
-    )
-    cost <- lapply
+    .log_step("Computing cross-validated classification scores for DMRs", level = 2)
     if (njobs > 1L) {
         process_args <- c(
             process_args,
@@ -935,23 +927,29 @@ scoreDMRs <- function(
                 future.globals = c(
                     "pheno", "beta_col_names", "p_con",
                     ".performCrossPrediction",
-                    "groups", "folds", "nfold", "dmr_cpgs"
+                    "groups", "folds", "nfold"
                 ),
                 future.stdout = NA
             )
         )
-        cost <- future.apply::future_lapply
+        cv_metrics <- future.apply::future_lapply(
+            dmrs_m_values,
+            function(m) {
+                .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
+            },
+            future.seed = TRUE,
+            future.globals = c(
+                "pheno", "beta_col_names", "p_con",
+                ".performCrossPrediction",
+                "groups", "folds", "nfold"
+            ),
+            future.stdout = NA
+        )
+    } else {
+        cv_metrics <- lapply(dmrs_m_values, function(m) {
+            .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
+        })
     }
-    p_con <- NULL
-    if (verbose > 0) {
-        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
-
-        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-            p_con <- progressr::progressor(steps = length(dmrs), message = "Scoring DMRs..")
-        }
-    }
-    .log_step("Computing cross-validated classification scores for DMRs", level = 2)
-    cv_metrics <- do.call(cost, process_args)
     cv_metrics <- do.call(rbind, cv_metrics)
 
     .log_success("Cross-validated classification scores computed", level = 2)

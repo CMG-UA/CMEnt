@@ -940,11 +940,6 @@
         "; chunks to evaluate: ", nrow(splits), ".",
         level = 3
     )
-    verbose <- getOption("CMEnt.verbose", verbose)
-    p_ext <- NULL
-    if (verbose > 0) {
-        p_ext <- progressr::progressor(steps = nrow(splits), message = progress_message)
-    }
     beta_row_ids_full <- rownames(beta_locs)
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
@@ -953,8 +948,7 @@
     numeric_row_index_matches_locs <- is.null(handler_row_names_for_numeric) ||
         (length(handler_row_names_for_numeric) >= n_sites &&
             identical(handler_row_names_for_numeric[seq_len(n_sites)], beta_row_ids_full))
-    prefer_numeric_row_index <- isTRUE(getOption("CMEnt.parallel_use_numeric_row_index", TRUE)) &&
-        numeric_row_index_matches_locs
+    prefer_numeric_row_index <- numeric_row_index_matches_locs
     use_numeric_row_index <- prefer_numeric_row_index ||
         is.null(beta_row_ids_full) ||
         length(beta_row_ids_full) != n_sites ||
@@ -1003,9 +997,8 @@
         pval_mode_per_group <- sapply(groups_options, function(opt) opt$pval_mode)
         names(pval_mode_per_group) <- names(group_inds)
         rm(first_chunk, sites_locs, exceeded_dist, nexdist_mask, groups_options)
+        gc()
     }
-
-    gc()
     beta_chr_vec <- beta_chr_ids
     beta_start_vec <- as.integer(beta_locs[, "start"])
     .runConnectivityChunk <- function(
@@ -1052,9 +1045,6 @@
     recheck <- integer(0)
 
     .applyChunkResult <- function(item) {
-        if (!is.null(p_ext)) {
-            p_ext()
-        }
         x <- item$result
         if (nrow(x) == 0L) {
             return(invisible(NULL))
