@@ -58,7 +58,6 @@ suppressPackageStartupMessages({
     library(progressr)
     library(SummarizedExperiment)
     library(S4Vectors)
-    library(HDF5Array)
 })
 
 
@@ -94,51 +93,6 @@ drop_zero_coverage_cpgs <- function(bs_obj) {
     bs_obj
 }
 
-is_hdf5_bsseq <- function(bs_obj) {
-    if (!inherits(bs_obj, "BSseq")) {
-        return(FALSE)
-    }
-    assay_classes <- vapply(
-        SummarizedExperiment::assays(bs_obj, withDimnames = FALSE),
-        function(x) inherits(x, "HDF5Matrix"),
-        logical(1)
-    )
-    all(c("M", "Cov") %in% names(assay_classes)) && all(assay_classes[c("M", "Cov")])
-}
-
-get_hdf5_bsseq <- function(input_rds, hdf5_dir) {
-    if (dir.exists(hdf5_dir)) {
-        bs_obj <- tryCatch(
-            HDF5Array::loadHDF5SummarizedExperiment(hdf5_dir),
-            error = function(e) NULL
-        )
-        if (is_hdf5_bsseq(bs_obj)) {
-            return(bs_obj)
-        }
-    }
-
-    if (dir.exists(hdf5_dir)) {
-        unlink(hdf5_dir, recursive = TRUE)
-    }
-    dir.create(hdf5_dir, showWarnings = FALSE, recursive = TRUE)
-
-    bs_obj <- readRDS(input_rds)
-    stopifnot(inherits(bs_obj, "BSseq"))
-    bs_obj <- drop_zero_coverage_cpgs(bs_obj)
-
-    chunkdim <- c(min(100000L, nrow(bs_obj)), ncol(bs_obj))
-    hdf5_bs <- HDF5Array::saveHDF5SummarizedExperiment(
-        bs_obj,
-        dir = hdf5_dir,
-        replace = TRUE,
-        chunkdim = chunkdim,
-        level = 1L,
-        verbose = TRUE
-    )
-    rm(bs_obj)
-    gc(verbose = FALSE)
-    hdf5_bs
-}
 ```
 
 ### Install External Dependencies
@@ -187,7 +141,7 @@ resolve_input_path <- function(path_in_repo) {
 
 sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
 sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
-sim_bs_hdf5_dir <- get_benchmark_file("sim_bs_1000_hdf5")
+
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 if (!file.exists(sim_bs_path)) {
     curl::curl_download(
@@ -202,11 +156,7 @@ if (!file.exists(sim_truth_path)) {
     )
 }
 
-if (computation_needed) {
-    sim_bs <- get_hdf5_bsseq(sim_bs_path, sim_bs_hdf5_dir)
-} else {
-    sim_bs <- readRDS(sim_bs_path)
-}
+sim_bs <- readRDS(sim_bs_path)
 stopifnot(inherits(sim_bs, "BSseq"))
 
 truth_df <- data.table::fread(sim_truth_path)
@@ -458,7 +408,7 @@ if (!file.exists(cment_file)) {
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
     rm(beta_handler)
-    sim_bs <- get_hdf5_bsseq(sim_bs_path, sim_bs_hdf5_dir)
+    sim_bs <- readRDS(sim_bs_path)
     colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
     sim_bs <- sort(sim_bs)
     gc(verbose = FALSE)

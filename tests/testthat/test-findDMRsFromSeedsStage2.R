@@ -1,27 +1,5 @@
 options("CMEnt.verbose" = 0)
 
-test_that("BetaHandler can release heavy in-memory backend", {
-    beta <- matrix(runif(20), nrow = 5)
-    rownames(beta) <- paste0("cg", seq_len(5))
-    colnames(beta) <- paste0("S", seq_len(4))
-    locs <- data.frame(
-        chr = rep("chr1", 5),
-        start = seq(100, 500, 100),
-        end = seq(101, 501, 100),
-        row.names = rownames(beta),
-        stringsAsFactors = FALSE
-    )
-
-    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
-    expect_equal(bh$backendType(), "memory")
-    expect_equal(nrow(bh$getBetaLocs()), 5L)
-
-    bh$releaseInMemoryBackend()
-    expect_equal(bh$backendType(), "unknown")
-    expect_null(bh$sorted_locs)
-})
-
-
 test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with ugap", {
     set.seed(1)
     cpg_ids <- paste0("cg", 1:10)

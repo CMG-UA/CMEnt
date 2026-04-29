@@ -466,58 +466,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             private$.is_array_based
         },
 
-        #' @description Return the storage backend used by this handler
-        #' @return Character scalar describing the backend
-        backendType = function() {
-            self$load()
-            if (!is.null(private$.bsseq_object)) {
-                return("bsseq")
-            }
-            if (!is.null(private$.beta_file_in_memory)) {
-                if (inherits(private$.beta_file_in_memory, "DelayedArray")) {
-                    return("delayed")
-                }
-                return("memory")
-            }
-            if (!is.null(private$.tabix_file)) {
-                return("tabix")
-            }
-            if (!is.null(private$.beta_file)) {
-                return("file")
-            }
-            "unknown"
-        },
-
-        #' @description Release any heavy in-memory beta payload held by this handler
-        #' @return Self (invisibly)
-        releaseInMemoryBackend = function() {
-            private$.beta_file_in_memory <- NULL
-            private$.bsseq_object <- NULL
-            private$.beta_locs <- NULL
-            private$.beta_row_names <- NULL
-            private$.beta_col_names <- NULL
-            private$.beta_row_index_map <- NULL
-            private$.is_array_based <- NULL
-            self$sorted_locs <- NULL
-            self$beta_row_names_file <- NULL
-            self$beta <- NULL
-            gc(verbose = FALSE)
-            invisible(self)
-        },
-
-        #' @description Check whether numeric row indices are supported relative to this handler
-        #' @return Logical scalar
-        supportsNumericRowIndex = function() {
-            TRUE
-        },
-
         #' @description Build a compact BetaHandler view for a subset of rows/columns
         #' @param row_names Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows
         #' @param col_names Character vector of sample IDs to keep; NULL keeps all columns
         #' @param allow_missing Logical; if TRUE, silently drops missing row names
-        #' @param materialize Logical; if TRUE, in-memory and BSseq backends are copied into a compact matrix
         #' @return A BetaHandler object scoped to the requested subset
-        subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, materialize = TRUE) {
+        subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
             if (is.null(row_names)) {
                 all_row_names <- self$getBetaRowNames()
@@ -591,7 +545,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 subset_locs <- all_locs[subset_row_names, , drop = FALSE]
             }
 
-            if (materialize && (!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object))) {
+            if ((!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object))) {
                 # For in-memory/BSseq backends, materialize only the needed slice so workers do not
                 # inherit the full parent payload when this subset handler is serialized.
                 subset_beta <- self$getBeta(

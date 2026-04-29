@@ -365,8 +365,7 @@
     }
     subset_beta_handler <- beta_handler$subset(
         row_names = subset_ids,
-        col_names = col_names,
-        materialize = TRUE
+        col_names = col_names
     )
     .log_info(
         "Stage 2 beta subset contains ", format(nrow(subset_locs), big.mark = ","),
@@ -957,7 +956,6 @@
         (length(handler_row_names_for_numeric) >= n_sites &&
             identical(handler_row_names_for_numeric[seq_len(n_sites)], beta_row_ids_full))
     prefer_numeric_row_index <- isTRUE(getOption("CMEnt.parallel_use_numeric_row_index", TRUE)) &&
-        isTRUE(tryCatch(beta_handler$supportsNumericRowIndex(), error = function(e) FALSE)) &&
         numeric_row_index_matches_locs
     use_numeric_row_index <- prefer_numeric_row_index ||
         is.null(beta_row_ids_full) ||
@@ -1154,7 +1152,7 @@
         ]
     }
 
-    if (njobs == 1L) {
+    if (njobs == 1L || nrow(splits) == 1L) {
         for (split_ind in seq_len(nrow(splits))) {
             .applyChunkResult(.runConnectivityChunk(splits[split_ind, ], checked_pairs_local = checked_pairs))
         }
@@ -2128,63 +2126,8 @@
 }
 
 
-#' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
-#'
-#' This function identifies DMRs from a given set of seeds and a beta value file.
-#'
-#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.
-#' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
-#' @param pheno Data frame. Phenotype data.
-#' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
-#' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
-#' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
-#' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
-#' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
-#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
-#' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
-#' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
-#' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
-#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
-#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
-#' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
-#' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
-#' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
-#' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
-#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
-#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
-#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
-#' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
-#' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
-#' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
-#' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
-#' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
-#' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param .score_dmrs Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.
-#' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
-#' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
-#' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
-#' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
-#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".
-#' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
-#'
-#' @return Data frame of identified DMRs.
-#' 
-#' @examples
-#' \dontrun{
-#' beta <- loadExampleInputDataChr5And11("beta")
-#' dmps <- loadExampleInputDataChr5And11("dmps")
-#' pheno <- loadExampleInputDataChr5And11("pheno")
-#' array_type <- loadExampleInputDataChr5And11("array_type")
-#' dmrs <- findDMRsFromSeeds(
-#'   beta = beta,
-#'   seeds = seeds,
-#'   pheno = pheno,
-#'   array = array_type,
-#'   sample_group_col = "Sample_Group"
-#' )
-#' }
-#' @export
+#' @keywords internal
+#' @noRd
 findDMRsFromSeedsChr <- function(
     beta,
     seeds,
@@ -3411,7 +3354,63 @@ findDMRsFromSeedsChr <- function(
     invisible(final_dmrs_granges)
 }
 
-
+#' Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
+#'
+#' This function identifies DMRs from a given set of seeds and a beta value file.
+#'
+#' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.
+#' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.
+#' @param pheno Data frame. Phenotype data.
+#' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.
+#' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
+#' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
+#' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
+#' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
+#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
+#' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
+#' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
+#' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
+#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
+#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
+#' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
+#' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
+#' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
+#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing CpG to bridge).
+#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_cpgs Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
+#' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
+#' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
+#' @param output_prefix Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.
+#' @param njobs Numeric. Number of parallel jobs to use. Default is the number of available cores.
+#' @param beta_row_names_file Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.
+#' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
+#' @param .score_dmrs Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.
+#' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
+#' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.
+#' @param bed_chrom_col Character. Column name for chromosome in the BED file. Default is "chrom".
+#' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
+#' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".
+#' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
+#'
+#' @return Data frame of identified DMRs.
+#' 
+#' @examples
+#' \dontrun{
+#' beta <- loadExampleInputDataChr5And11("beta")
+#' dmps <- loadExampleInputDataChr5And11("dmps")
+#' pheno <- loadExampleInputDataChr5And11("pheno")
+#' array_type <- loadExampleInputDataChr5And11("array_type")
+#' dmrs <- findDMRsFromSeeds(
+#'   beta = beta,
+#'   seeds = seeds,
+#'   pheno = pheno,
+#'   array = array_type,
+#'   sample_group_col = "Sample_Group"
+#' )
+#' }
+#' @export
 findDMRsFromSeeds <- function(
     beta,
     seeds,
@@ -3719,7 +3718,7 @@ findDMRsFromSeeds <- function(
         .log_step("Chromosome ", chr, ": preparing scoped beta/seeds.", level = 1)
         chr_beta_idx <- which(beta_chr == chr)
         chr_row_ids <- if (is.null(beta_locs_rownames)) chr_beta_idx else beta_row_ids_all[chr_beta_idx]
-        chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names, materialize = TRUE)
+        chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names)
         chr_seed_ids <- seed_ids[seed_chr == chr]
         chr_seeds <- seeds_tsv[as.character(seeds_tsv[, seeds_id_col]) %in% chr_seed_ids, , drop = FALSE]
         chr_ret <- withCallingHandlers(

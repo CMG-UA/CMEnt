@@ -31,7 +31,7 @@ simulateDMRs(
 )
 }
 \arguments{
-\item{beta}{A BSseq object, a \code{BetaHandler} object, a beta matrix/data
+\item{beta}{A BSseq object, a \link{BetaHandler} object, a beta matrix/data
 frame, a path to a beta/tabix file, or a path to an \code{.rds} file
 containing a BSseq object.}
 
@@ -80,10 +80,10 @@ redrawn from shifted probabilities and coverage. If \code{FALSE}, counts are
 rounded deterministically.}
 
 \item{array}{Array platform type. Used only when \code{beta} is not a BSseq object
-or a self-contained \code{BetaHandler}.}
+or a self-contained \link{BetaHandler}.}
 
 \item{genome}{Reference genome. Used only when \code{beta} is not a BSseq object
-or a self-contained \code{BetaHandler}.}
+or a self-contained \link{BetaHandler}.}
 
 \item{sorted_locs}{Optional genomic locations with \code{chr}, \code{start}, and
 optionally \code{end} columns. Used only for non-BSseq inputs.}

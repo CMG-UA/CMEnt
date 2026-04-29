@@ -13,7 +13,6 @@ findDMRsFromSeeds(
   casecontrol_col = NULL,
   covariates = NULL,
   min_cpg_delta_beta = 0.1,
-  expansion_step = 500,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = NULL,
   max_pval = 0.05,
@@ -33,7 +32,6 @@ findDMRsFromSeeds(
   ignored_sample_groups = NULL,
   output_prefix = NULL,
   njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
-  chunk_size = getOption("CMEnt.chunk_size", 10000),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   .score_dmrs = TRUE,
@@ -61,8 +59,6 @@ findDMRsFromSeeds(
 \item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
 \item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.1.}
-
-\item{expansion_step}{Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.}
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
@@ -99,8 +95,6 @@ findDMRsFromSeeds(
 \item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
-
-\item{chunk_size}{Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "CMEnt.chunk_size".}
 
 \item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
 
