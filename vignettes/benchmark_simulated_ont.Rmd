@@ -58,6 +58,7 @@ suppressPackageStartupMessages({
     library(progressr)
     library(SummarizedExperiment)
     library(S4Vectors)
+    library(HDF5Array)
 })
 
 
@@ -78,6 +79,65 @@ get_benchmark_file <- function(filename) {
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
+}
+
+drop_zero_coverage_cpgs <- function(bs_obj) {
+    cov_assay <- SummarizedExperiment::assay(bs_obj, "Cov", withDimnames = FALSE)
+    valid_cpgs <- DelayedMatrixStats::rowSums2(cov_assay) > 0
+    rm(cov_assay)
+    gc(verbose = FALSE)
+    if (!all(valid_cpgs)) {
+        bs_obj <- bs_obj[valid_cpgs, ]
+    }
+    rm(valid_cpgs)
+    gc(verbose = FALSE)
+    bs_obj
+}
+
+is_hdf5_bsseq <- function(bs_obj) {
+    if (!inherits(bs_obj, "BSseq")) {
+        return(FALSE)
+    }
+    assay_classes <- vapply(
+        SummarizedExperiment::assays(bs_obj, withDimnames = FALSE),
+        function(x) inherits(x, "HDF5Matrix"),
+        logical(1)
+    )
+    all(c("M", "Cov") %in% names(assay_classes)) && all(assay_classes[c("M", "Cov")])
+}
+
+get_hdf5_bsseq <- function(input_rds, hdf5_dir) {
+    if (dir.exists(hdf5_dir)) {
+        bs_obj <- tryCatch(
+            HDF5Array::loadHDF5SummarizedExperiment(hdf5_dir),
+            error = function(e) NULL
+        )
+        if (is_hdf5_bsseq(bs_obj)) {
+            return(bs_obj)
+        }
+    }
+
+    if (dir.exists(hdf5_dir)) {
+        unlink(hdf5_dir, recursive = TRUE)
+    }
+    dir.create(hdf5_dir, showWarnings = FALSE, recursive = TRUE)
+
+    bs_obj <- readRDS(input_rds)
+    stopifnot(inherits(bs_obj, "BSseq"))
+    bs_obj <- drop_zero_coverage_cpgs(bs_obj)
+
+    chunkdim <- c(min(100000L, nrow(bs_obj)), ncol(bs_obj))
+    hdf5_bs <- HDF5Array::saveHDF5SummarizedExperiment(
+        bs_obj,
+        dir = hdf5_dir,
+        replace = TRUE,
+        chunkdim = chunkdim,
+        level = 1L,
+        verbose = TRUE
+    )
+    rm(bs_obj)
+    gc(verbose = FALSE)
+    hdf5_bs
 }
 ```
 
@@ -108,6 +168,11 @@ if (!requireNamespace("tidyr", quietly = TRUE)) {
 ## Load Simulated Data and Ground Truth
 
 ```{r}
+cment_file <- get_benchmark_file("dmrs.CMEnt.rds")
+dmrcate_file <- get_benchmark_file("dmrs.DMRcate.rds")
+dmrseq_file <- get_benchmark_file("dmrs.dmrseq.rds")
+hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
+computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file)
 resolve_input_path <- function(path_in_repo) {
     candidates <- c(
         path_in_repo,
@@ -122,6 +187,7 @@ resolve_input_path <- function(path_in_repo) {
 
 sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
 sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
+sim_bs_hdf5_dir <- get_benchmark_file("sim_bs_1000_hdf5")
 dir.create("data", showWarnings = FALSE, recursive = TRUE)
 if (!file.exists(sim_bs_path)) {
     curl::curl_download(
@@ -136,15 +202,12 @@ if (!file.exists(sim_truth_path)) {
     )
 }
 
-sim_bs <- readRDS(sim_bs_path)
+if (computation_needed) {
+    sim_bs <- get_hdf5_bsseq(sim_bs_path, sim_bs_hdf5_dir)
+} else {
+    sim_bs <- readRDS(sim_bs_path)
+}
 stopifnot(inherits(sim_bs, "BSseq"))
-
-# Drop CpGs with zero coverage across all samples to avoid issues in downstream methods.
-coverage <- bsseq::getCoverage(sim_bs, type = "Cov")
-valid_cpgs <- rowSums(coverage) > 0
-sim_bs <- sim_bs[valid_cpgs, ]
-rm(coverage, valid_cpgs)
-gc(verbose = FALSE)
 
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
@@ -184,13 +247,14 @@ knitr::kable(
 
 ## Benchmarking DMR Detection Methods
 
+
 ### CMEnt
 
 #### Adjusting parameters for NGS simulation
 ```{r}
 min_seeds <- 1L
 min_cpgs <- 2L
-max_pval <- 0.1
+max_pval <- 0.05
 pval_mode  <- "auto"
 min_cpg_delta_beta  <- 0.1
 max_bridge_seeds_gaps <- 1L
@@ -345,21 +409,20 @@ knitr::kable(
 ```
 
 ```{r cment}
-cment_file <- get_benchmark_file("dmrs.CMEnt.rds")
 
 if (!file.exists(cment_file)) {
-    cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    default_cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    cment_njobs <- suppressWarnings(as.integer(
+        Sys.getenv("CMENT_BENCHMARK_NJOBS", as.character(default_cment_njobs))
+    ))
+    if (!is.finite(cment_njobs) || is.na(cment_njobs) || cment_njobs < 1L) {
+        cment_njobs <- default_cment_njobs
+    }
+    cment_njobs <- max(1L, min(cment_njobs, future::availableCores()))
     options("CMEnt.njobs" = cment_njobs)
-    options("CMEnt.verbose" = 2)
-    options("CMEnt.parallel_backend" = "multicore")
-    options("CMEnt.parallel_batch_beta_subset" = "auto")
-    options("CMEnt.stage2_hdf5_beta_subset" = "auto")
-    options("CMEnt.stage2_materialize_beta_subset" = TRUE)
-    options("CMEnt.stage2_materialize_max_memory_mb" = 2048)
-    options("CMEnt.stage2_memory_max_chunk_memory_mb" = 2048)
-    options("CMEnt.stage2_hdf5_max_chunk_memory_mb" = 256)
-    options("CMEnt.stage2_hdf5_parallel_backend" = "multicore")
-    options("CMEnt.stage2_hdf5_restart_workers_each_batch" = FALSE)
+    options("CMEnt.verbose" = 3)
+    options("CMEnt.parallel_backend" = "multisession")
+    cat(sprintf("CMEnt benchmark jobs: %d\n", cment_njobs))
     start_time <- Sys.time()
 
     beta_handler <- CMEnt::getBetaHandler(
@@ -386,7 +449,6 @@ if (!file.exists(cment_file)) {
             max_pval = max_pval,
             min_cpg_delta_beta = min_cpg_delta_beta,
             max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
-            chunk_size = 1e6L,
             annotate_with_genes = FALSE,
             extract_motifs = FALSE,
             njobs = cment_njobs
@@ -396,11 +458,7 @@ if (!file.exists(cment_file)) {
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
     rm(beta_handler)
-    sim_bs <- readRDS(sim_bs_path)
-    coverage <- bsseq::getCoverage(sim_bs, type = "Cov")
-    valid_cpgs <- rowSums(coverage) > 0
-    sim_bs <- sim_bs[valid_cpgs, ]
-    rm(coverage, valid_cpgs)
+    sim_bs <- get_hdf5_bsseq(sim_bs_path, sim_bs_hdf5_dir)
     colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
     sim_bs <- sort(sim_bs)
     gc(verbose = FALSE)
@@ -414,7 +472,6 @@ if (!file.exists(cment_file)) {
 
 ### DMRcate
 ```{r dmrcate}
-dmrcate_file <- get_benchmark_file("dmrs.DMRcate.rds")
 
 run_dmrcate_bsseq <- function(
     bs_obj,
@@ -612,7 +669,6 @@ if (!file.exists(dmrcate_file)) {
 
 ### dmrseq
 ```{r dmrseq}
-dmrseq_file <- get_benchmark_file("dmrs.dmrseq.rds")
 
 run_dmrseq_bsseq <- function(
     bs_obj,
@@ -775,7 +831,6 @@ if (!file.exists(dmrseq_file)) {
 ### hummingbird
 
 ```{r hummingbird}
-hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
 
 run_hummingbird_bsseq <- function(
     bs_obj,
@@ -796,9 +851,6 @@ run_hummingbird_bsseq <- function(
         return(GenomicRanges::GPos())
     }
 
-    meth_mat <- bsseq::getCoverage(bs_obj, type = "M")
-    cov_mat <- bsseq::getCoverage(bs_obj, type = "Cov")
-    unmeth_mat <- cov_mat - meth_mat
     row_gr <- bsseq::granges(bs_obj)
     # granges to gpos for hummingbird
     row_gr <- GPos(
@@ -831,18 +883,22 @@ run_hummingbird_bsseq <- function(
         }
 
         chr_gr <- row_gr[chr_idx]
+        chr_bs <- bs_obj[chr_idx, , drop = FALSE]
+        meth_mat <- bsseq::getCoverage(chr_bs, type = "M")
+        cov_mat <- bsseq::getCoverage(chr_bs, type = "Cov")
+        unmeth_mat <- cov_mat - meth_mat
         control_se <- SummarizedExperiment::SummarizedExperiment(
             rowRanges = chr_gr,
             assays = list(
-                normM = to_count_matrix(meth_mat[chr_idx, ctrl_idx, drop = FALSE]),
-                normUM = to_count_matrix(unmeth_mat[chr_idx, ctrl_idx, drop = FALSE])
+                normM = to_count_matrix(meth_mat[, ctrl_idx, drop = FALSE]),
+                normUM = to_count_matrix(unmeth_mat[, ctrl_idx, drop = FALSE])
             )
         )
         case_se <- SummarizedExperiment::SummarizedExperiment(
             rowRanges = chr_gr,
             assays = list(
-                abnormM = to_count_matrix(meth_mat[chr_idx, case_idx, drop = FALSE]),
-                abnormUM = to_count_matrix(unmeth_mat[chr_idx, case_idx, drop = FALSE])
+                abnormM = to_count_matrix(meth_mat[, case_idx, drop = FALSE]),
+                abnormUM = to_count_matrix(unmeth_mat[, case_idx, drop = FALSE])
             )
         )
 
@@ -867,7 +923,7 @@ run_hummingbird_bsseq <- function(
         )
 
         dmrs_by_chr[[chr_name]] <- chr_out
-        rm(chr_gr, control_se, case_se, chr_out)
+        rm(chr_bs, chr_gr, meth_mat, cov_mat, unmeth_mat, control_se, case_se, chr_out)
         gc(verbose = FALSE)
     }
 

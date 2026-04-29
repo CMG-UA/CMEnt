@@ -198,7 +198,6 @@ if (!file.exists(cment_file)) {
         max_pval = 0.05,
         entanglement = "weak",
         .score_dmrs = TRUE,
-        chunk_size = 1e5,
         njobs = cment_njobs,
         verbose = 1
     ))

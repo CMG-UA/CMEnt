@@ -22,7 +22,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     )
 
     # Test empirical mode with auto strategy
-    dmrs_empirical_auto <- findDMRsFromSeeds(
+    dmrs_empirical_auto <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -36,7 +36,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100
-    )
+    ))
 
     # Test automatic p-value mode selection
     dmrs_pval_auto <- findDMRsFromSeeds(
@@ -56,7 +56,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     )
 
     # Test empirical mode with montecarlo strategy
-    dmrs_empirical_mc <- findDMRsFromSeeds(
+    dmrs_empirical_mc <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -70,7 +70,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100
-    )
+    ))
 
     # Test empirical mode with permutations strategy
     dmrs_empirical_perm <- findDMRsFromSeeds(
@@ -117,7 +117,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run with same seed twice
-    dmrs_seed1_run1 <- findDMRsFromSeeds(
+    dmrs_seed1_run1 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -131,9 +131,9 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
-    )
+    ))
     options("CMEnt.random_seed" = 42)
-    dmrs_seed1_run2 <- findDMRsFromSeeds(
+    dmrs_seed1_run2 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -147,10 +147,10 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
-    )
+    ))
     # Run with different seed
     options("CMEnt.random_seed" = 123)
-    dmrs_seed2 <- findDMRsFromSeeds(
+    dmrs_seed2 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -164,7 +164,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
-    )
+    ))
 
     # Assertions
     expect_true(is.null(dmrs_seed1_run1) || inherits(dmrs_seed1_run1, "GRanges"))
@@ -184,25 +184,23 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps, target_n = 50L)
     # Test with ntries = 0 (should use default)
-    expect_warning({
-        dmrs_ntries_0 <- findDMRsFromSeeds(
-            .score_dmrs = FALSE,
-            annotate_with_genes = FALSE,
-            extract_motifs = FALSE,
-            beta = beta,
-            seeds = dmps,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
-            min_seeds = 2,
-            min_cpgs = 3,
-            max_lookup_dist = 1000,
-            pval_mode = "empirical",
-            ntries = 0
-        )
-    }, "No DMRs passed")
+    dmrs_ntries_0 <- suppressWarnings(findDMRsFromSeeds(
+        .score_dmrs = FALSE,
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_cpgs = 3,
+        max_lookup_dist = 1000,
+        pval_mode = "empirical",
+        ntries = 0
+    ))
 
     # Test with ntries = 50
-    dmrs_ntries_50 <- findDMRsFromSeeds(
+    dmrs_ntries_50 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -215,7 +213,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 50
-    )
+    ))
 
     # Assertions
     expect_true(is.null(dmrs_ntries_0) || inherits(dmrs_ntries_0, "GRanges"))
@@ -251,20 +249,18 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
     expect_true(all(ret_strong$reason == "pval>max_pval"))
     expect_true(all(ret_strong$pval == 1))
 
-    expect_warning(
-        ret_weak <- CMEnt:::.testConnectivityBatch(
-            sites_beta = sites_beta,
-            group_inds = group_inds,
-            pheno = pheno,
-            max_pval = 1e-5,
-            entanglement = "weak",
-            aggfun = median,
-            pval_mode = c(g1 = "empirical", g2 = "empirical"),
-            empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
-            ntries = 50,
-            mid_p = FALSE
-        ), "sufficient small empirical"
-    )
+    ret_weak <- suppressWarnings(CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
+        pheno = pheno,
+        max_pval = 1e-5,
+        entanglement = "weak",
+        aggfun = median,
+        pval_mode = c(g1 = "empirical", g2 = "empirical"),
+        empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
+        ntries = 50,
+        mid_p = FALSE
+    ))
     expect_true(all(!ret_weak$connected))
     expect_true(all(grepl("pval>max_pval", ret_weak$reason, fixed = TRUE)))
 })

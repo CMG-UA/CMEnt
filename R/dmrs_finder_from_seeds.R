@@ -23,7 +23,6 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
-#' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -258,164 +257,44 @@
 
 #' @keywords internal
 #' @noRd
-.writeBetaSubsetToHDF5 <- function(beta_handler,
-                                   row_ids,
-                                   col_names,
-                                   subset_locs,
-                                   njobs = 1L) {
-    if (!requireNamespace("HDF5Array", quietly = TRUE) || !requireNamespace("rhdf5", quietly = TRUE)) {
-        stop("HDF5Array and rhdf5 are required for HDF5-backed beta subsets.")
+.explicitRowNames <- function(x) {
+    rn_info <- .row_names_info(x, type = 0L)
+    if (is.integer(rn_info) && length(rn_info) == 2L && is.na(rn_info[1L]) && rn_info[2L] < 0L) {
+        return(NULL)
     }
-    n_rows <- length(row_ids)
-    n_cols <- length(col_names)
-    if (n_rows == 0L || n_cols == 0L) {
-        stop("Cannot create an HDF5 beta subset with zero rows or columns.")
-    }
-
-    h5_dir <- getOption("CMEnt.stage2_hdf5_dir", tempdir())
-    dir.create(h5_dir, recursive = TRUE, showWarnings = FALSE)
-    h5_file <- tempfile("cment_stage2_beta_", tmpdir = h5_dir, fileext = ".h5")
-    if (file.exists(h5_file)) {
-        unlink(h5_file)
-    }
-    rhdf5::h5createFile(h5_file)
-
-    chunk_rows <- as.integer(getOption("CMEnt.stage2_hdf5_chunk_rows", 50000L))
-    if (!is.finite(chunk_rows) || is.na(chunk_rows) || chunk_rows < 1L) {
-        chunk_rows <- 50000L
-    }
-    chunk_rows <- min(chunk_rows, n_rows)
-    compression_level <- as.integer(getOption("CMEnt.stage2_hdf5_compression_level", 1L))
-    if (!is.finite(compression_level) || is.na(compression_level) || compression_level < 0L) {
-        compression_level <- 1L
-    }
-
-    .log_info(
-        "Writing Stage 2 beta subset to HDF5-backed storage (",
-        format(n_rows, big.mark = ","), " CpGs x ", n_cols,
-        " samples; chunk_rows=", chunk_rows, ").",
-        level = 2
-    )
-    rhdf5::h5createDataset(
-        file = h5_file,
-        dataset = "beta",
-        dims = c(n_rows, n_cols),
-        chunk = c(chunk_rows, n_cols),
-        storage.mode = "double",
-        level = compression_level
-    )
-
-    for (chunk_start in seq.int(1L, n_rows, by = chunk_rows)) {
-        chunk_end <- min(chunk_start + chunk_rows - 1L, n_rows)
-        chunk_idx <- chunk_start:chunk_end
-        beta_chunk <- beta_handler$getBeta(
-            row_names = row_ids[chunk_idx],
-            col_names = col_names
-        )
-        beta_chunk <- as.matrix(beta_chunk)
-        storage.mode(beta_chunk) <- "double"
-        rhdf5::h5write(
-            beta_chunk,
-            file = h5_file,
-            name = "beta",
-            index = list(chunk_idx, seq_len(n_cols))
-        )
-        rm(beta_chunk)
-        if (chunk_end %% max(chunk_rows * 10L, 1L) == 0L || chunk_end == n_rows) {
-            gc(verbose = FALSE)
-        }
-    }
-
-    beta_da <- HDF5Array::HDF5Array(h5_file, "beta")
-    dimnames(beta_da) <- list(row_ids, col_names)
-    beta_subset_handler <- getBetaHandler(
-        beta = beta_da,
-        sorted_locs = subset_locs,
-        njobs = njobs
-    )
-    list(
-        beta_handler = beta_subset_handler,
-        worker_beta_handler = .makeHDF5NumericBetaAccessor(
-            h5_file = h5_file,
-            dataset = "beta",
-            col_names = col_names,
-            n_rows = n_rows,
-            n_cols = n_cols
-        ),
-        h5_file = h5_file
-    )
+    rownames(x)
 }
 
 
 #' @keywords internal
 #' @noRd
-.makeHDF5NumericBetaAccessor <- function(h5_file,
-                                         dataset = "beta",
-                                         col_names,
-                                         n_rows,
-                                         n_cols) {
-    storage_col_names <- col_names
-    force(h5_file)
-    force(dataset)
-    force(storage_col_names)
-    force(n_rows)
-    force(n_cols)
-    structure(
-        list(
-            backendType = function() "delayed",
-            supportsNumericRowIndex = function() TRUE,
-            getBetaColNames = function() storage_col_names,
-            getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
-                if (!is.null(chr)) {
-                    stop("HDF5 numeric beta access does not support chromosome subsetting.")
-                }
-                if (is.null(row_names)) {
-                    row_idx <- seq_len(n_rows)
-                } else if (is.numeric(row_names)) {
-                    row_idx <- as.integer(row_names)
-                    if (allow_missing) {
-                        row_idx <- row_idx[!is.na(row_idx) & row_idx >= 1L & row_idx <= n_rows]
-                    } else {
-                        bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_rows
-                        if (any(bad)) {
-                            bad_idx <- unique(row_idx[bad])
-                            bad_idx <- bad_idx[!is.na(bad_idx)]
-                            stop(
-                                "Requested row indices out of bounds [1,", n_rows, "]: ",
-                                paste(head(bad_idx, 10), collapse = ", ")
-                            )
-                        }
-                    }
-                } else {
-                    stop("HDF5 numeric beta access requires numeric row indices.")
-                }
-
-                if (is.null(col_names)) {
-                    col_idx <- seq_len(n_cols)
-                    selected_col_names <- storage_col_names
-                } else {
-                    selected_col_names <- as.character(col_names)
-                    col_idx <- match(selected_col_names, storage_col_names)
-                    if (anyNA(col_idx)) {
-                        stop(
-                            "Requested samples not found in HDF5 beta storage: ",
-                            paste(selected_col_names[is.na(col_idx)], collapse = ", ")
-                        )
-                    }
-                }
-
-                beta_subset <- rhdf5::h5read(
-                    file = h5_file,
-                    name = dataset,
-                    index = list(row_idx, col_idx)
-                )
-                beta_subset <- as.matrix(beta_subset)
-                colnames(beta_subset) <- selected_col_names
-                beta_subset
+.availableRamBytes <- function(default_gb = 2) {
+    if (file.exists("/proc/meminfo")) {
+        mem_available <- grep("^MemAvailable:", readLines("/proc/meminfo"), value = TRUE)
+        if (length(mem_available) == 1L) {
+            kb <- suppressWarnings(as.numeric(strsplit(mem_available, "\\s+")[[1]][2L]))
+            if (is.finite(kb) && !is.na(kb) && kb > 0) {
+                return(kb * 1024)
             }
-        ),
-        class = "CMEntHDF5NumericBetaAccessor"
-    )
+        }
+    }
+    as.numeric(default_gb) * 1024^3
+}
+
+
+#' @keywords internal
+#' @noRd
+.connectivityChunkSize <- function(n_samples, njobs, n_pairs, available_ram_bytes = .availableRamBytes()) {
+    n_pairs <- as.integer(n_pairs)
+    if (!is.finite(n_pairs) || is.na(n_pairs) || n_pairs < 1L) {
+        return(1L)
+    }
+    denom <- max(1, as.integer(njobs)) * max(1, as.integer(n_samples)) * 8 * 12
+    chunk_size <- floor(0.9 * as.numeric(available_ram_bytes) / denom)
+    if (!is.finite(chunk_size) || is.na(chunk_size) || chunk_size < 1) {
+        chunk_size <- 1
+    }
+    as.integer(max(1L, min(n_pairs, chunk_size)))
 }
 
 
@@ -463,124 +342,43 @@
     full_to_subset_idx[subset_to_full_idx] <- seq_along(subset_to_full_idx)
 
     subset_locs <- as.data.frame(beta_locs[subset_to_full_idx, , drop = FALSE])
-    subset_ids <- rownames(beta_locs)[subset_to_full_idx]
-    rownames(subset_locs) <- subset_ids
+    beta_locs_rownames_info <- .row_names_info(beta_locs, type = 0L)
+    beta_locs_rownames <- if (is.integer(beta_locs_rownames_info) &&
+        length(beta_locs_rownames_info) == 2L &&
+        is.na(beta_locs_rownames_info[1L]) &&
+        beta_locs_rownames_info[2L] < 0L) {
+        NULL
+    } else {
+        rownames(beta_locs)
+    }
+    if (is.null(beta_locs_rownames)) {
+        subset_ids <- subset_to_full_idx
+        subset_names <- paste0(as.character(subset_locs[, "chr"]), ":", as.integer(subset_locs[, "start"]))
+    } else {
+        subset_ids <- beta_locs_rownames[subset_to_full_idx]
+        subset_names <- subset_ids
+    }
+    rownames(subset_locs) <- subset_names
 
     if (is.null(col_names)) {
         col_names <- beta_handler$getBetaColNames()
     }
-
-    .stage2BoolAutoOption <- function(value, default = "auto") {
-        if (is.null(value) || length(value) == 0L) {
-            return(default)
-        }
-        if (is.logical(value)) {
-            return(if (isTRUE(value[1])) "true" else "false")
-        }
-        value <- tolower(as.character(value)[1])
-        if (is.na(value) || !nzchar(value)) {
-            return(default)
-        }
-        if (value %in% c("auto", "true", "false")) {
-            return(value)
-        }
-        if (value %in% c("1", "yes", "y", "on")) {
-            return("true")
-        }
-        if (value %in% c("0", "no", "n", "off")) {
-            return("false")
-        }
-        default
-    }
-
-    hdf5_min_rows <- as.integer(getOption("CMEnt.stage2_hdf5_min_rows", 100000L))[1]
-    if (!is.finite(hdf5_min_rows) || is.na(hdf5_min_rows) || hdf5_min_rows < 1L) {
-        hdf5_min_rows <- 100000L
-    }
-    hdf5_mode <- .stage2BoolAutoOption(
-        getOption("CMEnt.stage2_hdf5_beta_subset", "auto"),
-        default = "auto"
+    subset_beta_handler <- beta_handler$subset(
+        row_names = subset_ids,
+        col_names = col_names,
+        materialize = TRUE
     )
-    materialize_mode <- .stage2BoolAutoOption(
-        getOption("CMEnt.stage2_materialize_beta_subset", "auto"),
-        default = "auto"
-    )
-    materialize_max_mb <- suppressWarnings(as.numeric(
-        getOption("CMEnt.stage2_materialize_max_memory_mb", 2048)
-    )[1])
-    if (!is.finite(materialize_max_mb) || is.na(materialize_max_mb) || materialize_max_mb <= 0) {
-        materialize_max_mb <- Inf
-    }
-    estimated_subset_mb <- as.numeric(length(subset_ids)) * as.numeric(length(col_names)) * 8 / 1024^2
-    hdf5_available <- requireNamespace("HDF5Array", quietly = TRUE) &&
-        requireNamespace("rhdf5", quietly = TRUE)
-    parallel_backend <- tolower(as.character(getOption("CMEnt.parallel_backend", "auto"))[1])
-    if (is.na(parallel_backend) || !parallel_backend %in% c("auto", "multicore", "multisession")) {
-        parallel_backend <- "auto"
-    }
-    can_share_memory_with_fork <- njobs > 1L &&
-        (identical(parallel_backend, "multicore") ||
-            (identical(parallel_backend, "auto") && future::availableCores("multicore") > 1L))
-
-    materialize_subset <- identical(materialize_mode, "true")
-    use_hdf5_subset <- !materialize_subset &&
-        hdf5_available &&
-        length(subset_ids) >= hdf5_min_rows &&
-        identical(hdf5_mode, "true")
-    if (!materialize_subset && !use_hdf5_subset && identical(materialize_mode, "auto")) {
-        materialize_subset <- can_share_memory_with_fork &&
-            estimated_subset_mb <= materialize_max_mb
-    }
-    if (!materialize_subset && !use_hdf5_subset) {
-        use_hdf5_subset <- hdf5_available &&
-            length(subset_ids) >= hdf5_min_rows &&
-            identical(hdf5_mode, "auto") &&
-            !can_share_memory_with_fork
-    }
-    subset_strategy <- if (use_hdf5_subset) {
-        "hdf5"
-    } else if (materialize_subset) {
-        "memory"
-    } else {
-        "view"
-    }
     .log_info(
-        "Stage 2 beta subset strategy: ", subset_strategy,
-        " (estimated dense subset size: ", signif(estimated_subset_mb, 4),
-        " MB; multicore_shared_memory=", can_share_memory_with_fork, ").",
+        "Stage 2 beta subset contains ", format(nrow(subset_locs), big.mark = ","),
+        " CpGs for the active chromosome/window set.",
         level = 2
     )
-
-    h5_file <- NULL
-    if (use_hdf5_subset) {
-        h5_ret <- .writeBetaSubsetToHDF5(
-            beta_handler = beta_handler,
-            row_ids = subset_ids,
-            col_names = col_names,
-            subset_locs = subset_locs,
-            njobs = njobs
-        )
-        subset_beta_handler <- h5_ret$beta_handler
-        worker_beta_handler <- h5_ret$worker_beta_handler
-        h5_file <- h5_ret$h5_file
-    } else {
-        subset_beta_handler <- beta_handler$subset(
-            row_names = subset_ids,
-            col_names = col_names,
-            materialize = materialize_subset
-        )
-        worker_beta_handler <- NULL
-    }
     list(
         beta_handler = subset_beta_handler,
-        worker_beta_handler = worker_beta_handler,
         beta_locs = subset_locs,
         expansion_windows = wins,
         subset_to_full_idx = subset_to_full_idx,
-        full_to_subset_idx = full_to_subset_idx,
-        h5_file = h5_file,
-        subset_strategy = subset_strategy,
-        releases_original = isTRUE(use_hdf5_subset) || isTRUE(materialize_subset)
+        full_to_subset_idx = full_to_subset_idx
     )
 }
 
@@ -769,7 +567,6 @@
     min_delta_beta = 0,
     covariates = NULL,
     max_lookup_dist = 1000,
-    chunk_size = getOption("CMEnt.chunk_size", 1000),
     entanglement = "strong",
     aggfun = median,
     ntries = 500,
@@ -780,7 +577,9 @@
     ugap = 0L,
     dgap = 0L,
     recheck = NULL,
-    splits = NULL
+    splits = NULL,
+    verbose = 1,
+    progress_message = "Computing connectivity array..."
 ) {
     if (is.null(beta_locs)) {
         beta_locs <- beta_handler$getBetaLocs()
@@ -821,51 +620,22 @@
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
 
-    # Estimate a safe upper bound for pair chunks to avoid worker OOM when
-    # users request very large chunk_size values on sequencing-scale inputs.
     n_cols_for_chunk <- if (!is.null(col_names)) {
         length(col_names)
     } else {
         length(beta_handler$getBetaColNames())
     }
-    chunk_mem_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
-    if (!is.numeric(chunk_mem_mb) || length(chunk_mem_mb) != 1L || is.na(chunk_mem_mb) || chunk_mem_mb <= 0) {
-        chunk_mem_mb <- Inf
-    }
-    chunk_mem_multiplier <- getOption("CMEnt.chunk_memory_multiplier", 12)
-    if (!is.numeric(chunk_mem_multiplier) || length(chunk_mem_multiplier) != 1L || is.na(chunk_mem_multiplier) || chunk_mem_multiplier <= 0) {
-        chunk_mem_multiplier <- 12
-    }
-    bytes_per_pair_est <- as.numeric(8 * max(1L, n_cols_for_chunk) * chunk_mem_multiplier)
-    max_pairs_by_memory <- if (is.finite(chunk_mem_mb)) {
-        as.integer(floor((as.numeric(chunk_mem_mb) * 1024^2) / max(1, bytes_per_pair_est)))
-    } else {
-        .Machine$integer.max
-    }
-    if (!is.finite(max_pairs_by_memory) || is.na(max_pairs_by_memory)) {
-        max_pairs_by_memory <- .Machine$integer.max
-    }
-    max_pairs_by_memory <- max(100L, max_pairs_by_memory)
-
-    requested_chunk_size <- suppressWarnings(as.integer(chunk_size))
-    if (is.finite(requested_chunk_size) && requested_chunk_size > max_pairs_by_memory) {
-        .log_info(
-            "Capping chunk_size from ", requested_chunk_size,
-            " to ", max_pairs_by_memory,
-            " to fit the connectivity memory budget (",
-            as.numeric(chunk_mem_mb), " MB per worker, ", n_cols_for_chunk,
-            " sample columns, multiplier=", chunk_mem_multiplier, ").",
-            level = 3
-        )
-    }
-
-    .applyChunkSizeSafetyCap <- function(chunk_size_eff) {
-        chunk_size_eff <- as.integer(chunk_size_eff)
-        if (!is.finite(chunk_size_eff) || is.na(chunk_size_eff) || chunk_size_eff < 1L) {
-            chunk_size_eff <- 1L
-        }
-        min(chunk_size_eff, max_pairs_by_memory)
-    }
+    chunk_size <- .connectivityChunkSize(
+        n_samples = n_cols_for_chunk,
+        njobs = njobs,
+        n_pairs = max(1L, n_sites - 1L)
+    )
+    .log_info(
+        "Connectivity chunk size: ", chunk_size,
+        " pair(s), derived from available RAM, ", n_cols_for_chunk,
+        " sample column(s), and ", max(1L, as.integer(njobs)), " job(s).",
+        level = 3
+    )
 
     .makeOutputTemplate <- function(nrows, reason_default) {
         ret <- data.frame(
@@ -885,18 +655,36 @@
         ret
     }
 
+    .asRecheckIndices <- function(recheck, nrows) {
+        if (is.null(recheck)) {
+            return(NULL)
+        }
+        if (is.logical(recheck)) {
+            recheck <- which(recheck)
+        } else {
+            recheck <- suppressWarnings(as.integer(recheck))
+        }
+        recheck <- recheck[!is.na(recheck) & recheck >= 1L & recheck <= nrows]
+        sort(unique(recheck))
+    }
+
+    .runsOverlapIndices <- function(run_starts, run_ends, inds) {
+        if (length(run_starts) == 0L || length(inds) == 0L) {
+            return(rep(FALSE, length(run_starts)))
+        }
+        next_ind_pos <- findInterval(run_starts - 1L, inds) + 1L
+        next_ind_pos <= length(inds) & inds[next_ind_pos] <= run_ends
+    }
+
     .chunkPairRanges <- function(pair_ranges_df) {
         if (is.null(pair_ranges_df) || nrow(pair_ranges_df) == 0L) {
             return(matrix(numeric(0), ncol = 2))
         }
         chunk_size_eff <- as.integer(chunk_size)
         total_pairs <- sum(pair_ranges_df$end_pair - pair_ranges_df$start_pair + 1L)
-        if (njobs > 1L && is.finite(total_pairs) && total_pairs > 0L) {
-            # Keep at least one chunk per worker even when chunk_size is set very large.
-            max_chunk_size_for_parallel <- as.integer(ceiling(total_pairs / njobs))
-            chunk_size_eff <- min(chunk_size_eff, max_chunk_size_for_parallel)
+        if (!is.finite(chunk_size_eff) || is.na(chunk_size_eff) || chunk_size_eff < 1L) {
+            chunk_size_eff <- 1L
         }
-        chunk_size_eff <- .applyChunkSizeSafetyCap(chunk_size_eff)
         out <- vector("list", nrow(pair_ranges_df) * 2L)
         out_n <- 0L
         for (i in seq_len(nrow(pair_ranges_df))) {
@@ -929,11 +717,6 @@
         if (!is.finite(chunk_size_eff) || chunk_size_eff < 1L) {
             chunk_size_eff <- 1L
         }
-        if (njobs > 1L) {
-            max_chunk_size_for_parallel <- as.integer(ceiling(sum(split_weights) / njobs))
-            chunk_size_eff <- min(chunk_size_eff, max(1L, max_chunk_size_for_parallel))
-        }
-        chunk_size_eff <- .applyChunkSizeSafetyCap(chunk_size_eff)
         if (chunk_size_eff <= 1L) {
             return(splits_mat)
         }
@@ -1088,8 +871,8 @@
         values <- runs$values
         run_mask <- values == 1
         if (!is.null(recheck)) {
-            recheck_inds <- which(recheck)
-            run_mask <- run_mask & run_starts %in% recheck_inds
+            recheck_inds <- .asRecheckIndices(recheck, n_sites)
+            run_mask <- run_mask & .runsOverlapIndices(run_starts, run_ends, recheck_inds)
         }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
@@ -1115,7 +898,7 @@
         }
         if (!any(run_mask)) {
             # No runs to bridge, return the existing connectivity array and splits
-            return(list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
+            return(list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group, recheck = integer(0)))
         }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
@@ -1159,10 +942,11 @@
         "; chunks to evaluate: ", nrow(splits), ".",
         level = 3
     )
-    verbose <- getOption("CMEnt.verbose", 1)
+    verbose <- getOption("CMEnt.verbose", verbose)
     p_ext <- NULL
     if (verbose > 0) {
-        p_ext <- progressr::progressor(steps = nrow(splits), message = "Computing connectivity array...")
+        .log_info("Initializing connectivity computation progress bar.", level = 2)
+        p_ext <- progressr::progressor(steps = nrow(splits), message = progress_message)
     }
     beta_row_ids_full <- rownames(beta_locs)
     # Numeric indices in this function are relative to beta_locs, which may be a subset
@@ -1269,7 +1053,7 @@
     delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
 
     bridge_mask <- rep(FALSE, n_sites)
-    recheck <- rep(FALSE, n_sites)
+    recheck <- integer(0)
 
     .applyChunkResult <- function(item) {
         if (!is.null(p_ext)) {
@@ -1301,7 +1085,6 @@
             }
             update_m <- x[["connected"]]
             if (any(update_m) && length(masked_idx) >= 1L) {
-                recheck[masked_idx[update_m]] <- TRUE
                 update_idx <- masked_idx[update_m]
                 connected_vec[update_idx] <<- x$connected[update_m]
                 pval_vec[update_idx] <<- x$pval[update_m]
@@ -1313,22 +1096,18 @@
                     delta_vec[update_idx] <<- x$delta_beta[update_m]
                 }
                 gap <- if (ugap > 0L) ugap else dgap
-                for (i in 0:(gap - 1L)) {
-                    bridge_mask[masked_idx[update_m] + i] <- TRUE
+                bridge_idx <- rep(update_idx, each = gap) + rep.int(seq.int(0L, gap - 1L), length(update_idx))
+                bridge_idx <- bridge_idx[bridge_idx >= 1L & bridge_idx <= n_sites]
+                if (length(bridge_idx) > 0L) {
+                    bridge_mask[bridge_idx] <- TRUE
+                    recheck <<- c(recheck, bridge_idx)
                 }
             }
         }
         invisible(NULL)
     }
 
-    .futureBatchConnectivity <- function(
-        batch_splits,
-        batch_checked_pairs = checked_pairs,
-        batch_beta_handler = beta_handler,
-        batch_use_numeric_row_index = use_numeric_row_index,
-        batch_beta_row_ids = beta_row_ids,
-        batch_beta_row_ids_offset = 0L
-    ) {
+    .futureBatchConnectivity <- function(batch_splits, batch_checked_pairs = checked_pairs) {
         future.apply::future_lapply(
             X = batch_splits,
             future.seed = TRUE,
@@ -1339,7 +1118,7 @@
                 ".permutationIndexMatrix"
             ),
             FUN = .connectivityChunkWorker,
-            beta_handler = batch_beta_handler,
+            beta_handler = beta_handler,
             beta_chr_vec = beta_chr_vec,
             beta_start_vec = beta_start_vec,
             group_inds = group_inds,
@@ -1356,9 +1135,9 @@
             ntries = ntries,
             mid_p = mid_p,
             checked_pairs = batch_checked_pairs,
-            use_numeric_row_index = batch_use_numeric_row_index,
-            beta_row_ids = batch_beta_row_ids,
-            beta_row_ids_offset = batch_beta_row_ids_offset
+            use_numeric_row_index = use_numeric_row_index,
+            beta_row_ids = beta_row_ids,
+            beta_row_ids_offset = 0L
         )
     }
 
@@ -1375,73 +1154,6 @@
         ]
     }
 
-    beta_backend_type <- tryCatch(beta_handler$backendType(), error = function(e) "unknown")
-    batch_subset_option <- getOption("CMEnt.parallel_batch_beta_subset", "auto")
-    batch_subset_enabled <- if (identical(batch_subset_option, "auto")) {
-        beta_backend_type %in% c("file", "tabix")
-    } else {
-        isTRUE(batch_subset_option)
-    }
-    batch_subset_min_rows <- as.integer(getOption("CMEnt.parallel_batch_beta_subset_min_rows", 5000L))
-    if (!is.finite(batch_subset_min_rows) || is.na(batch_subset_min_rows) || batch_subset_min_rows < 1L) {
-        batch_subset_min_rows <- 1L
-    }
-
-    .resolveBatchWorkerPayload <- function(batch_inds) {
-        payload <- list(
-            beta_handler = beta_handler,
-            use_numeric_row_index = use_numeric_row_index,
-            beta_row_ids = beta_row_ids,
-            beta_row_ids_offset = 0L
-        )
-        if (!batch_subset_enabled || length(batch_inds) == 0L) {
-            return(payload)
-        }
-        if (use_numeric_row_index || is.null(beta_row_ids_full)) {
-            return(payload)
-        }
-
-        batch_pair_start <- min(splits[batch_inds, 1])
-        batch_pair_end <- max(splits[batch_inds, 2]) + 1L
-        batch_nrows <- batch_pair_end - batch_pair_start + 1L
-        if (!is.finite(batch_nrows) || is.na(batch_nrows) || batch_nrows < batch_subset_min_rows) {
-            return(payload)
-        }
-
-        batch_row_ids <- beta_row_ids_full[batch_pair_start:batch_pair_end]
-        subset_handler <- tryCatch(
-            beta_handler$subset(row_names = batch_row_ids, col_names = col_names),
-            error = function(e) e
-        )
-        if (inherits(subset_handler, "error")) {
-            .log_warn(
-                "Failed to create per-batch BetaHandler subset for chunk range ",
-                batch_pair_start, "-", batch_pair_end,
-                ". Proceeding with the full handler. Error: ",
-                conditionMessage(subset_handler)
-            )
-            return(payload)
-        }
-
-        payload$beta_handler <- subset_handler
-        payload$use_numeric_row_index <- FALSE
-        payload$beta_row_ids <- batch_row_ids
-        payload$beta_row_ids_offset <- batch_pair_start - 1L
-        payload
-    }
-
-    .isRetryableFutureBatchError <- function(e) {
-        if (inherits(e, "FutureInterruptError")) {
-            return(TRUE)
-        }
-        msg <- conditionMessage(e)
-        grepl(
-            "did not deliver a result|was interrupted|multicorefuture|worker.*(died|terminated)|failed to retrieve|connection.*closed|sigkill",
-            msg,
-            ignore.case = TRUE
-        )
-    }
-
     if (njobs == 1L) {
         for (split_ind in seq_len(nrow(splits))) {
             .applyChunkResult(.runConnectivityChunk(splits[split_ind, ], checked_pairs_local = checked_pairs))
@@ -1450,141 +1162,24 @@
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
         all_split_inds <- seq_len(nrow(splits))
-        default_batch_size <- max(njobs * 4L, 16L)
-        restart_workers_each_batch <- isTRUE(getOption("CMEnt.parallel_restart_workers_each_batch", FALSE))
-        if (identical(beta_backend_type, "delayed")) {
-            parallel_backend_now <- tolower(as.character(getOption("CMEnt.parallel_backend", "auto"))[1])
-            restart_default <- !identical(parallel_backend_now, "multicore")
-            restart_workers_each_batch <- isTRUE(getOption("CMEnt.stage2_hdf5_restart_workers_each_batch", restart_default))
-            if (restart_workers_each_batch) {
-                default_batch_size <- max(njobs, 1L)
-            }
-        }
-        batch_size <- as.integer(getOption("CMEnt.parallel_result_batch_size", default_batch_size))
-        batch_size <- max(1L, batch_size)
-        max_parallel_retries <- as.integer(getOption("CMEnt.parallel_batch_retries", 1L))
-        if (!is.finite(max_parallel_retries) || is.na(max_parallel_retries) || max_parallel_retries < 0L) {
-            max_parallel_retries <- 1L
-        }
-        max_attempts <- max_parallel_retries + 1L
-        fallback_to_sequential <- getOption("CMEnt.parallel_fallback_to_sequential", TRUE)
-        if (is.null(fallback_to_sequential)) {
-            fallback_to_sequential <- TRUE
-        }
-        fallback_to_sequential <- isTRUE(fallback_to_sequential)
-        use_parallel <- TRUE
+        batch_size <- max(1L, as.integer(njobs))
         for (batch_start in seq.int(1L, length(all_split_inds), by = batch_size)) {
             batch_end <- min(batch_start + batch_size - 1L, length(all_split_inds))
             batch_inds <- all_split_inds[batch_start:batch_end]
             batch_splits <- lapply(batch_inds, function(i) as.integer(splits[i, ]))
             batch_checked_pairs <- .subsetCheckedPairsForBatch(batch_inds)
-            batch_worker_payload <- .resolveBatchWorkerPayload(batch_inds)
-            if (!use_parallel) {
-                for (split in batch_splits) {
-                    .applyChunkResult(
-                        .runConnectivityChunk(
-                            split,
-                            checked_pairs_local = batch_checked_pairs,
-                            worker_beta_handler = batch_worker_payload$beta_handler,
-                            worker_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
-                            worker_beta_row_ids = batch_worker_payload$beta_row_ids,
-                            worker_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
-                        )
-                    )
-                }
-                next
-            }
-
-            attempt <- 1L
-            ret <- NULL
-            repeat {
-                ret <- tryCatch(
-                    .futureBatchConnectivity(
-                        batch_splits,
-                        batch_checked_pairs = batch_checked_pairs,
-                        batch_beta_handler = batch_worker_payload$beta_handler,
-                        batch_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
-                        batch_beta_row_ids = batch_worker_payload$beta_row_ids,
-                        batch_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
-                    ),
-                    error = function(e) e
-                )
-                if (!inherits(ret, "error")) {
-                    break
-                }
-
-                retryable_error <- .isRetryableFutureBatchError(ret)
-                if (!retryable_error) {
-                    stop(ret)
-                }
-
-                if (attempt < max_attempts) {
-                    .log_warn(
-                        "Parallel connectivity batch ", batch_start, "-", batch_end,
-                        " failed with recoverable future error (attempt ", attempt,
-                        "/", max_attempts,
-                        "). Reinitializing parallel backend and retrying. Error: ",
-                        conditionMessage(ret)
-                    )
-                    .cleanupParallelState()
-                    .setupParallel()
-                    attempt <- attempt + 1L
-                    next
-                }
-
-                if (fallback_to_sequential) {
-                    .log_warn(
-                        "Parallel connectivity batch ", batch_start, "-", batch_end,
-                        " failed after ", max_attempts,
-                        " attempt(s). Falling back to sequential processing for remaining chunks. Last error: ",
-                        conditionMessage(ret)
-                    )
-                    use_parallel <- FALSE
-                    .cleanupParallelState()
-                    ret <- NULL
-                    break
-                }
-
-                stop(ret)
-            }
-
-            if (!use_parallel && is.null(ret)) {
-                for (split in batch_splits) {
-                    .applyChunkResult(
-                        .runConnectivityChunk(
-                            split,
-                            checked_pairs_local = batch_checked_pairs,
-                            worker_beta_handler = batch_worker_payload$beta_handler,
-                            worker_use_numeric_row_index = batch_worker_payload$use_numeric_row_index,
-                            worker_beta_row_ids = batch_worker_payload$beta_row_ids,
-                            worker_beta_row_ids_offset = batch_worker_payload$beta_row_ids_offset
-                        )
-                    )
-                }
-                next
-            }
-
+            ret <- .futureBatchConnectivity(batch_splits, batch_checked_pairs = batch_checked_pairs)
             for (item in ret) {
                 .applyChunkResult(item)
             }
-            rm(ret)
-            rm(batch_worker_payload, batch_checked_pairs, batch_splits)
+            rm(ret, batch_checked_pairs, batch_splits)
             gc(verbose = FALSE)
-            if (restart_workers_each_batch && use_parallel && batch_end < length(all_split_inds)) {
-                .log_info(
-                    "Recycling parallel workers after connectivity batch ",
-                    batch_start, "-", batch_end,
-                    " to release worker memory.",
-                    level = 3
-                )
-                .cleanupParallelState()
-                .setupParallel()
-            }
         }
     }
 
     connected_vec[bridge_mask] <- TRUE
     reason_vec[bridge_mask] <- "bridged"
+    recheck <- sort(unique(recheck))
 
     # Preserve hard window boundaries even when chunk pooling evaluates ranges spanning multiple windows.
     if (is.null(checked_pairs) && window_mode && exists("pair_ranges", inherits = FALSE) && nrow(pair_ranges) > 0L) {
@@ -1628,14 +1223,14 @@
     min_delta_beta = 0,
     covariates = NULL,
     max_lookup_dist = 1000,
-    chunk_size = getOption("CMEnt.chunk_size", 1000),
     entanglement = "strong",
     aggfun = median,
     ntries = 500,
     mid_p = TRUE,
     njobs = 1,
     expansion_windows = NULL,
-    max_bridge_gaps = 0
+    max_bridge_gaps = 0,
+    verbose = getOption("CMEnt.verbose", 1L)
 ) {
     connectivity_array <- NULL
     splits <- NULL
@@ -1659,13 +1254,14 @@
             aggfun = aggfun,
             pval_mode_per_group = pval_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
-            chunk_size = chunk_size,
             ntries = ntries,
             mid_p = mid_p,
             njobs = njobs,
             expansion_windows = expansion_windows,
             connectivity_array = connectivity_array,
-            splits = splits
+            splits = splits,
+            verbose = verbose,
+            progress_message = "Computing connectivity array..."
         )
         .buildConnectivityArraySinglePassWithGaps <- function(build_args, gap) {
             build_args$ugap <- gap
@@ -1678,42 +1274,55 @@
             build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
             drecheck <- build_ret$recheck
             list(
-                recheck = urecheck | drecheck,
+                recheck = sort(unique(c(urecheck, drecheck))),
                 connectivity_array = build_ret$connectivity_array,
                 splits = build_ret$splits,
                 pval_mode_per_group = build_ret$pval_mode_per_group,
                 empirical_strategy_per_group = build_ret$empirical_strategy_per_group
             )
         }
-        .buildConnectivityArraySinglePassWithGapsRecursive <- function(build_args, gap) {
-            build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, gap)
-            if (any(build_ret$recheck)) {
-                build_args$recheck <- build_ret$recheck
-                build_args$connectivity_array <- build_ret$connectivity_array
-                if (gap > 1) {
-                    for (g in 1:gap) {
-                        g_recheck <- rep(FALSE, nrow(build_args$connectivity_array))
-                        while (TRUE) {
-                            build_ret <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, g)
-                            if (!any(build_ret$recheck)) {
-                                break
-                            }
-                            build_args$recheck <- build_ret$recheck
-                            g_recheck <- g_recheck | build_ret$recheck
-                            build_args$connectivity_array <- build_ret$connectivity_array
-                        }
-                        build_args$recheck <- g_recheck
-                    }
-                } else {
-                    build_ret <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, gap)
+        .buildConnectivityArrayBridgeFixedPoint <- function(build_args, max_gap) {
+            active_recheck <- NULL
+            base_splits <- build_args$splits
+            pass <- 0L
+            repeat {
+                cycle_recheck <- integer(0)
+                for (bridge_gap in seq_len(max_gap)) {
+                    pass <- pass + 1L
+                    build_args$ugap <- NULL
+                    build_args$dgap <- NULL
+                    build_args$recheck <- active_recheck
+                    build_args$splits <- base_splits
+                    build_args$progress_message <- paste0(
+                        "Computing connectivity bridge pass ", pass,
+                        " (gap ", bridge_gap, "/", max_gap,
+                        if (is.null(active_recheck)) ", full scan" else paste0(", ", length(active_recheck), " touched edge(s)"),
+                        ")..."
+                    )
+                    .log_info(
+                        "Bridge fixed-point pass ", pass,
+                        " for gap ", bridge_gap, "/", max_gap,
+                        if (is.null(active_recheck)) " over all connected runs." else paste0(" over ", length(active_recheck), " touched edge(s)."),
+                        level = 3
+                    )
+                    build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, bridge_gap)
+                    build_args$connectivity_array <- build_ret$connectivity_array
+                    build_args$pval_mode_per_group <- build_ret$pval_mode_per_group
+                    build_args$empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
+                    cycle_recheck <- sort(unique(c(cycle_recheck, build_ret$recheck)))
                 }
+                if (length(cycle_recheck) == 0L) {
+                    build_ret$splits <- base_splits
+                    return(build_ret)
+                }
+                active_recheck <- cycle_recheck
             }
-            build_ret
         }
         if (gap > 0L) {
-            build_ret <- .buildConnectivityArraySinglePassWithGapsRecursive(build_args, gap)
+            build_ret <- .buildConnectivityArrayBridgeFixedPoint(build_args, gap)
             connectivity_array <- build_ret$connectivity_array
         } else {
+            build_args$progress_message <- "Computing initial connectivity array..."
             build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
             connectivity_array <- build_ret$connectivity_array
         }
@@ -1729,25 +1338,61 @@
 
 #' @keywords internal
 #' @noRd
+.buildExpansionBoundaryLookup <- function(chr_array) {
+    n_edges <- nrow(chr_array)
+    if (n_edges == 0L) {
+        return(list(
+            previous_failed_edge = integer(0),
+            next_failed_edge = integer(0),
+            reason = character(0)
+        ))
+    }
+
+    failed_edges <- which(!is.na(chr_array$connected) & !chr_array$connected)
+
+    previous_failed_edge <- integer(n_edges)
+    if (length(failed_edges) > 0L) {
+        previous_failed_edge[failed_edges] <- failed_edges
+        previous_failed_edge <- cummax(previous_failed_edge)
+    }
+
+    next_failed_edge <- rep.int(n_edges + 1L, n_edges)
+    if (length(failed_edges) > 0L) {
+        next_failed_edge[failed_edges] <- failed_edges
+        next_failed_edge <- rev(cummin(rev(next_failed_edge)))
+    }
+
+    list(
+        previous_failed_edge = previous_failed_edge,
+        next_failed_edge = next_failed_edge,
+        reason = as.character(chr_array$reason)
+    )
+}
+
+
+#' @keywords internal
+#' @noRd
 .expandDMR <- function(dmr,
                        chr_array,
                        chr_locs,
                        min_cpg_delta_beta = 0,
                        min_cpgs = 3,
-                       expansion_step = 500,
                        chr_start_base = 0,
                        subset_to_full_idx = NULL,
                        full_locs = NULL,
-                       chr_locs_idx_map = NULL) {
+                       chr_locs_idx_map = NULL,
+                       chr_expansion_boundaries = NULL) {
     .log_step("Expanding DMR..", level = 4)
     if (is.data.frame(dmr)) {
         if (nrow(dmr) != 1L) {
             stop("dmr must contain exactly one row.")
         }
-        dmr <- as.matrix(dmr)[1, ]
+        dmr <- dmr[1L, , drop = FALSE]
+    } else {
+        dmr <- as.data.frame(as.list(dmr), stringsAsFactors = FALSE)
     }
-    dmr_start <- dmr["start_seed"]
-    dmr_end <- dmr["end_seed"]
+    dmr_start <- as.character(dmr[["start_seed"]][[1]])
+    dmr_end <- as.character(dmr[["end_seed"]][[1]])
 
     # Use pre-built index map for O(1) lookup instead of O(n) match
     if (!is.null(chr_locs_idx_map)) {
@@ -1759,12 +1404,14 @@
         if (is.null(dmr_end_ind)) {
             stop("Could not find the end CpG ", dmr_end, " in the beta file row names.")
         }
+        dmr_start_ind <- as.integer(dmr_start_ind)
+        dmr_end_ind <- as.integer(dmr_end_ind)
         chr_locs_rownames <- names(chr_locs_idx_map)
     } else {
         # Fallback to match() if no index map provided
         chr_locs_rownames <- rownames(chr_locs)
-        dmr_start_ind <- match(dmr_start, chr_locs_rownames)
-        dmr_end_ind <- match(dmr_end, chr_locs_rownames)
+        dmr_start_ind <- as.integer(match(dmr_start, chr_locs_rownames))
+        dmr_end_ind <- as.integer(match(dmr_end, chr_locs_rownames))
         if (is.na(dmr_start_ind)) {
             stop("Could not find the start CpG ", dmr_start, " in the beta file row names.")
         }
@@ -1788,84 +1435,128 @@
         projected_positions <- as.integer(full_locs[subset_to_full_idx, "start"])
     }
 
-    .check_upstream <- function(ustream_exp, exp_step) {
-        ustream_stop_reason <- NULL
-        ustream_end_lookup_site_ind <- ustream_exp - 1 # corr_ret[i] corresponds to the connection between i and i+1, so corr_ret[ustream_exp - 1] reports the connection between ustream_exp - 1 and ustream_exp
-        if (ustream_end_lookup_site_ind < 0) {
-            ustream_stop_reason <- "end-of-input"
-            return(list(
+    if (!is.null(chr_expansion_boundaries)) {
+        .check_upstream <- function(ustream_exp, exp_step) {
+            ustream_end_lookup_site_ind <- as.integer(ustream_exp - 1L)
+            if (ustream_end_lookup_site_ind < 1L) {
+                return(list(
+                    ustream_stop_reason = "end-of-input",
+                    ustream_exp = ustream_exp
+                ))
+            }
+            fail_edge <- chr_expansion_boundaries$previous_failed_edge[ustream_end_lookup_site_ind]
+            if (is.na(fail_edge) || fail_edge < 1L) {
+                return(list(
+                    ustream_stop_reason = "end-of-input",
+                    ustream_exp = 1L
+                ))
+            }
+            list(
+                ustream_stop_reason = chr_expansion_boundaries$reason[fail_edge],
+                ustream_exp = as.integer(fail_edge + 1L)
+            )
+        }
+
+        .check_downstream <- function(dstream_exp, exp_step) {
+            dstream_start_lookup_site_ind <- as.integer(dstream_exp)
+            if (dstream_start_lookup_site_ind >= nrow(chr_locs)) {
+                return(list(
+                    dstream_stop_reason = "end-of-input",
+                    dstream_exp = dstream_exp
+                ))
+            }
+            fail_edge <- chr_expansion_boundaries$next_failed_edge[dstream_start_lookup_site_ind]
+            if (is.na(fail_edge) || fail_edge > nrow(chr_locs)) {
+                return(list(
+                    dstream_stop_reason = "end-of-input",
+                    dstream_exp = nrow(chr_locs)
+                ))
+            }
+            list(
+                dstream_stop_reason = chr_expansion_boundaries$reason[fail_edge],
+                dstream_exp = as.integer(fail_edge)
+            )
+        }
+    } else {
+        .check_upstream <- function(ustream_exp, exp_step) {
+            ustream_stop_reason <- NULL
+            ustream_end_lookup_site_ind <- ustream_exp - 1 # corr_ret[i] corresponds to the connection between i and i+1, so corr_ret[ustream_exp - 1] reports the connection between ustream_exp - 1 and ustream_exp
+            if (ustream_end_lookup_site_ind < 0) {
+                ustream_stop_reason <- "end-of-input"
+                return(list(
+                    ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
+                ))
+            }
+            ustream_start_lookup_site_ind <- max(1, ustream_end_lookup_site_ind - exp_step)
+            corr_ret <- chr_array[ustream_start_lookup_site_ind:ustream_end_lookup_site_ind, , drop = FALSE]
+            corr_ret <- corr_ret[rev(seq_len(nrow(corr_ret))), , drop = FALSE]
+            if (nrow(corr_ret) == 1) {
+                ustream_stop_reason <- "end-of-input"
+                return(list(
+                    ustream_end_lookup_site_ind = ustream_end_lookup_site_ind,
+                    ustream_stop_reason = ustream_stop_reason,
+                    ustream_exp = ustream_exp
+                ))
+            }
+            # pick the first run of FALSE
+            fail_runs <- which(!corr_ret$connected)
+            # [----+---0] where - is connected, + is not connected, 0 stands for the current DMR start (ustream_exp),
+            # then fail_start_idx is the first + from the right, 4 in this case.
+            # That means that the 4th from the right failed to connect to the 3rd from the right.
+            if (length(fail_runs) > 0) {
+                fail_start_idx <- fail_runs[[1]] # first failing index in the reversed corr_ret
+                ustream_exp <- ustream_end_lookup_site_ind - fail_start_idx + 2
+                ustream_stop_reason <- corr_ret$reason[fail_start_idx]
+                return(list(
+                    ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
+                ))
+            }
+            ustream_exp <- ustream_start_lookup_site_ind
+            list(
                 ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
-            ))
+            )
         }
-        ustream_start_lookup_site_ind <- max(1, ustream_end_lookup_site_ind - exp_step)
-        corr_ret <- chr_array[ustream_start_lookup_site_ind:ustream_end_lookup_site_ind, , drop = FALSE]
-        corr_ret <- corr_ret[rev(seq_len(nrow(corr_ret))), , drop = FALSE]
-        if (nrow(corr_ret) == 1) {
-            ustream_stop_reason <- "end-of-input"
-            return(list(
-                ustream_end_lookup_site_ind = ustream_end_lookup_site_ind,
-                ustream_stop_reason = ustream_stop_reason,
-                ustream_exp = ustream_exp
-            ))
+
+        .check_downstream <- function(dstream_exp, exp_step) {
+            dstream_stop_reason <- NULL
+            dstream_start_lookup_site_ind <- dstream_exp
+            dstream_end_lookup_site_ind <- min(dstream_start_lookup_site_ind + exp_step, nrow(chr_locs))
+            if (dstream_end_lookup_site_ind == dstream_start_lookup_site_ind) {
+                dstream_stop_reason <- "end-of-input"
+                return(list(
+                    dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
+                ))
+            }
+            corr_ret <- chr_array[dstream_start_lookup_site_ind:dstream_end_lookup_site_ind, , drop = FALSE]
+            # pick the first run of FALSE
+            fail_runs <- which(!corr_ret$connected)
+            # [0----+---] where - is connected, + is not connected, 0 stands for the current DMR start (dstream_exp),
+            # then fail_start_idx is the first + from the left, 5 in this case.
+            # That means that the 5th from the left failed to connect to the 6th from the left.
+            # That means we need to expand the DMR to include the 5th from the left, which is dstream_exp + fail_start_idx - 1
+            if (length(fail_runs) > 0) {
+                fail_start_idx <- fail_runs[[1]]
+                dstream_exp <- dstream_start_lookup_site_ind + fail_start_idx - 1
+                dstream_stop_reason <- corr_ret$reason[fail_start_idx]
+                return(list(
+                    dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
+                ))
+            }
+            dstream_exp <- dstream_exp + exp_step
+            list(
+                dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
+            )
         }
-        # pick the first run of FALSE
-        fail_runs <- which(!corr_ret$connected)
-        # [----+---0] where - is connected, + is not connected, 0 stands for the current DMR start (ustream_exp),
-        # then fail_start_idx is the first + from the right, 4 in this case.
-        # That means that the 4th from the right failed to connect to the 3rd from the right.
-        if (length(fail_runs) > 0) {
-            fail_start_idx <- fail_runs[[1]] # first failing index in the reversed corr_ret
-            ustream_exp <- ustream_end_lookup_site_ind - fail_start_idx + 2
-            ustream_stop_reason <- corr_ret$reason[fail_start_idx]
-            return(list(
-                ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
-            ))
-        }
-        ustream_exp <- ustream_start_lookup_site_ind
-        list(
-            ustream_stop_reason = ustream_stop_reason, ustream_exp = ustream_exp
-        )
     }
 
-    .check_downstream <- function(dstream_exp, exp_step) {
-        dstream_stop_reason <- NULL
-        dstream_start_lookup_site_ind <- dstream_exp
-        dstream_end_lookup_site_ind <- min(dstream_start_lookup_site_ind + exp_step, nrow(chr_locs))
-        if (dstream_end_lookup_site_ind == dstream_start_lookup_site_ind) {
-            dstream_stop_reason <- "end-of-input"
-            return(list(
-                dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
-            ))
-        }
-        corr_ret <- chr_array[dstream_start_lookup_site_ind:dstream_end_lookup_site_ind, , drop = FALSE]
-        # pick the first run of FALSE
-        fail_runs <- which(!corr_ret$connected)
-        # [0----+---] where - is connected, + is not connected, 0 stands for the current DMR start (dstream_exp),
-        # then fail_start_idx is the first + from the left, 5 in this case.
-        # That means that the 5th from the left failed to connect to the 6th from the left.
-        # That means we need to expand the DMR to include the 5th from the left, which is dstream_exp + fail_start_idx - 1
-        if (length(fail_runs) > 0) {
-            fail_start_idx <- fail_runs[[1]]
-            dstream_exp <- dstream_start_lookup_site_ind + fail_start_idx - 1
-            dstream_stop_reason <- corr_ret$reason[fail_start_idx]
-            return(list(
-                dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
-            ))
-        }
-        dstream_exp <- dstream_exp + exp_step
-        list(
-            dstream_stop_reason = dstream_stop_reason, dstream_exp = dstream_exp
-        )
-    }
-
-    ustream_exp <- dmr_start_ind[[1]]
+    ustream_exp <- dmr_start_ind
     ustream_stop_reason <- NULL
-    dstream_exp <- dmr_end_ind[[1]]
+    dstream_exp <- dmr_end_ind
     dstream_stop_reason <- NULL
 
     t <- 0
     while (TRUE) {
-        exp_step <- expansion_step
+        exp_step <- nrow(chr_locs)
         if (t == 0) { # first iteration, use min_cpgs and remove the DMRs that are not long enough
             ccpgs <- dstream_exp - ustream_exp + 1
             if (ccpgs < (min_cpgs)) {
@@ -1910,10 +1601,10 @@
         }
     }
     .log_step("Finalizing expanded DMR.", level = 4)
-    dmr["start_cpg"] <- projected_cpg_ids[ustream_exp]
-    dmr["end_cpg"] <- projected_cpg_ids[dstream_exp]
-    dmr["start"] <- projected_positions[ustream_exp]
-    dmr["end"] <- projected_positions[dstream_exp]
+    dmr[["start_cpg"]] <- projected_cpg_ids[ustream_exp]
+    dmr[["end_cpg"]] <- projected_cpg_ids[dstream_exp]
+    dmr[["start"]] <- projected_positions[ustream_exp]
+    dmr[["end"]] <- projected_positions[dstream_exp]
 
     to_cpg_ids <- function(local_inds) {
         if (length(local_inds) == 0) {
@@ -1922,7 +1613,7 @@
         projected_cpg_ids[local_inds]
     }
 
-    dmr["upstream_cpg_expansion_stop_reason"] <- ustream_stop_reason
+    dmr[["upstream_cpg_expansion_stop_reason"]] <- ustream_stop_reason
     upstream_candidate <- if (ustream_exp <= (dmr_start_ind - 1L)) {
         seq.int(ustream_exp, dmr_start_ind - 1L)
     } else {
@@ -1934,10 +1625,10 @@
     } else {
         upstream_kept <- integer(0)
     }
-    dmr["upstream_cpgs"] <- paste(to_cpg_ids(upstream_kept), collapse = ",")
-    dmr["upstream_cpg_expansion"] <- length(upstream_kept)
+    dmr[["upstream_cpgs"]] <- paste(to_cpg_ids(upstream_kept), collapse = ",")
+    dmr[["upstream_cpg_expansion"]] <- length(upstream_kept)
 
-    dmr["downstream_cpg_expansion_stop_reason"] <- dstream_stop_reason
+    dmr[["downstream_cpg_expansion_stop_reason"]] <- dstream_stop_reason
     downstream_candidate <- if ((dmr_end_ind + 1L) <= dstream_exp) {
         seq.int(dmr_end_ind + 1L, dstream_exp)
     } else {
@@ -1949,10 +1640,10 @@
     } else {
         downstream_kept <- integer(0)
     }
-    dmr["downstream_cpgs"] <- paste(to_cpg_ids(downstream_kept), collapse = ",")
-    dmr["downstream_cpg_expansion"] <- length(downstream_kept)
+    dmr[["downstream_cpgs"]] <- paste(to_cpg_ids(downstream_kept), collapse = ",")
+    dmr[["downstream_cpg_expansion"]] <- length(downstream_kept)
 
-    .log_success("Expanded DMR finalized: (start_cpg: ", dmr["start_cpg"], ", end_cpg: ", dmr["end_cpg"], ").", level = 4)
+    .log_success("Expanded DMR finalized: (start_cpg: ", dmr[["start_cpg"]], ", end_cpg: ", dmr[["end_cpg"]], ").", level = 4)
     dmr
 }
 
@@ -1965,11 +1656,11 @@
                             chr_locs,
                             min_cpg_delta_beta = 0,
                             min_cpgs = 3,
-                            expansion_step = 500,
                             chr_start_base = 0,
                             subset_to_full_idx = NULL,
                             full_locs = NULL,
-                            chr_locs_idx_map = NULL) {
+                            chr_locs_idx_map = NULL,
+                            chr_expansion_boundaries = NULL) {
     if (length(dmr_inds) == 0L) {
         return(list())
     }
@@ -1982,14 +1673,14 @@
         ret[[i]] <- .expandDMR(
             dmr = chr_dmrs[dmr_inds[[i]], , drop = FALSE],
             chr_array = chr_array,
-            expansion_step = expansion_step,
             min_cpgs = min_cpgs,
             min_cpg_delta_beta = min_cpg_delta_beta,
             chr_locs = chr_locs,
             chr_start_base = chr_start_base,
             subset_to_full_idx = subset_to_full_idx,
             full_locs = full_locs,
-            chr_locs_idx_map = chr_locs_idx_map
+            chr_locs_idx_map = chr_locs_idx_map,
+            chr_expansion_boundaries = chr_expansion_boundaries
         )
     }
     ret
@@ -2413,44 +2104,9 @@
 .aggregateDMRBetaStats <- function(beta_stats_df,
                                    aggfun,
                                    njobs = 1L,
-                                   parallel_enabled = TRUE,
-                                   min_groups_for_parallel = 1000L,
-                                   chunk_size = NULL) {
-    if (is.null(beta_stats_df) || nrow(beta_stats_df) == 0L) {
-        return(.aggregateDMRBetaStatsChunk(beta_stats_df, aggfun))
-    }
-    beta_stats_dt <- data.table::as.data.table(beta_stats_df)
-    groups <- sort(unique(beta_stats_dt$dmr_id))
-    ngroups <- length(groups)
-    if (!(parallel_enabled && njobs > 1L && ngroups >= min_groups_for_parallel)) {
-        ret <- .aggregateDMRBetaStatsChunk(beta_stats_dt, aggfun)
-        ret <- ret[order(ret$dmr_id), , drop = FALSE]
-        rownames(ret) <- NULL
-        return(ret)
-    }
-    if (is.null(chunk_size)) {
-        chunk_size <- as.integer(ceiling(ngroups / max(1L, njobs * 4L)))
-    } else {
-        chunk_size <- as.integer(chunk_size)
-    }
-    if (!is.finite(chunk_size) || is.na(chunk_size) || chunk_size < 1L) {
-        chunk_size <- 1L
-    }
-    group_chunks <- split(groups, ceiling(seq_along(groups) / chunk_size))
-    dt_chunks <- lapply(group_chunks, function(ids) beta_stats_dt[dmr_id %in% ids, , drop = FALSE])
-    .setupParallel()
-    on.exit(.finalizeParallel(), add = TRUE)
-    ret_chunks <- future.apply::future_lapply(
-        X = dt_chunks,
-        FUN = .aggregateDMRBetaStatsChunk,
-        aggfun = aggfun,
-        future.seed = TRUE,
-        future.stdout = NA,
-        future.globals = c(
-            ".aggregateDMRBetaStatsChunk"
-        )
-    )
-    ret <- as.data.frame(data.table::rbindlist(ret_chunks, use.names = TRUE, fill = TRUE))
+                                   parallel_enabled = FALSE,
+                                   min_groups_for_parallel = 1000L) {
+    ret <- .aggregateDMRBetaStatsChunk(data.table::as.data.table(beta_stats_df), aggfun)
     ret <- ret[order(ret$dmr_id), , drop = FALSE]
     rownames(ret) <- NULL
     ret
@@ -2484,7 +2140,6 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param min_cpg_delta_beta Numeric. Minimum delta beta value for CpGs. Default is 0.1.
-#' @param expansion_step Numeric. Index-specific step size for expanding DMRs. Increasing it means higher memory usage and faster computation. Default is 500.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -2512,7 +2167,6 @@
 #' @param bed_start_col Character. Column name for start position in the BED file. Default is "start".
 #' @param verbose Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
-#' @param chunk_size Numeric. Number of CpGs to process in each chunk. Default is retrieved from option "CMEnt.chunk_size".
 #'
 #' @return Data frame of identified DMRs.
 #' 
@@ -2531,7 +2185,7 @@
 #' )
 #' }
 #' @export
-findDMRsFromSeeds <- function(
+findDMRsFromSeedsChr <- function(
     beta,
     seeds,
     pheno,
@@ -2540,7 +2194,6 @@ findDMRsFromSeeds <- function(
     casecontrol_col = NULL,
     covariates = NULL,
     min_cpg_delta_beta = 0.1,
-    expansion_step = 500,
     array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
     genome = NULL,
     max_pval = 0.05,
@@ -2560,7 +2213,6 @@ findDMRsFromSeeds <- function(
     ignored_sample_groups = NULL,
     output_prefix = NULL,
     njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
-    chunk_size = getOption("CMEnt.chunk_size", 10000),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
     .score_dmrs = TRUE,
@@ -2587,7 +2239,6 @@ findDMRsFromSeeds <- function(
         withr::defer(wait())
     }
     options(CMEnt.verbose = verbose)
-    options(cli.num_colors = cli::num_ansi_colors())
     options(future.globals.maxSize = Inf)
 
     # Set up future plan for parallel processing
@@ -2667,12 +2318,22 @@ findDMRsFromSeeds <- function(
     if (is.null(requested_genome)) {
         .log_info("No genome provided. Using inferred genome: ", genome, ".", level = 2)
     }
+    .explicitRowNames <- function(x) {
+        rn_info <- .row_names_info(x, type = 0L)
+        if (is.integer(rn_info) && length(rn_info) == 2L &&
+            is.na(rn_info[1L]) && rn_info[2L] < 0L) {
+            return(NULL)
+        }
+        rownames(x)
+    }
     all_cpgs <- NULL
     beta_locs_rownames <- NULL
     if (inherits(beta, "BetaHandler")) {
         beta_handler <- beta
-        all_cpgs <- rownames(beta_handler$getGenomicLocs())
-        beta_locs_rownames <- beta_handler$getBetaRowNames()
+        all_cpgs <- .explicitRowNames(beta_handler$getGenomicLocs())
+        if (!is.null(all_cpgs)) {
+            beta_locs_rownames <- beta_handler$getBetaRowNames()
+        }
     } else {
         beta_locs <- NULL
         if (is.character(beta) && length(beta) == 1 && file.exists(beta)) {
@@ -2708,12 +2369,15 @@ findDMRsFromSeeds <- function(
             genome = genome
         )
     }
+    beta <- NULL
 
     array_based <- beta_handler$isArrayBased()
 
     if (is.null(all_cpgs)) {
-        all_cpgs <- rownames(beta_handler$getGenomicLocs())
-        beta_locs_rownames <- beta_handler$getBetaRowNames()
+        all_cpgs <- .explicitRowNames(beta_handler$getGenomicLocs())
+        if (!is.null(all_cpgs)) {
+            beta_locs_rownames <- beta_handler$getBetaRowNames()
+        }
     }
 
     if (!is.function(aggfun)) {
@@ -2733,7 +2397,6 @@ findDMRsFromSeeds <- function(
     if (min_adj_seeds < 2) {
         stop("min_adj_seeds must be at least 2, to define a DMR")
     }
-    stopifnot(!is.null(expansion_step))
     stopifnot(!is.null(min_cpg_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
     stopifnot(!is.null(entanglement))
@@ -2800,7 +2463,6 @@ findDMRsFromSeeds <- function(
 
     .log_step("Reading beta file characteristics..", level = 2)
 
-    beta_row_names <- beta_handler$getBetaRowNames()
     beta_col_names <- beta_handler$getBetaColNames()
     missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
     if (length(missing_pheno_samples) > 0) {
@@ -2814,6 +2476,39 @@ findDMRsFromSeeds <- function(
     beta_locs <- beta_handler$getBetaLocs()
     beta_chr <- as.character(beta_locs[, "chr"])
     beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
+    beta_row_names <- .explicitRowNames(beta_locs)
+    use_numeric_sequencing_rows <- !array_based && is.null(beta_row_names)
+    if (!use_numeric_sequencing_rows) {
+        beta_row_names <- beta_handler$getBetaRowNames()
+    }
+    .matchSequencingIdsToBeta <- function(ids) {
+        ids <- as.character(ids)
+        parsed <- regexec("^([^:]+):([0-9]+)$", ids)
+        pieces <- regmatches(ids, parsed)
+        ok <- lengths(pieces) == 3L
+        idx <- rep(NA_integer_, length(ids))
+        if (!any(ok)) {
+            return(idx)
+        }
+        id_chr <- vapply(pieces[ok], `[[`, character(1), 2L)
+        id_start <- suppressWarnings(as.integer(vapply(pieces[ok], `[[`, character(1), 3L)))
+        ok_pos <- which(ok)
+        for (chr in unique(id_chr[!is.na(id_start)])) {
+            query_pos <- which(id_chr == chr & !is.na(id_start))
+            beta_pos <- which(beta_chr == chr)
+            if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
+                beta_pos <- which(beta_chr == sub("^chr", "", chr))
+            } else if (length(beta_pos) == 0L) {
+                beta_pos <- which(beta_chr == paste0("chr", chr))
+            }
+            if (length(beta_pos) == 0L) {
+                next
+            }
+            hit <- match(id_start[query_pos], beta_start[beta_pos])
+            idx[ok_pos[query_pos]] <- beta_pos[hit]
+        }
+        idx
+    }
     if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
         stop(
             "Beta locations contain missing chromosome labels. Ensure the beta input includes valid chromosome values.",
@@ -2900,7 +2595,21 @@ findDMRsFromSeeds <- function(
     .log_step("Reordering seeds by genomic location...", level = 3)
 
 
-    if (!all(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
+    if (use_numeric_sequencing_rows) {
+        seed_beta_index <- .matchSequencingIdsToBeta(seeds_tsv[, seeds_id_col])
+        if (all(is.na(seed_beta_index))) {
+            stop("None of the IDs in the seeds seeds_id_col match the BSseq genomic locations.")
+        }
+        if (anyNA(seed_beta_index)) {
+            missing_in_beta <- seeds_tsv[, seeds_id_col][is.na(seed_beta_index)]
+            .log_warn(length(missing_in_beta), " seeds are not present in the beta file. seeds: ", paste(missing_in_beta, collapse = ","))
+            .log_warn("Ignoring them..")
+            keep_seed <- !is.na(seed_beta_index)
+            seeds_tsv <- seeds_tsv[keep_seed, , drop = FALSE]
+            seed_beta_index <- seed_beta_index[keep_seed]
+        }
+        seeds_tsv$.__beta_row_index__ <- seed_beta_index
+    } else if (!all(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
         if (!any(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
             # incorrect seeds_id_col, figure out the correct one
             seeds_id_col_found <- NULL
@@ -2923,7 +2632,9 @@ findDMRsFromSeeds <- function(
             seeds_tsv <- seeds_tsv[seeds_tsv[, seeds_id_col] %in% beta_row_names, , drop = FALSE]
         }
     }
-    if (!bed_provided) {
+    if (use_numeric_sequencing_rows) {
+        seeds_tsv <- seeds_tsv[order(seeds_tsv$.__beta_row_index__), , drop = FALSE]
+    } else if (!bed_provided) {
         seeds_tsv <- seeds_tsv[orderByLoc(seeds_tsv[, seeds_id_col], genomic_locs = beta_handler$getBetaLocs()), , drop = FALSE]
     } else {
         seeds_tsv <- seeds_tsv[order(seeds_tsv[, seeds_id_col]), , drop = FALSE]
@@ -2933,34 +2644,44 @@ findDMRsFromSeeds <- function(
     # Filter seeds not present in array annotation first (prevents NA logical indices later)
 
     seeds <- unique(seeds_tsv[, seeds_id_col])
-    missing_in_annotation <- setdiff(seeds, all_cpgs)
-    if (length(missing_in_annotation) > 0) {
-        .log_warn(
-            "Dropping ", length(missing_in_annotation), " seed(s) not found in the array annotation: ",
-            paste(head(missing_in_annotation, 10), collapse = ","),
-            if (length(missing_in_annotation) > 10) " ..." else ""
-        )
-        seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_annotation), , drop = FALSE]
-        seeds <- setdiff(seeds, missing_in_annotation)
-    }
-    missing_in_beta <- setdiff(seeds, beta_row_names)
-    if (length(missing_in_beta) > 0) {
-        .log_warn(
-            "Dropping ", length(missing_in_beta), " seed(s) not found in the beta file: ",
-            paste(head(missing_in_beta, 10), collapse = ","),
-            if (length(missing_in_beta) > 10) " ..." else ""
-        )
-        seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_beta), , drop = FALSE]
-        seeds <- setdiff(seeds, missing_in_beta)
+    if (!use_numeric_sequencing_rows) {
+        missing_in_annotation <- setdiff(seeds, all_cpgs)
+        if (length(missing_in_annotation) > 0) {
+            .log_warn(
+                "Dropping ", length(missing_in_annotation), " seed(s) not found in the array annotation: ",
+                paste(head(missing_in_annotation, 10), collapse = ","),
+                if (length(missing_in_annotation) > 10) " ..." else ""
+            )
+            seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_annotation), , drop = FALSE]
+            seeds <- setdiff(seeds, missing_in_annotation)
+        }
+        missing_in_beta <- setdiff(seeds, beta_row_names)
+        if (length(missing_in_beta) > 0) {
+            .log_warn(
+                "Dropping ", length(missing_in_beta), " seed(s) not found in the beta file: ",
+                paste(head(missing_in_beta, 10), collapse = ","),
+                if (length(missing_in_beta) > 10) " ..." else ""
+            )
+            seeds_tsv <- seeds_tsv[!(seeds_tsv[, seeds_id_col] %in% missing_in_beta), , drop = FALSE]
+            seeds <- setdiff(seeds, missing_in_beta)
+        }
     }
     if (length(seeds) == 0) {
         stop("No seeds remain after filtering against array annotation and beta file.")
     }
-    seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
+    if (use_numeric_sequencing_rows) {
+        keep_unique <- !duplicated(seeds_tsv[, seeds_id_col])
+        seeds <- seeds_tsv[keep_unique, seeds_id_col]
+        seed_beta_index <- seeds_tsv[keep_unique, ".__beta_row_index__"]
+    } else {
+        seeds <- seeds[orderByLoc(seeds, genome = genome, genomic_locs = beta_locs)]
+        seed_beta_index <- seeds
+    }
 
     .log_step("Subsetting beta matrix for seeds...", level = 3)
-    seeds_locs <- as.data.frame(beta_locs[seeds, , drop = FALSE])
-    seeds_beta <- beta_handler$getBeta(row_names = seeds, col_names = beta_col_names_detection)
+    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
+    rownames(seeds_locs) <- seeds
+    seeds_beta <- beta_handler$getBeta(row_names = seed_beta_index, col_names = beta_col_names_detection)
     rownames(seeds_beta) <- seeds
 
     if (nrow(seeds_locs) != nrow(seeds_beta)) {
@@ -2992,6 +2713,7 @@ findDMRsFromSeeds <- function(
     )
     .log_info("Number of provided seeds: ", length(seeds), level = 2)
     rm(seeds_beta)
+    rm(beta_row_names, beta_locs_rownames, beta_chr, beta_start, samples_selection_mask, missing_pheno_samples)
     gc(verbose = FALSE)
     resolved_min_cpg_delta_beta <- as.numeric(min_cpg_delta_beta)
 
@@ -3029,14 +2751,14 @@ findDMRsFromSeeds <- function(
             min_delta_beta = 0, # delta-beta filtering is applied later during the extension
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
-            chunk_size = chunk_size,
             entanglement = entanglement,
             aggfun = aggfun,
             ntries = ntries,
             mid_p = mid_p,
             njobs = njobs,
             expansion_windows = NULL,
-            max_bridge_gaps = max_bridge_seeds_gaps
+            max_bridge_gaps = max_bridge_seeds_gaps,
+            verbose = verbose
         )
         rm(seeds_beta_handler)
         gc(verbose = FALSE)
@@ -3175,25 +2897,12 @@ findDMRsFromSeeds <- function(
                 stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
             }
             stage2_beta_handler <- subset_ret$beta_handler
-            stage2_connectivity_beta_handler <- if (!is.null(subset_ret$worker_beta_handler)) {
-                subset_ret$worker_beta_handler
-            } else {
-                stage2_beta_handler
-            }
             stage2_beta_locs <- subset_ret$beta_locs
             stage2_subset_to_full_idx <- subset_ret$subset_to_full_idx
             expansion_windows <- subset_ret$expansion_windows
-            if (!is.null(subset_ret$h5_file)) {
-                withr::defer(unlink(subset_ret$h5_file), envir = environment())
-            }
-            if (isTRUE(subset_ret$releases_original)) {
-                beta_handler <- stage2_beta_handler
-                .log_info(
-                    "Using the ", subset_ret$subset_strategy,
-                    " Stage 2 beta subset for downstream beta access; releasing the original beta handler from this run.",
-                    level = 2
-                )
-                gc(verbose = FALSE)
+            if (!isTRUE(extract_motifs)) {
+                beta_locs <- stage2_beta_locs
+                stage2_subset_to_full_idx <- NULL
             }
             .log_info(
                 "Stage 2 beta subset contains ",
@@ -3205,53 +2914,8 @@ findDMRsFromSeeds <- function(
             )
         }
         .log_step("Building expansion connectivity array..", level = 2)
-        old_parallel_backend <- getOption("CMEnt.parallel_backend", "auto")
-        restore_parallel_backend <- FALSE
-        stage2_backend_type <- tryCatch(stage2_connectivity_beta_handler$backendType(), error = function(e) "unknown")
-        if (identical(stage2_backend_type, "delayed") &&
-            identical(tolower(as.character(old_parallel_backend)[1]), "auto")) {
-            stage2_parallel_backend <- getOption("CMEnt.stage2_hdf5_parallel_backend", "multicore")
-            stage2_parallel_backend <- tolower(as.character(stage2_parallel_backend)[1])
-            if (is.na(stage2_parallel_backend) || !stage2_parallel_backend %in% c("multicore", "multisession")) {
-                stage2_parallel_backend <- "multicore"
-            }
-            .log_info(
-                "Using ", stage2_parallel_backend,
-                " workers for HDF5-backed Stage 2 connectivity after releasing the original beta handler.",
-                level = 2
-            )
-            options(CMEnt.parallel_backend = stage2_parallel_backend)
-            restore_parallel_backend <- TRUE
-            withr::defer(options(CMEnt.parallel_backend = old_parallel_backend), envir = environment())
-        }
-        if (identical(stage2_backend_type, "delayed")) {
-            old_chunk_memory_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
-            stage2_chunk_memory_mb <- getOption("CMEnt.stage2_hdf5_max_chunk_memory_mb", 256)
-            stage2_chunk_memory_mb <- suppressWarnings(as.numeric(stage2_chunk_memory_mb)[1])
-            if (is.finite(stage2_chunk_memory_mb) && !is.na(stage2_chunk_memory_mb) && stage2_chunk_memory_mb > 0) {
-                current_chunk_memory_mb <- suppressWarnings(as.numeric(old_chunk_memory_mb)[1])
-                if (!is.finite(current_chunk_memory_mb) || is.na(current_chunk_memory_mb) || current_chunk_memory_mb <= 0) {
-                    current_chunk_memory_mb <- stage2_chunk_memory_mb
-                }
-                options(CMEnt.max_chunk_memory_mb = min(current_chunk_memory_mb, stage2_chunk_memory_mb))
-                withr::defer(options(CMEnt.max_chunk_memory_mb = old_chunk_memory_mb), envir = environment())
-            }
-        } else if (identical(stage2_backend_type, "memory")) {
-            stage2_chunk_memory_mb <- getOption("CMEnt.stage2_memory_max_chunk_memory_mb", NA_real_)
-            stage2_chunk_memory_mb <- suppressWarnings(as.numeric(stage2_chunk_memory_mb)[1])
-            if (is.finite(stage2_chunk_memory_mb) && !is.na(stage2_chunk_memory_mb) && stage2_chunk_memory_mb > 0) {
-                old_chunk_memory_mb <- getOption("CMEnt.max_chunk_memory_mb", 256)
-                options(CMEnt.max_chunk_memory_mb = stage2_chunk_memory_mb)
-                withr::defer(options(CMEnt.max_chunk_memory_mb = old_chunk_memory_mb), envir = environment())
-                .log_info(
-                    "Using a ", stage2_chunk_memory_mb,
-                    " MB per-worker chunk memory budget for compact in-memory Stage 2 connectivity.",
-                    level = 2
-                )
-            }
-        }
         ret <- .buildConnectivityArray(
-            beta_handler = stage2_connectivity_beta_handler,
+            beta_handler = stage2_beta_handler,
             beta_locs = stage2_beta_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
@@ -3262,18 +2926,15 @@ findDMRsFromSeeds <- function(
             min_delta_beta = resolved_min_cpg_delta_beta,
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
-            chunk_size = chunk_size,
             entanglement = entanglement,
             aggfun = aggfun,
             ntries = ntries,
             mid_p = mid_p,
             njobs = njobs,
             expansion_windows = expansion_windows,
-            max_bridge_gaps = max_bridge_extension_gaps
+            max_bridge_gaps = max_bridge_extension_gaps,
+            verbose = verbose
         )
-        if (restore_parallel_backend) {
-            options(CMEnt.parallel_backend = old_parallel_backend)
-        }
         connectivity_array <- ret$connectivity_array
     }
     .log_success("Connectivity array built.", level = 2)
@@ -3321,14 +2982,11 @@ findDMRsFromSeeds <- function(
         # Create index map once per chromosome for O(1) lookups
         chr_locs_rownames <- rownames(chr_locs)
         chr_locs_idx_map <- setNames(seq_along(chr_locs_rownames), chr_locs_rownames)
+        chr_expansion_boundaries <- .buildExpansionBoundaryLookup(chr_array)
 
         chr_dmr_inds <- seq_len(nrow(chr_dmrs))
         default_dmr_chunk_size <- max(1L, ceiling(length(chr_dmr_inds) / max(njobs * 4L, 1L)))
-        dmr_chunk_size <- as.integer(getOption("CMEnt.parallel_dmr_chunk_size", default_dmr_chunk_size))[1]
-        if (!is.finite(dmr_chunk_size) || dmr_chunk_size < 1L) {
-            dmr_chunk_size <- default_dmr_chunk_size
-        }
-        dmr_chunk_size <- min(dmr_chunk_size, length(chr_dmr_inds))
+        dmr_chunk_size <- min(default_dmr_chunk_size, length(chr_dmr_inds))
         chr_chunks <- split(chr_dmr_inds, ceiling(chr_dmr_inds / dmr_chunk_size))
 
         if (njobs == 1L || length(chr_chunks) == 1L) {
@@ -3337,14 +2995,14 @@ findDMRsFromSeeds <- function(
                 .expandDMRChunk,
                 chr_dmrs = chr_dmrs,
                 chr_array = chr_array,
-                expansion_step = expansion_step,
                 min_cpgs = min_cpgs,
                 min_cpg_delta_beta = min_cpg_delta_beta,
                 chr_locs = chr_locs,
                 chr_start_base = chr_start_base,
                 subset_to_full_idx = chr_subset_to_full_idx,
                 full_locs = chr_full_locs,
-                chr_locs_idx_map = chr_locs_idx_map
+                chr_locs_idx_map = chr_locs_idx_map,
+                chr_expansion_boundaries = chr_expansion_boundaries
             )
         } else {
             .setupParallel()
@@ -3353,7 +3011,6 @@ findDMRsFromSeeds <- function(
                 FUN = .expandDMRChunk,
                 chr_dmrs = chr_dmrs,
                 chr_array = chr_array,
-                expansion_step = expansion_step,
                 min_cpgs = min_cpgs,
                 min_cpg_delta_beta = min_cpg_delta_beta,
                 chr_locs = chr_locs,
@@ -3361,21 +3018,23 @@ findDMRsFromSeeds <- function(
                 subset_to_full_idx = chr_subset_to_full_idx,
                 full_locs = chr_full_locs,
                 chr_locs_idx_map = chr_locs_idx_map,
+                chr_expansion_boundaries = chr_expansion_boundaries,
                 future.seed = TRUE,
                 future.stdout = NA,
                 future.globals = c(
                     ".expandDMRChunk",
                     ".expandDMR",
+                    ".buildExpansionBoundaryLookup",
                     "chr_dmrs",
                     "chr_array",
-                    "expansion_step",
                     "min_cpgs",
                     "min_cpg_delta_beta",
                     "chr_locs",
                     "chr_start_base",
                     "chr_subset_to_full_idx",
                     "chr_full_locs",
-                    "chr_locs_idx_map"
+                    "chr_locs_idx_map",
+                    "chr_expansion_boundaries"
                 )
             )
             .finalizeParallel()
@@ -3455,49 +3114,14 @@ findDMRsFromSeeds <- function(
 
     multiple_hits <- which(tqh > 1)
     .log_info("Merging ", length(multiple_hits), " overlapping extended DMRs...", level = 2)
-    parallel_merge_enabled <- isTRUE(getOption("CMEnt.parallel_merge_aggregations", TRUE))
-    parallel_merge_min_hits <- as.integer(getOption("CMEnt.parallel_merge_min_hits", 64L))
-    if (!is.finite(parallel_merge_min_hits) || is.na(parallel_merge_min_hits) || parallel_merge_min_hits < 1L) {
-        parallel_merge_min_hits <- 1L
-    }
     if (length(multiple_hits) > 0L) {
-        use_parallel_merge <- parallel_merge_enabled && njobs > 1L && length(multiple_hits) >= parallel_merge_min_hits
-        if (use_parallel_merge) {
-            merge_chunk_size <- as.integer(getOption(
-                "CMEnt.parallel_merge_chunk_size",
-                max(1L, ceiling(length(multiple_hits) / max(1L, njobs * 4L)))
-            ))
-            if (!is.finite(merge_chunk_size) || is.na(merge_chunk_size) || merge_chunk_size < 1L) {
-                merge_chunk_size <- 1L
-            }
-            multiple_hit_chunks <- split(multiple_hits, ceiling(seq_along(multiple_hits) / merge_chunk_size))
-            .setupParallel()
-            merge_rows_chunks <- future.apply::future_lapply(
-                X = multiple_hit_chunks,
-                FUN = .aggregateMergedDMRChunk,
-                qh = qh,
-                sh = sh,
-                orig_mcols = orig_mcols,
-                aggfun = aggfun,
-                future.seed = TRUE,
-                future.stdout = NA,
-                future.globals = c(
-                    ".aggregateMergedDMRChunk",
-                    ".aggregateMergedDMRRow",
-                    ".splitCsvValues"
-                )
-            )
-            .finalizeParallel()
-            merge_rows <- unlist(merge_rows_chunks, recursive = FALSE, use.names = FALSE)
-        } else {
-            merge_rows <- .aggregateMergedDMRChunk(
-                hit_indices = multiple_hits,
-                qh = qh,
-                sh = sh,
-                orig_mcols = orig_mcols,
-                aggfun = aggfun
-            )
-        }
+        merge_rows <- .aggregateMergedDMRChunk(
+            hit_indices = multiple_hits,
+            qh = qh,
+            sh = sh,
+            orig_mcols = orig_mcols,
+            aggfun = aggfun
+        )
 
         merge_idx <- vapply(merge_rows, function(x) x$idx, integer(1))
         if (!identical(merge_idx, as.integer(multiple_hits))) {
@@ -3527,41 +3151,17 @@ findDMRsFromSeeds <- function(
     }
 
     agg_cpg_components <- agg_df[, c("upstream_cpgs", "seeds", "downstream_cpgs"), drop = FALSE]
-    parallel_cpgs_min_rows <- as.integer(getOption("CMEnt.parallel_merge_cpgs_min_rows", 2000L))
-    if (!is.finite(parallel_cpgs_min_rows) || is.na(parallel_cpgs_min_rows) || parallel_cpgs_min_rows < 1L) {
-        parallel_cpgs_min_rows <- 1L
-    }
-    use_parallel_cpgs <- parallel_merge_enabled && njobs > 1L && nrow(agg_cpg_components) >= parallel_cpgs_min_rows
-    if (use_parallel_cpgs) {
-        cpg_chunk_size <- as.integer(getOption(
-            "CMEnt.parallel_merge_cpgs_chunk_size",
-            max(1L, ceiling(nrow(agg_cpg_components) / max(1L, njobs * 4L)))
-        ))
-        if (!is.finite(cpg_chunk_size) || is.na(cpg_chunk_size) || cpg_chunk_size < 1L) {
-            cpg_chunk_size <- 1L
-        }
-        cpg_row_chunks <- split(seq_len(nrow(agg_cpg_components)), ceiling(seq_len(nrow(agg_cpg_components)) / cpg_chunk_size))
-        cpg_components_chunks <- lapply(cpg_row_chunks, function(ix) agg_cpg_components[ix, , drop = FALSE])
-        .setupParallel()
-        cpg_chunks <- future.apply::future_lapply(
-            X = cpg_components_chunks,
-            FUN = .collapseMergedDMRCpGsChunk,
-            future.seed = TRUE,
-            future.stdout = NA,
-            future.globals = c(
-                ".collapseMergedDMRCpGsChunk",
-                ".splitCsvValues"
-            )
-        )
-        .finalizeParallel()
-        agg_df[, "cpgs"] <- unlist(cpg_chunks, use.names = FALSE)
-    } else {
-        agg_df[, "cpgs"] <- .collapseMergedDMRCpGsChunk(agg_cpg_components)
-    }
+    agg_df[, "cpgs"] <- .collapseMergedDMRCpGsChunk(agg_cpg_components)
     agg_df[, "supporting_cpgs_num"] <- vapply(agg_df$cpgs, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
-    agg_df[, "cpgs_num"] <- match(agg_df$end_cpg, all_cpgs) - match(agg_df$start_cpg, all_cpgs) + 1
+    if (is.null(all_cpgs)) {
+        agg_df[, "cpgs_num"] <- vapply(agg_df$cpgs, function(x) {
+            length(.splitCsvValues(x))
+        }, integer(1))
+    } else {
+        agg_df[, "cpgs_num"] <- match(agg_df$end_cpg, all_cpgs) - match(agg_df$start_cpg, all_cpgs) + 1
+    }
     agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_cpg, "-", agg_df$end_cpg)
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
@@ -3585,7 +3185,7 @@ findDMRsFromSeeds <- function(
     if (min_cpgs > 1 || min_seeds > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
             GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
-                GenomicRanges::mcols(merged_dmrs_ranges)$supporting_cpgs_num >= min_cpgs
+                GenomicRanges::mcols(merged_dmrs_ranges)$cpgs_num >= min_cpgs
         ]
         .log_info(
             "Keeping ",
@@ -3596,7 +3196,7 @@ findDMRsFromSeeds <- function(
             min_seeds,
             " supporting seeds and at least ",
             min_cpgs,
-            " supporting CpGs.",
+            " CpGs in the DMR interval.",
             level = 1
         )
     } else {
@@ -3687,25 +3287,11 @@ findDMRsFromSeeds <- function(
     beta_stats_seeds <- beta_stats[dmr_seeds_indices, , drop = FALSE]
     beta_stats_seeds$dmr_id <- dmr_seeds_groups
 
-    parallel_merge_enabled <- isTRUE(getOption("CMEnt.parallel_merge_aggregations", TRUE))
-    parallel_beta_agg_min_groups <- as.integer(getOption("CMEnt.parallel_beta_agg_min_groups", 1000L))
-    if (!is.finite(parallel_beta_agg_min_groups) || is.na(parallel_beta_agg_min_groups) || parallel_beta_agg_min_groups < 1L) {
-        parallel_beta_agg_min_groups <- 1L
-    }
-    parallel_beta_agg_chunk_size <- getOption("CMEnt.parallel_beta_agg_chunk_size", NULL)
-    if (!is.null(parallel_beta_agg_chunk_size)) {
-        parallel_beta_agg_chunk_size <- as.integer(parallel_beta_agg_chunk_size)
-        if (!is.finite(parallel_beta_agg_chunk_size) || is.na(parallel_beta_agg_chunk_size) || parallel_beta_agg_chunk_size < 1L) {
-            parallel_beta_agg_chunk_size <- NULL
-        }
-    }
     seeds_agg <- .aggregateDMRBetaStats(
         beta_stats_df = beta_stats_seeds,
         aggfun = aggfun,
         njobs = njobs,
-        parallel_enabled = parallel_merge_enabled,
-        min_groups_for_parallel = parallel_beta_agg_min_groups,
-        chunk_size = parallel_beta_agg_chunk_size
+        parallel_enabled = FALSE
     )
     seeds_match <- match(seq_len(nrow(annotated_dmrs)), seeds_agg$dmr_id)
     if (anyNA(seeds_match)) {
@@ -3734,9 +3320,7 @@ findDMRsFromSeeds <- function(
         beta_stats_df = beta_stats_cpgs,
         aggfun = aggfun,
         njobs = njobs,
-        parallel_enabled = parallel_merge_enabled,
-        min_groups_for_parallel = parallel_beta_agg_min_groups,
-        chunk_size = parallel_beta_agg_chunk_size
+        parallel_enabled = FALSE
     )
     cpgs_match <- match(seq_len(nrow(annotated_dmrs)), cpgs_agg$dmr_id)
     if (anyNA(cpgs_match)) {
@@ -3824,5 +3408,407 @@ findDMRsFromSeeds <- function(
     }
 
     gc()
+    invisible(final_dmrs_granges)
+}
+
+
+findDMRsFromSeeds <- function(
+    beta,
+    seeds,
+    pheno,
+    seeds_id_col = NULL,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = NULL,
+    covariates = NULL,
+    min_cpg_delta_beta = 0.1,
+    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+    genome = NULL,
+    max_pval = 0.05,
+    entanglement = c("strong", "weak"),
+    pval_mode = c("auto", "parametric", "empirical"),
+    empirical_strategy = c("auto", "montecarlo", "permutations"),
+    ntries = 200L,
+    mid_p = FALSE,
+    max_lookup_dist = 10000,
+    expansion_window = "auto",
+    max_bridge_seeds_gaps = 1L,
+    max_bridge_extension_gaps = 1L,
+    min_seeds = 2,
+    min_adj_seeds = 2,
+    min_cpgs = 3,
+    aggfun = c("median", "mean"),
+    ignored_sample_groups = NULL,
+    output_prefix = NULL,
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    beta_row_names_file = NULL,
+    annotate_with_genes = TRUE,
+    .score_dmrs = TRUE,
+    extract_motifs = TRUE,
+    bed_provided = FALSE,
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    verbose = getOption("CMEnt.verbose", 1),
+    .load_debug = FALSE
+) {
+    .emptyOutputs <- function(prefix_base) {
+        if (is.null(prefix_base)) {
+            return(invisible(NULL))
+        }
+        for (suffix in c(".dmrs.tsv.gz", ".seeds_beta.tsv.gz")) {
+            con <- gzfile(paste0(prefix_base, suffix), "w", compression = 2)
+            close(con)
+        }
+        invisible(NULL)
+    }
+    .readSeeds <- function(seeds, seeds_id_col) {
+        if (is.character(seeds) && length(seeds) == 1) {
+            seeds_tsv <- try(as.data.frame(read.table(
+                seeds, header = TRUE, sep = "\t", check.names = FALSE,
+                quote = "", comment.char = "", row.names = NULL
+            )))
+        } else if (is.data.frame(seeds)) {
+            seeds_tsv <- as.data.frame(seeds)
+        } else {
+            stop("seeds must be either a file path or a data frame")
+        }
+        if (inherits(seeds_tsv, "try-error")) {
+            return(list(data = NULL, id_col = seeds_id_col))
+        }
+        if (is.null(seeds_id_col)) {
+            seeds_id_col <- "_SEED_ROW_NAMES_"
+            if (!is.null(rownames(seeds_tsv))) {
+                seeds_tsv[, seeds_id_col] <- rownames(seeds_tsv)
+            } else {
+                seeds_id_col <- colnames(seeds_tsv)[1]
+            }
+            rownames(seeds_tsv) <- NULL
+        }
+        if (is.numeric(seeds_id_col)) {
+            seeds_id_col <- colnames(seeds_tsv)[seeds_id_col]
+        }
+        if (!seeds_id_col %in% colnames(seeds_tsv)) {
+            stop(
+                "Seed id column '", seeds_id_col,
+                "' does not reside in the seeds file columns: ",
+                paste(colnames(seeds_tsv), collapse = ",")
+            )
+        }
+        list(data = seeds_tsv, id_col = seeds_id_col)
+    }
+    .matchSequencingIdsToBeta <- function(ids, beta_chr, beta_start) {
+        ids <- as.character(ids)
+        parsed <- regexec("^([^:]+):([0-9]+)$", ids)
+        pieces <- regmatches(ids, parsed)
+        ok <- lengths(pieces) == 3L
+        idx <- rep(NA_integer_, length(ids))
+        if (!any(ok)) {
+            return(idx)
+        }
+        id_chr <- vapply(pieces[ok], `[[`, character(1), 2L)
+        id_start <- suppressWarnings(as.integer(vapply(pieces[ok], `[[`, character(1), 3L)))
+        ok_pos <- which(ok)
+        for (chr in unique(id_chr[!is.na(id_start)])) {
+            query_pos <- which(id_chr == chr & !is.na(id_start))
+            beta_pos <- which(beta_chr == chr)
+            if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
+                beta_pos <- which(beta_chr == sub("^chr", "", chr))
+            } else if (length(beta_pos) == 0L) {
+                beta_pos <- which(beta_chr == paste0("chr", chr))
+            }
+            if (length(beta_pos) == 0L) {
+                next
+            }
+            hit <- match(id_start[query_pos], beta_start[beta_pos])
+            idx[ok_pos[query_pos]] <- beta_pos[hit]
+        }
+        idx
+    }
+
+    pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
+    empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
+    entanglement <- strex::match_arg(entanglement, ignore_case = TRUE)
+    options(CMEnt.verbose = verbose, future.globals.maxSize = Inf, "CMEnt.njobs" = njobs)
+    if (Sys.info()[["sysname"]] != "Windows") {
+        includes <- "#include <sys/wait.h>"
+        code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
+        wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
+        withr::defer(wait())
+    }
+    .cleanupParallelState()
+    withr::defer(.cleanupParallelState(), envir = environment())
+
+    .log_step("Preparing chromosome-sequential DMR input...")
+    seeds_ret <- .readSeeds(seeds, seeds_id_col)
+    seeds_tsv <- seeds_ret$data
+    seeds_id_col <- seeds_ret$id_col
+    if (is.null(seeds_tsv) || nrow(seeds_tsv) == 0L) {
+        .log_warn("Provided seeds file has no data rows. Not proceeding.")
+        .emptyOutputs(output_prefix)
+        return(NULL)
+    }
+    if (!is.null(covariates)) {
+        missing_covars <- covariates[!covariates %in% colnames(pheno)]
+        if (length(missing_covars) > 0) {
+            stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
+        }
+    }
+
+    array <- .normalizeFindDMRsArray(array)
+    requested_genome <- .normalizeFindDMRsGenome(genome)
+    genome <- .resolveFindDMRsGenome(beta, array = array, genome = requested_genome, bed_provided = bed_provided)
+    if (is.null(requested_genome)) {
+        .log_info("No genome provided. Using inferred genome: ", genome, ".", level = 2)
+    }
+    beta_locs <- NULL
+    if (!inherits(beta, "BetaHandler") && is.character(beta) && length(beta) == 1 && file.exists(beta)) {
+        beta_file_ext <- tools::file_ext(beta)
+        if (beta_file_ext == "bed" || bed_provided) {
+            bed_provided <- TRUE
+            seed_ids <- seeds_tsv[, seeds_id_col]
+            if (!all(grepl("^(chr)?[0-9XYM]+:[0-9]+$", seed_ids))) {
+                stop("When providing a bed file as beta input, seed IDs must be in 'chr:pos' format.")
+            }
+            ret <- readCustomMethylationBedData(
+                bed_file = beta, pheno = pheno, genome = genome,
+                chrom_col = bed_chrom_col, start_col = bed_start_col
+            )
+            beta <- ret$tabix_file
+            beta_locs <- ret$locations
+        }
+    }
+    beta_handler <- getBetaHandler(
+        beta = beta,
+        beta_row_names_file = beta_row_names_file,
+        njobs = njobs,
+        sorted_locs = beta_locs,
+        array = array,
+        genome = genome
+    )
+    beta <- NULL
+    array_based <- beta_handler$isArrayBased()
+    beta_col_names <- beta_handler$getBetaColNames()
+    missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
+    if (length(missing_pheno_samples) > 0) {
+        stop(
+            "The following beta samples are missing from pheno row names: ",
+            paste(head(missing_pheno_samples, 10), collapse = ","),
+            if (length(missing_pheno_samples) > 10) " ..." else ""
+        )
+    }
+    pheno_all <- pheno[beta_col_names, , drop = FALSE]
+    if (is.null(casecontrol_col)) {
+        pheno_all[, "__casecontrol__"] <- ifelse(
+            pheno_all[, sample_group_col] == levels(as.factor(pheno_all[, sample_group_col]))[1],
+            0, 1
+        )
+    } else {
+        pheno_all[, "__casecontrol__"] <- as.numeric(pheno_all[, casecontrol_col])
+    }
+    ignored_sample_groups_chr <- if (is.null(ignored_sample_groups)) character(0) else {
+        x <- trimws(unlist(base::strsplit(ignored_sample_groups, ",")))
+        x[nzchar(x)]
+    }
+    samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups_chr)
+    if ("case" %in% ignored_sample_groups_chr) {
+        samples_selection_mask <- samples_selection_mask & (pheno_all[, "__casecontrol__"] != 1)
+    }
+    if ("control" %in% ignored_sample_groups_chr) {
+        samples_selection_mask <- samples_selection_mask & (pheno_all[, "__casecontrol__"] != 0)
+    }
+    beta_col_names_detection <- beta_col_names[samples_selection_mask]
+    if (length(beta_col_names_detection) < 2) {
+        stop("At least two samples are required after applying ignored_sample_groups.")
+    }
+    pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
+
+    output_prefix_base <- output_prefix
+    output_prefix_dot <- NULL
+    if (!is.null(output_prefix_base)) {
+        dir.create(dirname(output_prefix_base), showWarnings = FALSE, recursive = TRUE)
+        output_prefix_dot <- paste0(output_prefix_base, ".")
+        saveRDS(
+            list(pheno = pheno_detection, genome = genome, array = array, sample_group_col = sample_group_col),
+            file = paste0(output_prefix_base, ".meta.rds")
+        )
+    }
+
+    beta_locs <- beta_handler$getBetaLocs()
+    beta_chr <- as.character(beta_locs[, "chr"])
+    beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
+    if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
+        stop("Beta locations contain missing chromosome labels.", call. = FALSE)
+    }
+    if (anyNA(beta_start)) {
+        stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
+    }
+    if (length(beta_chr) > 1L) {
+        chr_runs <- rle(beta_chr)
+        if (anyDuplicated(chr_runs$values)) {
+            dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
+            stop(
+                "Beta locations are not grouped by chromosome: ", dup_chr,
+                " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
+                call. = FALSE
+            )
+        }
+        same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
+        unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
+        if (any(unsorted_adj, na.rm = TRUE)) {
+            bad_idx <- which(unsorted_adj)[1L] + 1L
+            stop("Beta locations are not sorted within chromosome ", beta_chr[bad_idx], call. = FALSE)
+        }
+    }
+
+    beta_locs_rownames <- .explicitRowNames(beta_locs)
+    use_numeric_sequencing_rows <- !array_based && is.null(beta_locs_rownames)
+    beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
+    if (use_numeric_sequencing_rows) {
+        seed_beta_index <- .matchSequencingIdsToBeta(seeds_tsv[, seeds_id_col], beta_chr, beta_start)
+        if (all(is.na(seed_beta_index))) {
+            stop("None of the IDs in seeds_id_col match the beta genomic locations.")
+        }
+        if (anyNA(seed_beta_index)) {
+            seeds_tsv <- seeds_tsv[!is.na(seed_beta_index), , drop = FALSE]
+            seed_beta_index <- seed_beta_index[!is.na(seed_beta_index)]
+        }
+        seeds_tsv$.__beta_row_index__ <- seed_beta_index
+        seeds_tsv <- seeds_tsv[order(seeds_tsv$.__beta_row_index__), , drop = FALSE]
+        keep_unique <- !duplicated(seeds_tsv[, seeds_id_col])
+        seed_ids <- as.character(seeds_tsv[keep_unique, seeds_id_col])
+        seed_beta_index <- seeds_tsv[keep_unique, ".__beta_row_index__"]
+    } else {
+        if (!all(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
+            if (!any(seeds_tsv[, seeds_id_col] %in% beta_row_names)) {
+                seeds_id_col_found <- NULL
+                for (col in colnames(seeds_tsv)) {
+                    if (all(seeds_tsv[, col] %in% beta_row_names)) {
+                        seeds_id_col_found <- col
+                        break
+                    }
+                }
+                if (is.null(seeds_id_col_found)) {
+                    stop("None of the IDs in seeds_id_col match the beta file row names.")
+                }
+                .log_warn("Switching seeds_id_col from '", seeds_id_col, "' to '", seeds_id_col_found, "'.")
+                seeds_id_col <- seeds_id_col_found
+            }
+            seeds_tsv <- seeds_tsv[seeds_tsv[, seeds_id_col] %in% beta_row_names, , drop = FALSE]
+        }
+        seeds_tsv <- seeds_tsv[orderByLoc(seeds_tsv[, seeds_id_col], genomic_locs = beta_locs), , drop = FALSE]
+        seed_ids <- unique(as.character(seeds_tsv[, seeds_id_col]))
+        seed_ids <- seed_ids[orderByLoc(seed_ids, genome = genome, genomic_locs = beta_locs)]
+        seed_beta_index <- seed_ids
+    }
+    if (length(seed_ids) == 0L) {
+        stop("No seeds remain after filtering against beta locations.")
+    }
+    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
+    rownames(seeds_locs) <- seed_ids
+    seed_chr <- as.character(seeds_locs[, "chr"])
+    chromosomes <- unique(seed_chr)
+    .log_info("Processing ", length(chromosomes), " chromosome(s) sequentially: ", paste(chromosomes, collapse = ", "), level = 1)
+
+    beta_row_ids_all <- if (is.null(beta_locs_rownames)) {
+        seq_len(nrow(beta_locs))
+    } else {
+        beta_locs_rownames
+    }
+    chr_results <- vector("list", length(chromosomes))
+    names(chr_results) <- chromosomes
+    for (chr in chromosomes) {
+        .log_step("Chromosome ", chr, ": preparing scoped beta/seeds.", level = 1)
+        chr_beta_idx <- which(beta_chr == chr)
+        chr_row_ids <- if (is.null(beta_locs_rownames)) chr_beta_idx else beta_row_ids_all[chr_beta_idx]
+        chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names, materialize = TRUE)
+        chr_seed_ids <- seed_ids[seed_chr == chr]
+        chr_seeds <- seeds_tsv[as.character(seeds_tsv[, seeds_id_col]) %in% chr_seed_ids, , drop = FALSE]
+        chr_ret <- withCallingHandlers(
+            findDMRsFromSeedsChr(
+                beta = chr_handler,
+                seeds = chr_seeds,
+                pheno = pheno_all,
+                seeds_id_col = seeds_id_col,
+                sample_group_col = sample_group_col,
+                casecontrol_col = "__casecontrol__",
+                covariates = covariates,
+                min_cpg_delta_beta = min_cpg_delta_beta,
+                array = array,
+                genome = genome,
+                max_pval = max_pval,
+                entanglement = entanglement,
+                pval_mode = pval_mode,
+                empirical_strategy = empirical_strategy,
+                ntries = ntries,
+                mid_p = mid_p,
+                max_lookup_dist = max_lookup_dist,
+                expansion_window = expansion_window,
+                max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+                max_bridge_extension_gaps = max_bridge_extension_gaps,
+                min_seeds = min_seeds,
+                min_adj_seeds = min_adj_seeds,
+                min_cpgs = min_cpgs,
+                aggfun = aggfun,
+                ignored_sample_groups = ignored_sample_groups,
+                output_prefix = NULL,
+                njobs = njobs,
+                beta_row_names_file = NULL,
+                annotate_with_genes = annotate_with_genes,
+                .score_dmrs = .score_dmrs,
+                extract_motifs = extract_motifs,
+                bed_provided = FALSE,
+                verbose = verbose,
+                .load_debug = FALSE
+            ),
+            warning = function(w) {
+                if (grepl("No DMRs|No connectivity windows", conditionMessage(w))) {
+                    invokeRestart("muffleWarning")
+                }
+            }
+        )
+        if (!is.null(chr_ret) && length(chr_ret) > 0L) {
+            chr_results[[chr]] <- chr_ret
+        }
+        rm(chr_handler, chr_ret)
+        gc(verbose = FALSE)
+    }
+    chr_results <- chr_results[lengths(chr_results) > 0L]
+    if (length(chr_results) == 0L) {
+        .log_warn("No DMRs remain after filtering based on min_seeds.")
+        .emptyOutputs(output_prefix_base)
+        return(NULL)
+    }
+    final_dmrs_granges <- if (length(chr_results) == 1L) {
+        chr_results[[1L]]
+    } else {
+        Reduce(c, unname(chr_results))
+    }
+    final_ord <- order(as.character(GenomicRanges::seqnames(final_dmrs_granges)), GenomicRanges::start(final_dmrs_granges), GenomicRanges::end(final_dmrs_granges))
+    final_dmrs_granges <- final_dmrs_granges[final_ord]
+
+    if (!is.null(output_prefix_dot)) {
+        viewer_cpgs <- unique(unlist(lapply(S4Vectors::mcols(final_dmrs_granges)$cpgs, .splitCsvValues), use.names = FALSE))
+        viewer_beta <- beta_handler$getBeta(row_names = viewer_cpgs, col_names = beta_col_names_detection)
+        viewer_file <- paste0(output_prefix_dot, "seeds_beta.tsv.gz")
+        gz <- gzfile(viewer_file, "w")
+        write.table(viewer_beta, gz, sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
+        close(gz)
+
+        final_dmrs <- convertToDataFrame(final_dmrs_granges)
+        encoded_dmrs <- .encodeNonTabularColumns(final_dmrs)
+        dmrs_file <- paste0(output_prefix_dot, "dmrs.tsv.gz")
+        gz <- gzfile(dmrs_file, "w")
+        write.table(
+            encoded_dmrs$data,
+            gz,
+            sep = "\t",
+            quote = FALSE,
+            qmethod = "double",
+            col.names = TRUE,
+            row.names = FALSE
+        )
+        close(gz)
+        .log_success("DMRs saved.", level = 2)
+    }
+
     invisible(final_dmrs_granges)
 }

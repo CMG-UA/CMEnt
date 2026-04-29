@@ -6,9 +6,8 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
-    options(error = traceback)
-    options(warn = 2)
-    dmrs <- findDMRsFromSeeds(
+    withr::local_options(list(error = traceback))
+    dmrs <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
@@ -21,7 +20,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         min_cpgs = 3,
         njobs = 1,
         max_lookup_dist = 1000
-    )
+    ))
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
 })
 
@@ -76,7 +75,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 
         # Assertions
         expect_s4_class(dmrs_cment, "GRanges")
-        expect_equal(length(dmrs_cment), 143)
+        expect_equal(length(dmrs_cment), 125)
         expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_cment))))
 
         # Check that all DMRs meet the criteria

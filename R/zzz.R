@@ -41,3 +41,5 @@ update_package_option("CMEnt.jaspar_tax_group", mode = "character", default = "v
 update_package_option("CMEnt.jaspar_corr_threshold", mode = "numeric", default = 0.9)
 update_package_option("CMEnt.make_debug_dir", mode = "logical", default = FALSE)
 update_package_option("CMEnt.debug_dir", mode = "character", default = file.path(tempdir(), "CMEnt_debug"))
+
+options(cli.num_colors = cli::num_ansi_colors())

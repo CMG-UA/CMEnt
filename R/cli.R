@@ -84,12 +84,6 @@
             help = "The sample groups to ignore while considering connection and expansion, comma separated. Can also be 'case' or 'control'."
         ),
         optparse::make_option(
-            "--expansion_step",
-            default = 500,
-            type = "integer",
-            help = "The index-specific DMR expansion step, defaults to 500"
-        ),
-        optparse::make_option(
             "--array",
             default = "450K",
             help = "Array platform ('450K', '27K', 'EPIC', 'EPICv2', 'Mouse', 'NULL'). Must be 'NULL' if not applicable"
@@ -257,7 +251,6 @@ findDMRsFromSeedsCLI <- function(args) {
         casecontrol_col = args$casecontrol_col,
         covariates = covariates,
         min_cpg_delta_beta = args$min_cpg_delta_beta,
-        expansion_step = args$expansion_step,
         array = array,
         genome = genome,
         max_pval = args$max_pval,

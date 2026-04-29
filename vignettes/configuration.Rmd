@@ -268,26 +268,6 @@ Set to `<= 0` to compute connectivity genome-wide.
 **Default:** `1`
 **Description:** In Stage 2 DMR extension, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
 
-### `expansion_step`
-**Type:** Integer  
-**Default:** `500`  
-**Unit:** Base pairs  
-**Description:** Index-specific step size for expanding DMRs around seeds. Larger values increase memory usage but improve computation speed.
-
-**Trade-off:**
-- Smaller values (100-300): Lower memory, slower computation
-- Larger values (500-1000): Higher memory, faster computation
-
-**Example:**
-```{r}
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno,
-    expansion_step = 1000
-)
-```
-
 ## Statistical Parameters
 
 ### `max_pval`
@@ -443,21 +423,6 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     njobs = 4
-)
-```
-
-### `chunk_size`
-**Type:** Integer
-**Default:** `getOption("CMEnt.chunk_size", 1000)`
-**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
-
-**Example:**
-```{r}
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = seeds,
-    pheno = pheno,
-    chunk_size = 10000
 )
 ```
 
@@ -672,16 +637,6 @@ options("CMEnt.random_seed" = 123)
 options("CMEnt.beta_in_mem_threshold_mb" = 200)
 ```
 
-
-### Option: `CMEnt.chunk_size`
-**Type:** Integer  
-**Default:** `1000`  
-**Description:** Number of CpGs to process in each chunk. Adjusting this can help manage memory usage and computation time.
-
-```{r}
-options("CMEnt.chunk_size" = 10000)
-```
-
 ## Caching
 
 ### Option: `CMEnt.use_bed_cache`
@@ -868,7 +823,6 @@ dmrs <- findDMRsFromSeeds(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
-    expansion_step = 1000,
     njobs = 4
 )
 ```
@@ -939,9 +893,8 @@ dmrs <- findDMRsFromSeeds(
 ## Issue: Slow Performance
 
 **Solution:**
-- Increase `chunk_size` for larger processing chunks. Setting this to a larger value (e.g., 10e6) can reduce overhead and speed up processing, especially for genome-wide datasets.
 - Increase `njobs` for parallel processing
-- Increase `expansion_step`
+- CMEnt derives connectivity chunk sizes from available RAM automatically.
 - Use `pval_mode = "parametric"` instead of `"empirical"`
 - Enable caching options
 - Consider using tabix-indexed files

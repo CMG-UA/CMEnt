@@ -179,7 +179,6 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
         max_pval = 0.05,
         min_delta_beta = 0,
         max_lookup_dist = 1000,
-        chunk_size = 1000,
         entanglement = "strong",
         aggfun = stats::median,
         ntries = 10,
@@ -198,7 +197,6 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
         max_pval = 0.05,
         min_delta_beta = 0,
         max_lookup_dist = 1000,
-        chunk_size = 1000,
         entanglement = "strong",
         aggfun = stats::median,
         ntries = 10,
@@ -209,7 +207,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     expect_equal(mem_connectivity, tabix_connectivity)
 })
 
-test_that("parallel connectivity is invariant to per-batch BetaHandler subsetting", {
+test_that("parallel connectivity matches sequential connectivity", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
@@ -227,12 +225,7 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
     pval_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
-    withr::local_options(list(
-        CMEnt.parallel_result_batch_size = 2L,
-        CMEnt.parallel_batch_beta_subset = FALSE,
-        CMEnt.njobs = 2L
-    ))
-    connectivity_no_subset <- .buildConnectivityArraySinglePass(
+    connectivity_seq <- .buildConnectivityArraySinglePass(
         beta_handler = mem_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -243,21 +236,15 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
         max_pval = 0.05,
         min_delta_beta = 0,
         max_lookup_dist = 1000,
-        chunk_size = 3,
         entanglement = "strong",
         aggfun = stats::median,
         ntries = 10,
         mid_p = TRUE,
-        njobs = 2
+        njobs = 1
     )[["connectivity_array"]]
 
-    withr::local_options(list(
-        CMEnt.parallel_result_batch_size = 2L,
-        CMEnt.parallel_batch_beta_subset = TRUE,
-        CMEnt.parallel_batch_beta_subset_min_rows = 1L,
-        CMEnt.njobs = 2L
-    ))
-    connectivity_with_subset <- .buildConnectivityArraySinglePass(
+    withr::local_options(list(CMEnt.njobs = 2L))
+    connectivity_parallel <- .buildConnectivityArraySinglePass(
         beta_handler = mem_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -268,7 +255,6 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
         max_pval = 0.05,
         min_delta_beta = 0,
         max_lookup_dist = 1000,
-        chunk_size = 3,
         entanglement = "strong",
         aggfun = stats::median,
         ntries = 10,
@@ -276,7 +262,7 @@ test_that("parallel connectivity is invariant to per-batch BetaHandler subsettin
         njobs = 2
     )[["connectivity_array"]]
 
-    expect_equal(connectivity_no_subset, connectivity_with_subset)
+    expect_equal(connectivity_seq, connectivity_parallel)
 })
 
 test_that("findDMRsFromSeeds works with BSseq input", {

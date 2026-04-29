@@ -1,5 +1,27 @@
 options("CMEnt.verbose" = 0)
 
+test_that("BetaHandler can release heavy in-memory backend", {
+    beta <- matrix(runif(20), nrow = 5)
+    rownames(beta) <- paste0("cg", seq_len(5))
+    colnames(beta) <- paste0("S", seq_len(4))
+    locs <- data.frame(
+        chr = rep("chr1", 5),
+        start = seq(100, 500, 100),
+        end = seq(101, 501, 100),
+        row.names = rownames(beta),
+        stringsAsFactors = FALSE
+    )
+
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    expect_equal(bh$backendType(), "memory")
+    expect_equal(nrow(bh$getBetaLocs()), 5L)
+
+    bh$releaseInMemoryBackend()
+    expect_equal(bh$backendType(), "unknown")
+    expect_null(bh$sorted_locs)
+})
+
+
 test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with ugap", {
     set.seed(1)
     cpg_ids <- paste0("cg", 1:10)
@@ -23,7 +45,7 @@ test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with
             pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
             max_lookup_dist = 1000, connectivity_array = conn, ugap = 1L, dgap = 0L,
-            splits = splits, njobs = 1, chunk_size = 100
+            splits = splits, njobs = 1
         )
     )
 })
@@ -61,7 +83,7 @@ test_that("end-of-input is not bridged", {
         group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
         max_lookup_dist = 1000, connectivity_array = conn, ugap = 0L, dgap = 1L,
-        splits = splits, njobs = 1, chunk_size = 100
+        splits = splits, njobs = 1
     )
     expect_equal(ret$connectivity_array$connected, c(TRUE, FALSE, TRUE, FALSE))
 })
@@ -105,7 +127,7 @@ test_that("upstream gap recheck skips out-of-bounds runs without warnings", {
             group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
             max_lookup_dist = 1000, connectivity_array = conn, ugap = 2L, dgap = 0L,
-            splits = splits, njobs = 1, chunk_size = 100
+            splits = splits, njobs = 1
         )
     )
     expect_equal(ret$connectivity_array$connected, c(TRUE, FALSE, TRUE, FALSE))
@@ -150,27 +172,29 @@ test_that("downstream gap recheck skips out-of-bounds runs", {
             group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
             max_lookup_dist = 1000, connectivity_array = conn, ugap = 0L, dgap = 2L,
-            splits = splits, njobs = 1, chunk_size = 100
+            splits = splits, njobs = 1
         )
     )
     expect_equal(ret$connectivity_array$connected, c(FALSE, TRUE, FALSE, TRUE))
 })
 
 
-test_that("chunk_size is capped by memory budget option", {
-    set.seed(1)
-    cpg_ids <- paste0("cg", seq_len(2000))
-    beta <- matrix(runif(2000 * 6), nrow = 2000)
+test_that("bridge recheck follows runs containing newly bridged edges", {
+    cpg_ids <- paste0("cg", seq_len(6))
+    beta <- matrix(
+        rep(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6), each = length(cpg_ids)),
+        nrow = length(cpg_ids),
+        byrow = FALSE
+    )
     rownames(beta) <- cpg_ids
-    colnames(beta) <- paste0("S", 1:6)
+    colnames(beta) <- paste0("S", seq_len(6))
     locs <- data.frame(
-        chr = rep("chr1", 2000),
-        start = seq(100, by = 10, length.out = 2000),
-        end = seq(101, by = 10, length.out = 2000),
+        chr = rep("chr1", length(cpg_ids)),
+        start = seq(100, 600, 100),
+        end = seq(101, 601, 100),
         row.names = cpg_ids,
         stringsAsFactors = FALSE
     )
-
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)
     pheno <- data.frame(
         g = c("A", "A", "A", "B", "B", "B"),
@@ -178,26 +202,47 @@ test_that("chunk_size is capped by memory budget option", {
         stringsAsFactors = FALSE
     )
     gi <- list(A = 1:3, B = 4:6)
-
-    withr::local_options(list(
-        CMEnt.max_chunk_memory_mb = 1,
-        CMEnt.chunk_memory_multiplier = 12,
-        CMEnt.verbose = 0
-    ))
-
-    ret <- CMEnt:::.buildConnectivityArraySinglePass(
-        beta_handler = bh,
-        beta_locs = locs,
-        pheno = pheno,
-        group_inds = gi,
-        pval_mode_per_group = c(A = "parametric", B = "parametric"),
-        empirical_strategy_per_group = c(A = "auto", B = "auto"),
-        max_pval = 0.05,
-        max_lookup_dist = 1000,
-        chunk_size = 5000,
-        njobs = 1
+    conn <- data.frame(
+        connected = c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE),
+        pval = c(0.01, rep(NA_real_, 5)),
+        reason = c("", rep("pval>max_pval", 4), "end-of-input"),
+        stringsAsFactors = FALSE
     )
+    splits <- matrix(c(1, 5), ncol = 2)
 
-    # With a 1 MB memory budget and 6 columns, chunk_size must be capped below 5000.
-    expect_true(nrow(ret$splits) > 1)
+    ret1 <- CMEnt:::.buildConnectivityArraySinglePass(
+        beta_handler = bh, beta_locs = locs, pheno = pheno,
+        group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
+        max_lookup_dist = 1000, connectivity_array = conn, ugap = 0L, dgap = 1L,
+        splits = splits, njobs = 1
+    )
+    expect_true(ret1$connectivity_array$connected[[2]])
+    expect_equal(ret1$recheck, 2L)
+
+    ret2 <- CMEnt:::.buildConnectivityArraySinglePass(
+        beta_handler = bh, beta_locs = locs, pheno = pheno,
+        group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
+        max_lookup_dist = 1000, connectivity_array = ret1$connectivity_array,
+        recheck = ret1$recheck, ugap = 0L, dgap = 1L,
+        splits = splits, njobs = 1
+    )
+    expect_true(ret2$connectivity_array$connected[[3]])
+    expect_equal(ret2$recheck, 3L)
+})
+
+
+test_that("connectivity chunk size is derived from available RAM", {
+    chunk_size <- CMEnt:::.connectivityChunkSize(
+        n_samples = 6,
+        njobs = 2,
+        n_pairs = 5000,
+        available_ram_bytes = 1024^2
+    )
+    expect_equal(chunk_size, floor(0.9 * 1024^2 / (2 * 6 * 8 * 12)))
+    expect_equal(
+        CMEnt:::.connectivityChunkSize(6, 2, 10, available_ram_bytes = 1024^2),
+        10L
+    )
 })
