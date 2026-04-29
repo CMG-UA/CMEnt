@@ -371,7 +371,6 @@ if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(cment_njobs, future::availableCores()))
     options("CMEnt.njobs" = cment_njobs)
     options("CMEnt.verbose" = 3)
-    options("CMEnt.parallel_backend" = "multisession")
     cat(sprintf("CMEnt benchmark jobs: %d\n", cment_njobs))
     start_time <- Sys.time()
 

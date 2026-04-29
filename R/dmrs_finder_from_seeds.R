@@ -680,7 +680,6 @@
             return(matrix(numeric(0), ncol = 2))
         }
         chunk_size_eff <- as.integer(chunk_size)
-        total_pairs <- sum(pair_ranges_df$end_pair - pair_ranges_df$start_pair + 1L)
         if (!is.finite(chunk_size_eff) || is.na(chunk_size_eff) || chunk_size_eff < 1L) {
             chunk_size_eff <- 1L
         }
