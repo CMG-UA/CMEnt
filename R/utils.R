@@ -1520,6 +1520,449 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 
+.packageInstallSpec <- function(pkg_name) {
+    if (identical(pkg_name, "IlluminaMouseMethylationanno.12.v1.mm10")) {
+        return(list(type = "github", value = "chiaraherzog/IlluminaMouseMethylationanno.12.v1.mm10"))
+    }
+    if (pkg_name %in% c("optparse", "devtools")) {
+        return(list(type = "cran", value = pkg_name))
+    }
+    list(type = "bioc", value = pkg_name)
+}
+
+
+.formatInstallInstructions <- function(pkg_names) {
+    if (length(pkg_names) == 0L) {
+        return(character(0))
+    }
+
+    specs <- lapply(pkg_names, .packageInstallSpec)
+    spec_types <- vapply(specs, `[[`, character(1), "type")
+    spec_values <- vapply(specs, `[[`, character(1), "value")
+    lines <- character(0)
+
+    cran_pkgs <- unique(spec_values[spec_types == "cran"])
+    bioc_pkgs <- unique(spec_values[spec_types == "bioc"])
+    github_repos <- unique(spec_values[spec_types == "github"])
+
+    if (length(cran_pkgs) > 0L) {
+        lines <- c(
+            lines,
+            paste0(
+                "install.packages(c(",
+                paste(sprintf("\"%s\"", cran_pkgs), collapse = ", "),
+                "))"
+            )
+        )
+    }
+
+    if (length(bioc_pkgs) > 0L) {
+        lines <- c(
+            lines,
+            "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\")",
+            paste0(
+                "BiocManager::install(c(",
+                paste(sprintf("\"%s\"", bioc_pkgs), collapse = ", "),
+                "))"
+            )
+        )
+    }
+
+    if (length(github_repos) > 0L) {
+        if (!"devtools" %in% cran_pkgs) {
+            lines <- c(lines, "install.packages(\"devtools\")")
+        }
+        lines <- c(
+            lines,
+            vapply(github_repos, function(repo) {
+                paste0("devtools::install_github(\"", repo, "\")")
+            }, character(1))
+        )
+    }
+
+    lines
+}
+
+
+.assertPackagesInstalled <- function(pkg_names, context, reason = NULL) {
+    pkg_names <- unique(pkg_names[!is.na(pkg_names) & nzchar(pkg_names)])
+    if (length(pkg_names) == 0L) {
+        return(invisible(character(0)))
+    }
+
+    missing_pkgs <- pkg_names[!vapply(pkg_names, .isPackageInstalled, logical(1))]
+    if (length(missing_pkgs) == 0L) {
+        return(invisible(pkg_names))
+    }
+
+    msg <- c(
+        paste0(
+            context,
+            " requires the following package",
+            if (length(missing_pkgs) > 1L) "s" else "",
+            ": ",
+            paste(sprintf("'%s'", missing_pkgs), collapse = ", "),
+            "."
+        )
+    )
+    if (!is.null(reason) && nzchar(reason)) {
+        msg <- c(msg, reason)
+    }
+    msg <- c(msg, "Install with:", .formatInstallInstructions(missing_pkgs))
+
+    stop(paste(msg, collapse = "\n"), call. = FALSE)
+}
+
+
+.makeDependencyRequirements <- function(pkg_names, reason) {
+    pkg_names <- unique(pkg_names[!is.na(pkg_names) & nzchar(pkg_names)])
+    if (length(pkg_names) == 0L) {
+        return(data.frame(pkg_name = character(0), reason = character(0), stringsAsFactors = FALSE))
+    }
+    data.frame(
+        pkg_name = pkg_names,
+        reason = rep(reason, length(pkg_names)),
+        stringsAsFactors = FALSE
+    )
+}
+
+
+.combineDependencyRequirements <- function(...) {
+    parts <- list(...)
+    parts <- Filter(function(x) is.data.frame(x) && nrow(x) > 0L, parts)
+    if (length(parts) == 0L) {
+        return(data.frame(pkg_name = character(0), reason = character(0), stringsAsFactors = FALSE))
+    }
+    combined <- do.call(rbind, parts)
+    combined[!duplicated(combined), , drop = FALSE]
+}
+
+
+.assertDependencyRequirements <- function(requirements, context) {
+    if (!is.data.frame(requirements) || nrow(requirements) == 0L) {
+        return(invisible(character(0)))
+    }
+
+    missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
+    if (!any(missing_mask)) {
+        return(invisible(requirements$pkg_name))
+    }
+
+    missing_reqs <- requirements[missing_mask, , drop = FALSE]
+    missing_pkgs <- unique(missing_reqs$pkg_name)
+    missing_reasons <- unique(missing_reqs$reason[nzchar(missing_reqs$reason)])
+    msg <- c(
+        paste0(
+            context,
+            " requires the following package",
+            if (length(missing_pkgs) > 1L) "s" else "",
+            ": ",
+            paste(sprintf("'%s'", missing_pkgs), collapse = ", "),
+            "."
+        )
+    )
+    if (length(missing_reasons) > 0L) {
+        msg <- c(msg, "Required by this run:", paste0("- ", missing_reasons))
+    }
+    msg <- c(msg, "Install with:", .formatInstallInstructions(missing_pkgs))
+
+    stop(paste(msg, collapse = "\n"), call. = FALSE)
+}
+
+
+.getArrayAnnotationPackage <- function(array, genome) {
+    array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), ignore_case = TRUE)
+    genome <- strex::match_arg(genome, choices = c("hg38", "hg19", "hs1", "mm10", "mm39"), ignore_case = TRUE)
+
+    if (genome %in% c("hg19", "hg38", "hs1")) {
+        return(switch(tolower(array),
+            "450k" = "IlluminaHumanMethylation450kanno.ilmn12.hg19",
+            "epic" = "IlluminaHumanMethylationEPICanno.ilm10b4.hg19",
+            "epicv2" = "IlluminaHumanMethylationEPICv2anno.20a1.hg38",
+            "27k" = "IlluminaHumanMethylation27kanno.ilmn12.hg19",
+            stop(
+                paste0(
+                    "Incorrect array and genome combination was provided. ",
+                    "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported."
+                ),
+                call. = FALSE
+            )
+        ))
+    }
+
+    if (genome %in% c("mm10", "mm39")) {
+        if (!identical(array, "Mouse")) {
+            stop(
+                "Incorrect array and genome combination was provided. For mm10 and mm39 only 'Mouse' array is supported.",
+                call. = FALSE
+            )
+        }
+        return("IlluminaMouseMethylationanno.12.v1.mm10")
+    }
+
+    stop("Unsupported array/genome combination: ", array, "/", genome, call. = FALSE)
+}
+
+
+.assertArrayAnnotationPackageInstalled <- function(array, genome, context) {
+    pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
+    .assertDependencyRequirements(
+        requirements = .makeDependencyRequirements(
+            pkg_names = pkg_name,
+            reason = paste0(
+                "The requested array/genome combination ('", array, "', '", genome,
+                "') needs this annotation package to resolve probe coordinates."
+            )
+        ),
+        context = context
+    )
+    pkg_name
+}
+
+
+.arrayAnnotationDependencyRequirements <- function(array, genome, reason = NULL) {
+    pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
+    .makeDependencyRequirements(
+        pkg_names = pkg_name,
+        reason = if (is.null(reason)) {
+            paste0(
+                "The requested array/genome combination ('", array, "', '", genome,
+                "') needs this annotation package to resolve probe coordinates."
+            )
+        } else {
+            reason
+        }
+    )
+}
+
+
+.getGeneAnnotationPackages <- function(genome) {
+    target_genome <- tolower(genome)
+    annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
+    supported_organisms <- Organism.dplyr::supportedOrganisms()
+    matched_row <- supported_organisms[grepl(annotation_source_genome, tolower(supported_organisms$TxDb)), , drop = FALSE]
+    if (nrow(matched_row) == 0L) {
+        stop("Unsupported genome: ", genome, call. = FALSE)
+    }
+    c(txdb = matched_row$TxDb[1], orgdb = matched_row$OrgDb[1])
+}
+
+
+.assertGeneAnnotationPackagesInstalled <- function(genome, context) {
+    pkgs <- .getGeneAnnotationPackages(genome)
+    .assertDependencyRequirements(
+        requirements = .makeDependencyRequirements(
+            pkg_names = unname(pkgs),
+            reason = paste0(
+                "Gene annotation for genome '", genome,
+                "' requires both the TxDb and OrgDb annotation packages."
+            )
+        ),
+        context = context
+    )
+    pkgs
+}
+
+
+.geneAnnotationDependencyRequirements <- function(genome, reason = NULL) {
+    pkgs <- .getGeneAnnotationPackages(genome)
+    .makeDependencyRequirements(
+        pkg_names = unname(pkgs),
+        reason = if (is.null(reason)) {
+            paste0(
+                "Gene annotation for genome '", genome,
+                "' requires both the TxDb and OrgDb annotation packages."
+            )
+        } else {
+            reason
+        }
+    )
+}
+
+
+.resolveBSGenomePackage <- function(genome) {
+    if (genome == "hg19") {
+        return("BSgenome.Hsapiens.UCSC.hg19")
+    }
+    if (genome == "hg38") {
+        return("BSgenome.Hsapiens.UCSC.hg38")
+    }
+    if (genome == "hs1") {
+        return("BSgenome.Hsapiens.UCSC.hs1")
+    }
+    if (genome == "mm10") {
+        return("BSgenome.Mmusculus.UCSC.mm10")
+    }
+    if (genome == "mm39") {
+        return("BSgenome.Mmusculus.UCSC.mm39")
+    }
+    NULL
+}
+
+
+.assertBSGenomePackageInstalled <- function(genome, context) {
+    pkg_name <- .resolveBSGenomePackage(genome)
+    if (is.null(pkg_name)) {
+        stop(
+            "Unsupported genome '", genome,
+            "' for local sequence extraction. Set use_online = TRUE or provide one of: hg19, hg38, hs1, mm10, mm39.",
+            call. = FALSE
+        )
+    }
+    .assertDependencyRequirements(
+        requirements = .makeDependencyRequirements(
+            pkg_names = pkg_name,
+            reason = paste0(
+                "Local sequence extraction for genome '", genome,
+                "' uses the matching BSgenome package."
+            )
+        ),
+        context = context
+    )
+    pkg_name
+}
+
+
+.bsgenomeDependencyRequirements <- function(genome, reason = NULL) {
+    pkg_name <- .resolveBSGenomePackage(genome)
+    if (is.null(pkg_name)) {
+        stop(
+            "Unsupported genome '", genome,
+            "' for local sequence extraction. Set use_online = TRUE or provide one of: hg19, hg38, hs1, mm10, mm39.",
+            call. = FALSE
+        )
+    }
+    .makeDependencyRequirements(
+        pkg_names = pkg_name,
+        reason = if (is.null(reason)) {
+            paste0(
+                "Local sequence extraction for genome '", genome,
+                "' uses the matching BSgenome package."
+            )
+        } else {
+            reason
+        }
+    )
+}
+
+
+.jasparDependencyRequirements <- function(reason = NULL) {
+    tax_group <- getOption("CMEnt.jaspar_tax_group", "vertebrates")
+    jaspar_version <- getOption("CMEnt.jaspar_version", 2024)
+    jaspar_pkg <- paste0("JASPAR", jaspar_version)
+    cache_dir <- getOption(
+        "CMEnt.jaspar_cache_dir",
+        .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
+    )
+    pwms_file <- file.path(cache_dir, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
+    if (file.exists(pwms_file)) {
+        return(data.frame(pkg_name = character(0), reason = character(0), stringsAsFactors = FALSE))
+    }
+    .makeDependencyRequirements(
+        pkg_names = jaspar_pkg,
+        reason = if (is.null(reason)) {
+            paste0(
+                "JASPAR motif matching was requested and no cached PWM set was available for tax_group='",
+                tax_group, "' and version ", jaspar_version, "."
+            )
+        } else {
+            reason
+        }
+    )
+}
+
+
+.experimentHubDependencyRequirements <- function(resource, reason = NULL) {
+    .makeDependencyRequirements(
+        pkg_names = c("ExperimentHub", "AnnotationHub"),
+        reason = if (is.null(reason)) {
+            paste0(
+                "The bundled example resource '", resource,
+                "' was not found locally, so CMEnt needs ExperimentHub support to fetch it."
+            )
+        } else {
+            reason
+        }
+    )
+}
+
+
+.findDMRsDependencyRequirements <- function(beta, array, genome,
+                                           annotate_with_genes = TRUE,
+                                           extract_motifs = TRUE,
+                                           bed_provided = FALSE) {
+    is_tabix_input <- is.character(beta) &&
+        length(beta) == 1L &&
+        file.exists(beta) &&
+        file_is_tabix(beta)
+    is_bed_input <- isTRUE(bed_provided) ||
+        (is.character(beta) && length(beta) == 1L && file.exists(beta) && identical(tolower(tools::file_ext(beta)), "bed"))
+    needs_array_annotations <- !inherits(beta, "BetaHandler") &&
+        !is_bsseq(beta) &&
+        !is_tabix_input &&
+        !is_bed_input &&
+        !is.null(array)
+
+    .combineDependencyRequirements(
+        if (needs_array_annotations) {
+            .arrayAnnotationDependencyRequirements(
+                array = array,
+                genome = genome,
+                reason = paste0(
+                    "The supplied beta input needs array annotations for array='", array,
+                    "' and genome='", genome, "' before DMR finding can start."
+                )
+            )
+        },
+        if (isTRUE(annotate_with_genes)) {
+            .geneAnnotationDependencyRequirements(
+                genome = genome,
+                reason = paste0(
+                    "'annotate_with_genes = TRUE' requires gene annotation packages for genome '",
+                    genome, "'."
+                )
+            )
+        },
+        if (isTRUE(extract_motifs)) {
+            .bsgenomeDependencyRequirements(
+                genome = genome,
+                reason = paste0(
+                    "'extract_motifs = TRUE' requires the BSgenome package for genome '",
+                    genome, "'."
+                )
+            )
+        }
+    )
+}
+
+
+.motifDependencyRequirements <- function(genome, array = NULL, beta_locs = NULL, context = "motif extraction") {
+    if (is.null(beta_locs) && is.null(array)) {
+        stop(
+            context,
+            " requires either 'beta_locs' or a non-NULL 'array' value to resolve site coordinates.",
+            call. = FALSE
+        )
+    }
+    .combineDependencyRequirements(
+        .bsgenomeDependencyRequirements(
+            genome = genome,
+            reason = paste0(context, " requires the BSgenome package for genome '", genome, "'.")
+        ),
+        if (!is.null(array) && (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1L && file.exists(beta_locs)))) {
+            .arrayAnnotationDependencyRequirements(
+                array = array,
+                genome = genome,
+                reason = paste0(
+                    context, " needs array annotations for array='", array,
+                    "' and genome='", genome, "'."
+                )
+            )
+        }
+    )
+}
+
+
 #' Get Sorted Array Locations
 #'
 #' @description Retrieves and sorts genomic location annotations for the specified
@@ -1579,52 +2022,11 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         locs <- readRDS(cache_file)
         return(locs)
     }
-    pkg_name <- NULL
-    if (genome %in% c("hg19", "hg38", "hs1")) {
-        if (array == "450k") {
-            pkg_name <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-        } else if (array == "epic") {
-            pkg_name <- "IlluminaHumanMethylationEPICanno.ilm10b4.hg19"
-        } else if (array == "epicv2") {
-            pkg_name <- "IlluminaHumanMethylationEPICv2anno.20a1.hg38"
-        } else if (array == "27k") {
-            pkg_name <- "IlluminaHumanMethylation27kanno.ilmn12.hg19"
-        } else {
-            stop(
-                paste0(
-                    "Incorrect array and genome combination was provided. ",
-                    "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported."
-                )
-            )
-        }
-    } else if (genome %in% c("mm10", "mm39")) {
-        if (array != "Mouse") {
-            stop("Incorrect array and genome combination was provided. For mm10 and mm39 only 'Mouse' array is supported.")
-        }
-        pkg_name <- "IlluminaMouseMethylationanno.12.v1.mm10"
-        if (!.isPackageInstalled(pkg_name)) {
-            if (!requireNamespace("devtools", quietly = TRUE)) {
-                install.packages("devtools")
-            }
-            devtools::install_github(paste0("chiaraherzog/", pkg_name))
-        }
-    }
-    if (is.null(pkg_name)) {
-        stop(
-            "Unsupported array/genome combination: ", array,
-            "/", genome
-        )
-    }
-    if (!.isPackageInstalled(pkg_name)) {
-        .log_info(
-            "Installing required annotation package: ",
-            pkg_name
-        )
-        if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            install.packages("BiocManager")
-        }
-        BiocManager::install(pkg_name)
-    }
+    pkg_name <- .assertArrayAnnotationPackageInstalled(
+        array = array,
+        genome = genome,
+        context = "getSortedGenomicLocs()"
+    )
     source_genome <- NULL
     if (tolower(array) %in% c("450k", "epic", "27k")) {
         source_genome <- "hg19"
@@ -1776,51 +2178,9 @@ orderByLoc <- function(x,
 }
 
 .getBSGenomePackage <- function(genome) {
-    if (genome == "hg19") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg19"
-    } else if (genome == "hg38") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hg38"
-    } else if (genome == "hs1") {
-        pkg_name <- "BSgenome.Hsapiens.UCSC.hs1"
-    } else if (genome == "mm10") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm10"
-    } else if (genome == "mm39") {
-        pkg_name <- "BSgenome.Mmusculus.UCSC.mm39"
-    } else {
-        if (!requireNamespace("BSgenome", quietly = TRUE)) {
-            if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                install.packages("BiocManager")
-            }
-            BiocManager::install("BSgenome")
-        }
-        available_genomes <- BSgenome::available.genomes()
-        matched_genome <- grep(paste0("^BSgenome\\..*\\.UCSC\\.", genome, "$"), available_genomes, value = TRUE)
-        if (length(matched_genome) > 0) {
-            pkg_name <- matched_genome[1]
-        } else {
-            pkg_name <- NULL
-        }
-    }
-    if (is.null(pkg_name)) {
+    pkg_name <- .resolveBSGenomePackage(genome)
+    if (is.null(pkg_name) || !.isPackageInstalled(pkg_name)) {
         return(NULL)
-    }
-    if (!requireNamespace(pkg_name, quietly = TRUE)) {
-        if (!requireNamespace(pkg_name, quietly = TRUE)) {
-            .log_info("BSgenome package not available: ", pkg_name)
-            .log_info("Attempting to install...")
-            tryCatch(
-                {
-                    if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                        install.packages("BiocManager")
-                    }
-                    BiocManager::install(pkg_name, update = FALSE)
-                },
-                error = function(e) {
-                    .log_warn("Installation of ", pkg_name, " failed")
-                    pkg_name <<- NULL
-                }
-            )
-        }
     }
     pkg_name
 }
@@ -1862,10 +2222,11 @@ orderByLoc <- function(x,
 #'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
 #' }
 #'
-#' If the required BSgenome package is not installed and installation fails,
-#' the function will automatically fall back to querying sequences from the
-#' UCSC Genome Browser REST API. The online method processes sequences in
-#' batches with optional parallel processing for improved performance with large datasets.
+#' If the required BSgenome package is not installed, the function raises an
+#' error with installation instructions. Set `use_online = TRUE` to query
+#' sequences from the UCSC Genome Browser REST API instead. The online method
+#' processes sequences in batches with optional parallel processing for
+#' improved performance with large datasets.
 #'
 #' For large numbers of DMRs (>10k), consider using parallel processing by setting
 #' njobs > 1 when using the online API, or install the appropriate BSgenome package
@@ -1889,8 +2250,8 @@ orderByLoc <- function(x,
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
                             batch_size = 100, njobs = 1) {
     if (!use_online) {
-        pkg_name <- .getBSGenomePackage(genome)
-        use_bsgenome <- !is.null(pkg_name)
+        pkg_name <- .assertBSGenomePackageInstalled(genome, context = "getDMRSequences()")
+        use_bsgenome <- TRUE
     } else {
         pkg_name <- NULL
         use_bsgenome <- FALSE
@@ -2217,28 +2578,12 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
 
     target_genome <- tolower(genome)
     annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
-    supported_organisms <- Organism.dplyr::supportedOrganisms()
-    matched_row <- supported_organisms[grepl(annotation_source_genome, tolower(supported_organisms$TxDb)), , drop = FALSE]
-    if (nrow(matched_row) == 0) {
-        stop("Unsupported genome: ", genome)
-    }
-    txdb_pkg <- matched_row$TxDb[1]
-    orgdb_pkg <- matched_row$OrgDb[1]
-
-    # Load required packages
-    if (!requireNamespace(txdb_pkg, quietly = TRUE)) {
-        if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            install.packages("BiocManager")
-        }
-        BiocManager::install(txdb_pkg)
-    }
-
-    if (!requireNamespace(orgdb_pkg, quietly = TRUE)) {
-        if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            install.packages("BiocManager")
-        }
-        BiocManager::install(orgdb_pkg)
-    }
+    annotation_pkgs <- .assertGeneAnnotationPackagesInstalled(
+        genome = genome,
+        context = "annotateDMRsWithGenes()"
+    )
+    txdb_pkg <- unname(annotation_pkgs[["txdb"]])
+    orgdb_pkg <- unname(annotation_pkgs[["orgdb"]])
     if (annotation_source_genome != target_genome) {
         .log_info(
             "Using ", annotation_source_genome,
@@ -2873,54 +3218,41 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
             .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
         }
 
-        if (!requireNamespace("ExperimentHub", quietly = TRUE)) {
-            if (verbose_setting >= 2) {
-                .log_warn("ExperimentHub package not available. Install with: BiocManager::install('ExperimentHub')")
-            }
-        } else {
-            tryCatch(
-                {
-                    cache <- ExperimentHub::getExperimentHubOption("CACHE")
-                    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-                    eh <- ExperimentHub::ExperimentHub()
-                    # Query for CMEntdata resources
-                    cment_resources <- AnnotationHub::query(eh, "DMRsegaldata")
-                    # Find the specific resource
-                    resource_match <- cment_resources[grepl(resource, cment_resources$title, ignore.case = TRUE)]
-                    if (length(resource_match) > 0) {
-                        if (verbose_setting >= 2) {
-                            .log_success("Found resource in ExperimentHub", level = 2)
-                        }
-                        return(resource_match[[1]])
-                    } else {
-                        if (verbose_setting >= 2) {
-                            .log_warn("Resource '", resource, "' not found in ExperimentHub")
-                        }
-                    }
-                },
-                error = function(e) {
+        .assertDependencyRequirements(
+            requirements = .experimentHubDependencyRequirements(resource = resource),
+            context = "loadExampleInputData()"
+        )
+
+        tryCatch(
+            {
+                cache <- ExperimentHub::getExperimentHubOption("CACHE")
+                dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+                eh <- ExperimentHub::ExperimentHub()
+                cment_resources <- AnnotationHub::query(eh, "DMRsegaldata")
+                resource_match <- cment_resources[grepl(resource, cment_resources$title, ignore.case = TRUE)]
+                if (length(resource_match) > 0) {
                     if (verbose_setting >= 2) {
-                        .log_warn("Failed to query ExperimentHub: ", e$message)
+                        .log_success("Found resource in ExperimentHub", level = 2)
                     }
+                    return(resource_match[[1]])
                 }
-            )
-        }
-    }
-    # If we get here, both local and ExperimentHub loading attempts have failed, we use the make_data function to generate the resource
-    source(system.file("inst/bin", "make_data.R", package = "CMEnt", mustWork = TRUE), local = TRUE)
-    local_path <- local_candidates[file.exists(local_candidates)][1]
-    if (!is.na(local_path)) {
-        if (verbose_setting >= 2) {
-            .log_info("Loading ", resource, " from existing local path", level = 2)
-        }
-        load(local_path)
-        return(get(resource))
+                if (verbose_setting >= 2) {
+                    .log_warn("Resource '", resource, "' not found in ExperimentHub")
+                }
+            },
+            error = function(e) {
+                if (verbose_setting >= 2) {
+                    .log_warn("Failed to query ExperimentHub: ", e$message)
+                }
+            }
+        )
     }
 
-    # If we get here, the resource was not found
     stop(
-        "Resource '", resource, "' not found in package or ExperimentHub.\n",
-        "Available resources: ", paste(available_resources, collapse = ", ")
+        "Resource '", resource, "' was not found locally",
+        if (isTRUE(use_experiment_hub)) " or in ExperimentHub" else "",
+        ".\nAvailable resources: ", paste(available_resources, collapse = ", "),
+        call. = FALSE
     )
 }
 

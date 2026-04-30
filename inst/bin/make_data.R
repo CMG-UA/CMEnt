@@ -11,10 +11,16 @@ file.remove("../../data/pheno.tsv")
 save(beta, file = "../../data/beta.rda", compress = "xz")
 save(pheno, file = "../../data/pheno.rda", compress = "xz")
 if (!requireNamespace("limma", quietly = TRUE)) {
-    if (!requireNamespace("BiocManager", quietly = TRUE)) {
-        install.packages("BiocManager")
-    }
-    BiocManager::install("limma")
+    stop(
+        paste(
+            "Package 'limma' is required to generate example data.",
+            "Install it with:",
+            "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\")",
+            "BiocManager::install(\"limma\")",
+            sep = "\n"
+        ),
+        call. = FALSE
+    )
 }
 mvalues <- log2(beta / (1 - beta + 1e-6) + 1e-6)
 covs <- pheno[, c("Age", "Gender")]

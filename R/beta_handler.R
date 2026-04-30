@@ -942,6 +942,18 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
     }
+    if (
+        is.null(sorted_locs) &&
+            !is.null(array) &&
+            !is_bsseq(beta) &&
+            !(is.character(beta) && length(beta) == 1L && file.exists(beta) && file_is_tabix(beta))
+    ) {
+        .assertArrayAnnotationPackageInstalled(
+            array = array[[1]],
+            genome = genome[[1]],
+            context = "getBetaHandler()"
+        )
+    }
     invisible(BetaHandler$new(
         beta = beta,
         array = array,

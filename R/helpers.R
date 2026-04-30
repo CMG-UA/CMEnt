@@ -58,13 +58,11 @@ findDMPsBSSeq <- function(
     output_file = NULL,
     njobs = max(1L, BiocParallel::bpnworkers(BiocParallel::bpparam()) - 1L)
 ) {
-    if (!requireNamespace("bsseq", quietly = TRUE)) {
-        BiocManager::install("bsseq", update = FALSE, ask = FALSE)
-    }
-    if (!requireNamespace("DSS", quietly = TRUE)) {
-        BiocManager::install("DSS", update = FALSE, ask = FALSE)
-    }
-    require(DSS)
+    .assertPackagesInstalled(
+        pkg_names = "DSS",
+        context = "findDMPsBSSeq()",
+        reason = "DMP calling from BSseq objects is delegated to DSS."
+    )
     if (chr == "auto") {
         chr <- paste0("chr", c(1:22))
     } else if (chr == "all") {

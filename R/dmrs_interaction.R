@@ -132,13 +132,11 @@ comparePWMToJaspar <- function(pwm_queries) {
         jaspar_pwms <- readRDS(pwms_file)
     } else {
         .log_info("Downloading JASPAR PWMs...", level = 2)
+        .assertDependencyRequirements(
+            requirements = .jasparDependencyRequirements(),
+            context = "comparePWMToJaspar()"
+        )
         jaspar_pkg <- paste0("JASPAR", jaspar_version)
-        if (!requireNamespace(jaspar_pkg, quietly = TRUE)) {
-            if (!requireNamespace("BiocManager", quietly = TRUE)) {
-                install.packages("BiocManager")
-            }
-            BiocManager::install(jaspar_pkg, ask = FALSE, update = FALSE)
-        }
         db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
         opts <- list()
         opts[["tax_group"]] <- tax_group
@@ -320,6 +318,15 @@ extractDMRMotifs <- function(
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
+    .assertDependencyRequirements(
+        requirements = .motifDependencyRequirements(
+            genome = genome,
+            array = array,
+            beta_locs = beta_locs,
+            context = "extractDMRMotifs()"
+        ),
+        context = "extractDMRMotifs()"
+    )
     if (!is.null(array)) {
         if (length(array) > 1) {
             array <- array[[1]]
@@ -507,6 +514,12 @@ computeDMRsInteraction <- function(
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)
+    if (isTRUE(find_components) && isTRUE(query_components_with_jaspar)) {
+        .assertDependencyRequirements(
+            requirements = .jasparDependencyRequirements(),
+            context = "computeDMRsInteraction()"
+        )
+    }
     mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
     if (length(dmrs) == 0) {
         .log_info("No DMRs provided for interaction analysis.", level = 2)
@@ -518,6 +531,15 @@ computeDMRsInteraction <- function(
     }
     if (!"pwm" %in% colnames(mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
+        .assertDependencyRequirements(
+            requirements = .motifDependencyRequirements(
+                genome = genome,
+                array = array,
+                beta_locs = beta_locs,
+                context = "computeDMRsInteraction()"
+            ),
+            context = "computeDMRsInteraction()"
+        )
         dmrs <- extractDMRMotifs(dmrs, genome, array, beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size)
     }
     if (length(dmrs) == 1) {

@@ -49,6 +49,6 @@
 #' @import IRanges
 #' @import methods
 #' @importFrom stats p.adjust na.omit pt setNames
-#' @importFrom utils read.table write.table capture.output head install.packages
+#' @importFrom utils read.table write.table capture.output head
 #' @importFrom data.table fread
 NULL

@@ -1,9 +1,11 @@
 #!/usr/bin/env Rscript
 
 .findDMRsFromSeedsCLIOptionList <- function() {
-    if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
-    }
+    .assertPackagesInstalled(
+        pkg_names = "optparse",
+        context = ".findDMRsFromSeedsCLIOptionList()",
+        reason = "CMEnt CLI support is implemented with the optparse package."
+    )
 
     list(
         optparse::make_option(
@@ -165,9 +167,11 @@
 }
 
 .launchCMEntViewerCLIOptionList <- function() {
-    if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
-    }
+    .assertPackagesInstalled(
+        pkg_names = "optparse",
+        context = ".launchCMEntViewerCLIOptionList()",
+        reason = "CMEnt CLI support is implemented with the optparse package."
+    )
 
     list(
         optparse::make_option(
@@ -206,26 +210,23 @@
 #' @return None, outputs results to files
 #'
 #' @examples
-#' if (!requireNamespace("optparse", quietly = TRUE)) {
-#'     install.packages("optparse")
+#' if (requireNamespace("optparse", quietly = TRUE)) {
+#'     args <- list(
+#'         beta = "path/to/beta_values.rds",
+#'         seeds_file = "path/to/dmps.tsv",
+#'         samplesheet = "path/to/samplesheet.csv",
+#'         sample_group_col = "Sample_Group",
+#'         casecontrol_col = "casecontrol",
+#'         array = "450K",
+#'         genome = NULL,
+#'         output_prefix = "my_analysis",
+#'         njobs = 4,
+#'         verbose = 1,
+#'         entanglement = "strong"
+#'     )
+#'
+#'     findDMRsFromSeedsCLI(args)
 #' }
-#' library(optparse)
-#'
-#' args <- list(
-#'     beta = "path/to/beta_values.rds",
-#'     seeds_file = "path/to/dmps.tsv",
-#'     samplesheet = "path/to/samplesheet.csv",
-#'     sample_group_col = "Sample_Group",
-#'     casecontrol_col = "casecontrol",
-#'     array = "450K",
-#'     genome = NULL,
-#'     output_prefix = "my_analysis",
-#'     njobs = 4,
-#'     verbose = 1,
-#'     entanglement = "strong"
-#' )
-#'
-#' findDMRsFromSeedsCLI(args)
 #'
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
@@ -406,9 +407,11 @@ launchCMEntViewerCLI <- function(args) {
 }
 
 .makeCMEntCLIParser <- function(command, script_name = NULL) {
-    if (!requireNamespace("optparse", quietly = TRUE)) {
-        stop("Package 'optparse' is required for CMEnt CLI support.", call. = FALSE)
-    }
+    .assertPackagesInstalled(
+        pkg_names = "optparse",
+        context = ".makeCMEntCLIParser()",
+        reason = "CMEnt CLI support is implemented with the optparse package."
+    )
 
     if (is.null(script_name) || !nzchar(script_name)) {
         script_name <- "run_cment.R"

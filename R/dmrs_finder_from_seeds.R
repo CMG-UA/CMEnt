@@ -2943,6 +2943,17 @@ findDMRsFromSeeds <- function(
     array <- .normalizeFindDMRsArray(array)
     requested_genome <- .normalizeFindDMRsGenome(genome)
     genome <- .resolveFindDMRsGenome(beta, array = array, genome = requested_genome, bed_provided = bed_provided)
+    .assertDependencyRequirements(
+        requirements = .findDMRsDependencyRequirements(
+            beta = beta,
+            array = array,
+            genome = genome,
+            annotate_with_genes = annotate_with_genes,
+            extract_motifs = extract_motifs,
+            bed_provided = bed_provided
+        ),
+        context = "findDMRsFromSeeds()"
+    )
     if (is.null(requested_genome)) {
         .log_info("No genome provided. Using inferred genome: ", genome, ".", level = 2)
     }
@@ -2963,6 +2974,7 @@ findDMRsFromSeeds <- function(
             beta_locs <- ret$locations
         }
     }
+
     beta_handler <- getBetaHandler(
         beta = beta,
         beta_row_names_file = beta_row_names_file,
@@ -2973,6 +2985,7 @@ findDMRsFromSeeds <- function(
     )
     beta <- NULL
     array_based <- beta_handler$isArrayBased()
+
     if (!is.function(aggfun)) {
         aggfun_choice <- strex::match_arg(aggfun, ignore_case = TRUE)
         aggfun <- switch(aggfun_choice,
