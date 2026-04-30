@@ -17,7 +17,7 @@ test_that("findDMRsFromSeeds work with covariates adjustment", {
         sample_group_col = "Sample_Group",
         covariates = c("Age", "Gender"),
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         njobs = 1,
         max_lookup_dist = 1000
     ))
@@ -62,9 +62,9 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
             seeds = sig_dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
-            min_cpg_delta_beta = 0,
+            ext_site_delta_beta = 0,
             min_seeds = 2,
-            min_cpgs = 3,
+            min_sites = 3,
             max_lookup_dist = 10000,
             expansion_window = 0,
             max_bridge_seeds_gaps = 0,
@@ -76,11 +76,11 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         # Assertions
         expect_s4_class(dmrs_cment, "GRanges")
         expect_equal(length(dmrs_cment), 125)
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_cment))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_cment))))
 
         # Check that all DMRs meet the criteria
         expect_true(all(mcols(dmrs_cment)$seeds_num >= 2))
-        expect_true(all(mcols(dmrs_cment)$cpgs_num >= 3))
+        expect_true(all(mcols(dmrs_cment)$sites_num >= 3))
     })
 })
 
@@ -103,7 +103,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 5, # Stricter
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000
     ), regexp = "No DMRs remain"
     )
@@ -118,7 +118,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2, # More lenient
-        min_cpgs = 2, # More lenient
+        min_sites = 2, # More lenient
         max_lookup_dist = 2000 # Larger distance
     )
 
@@ -133,7 +133,7 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         max_pval = 0.01 # Stricter p-value
     ), regexp = "No DMRs remain"
@@ -165,7 +165,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         aggfun = "median"
     )
@@ -180,7 +180,7 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         aggfun = "mean"
     )
@@ -221,7 +221,7 @@ test_that("findDMRsFromSeeds works with different genome builds", {
         genome = "hg38",
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000
     )
 
@@ -250,7 +250,7 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 1,
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         pval_mode = "parametric",
@@ -269,8 +269,8 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
 
     dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
     saved_beta <- read.delim(gzfile(beta_file), row.names = 1, check.names = FALSE)
-    supporting_cpgs <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$cpgs), CMEnt:::.splitCsvValues), use.names = FALSE))
-    expect_setequal(rownames(saved_beta), supporting_cpgs)
+    supporting_sites <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$sites), CMEnt:::.splitCsvValues), use.names = FALSE))
+    expect_setequal(rownames(saved_beta), supporting_sites)
 
     loaded_dmrs <- CMEnt:::.loadCMEntData(output_prefix)$dmrs
     expect_equal(length(loaded_dmrs), length(dmrs))

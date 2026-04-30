@@ -11,8 +11,8 @@ simulateDMRs(
   groups = NULL,
   case_group = NULL,
   max_gap = 500L,
-  min_cpgs = 5L,
-  max_cpgs = 500L,
+  min_sites = 5L,
+  max_sites = 500L,
   truth_min_delta_beta = 0.05,
   delta_jitter = 1/3,
   profile = c("triweight", "flat"),
@@ -49,9 +49,9 @@ second group level.}
 
 \item{max_gap}{Maximum gap, in bp, used to form candidate CpG clusters.}
 
-\item{min_cpgs}{Minimum number of CpGs per candidate DMR cluster.}
+\item{min_sites}{Minimum number of sites per candidate DMR cluster.}
 
-\item{max_cpgs}{Maximum number of CpGs per candidate DMR cluster.}
+\item{max_sites}{Maximum number of CpGs per candidate DMR cluster.}
 
 \item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
 CpG to define the reported truth interval. Set to \code{0} to report the full

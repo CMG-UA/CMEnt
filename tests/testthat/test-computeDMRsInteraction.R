@@ -140,7 +140,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
     }
 })
 
-test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
+test_that("computeDMRsInteraction handles custom motif_site_flank_size", {
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .loadMotifsAndReduce(dmrs)
 
@@ -148,14 +148,14 @@ test_that("computeDMRsInteraction handles custom motif_cpg_flank_size", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        motif_cpg_flank_size = 5
+        motif_site_flank_size = 5
     ))
 
     result_custom <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        motif_cpg_flank_size = 10
+        motif_site_flank_size = 10
     ))
 
     expect_type(result_default, "list")
@@ -322,7 +322,7 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
         genome = "hg19",
         array = "450K",
         min_similarity = 0.7,
-        motif_cpg_flank_size = 5,
+        motif_site_flank_size = 5,
         query_components_with_jaspar = FALSE
     ))
 
@@ -339,20 +339,20 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
 test_that("extractDMRMotifs keeps seeds grouped per DMR", {
     locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
     chr1_inds <- which(locs$chr == "chr1")
-    skip_if(length(chr1_inds) < 6, "Not enough chr1 CpGs in annotation")
+    skip_if(length(chr1_inds) < 6, "Not enough chr1 sites in annotation")
 
-    cpg_ids <- rownames(locs)[chr1_inds[1:6]]
+    site_ids <- rownames(locs)[chr1_inds[1:6]]
     dmrs <- data.frame(
         chr = c("chr1", "chr1"),
-        start = as.integer(locs[cpg_ids[c(1, 4)], "start"]),
-        end = as.integer(locs[cpg_ids[c(3, 6)], "start"]),
-        start_cpg = cpg_ids[c(1, 4)],
-        end_cpg = cpg_ids[c(3, 6)],
-        start_seed = cpg_ids[c(1, 4)],
-        end_seed = cpg_ids[c(3, 6)],
+        start = as.integer(locs[site_ids[c(1, 4)], "start"]),
+        end = as.integer(locs[site_ids[c(3, 6)], "start"]),
+        start_site = site_ids[c(1, 4)],
+        end_site = site_ids[c(3, 6)],
+        start_seed = site_ids[c(1, 4)],
+        end_seed = site_ids[c(3, 6)],
         seeds = c(
-            paste(cpg_ids[1:3], collapse = ","),
-            paste(cpg_ids[4:6], collapse = ",")
+            paste(site_ids[1:3], collapse = ","),
+            paste(site_ids[4:6], collapse = ",")
         ),
         stringsAsFactors = FALSE
     )
@@ -365,13 +365,13 @@ test_that("extractDMRMotifs keeps seeds grouped per DMR", {
 })
 
 test_that("extractDMRMotifs centers seed windows when DMR starts upstream of first seed", {
-    motif_cpg_flank_size <- 5L
+    motif_site_flank_size <- 5L
     dmrs <- data.frame(
         chr = "chr1",
         start = 100L,
         end = 140L,
-        start_cpg = "cg_upstream",
-        end_cpg = "cg_seed2",
+        start_site = "cg_upstream",
+        end_site = "cg_seed2",
         start_seed = "cg_seed1",
         end_seed = "cg_seed2",
         seeds = "cg_seed1,cg_seed2",
@@ -385,11 +385,11 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
         stringsAsFactors = FALSE
     )
 
-    seq_len <- dmrs$end - dmrs$start + 1L + motif_cpg_flank_size + motif_cpg_flank_size + 1L
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
     seq_chars <- rep("A", seq_len)
-    cpg_positions <- beta_locs$start - dmrs$start + 1L + motif_cpg_flank_size
-    seq_chars[cpg_positions] <- "C"
-    seq_chars[cpg_positions + 1L] <- "G"
+    site_positions <- beta_locs$start - dmrs$start + 1L + motif_site_flank_size
+    seq_chars[site_positions] <- "C"
+    seq_chars[site_positions + 1L] <- "G"
     sequence <- paste(seq_chars, collapse = "")
 
     testthat::local_mocked_bindings(
@@ -402,22 +402,22 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
         genome = "hg38",
         array = NULL,
         beta_locs = beta_locs,
-        motif_cpg_flank_size = motif_cpg_flank_size
+        motif_site_flank_size = motif_site_flank_size
     )
 
     consensus_seq <- as.character(out$consensus_seq[[1]])
     expect_equal(consensus_seq, "AAAAACGAAAAA")
-    expect_equal(substr(consensus_seq, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 2L), "CG")
+    expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 2L), "CG")
 })
 
 test_that("extractDMRMotifs ignores seed windows not centered on C", {
-    motif_cpg_flank_size <- 5L
+    motif_site_flank_size <- 5L
     dmrs <- data.frame(
         chr = "chr1",
         start = 100L,
         end = 140L,
-        start_cpg = "cg_seed1",
-        end_cpg = "cg_seed3",
+        start_site = "cg_seed1",
+        end_site = "cg_seed3",
         start_seed = "cg_seed1",
         end_seed = "cg_seed3",
         seeds = "cg_seed1,cg_seed2,cg_seed3",
@@ -431,9 +431,9 @@ test_that("extractDMRMotifs ignores seed windows not centered on C", {
         stringsAsFactors = FALSE
     )
 
-    seq_len <- dmrs$end - dmrs$start + 1L + motif_cpg_flank_size + motif_cpg_flank_size + 1L
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
     seq_chars <- rep("A", seq_len)
-    center_positions <- beta_locs$start - dmrs$start + 1L + motif_cpg_flank_size
+    center_positions <- beta_locs$start - dmrs$start + 1L + motif_site_flank_size
     seq_chars[center_positions[3]] <- "C"
     sequence <- paste(seq_chars, collapse = "")
 
@@ -447,12 +447,12 @@ test_that("extractDMRMotifs ignores seed windows not centered on C", {
         genome = "hg38",
         array = NULL,
         beta_locs = beta_locs,
-        motif_cpg_flank_size = motif_cpg_flank_size
+        motif_site_flank_size = motif_site_flank_size
     ))
 
     consensus_seq <- as.character(out$consensus_seq[[1]])
     expect_equal(consensus_seq, "AAAAACAAAAAA")
-    expect_equal(substr(consensus_seq, motif_cpg_flank_size + 1L, motif_cpg_flank_size + 1L), "C")
+    expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 1L), "C")
 })
 
 test_that("motif similarity tolerates DMRs without valid PWMs", {
@@ -468,14 +468,14 @@ test_that("motif similarity tolerates DMRs without valid PWMs", {
     )
     mcols(dmrs)$pwm <- list(pwm, NULL)
 
-    sim <- CMEnt:::.extractMotifsSimilarity(dmrs, motif_cpg_flank_size = 5)
+    sim <- CMEnt:::.extractMotifsSimilarity(dmrs, motif_site_flank_size = 5)
 
     expect_equal(dim(sim), c(2L, 2L))
     expect_equal(sim[1, 2], 0)
     expect_equal(sim[2, 1], 0)
 })
 
-test_that("getBackgroundArrayMotif uses start-anchored CpG windows for array probes", {
+test_that("getBackgroundArrayMotif uses start-anchored site windows for array probes", {
     cache_dir <- tempfile("cment-bg-cache-")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     withr::local_options(list(CMEnt.annotation_cache_dir = cache_dir))
@@ -486,7 +486,7 @@ test_that("getBackgroundArrayMotif uses start-anchored CpG windows for array pro
 
     bg_pwm <- suppressWarnings(getBackgroundArrayMotif(
         genome = "hg19", array = "450K",
-        motif_cpg_flank_size = 5,
+        motif_site_flank_size = 5,
         .sorted_locs = locs[seq_len(1000), , drop = FALSE]
     ))
 

@@ -46,7 +46,7 @@ NULL
                         min = 0, max = 1, value = 0, step = 0.01
                     )),
                     shiny::column(4, shiny::numericInput(
-                        ns("filter_min_cpgs"), "Min CpGs",
+                        ns("filter_min_sites"), "Min sites",
                         value = 1, min = 1, step = 1
                     ))
                 ),
@@ -97,8 +97,8 @@ NULL
             if (!is.null(input$filter_delta_beta) && input$filter_delta_beta > 0) {
                 dmrs_df <- dmrs_df[abs(dmrs_df$delta_beta) >= input$filter_delta_beta, , drop = FALSE]
             }
-            if (!is.null(input$filter_min_cpgs) && input$filter_min_cpgs > 1) {
-                dmrs_df <- dmrs_df[dmrs_df$cpgs_num >= input$filter_min_cpgs, , drop = FALSE]
+            if (!is.null(input$filter_min_sites) && input$filter_min_sites > 1) {
+                dmrs_df <- dmrs_df[dmrs_df$sites_num >= input$filter_min_sites, , drop = FALSE]
             }
             dmrs_df
         })
@@ -107,7 +107,7 @@ NULL
             shiny::req(filtered_dmrs())
             dmrs_df <- filtered_dmrs()
             display_cols <- intersect(
-                c("id", "chr", "start", "end", "width", "cpgs_num", "seeds_num",
+                c("id", "chr", "start", "end", "width", "sites_num", "seeds_num",
                   "delta_beta", "cases_beta", "controls_beta", "score", "block_id",
                   "in_promoter_of", "in_gene_body_of"),
                 colnames(dmrs_df)
@@ -143,7 +143,7 @@ NULL
                         shiny::numericInput(ns("dmr_index"), "DMR Index", value = 1, min = 1, step = 1),
                         shiny::hr(),
                         shiny::h6("Plot Options"),
-                        shiny::numericInput(ns("max_cpgs"), "Max CpGs", value = 100, min = 10, max = 500, step = 10),
+                        shiny::numericInput(ns("max_sites"), "Max sites", value = 100, min = 10, max = 500, step = 10),
                         shiny::numericInput(ns("max_samples_per_group"), "Max Samples/Group", value = 10, min = 1, max = 50, step = 1),
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
@@ -206,7 +206,7 @@ NULL
             }
             params <- list(
                 dmr_index = input$dmr_index,
-                max_cpgs = input$max_cpgs,
+                max_sites = input$max_sites,
                 max_samples_per_group = input$max_samples_per_group
             )
             shiny::removeNotification(id = session$ns("dmr_plot_error"))
@@ -232,7 +232,7 @@ NULL
                         genome = data$genome,
                         array = data$array,
                         sample_group_col = data$sample_group_col,
-                        max_cpgs = params$max_cpgs,
+                        max_sites = params$max_sites,
                         max_samples_per_group = params$max_samples_per_group,
                         plot_title = TRUE
                     )
@@ -266,7 +266,7 @@ NULL
                     genome = data$genome,
                     array = data$array,
                     sample_group_col = data$sample_group_col,
-                    max_cpgs = params$max_cpgs,
+                    max_sites = params$max_sites,
                     max_samples_per_group = params$max_samples_per_group,
                     output_file = file
                 )
@@ -815,7 +815,7 @@ NULL
             paste0("jaspar=", isTRUE(params$query_components_with_jaspar)),
             paste0("min_similarity=", format(params$min_similarity, trim = TRUE, scientific = FALSE)),
             paste0("max_dmrs_per_chr=", params$max_dmrs_per_chr),
-            paste0("max_cpgs_per_dmr=", params$max_cpgs_per_dmr)
+            paste0("max_sites_per_dmr=", params$max_sites_per_dmr)
         ),
         collapse = "::"
     )
@@ -839,7 +839,7 @@ NULL
                 sample_group_col = data$sample_group_col,
                 min_similarity = params$min_similarity,
                 max_dmrs_per_chr = params$max_dmrs_per_chr,
-                max_cpgs_per_dmr = params$max_cpgs_per_dmr,
+                max_sites_per_dmr = params$max_sites_per_dmr,
                 query_components_with_jaspar = params$query_components_with_jaspar
             ),
             interaction_args
@@ -918,7 +918,7 @@ NULL
                         shiny::hr(),
                         shiny::h6("Common Settings"),
                         shiny::numericInput(ns("max_dmrs_per_chr"), "Max DMRs/Chromosome", value = 10, min = 1, max = 50, step = 1),
-                        shiny::numericInput(ns("max_cpgs_per_dmr"), "Max CpGs/DMR", value = 5, min = 1, max = 20, step = 1),
+                        shiny::numericInput(ns("max_sites_per_dmr"), "Max sites/DMR", value = 5, min = 1, max = 20, step = 1),
                         shiny::sliderInput(ns("min_similarity"), "Min Motif Similarity", min = 0.5, max = 1, value = 0.8, step = 0.05),
                         shiny::hr(),
                         shiny::actionButton(ns("generate_plot"), "Generate Plot", class = "btn-primary w-100"),
@@ -1079,7 +1079,7 @@ NULL
                     region = if (identical(mode, "manual") && nzchar(region)) region else NULL,
                     chromosomes = if (identical(mode, "manual") && length(chromosomes) > 0) chromosomes else NULL,
                     max_dmrs_per_chr = input$max_dmrs_per_chr,
-                    max_cpgs_per_dmr = input$max_cpgs_per_dmr,
+                    max_sites_per_dmr = input$max_sites_per_dmr,
                     min_similarity = input$min_similarity
                 ),
                 has_precomputed_interactions = has_precomputed_interactions()

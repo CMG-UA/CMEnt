@@ -8,7 +8,7 @@
     list(
         optparse::make_option(
             "--beta",
-            help = "The beta file, with row names the CpGs. Can also be a tabix indexed file or a bed file with at least `bed_chrom_col` and `bed_start_col` columns set, followed by samples with methylation values."
+            help = "The beta file, with row names the sites. Can also be a tabix indexed file or a bed file with at least `bed_chrom_col` and `bed_start_col` columns set, followed by samples with methylation values."
         ),
         optparse::make_option(
             "--seeds_file",
@@ -58,13 +58,13 @@
             "--min_adj_seeds",
             default = 2,
             type = "integer",
-            help = "The minimum supporting seeds per DMR, after adjusted by array backround CpG content, minimum 2,defaults to 2"
+            help = "The minimum supporting seeds per DMR, after adjusted by array backround site content, minimum 2,defaults to 2"
         ),
         optparse::make_option(
-            "--min_cpgs",
+            "--min_sites",
             default = 50,
             type = "integer",
-            help = "The minimum number of the beta file rows (the listed CpGs) per DMR, minimum 2, defaults to 50"
+            help = "The minimum number of the beta file rows (the listed sites) per DMR, minimum 2, defaults to 50"
         ),
         optparse::make_option(
             "--max_lookup_dist",
@@ -73,10 +73,10 @@
             help = "The maximum distance from one seed to another to consider belinging in the same DMR, defaults to 10000 (10kb)"
         ),
         optparse::make_option(
-            "--min_cpg_delta_beta",
-            default = 0.1,
+            "--ext_site_delta_beta",
+            default = 0.2,
             type = "double",
-            help = "The minimum CpG delta beta during DMR expansion, to filter CpGs based on delta beta (default: 0.1)."
+            help = "Minimum absolute site delta beta that force-connects proximal site pairs during DMR expansion, even when the correlation test fails (default: 0.2)."
         ),
         optparse::make_option(
             "--ignored_sample_groups",
@@ -115,7 +115,7 @@
             "--max_bridge_extension_gaps",
             default = 1,
             type = "integer",
-            help = "Maximum number of consecutive failed CpG edges to extend during Stage 2 when p-value-driven and flanked by connected edges (default: 1)."
+            help = "Maximum number of consecutive failed site edges to extend during Stage 2 when p-value-driven and flanked by connected edges (default: 1)."
         ),
         optparse::make_option(
             "--output_prefix",
@@ -250,7 +250,7 @@ findDMRsFromSeedsCLI <- function(args) {
         sample_group_col = args$sample_group_col,
         casecontrol_col = args$casecontrol_col,
         covariates = covariates,
-        min_cpg_delta_beta = args$min_cpg_delta_beta,
+        ext_site_delta_beta = args$ext_site_delta_beta,
         array = array,
         genome = genome,
         max_pval = args$max_pval,
@@ -260,7 +260,7 @@ findDMRsFromSeedsCLI <- function(args) {
         max_bridge_extension_gaps = args$max_bridge_extension_gaps,
         min_seeds = args$min_seeds,
         min_adj_seeds = args$min_adj_seeds,
-        min_cpgs = args$min_cpgs,
+        min_sites = args$min_sites,
         ignored_sample_groups = args$ignored_sample_groups,
         output_prefix = args$output_prefix,
         njobs = args$njobs,

@@ -681,29 +681,15 @@
     scores <- suppressWarnings(as.numeric(S4Vectors::mcols(dmrs)[["score"]]))
     midpoints <- floor((GenomicRanges::start(dmrs) + GenomicRanges::end(dmrs)) / 2)
     chromosomes <- unique(chr_values)
-    p_con <- NULL
-    if (verbose > 0) {
-        # check if version of progressr is equal or higher than >= 0.17.0-9002, otherwise p_con will not be used
-
-        if (utils::packageVersion("progressr") >= "0.17.0-9002") {
-            p_con <- progressr::progressor(steps = length(dmrs), message = "Assigning DMRs to blocks..")
-        }
-    }
     fun <- function(chr) {
         chr_idx <- which(chr_values == chr)
         if (length(chr_idx) < 3L) {
-            if (!is.null(p_con)) {
-                p_con(length(chr_idx))
-            }
             return(NULL)
         }
         x_chr <- midpoints[chr_idx]
         y_chr <- scores[chr_idx]
         valid <- is.finite(x_chr) & is.finite(y_chr)
         if (sum(valid) < 3L) {
-            if (!is.null(p_con)) {
-                p_con(sum(valid))
-            }
             return(NULL)
         }
 
@@ -729,9 +715,6 @@
             block_gap_min_bp = block_gap_min_bp,
             block_gap_max_bp = block_gap_max_bp
         )
-        if (!is.null(p_con)) {
-            p_con(length(chr_idx))
-        }
         list(chr = chr, chr_details = chr_details, chr_idx = chr_idx)
     }
 
@@ -833,7 +816,7 @@
 #' The function uses stratified k-fold cross-prediction to ensure balanced representation
 #' of sample groups in each fold. The number of folds can be controlled using the
 #' option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
-#' SVM is trained on the beta values of CpG sites within each DMR.
+#' SVM is trained on the beta values of site sites within each DMR.
 #'
 #' The `score` combines classification correctness and margin confidence,
 #' making it more sensitive than plain cross-validated accuracy when many DMRs
@@ -896,11 +879,11 @@ scoreDMRs <- function(
     groups <- pheno[, "__casecontrol__"]
     nfold <- getOption("CMEnt.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
-    dmr_cpgs <- base::strsplit(as.character(mcols(dmrs)$cpgs), split = ",", fixed = TRUE)
+    dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
     .log_step("Transforming beta values for DMR scoring", level = 2)
     dmrs_m <- .transformBeta(beta_handler$getBeta(
-        row_names = unique(unlist(dmr_cpgs)),
+        row_names = unique(unlist(dmr_sites)),
         col_names = beta_col_names
     ), pheno = pheno, covariate_model = covariate_model)
     .log_success("Beta values transformed", level = 2)
@@ -911,27 +894,15 @@ scoreDMRs <- function(
 
     .log_step("Extracting DMR-specific beta matrices for classification", level = 2)
     dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
-        dmr_cpgs_i <- dmr_cpgs[[i]]
-        if (length(dmr_cpgs_i) == 0L) {
+        dmr_sites_i <- dmr_sites[[i]]
+        if (length(dmr_sites_i) == 0L) {
             return(NULL)
         }
-        dmrs_m[dmr_cpgs_i, , drop = FALSE]
+        dmrs_m[dmr_sites_i, , drop = FALSE]
     })
     .log_success("DMR-specific beta matrices extracted", level = 2)
     .log_step("Computing cross-validated classification scores for DMRs", level = 2)
     if (njobs > 1L) {
-        process_args <- c(
-            process_args,
-            list(
-                future.seed = TRUE,
-                future.globals = c(
-                    "pheno", "beta_col_names", "p_con",
-                    ".performCrossPrediction",
-                    "groups", "folds", "nfold"
-                ),
-                future.stdout = NA
-            )
-        )
         cv_metrics <- future.apply::future_lapply(
             dmrs_m_values,
             function(m) {
@@ -939,7 +910,7 @@ scoreDMRs <- function(
             },
             future.seed = TRUE,
             future.globals = c(
-                "pheno", "beta_col_names", "p_con",
+                "pheno", "beta_col_names",
                 ".performCrossPrediction",
                 "groups", "folds", "nfold"
             ),

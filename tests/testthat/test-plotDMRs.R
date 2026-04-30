@@ -92,7 +92,7 @@ test_that("plotDMRs respects ncol parameter", {
 })
 
 
-test_that("plotDMR handles DMRs with no extended CpGs", {
+test_that("plotDMR handles DMRs with no extended sites", {
     skip_if_not_installed("ggplot2")
 
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
@@ -101,13 +101,13 @@ test_that("plotDMR handles DMRs with no extended CpGs", {
     }
 
     dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    no_extended_idx <- which(dmr_data$start_seed == dmr_data$start_cpg & dmr_data$end_seed == dmr_data$end_cpg)
+    no_extended_idx <- which(dmr_data$start_seed == dmr_data$start_site & dmr_data$end_seed == dmr_data$end_site)
 
     if (length(no_extended_idx) > 0) {
         p <- suppressWarnings(plotDMR(dmrs, dmr_index = no_extended_idx[1]))
         expect_s3_class(p, "gtable")
     } else {
-        skip("No DMRs without extended CpGs found")
+        skip("No DMRs without extended sites found")
     }
 })
 
@@ -131,10 +131,10 @@ test_that("plotDMR handles DMRs with multiple seeds", {
     }
 })
 
-test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangling", {
+test_that("plotDMR preserves overlapping extension site IDs without rowname mangling", {
     skip_if_not_installed("ggplot2")
 
-    cpg_ids <- sprintf("cg%08d", 1:5)
+    site_ids <- sprintf("cg%08d", 1:5)
     beta <- matrix(
         c(
             0.1, 0.9,
@@ -143,15 +143,15 @@ test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangl
             0.4, 0.6,
             0.5, 0.5
         ),
-        nrow = length(cpg_ids),
+        nrow = length(site_ids),
         byrow = TRUE,
-        dimnames = list(cpg_ids, c("S1", "S2"))
+        dimnames = list(site_ids, c("S1", "S2"))
     )
     sorted_locs <- data.frame(
-        chr = rep("chr1", length(cpg_ids)),
+        chr = rep("chr1", length(site_ids)),
         start = seq(100L, 140L, by = 10L),
         end = seq(100L, 140L, by = 10L),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
@@ -168,9 +168,9 @@ test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangl
         seqinfo = GenomeInfoDb::Seqinfo(seqnames = "chr1", genome = "hg19")
     )
     S4Vectors::mcols(dmrs)$seeds <- "cg00000002,cg00000004"
-    S4Vectors::mcols(dmrs)$cpgs <- paste(cpg_ids, collapse = ",")
-    S4Vectors::mcols(dmrs)$upstream_cpgs <- "cg00000001,cg00000002,cg00000003"
-    S4Vectors::mcols(dmrs)$downstream_cpgs <- "cg00000003,cg00000004,cg00000005"
+    S4Vectors::mcols(dmrs)$sites <- paste(site_ids, collapse = ",")
+    S4Vectors::mcols(dmrs)$upstream_sites <- "cg00000001,cg00000002,cg00000003"
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cg00000003,cg00000004,cg00000005"
     S4Vectors::mcols(dmrs)$start_seed_pos <- 110L
     S4Vectors::mcols(dmrs)$end_seed_pos <- 130L
     S4Vectors::mcols(dmrs)$score <- 0.75
@@ -190,7 +190,7 @@ test_that("plotDMR preserves overlapping extension CpG IDs without rowname mangl
 
     expect_true("cg00000003" %in% rownames(ret$total_locs))
     expect_false("cg000000031" %in% rownames(ret$total_locs))
-    expect_setequal(rownames(ret$total_locs), cpg_ids)
+    expect_setequal(rownames(ret$total_locs), site_ids)
 
     expect_no_error(
         suppressWarnings(plotDMR(

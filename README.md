@@ -116,7 +116,7 @@ Here’s a basic example of how to use CMEnt:
         pheno = pheno,
         sample_group_col = "Sample_Group",
         array = array_type,  # Specify array platform
-        min_cpgs = 3,
+        min_sites = 3,
         min_seeds = 2,
         njobs = 2  # Use parallel processing
     )

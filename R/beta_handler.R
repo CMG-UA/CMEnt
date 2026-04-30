@@ -113,7 +113,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 )
                 .log_success("Constructed sorted_locs delayed data frame..", level = 3)
 
-                .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " CpGs", level = 2)
+                .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " sites", level = 2)
                 private$.self_contained <- TRUE
             }
             self$sorted_locs <- sorted_locs
@@ -185,7 +185,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
                             .log_success(
                                 "Beta file loaded into memory (", nrow(temp_data),
-                                " CpGs x ", ncol(temp_data), " samples)"
+                                " sites x ", ncol(temp_data), " samples)"
                             )
 
                             temp_data
@@ -248,7 +248,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             self$sorted_locs
         },
 
-        #' @description Get row names (CpG IDs) from the beta file
+        #' @description Get row names (site IDs) from the beta file
         #' @return Character vector of row names
         getBetaRowNames = function() {
             self$load()
@@ -355,7 +355,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 close(conn)
 
                 if (!is.null(private$.beta_file)) {
-                    # expected first column: cpg ID
+                    # expected first column: site ID
                     file_beta_col_names <- file_beta_col_names[-1]
                 } else {
                     # expected first columns: #chrom start end id score strand
@@ -467,7 +467,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         },
 
         #' @description Build a compact BetaHandler view for a subset of rows/columns
-        #' @param row_names Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows
+        #' @param row_names Character vector of site IDs (or numeric row indices) to keep; NULL keeps all rows
         #' @param col_names Character vector of sample IDs to keep; NULL keeps all columns
         #' @param allow_missing Logical; if TRUE, silently drops missing row names
         #' @return A BetaHandler object scoped to the requested subset
@@ -517,7 +517,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else if (any(is.na(row_match))) {
                     missing_rows <- unique(subset_row_names[is.na(row_match)])
                     stop(
-                        "Requested CpG sites not found in beta data: ",
+                        "Requested site sites not found in beta data: ",
                         paste(missing_rows, collapse = ", ")
                     )
                 }
@@ -575,10 +575,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             subset_handler
         },
 
-        #' @description Extract beta values for specific CpG sites and samples
-        #' @param row_names Character vector of CpG IDs to extract. If numeric, treated as row indices.
+        #' @description Extract beta values for specific site sites and samples
+        #' @param row_names Character vector of site IDs to extract. If numeric, treated as row indices.
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
-        #' @param allow_missing Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)
+        #' @param allow_missing Logical. If TRUE, missing site sites will be ignored instead of throwing an error (default: FALSE)
         #' @param chr Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)
         #' @return Matrix of beta values
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
@@ -645,7 +645,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         } else if (anyNA(view_idx)) {
                             missing_rows <- unique(requested_rows[is.na(view_idx)])
                             stop(
-                                "Requested CpG sites not found in beta data: ",
+                                "Requested site sites not found in beta data: ",
                                 paste(missing_rows, collapse = ", ")
                             )
                         }
@@ -664,7 +664,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else if (!is.null(chr)) {
                     .log_info("Subsetting by chromosome from in-memory beta data..", level = 3)
                     storage_rows <- resolve_memory_rows(NULL, requested_chr = chr)
-                    .log_info("Found ", length(storage_rows), " CpGs on specified chromosome(s)", level = 4)
+                    .log_info("Found ", length(storage_rows), " sites on chromosome ", chr, level = 4)
                     beta_subset <- private$.beta_file_in_memory[storage_rows, , drop = FALSE]
                 } else {
                     storage_rows <- resolve_memory_rows(NULL)
@@ -677,7 +677,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
                 .log_success("Beta values subsetted: ", nrow(beta_subset),
-                    " CpGs x ", ncol(beta_subset), " samples",
+                    " sites x ", ncol(beta_subset), " samples",
                     level = 3
                 )
                 return(beta_subset)
@@ -702,7 +702,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     missing_rows <- setdiff(row_names, rownames(beta_subset))
                     if (length(missing_rows) > 0) {
                         stop(
-                            "Requested CpG sites not found in beta file: ",
+                            "Requested site sites not found in beta file: ",
                             paste(missing_rows, collapse = ", ")
                         )
                     }
@@ -726,7 +726,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     check.sort = FALSE, check.chr = FALSE, verbose = FALSE
                 )
                 if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < length(row_names))) {
-                    stop("Requested CpG sites not found in beta tabix file")
+                    stop("Requested site sites not found in beta tabix file")
                 }
                 # bedr forces the first three columns to be named "chr", "start", "stop" .... https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
                 if (is.null(chr)) {
@@ -795,7 +795,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             missing_rows <- setdiff(row_names, all_row_names)
                             if (length(missing_rows) > 0) {
                                 stop(
-                                    "Requested CpG sites not found in BSseq object: ",
+                                    "Requested site sites not found in BSseq object: ",
                                     paste(missing_rows, collapse = ", ")
                                 )
                             }
@@ -849,7 +849,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
 
             .log_success("Beta values subsetted: ", nrow(beta_subset),
-                " CpGs x ", ncol(beta_subset), " samples",
+                " sites x ", ncol(beta_subset), " samples",
                 level = 3
             )
             beta_subset

@@ -15,10 +15,10 @@ plotDMR(
   sample_group_col = "Sample_Group",
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
-  max_cpgs = 100,
+  max_sites = 100,
   max_samples_per_group = 10,
   plot_motif = TRUE,
-  motif_cpg_flank_size = 5,
+  motif_site_flank_size = 5,
   plot_title = TRUE,
   output_file = NULL,
   width = 8,
@@ -47,13 +47,13 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
 
-\item{max_cpgs}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
+\item{max_sites}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
 
 \item{max_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 10).}
 
 \item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
 
-\item{motif_cpg_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
+\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
 
 \item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 
@@ -83,7 +83,7 @@ plotDMR(dmrs, 1, beta = "beta.txt", pheno = pheno_df)
 plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 
 # With custom flank size for motif extraction
-plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_cpg_flank_size = 10)
+plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_site_flank_size = 10)
 
 # Without motif plot
 plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)

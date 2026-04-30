@@ -52,11 +52,7 @@ suppressPackageStartupMessages({
     library(ggplot2)
     library(dplyr)
     library(GenomicRanges)
-    library(progressr)
 })
-
-progressr::handlers("cli")
-options(progressr.enable = TRUE)
 
 get_benchmark_file <- function(filename) {
     benchmark_file <- ""
@@ -182,7 +178,7 @@ if (!file.exists(cment_file)) {
     cat("Starting CMEnt::findDMRsFromSeeds()...\n")
     flush.console()
     start_time <- Sys.time()
-    dmrs_cment <- progressr::with_progress(CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::findDMRsFromSeeds(
         beta = beta_handler,
         seeds = sig_dmps,
         pheno = pheno,
@@ -192,15 +188,15 @@ if (!file.exists(cment_file)) {
         max_bridge_seeds_gaps  = 0,
         max_bridge_extension_gaps = 3,
         min_seeds = 2,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0,
+        min_sites = 3,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
         .score_dmrs = TRUE,
         njobs = cment_njobs,
         verbose = 1
-    ))
+    )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
@@ -398,13 +394,13 @@ if (!file.exists(dmrcate_file)) {
                     colnames(design)[2] <- "cancer_vs_normal"
                 }
 
-                myannotation <- cpg.annotate("array", mvalues,
+                myannotation <- site.annotate("array", mvalues,
                     what = "M", arraytype = "450K",
                     analysis.type = "differential", design = design,
                     coef = coef_col, fdr = 0.05
                 )
 
-                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
+                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.sites = 3, betacutoff = 0.05)
                 extractRanges(dmrcate_results, genome = "hg19")
             }
         },
@@ -836,22 +832,22 @@ calculate_mean_delta_beta <- function(dmrs, beta_mat, pheno, locs, group_col = "
     case_samples <- colnames(beta_mat)[pheno[[group_col]] == "cancer"]
     control_samples <- colnames(beta_mat)[pheno[[group_col]] == "normal"]
 
-    cpg_gr <- makeGRangesFromDataFrame(locs)
-    names(cpg_gr) <- rownames(beta_mat)
+    site_gr <- makeGRangesFromDataFrame(locs)
+    names(site_gr) <- rownames(beta_mat)
 
-    hits <- findOverlaps(cpg_gr, dmrs)
+    hits <- findOverlaps(site_gr, dmrs)
     if (length(hits) == 0) {
         return(NA)
     }
 
-    cpg_idx <- queryHits(hits)
+    site_idx <- queryHits(hits)
     dmr_idx <- subjectHits(hits)
 
-    case_means <- rowMeans(beta_mat[cpg_idx, case_samples, drop = FALSE], na.rm = TRUE)
-    control_means <- rowMeans(beta_mat[cpg_idx, control_samples, drop = FALSE], na.rm = TRUE)
-    delta_per_cpg <- abs(case_means - control_means)
+    case_means <- rowMeans(beta_mat[site_idx, case_samples, drop = FALSE], na.rm = TRUE)
+    control_means <- rowMeans(beta_mat[site_idx, control_samples, drop = FALSE], na.rm = TRUE)
+    delta_per_site <- abs(case_means - control_means)
 
-    dmr_deltas <- tapply(delta_per_cpg, dmr_idx, mean, na.rm = TRUE)
+    dmr_deltas <- tapply(delta_per_site, dmr_idx, mean, na.rm = TRUE)
     mean(dmr_deltas, na.rm = TRUE)
 }
 
@@ -934,14 +930,14 @@ if (requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
 }
 ```
 
-### CpG Context Distribution
+### site Context Distribution
 
 ```{r}
 if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
     library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
     anno <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
 
-    cpg_context_gr <- makeGRangesFromDataFrame(
+    site_context_gr <- makeGRangesFromDataFrame(
         data.frame(
             chr = anno$chr,
             start = anno$pos,
@@ -950,14 +946,14 @@ if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = T
         ),
         keep.extra.columns = TRUE
     )
-    names(cpg_context_gr) <- rownames(anno)
+    names(site_context_gr) <- rownames(anno)
 
-    get_cpg_context_distribution <- function(dmrs, method_name) {
+    get_site_context_distribution <- function(dmrs, method_name) {
         if (length(dmrs) == 0) {
             return(data.frame(Method = method_name, Context = NA, Count = 0, Percentage = 0))
         }
 
-        overlapping <- subsetByOverlaps(cpg_context_gr, dmrs)
+        overlapping <- subsetByOverlaps(site_context_gr, dmrs)
         context_counts <- table(mcols(overlapping)$context)
 
         data.frame(
@@ -968,21 +964,21 @@ if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = T
         )
     }
 
-    cpg_context_list <- lapply(names(methods_list), function(method) {
-        get_cpg_context_distribution(methods_list[[method]], method)
+    site_context_list <- lapply(names(methods_list), function(method) {
+        get_site_context_distribution(methods_list[[method]], method)
     })
 
-    cpg_context_df <- do.call(rbind, cpg_context_list)
-    cpg_context_df <- cpg_context_df[!is.na(cpg_context_df$Context), ]
+    site_context_df <- do.call(rbind, site_context_list)
+    site_context_df <- site_context_df[!is.na(site_context_df$Context), ]
 
-    ggplot(cpg_context_df, aes(x = Method, y = Percentage, fill = Context)) +
+    ggplot(site_context_df, aes(x = Method, y = Percentage, fill = Context)) +
         geom_bar(stat = "identity", position = "stack") +
         theme_minimal() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
         scale_fill_brewer(palette = "Set2") +
         labs(
-            title = "CpG Context Distribution (Island/Shore/Shelf/OpenSea)",
-            x = "", y = "Percentage of CpGs in DMRs"
+            title = "site Context Distribution (Island/Shore/Shelf/OpenSea)",
+            x = "", y = "Percentage of sites in DMRs"
         )
 }
 ```

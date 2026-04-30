@@ -72,7 +72,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
         bed_chrom_col = "chrom",
         bed_start_col = "start",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -80,7 +80,7 @@ test_that("findDMRsFromSeeds works with full bed file including all optional col
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -124,7 +124,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
         bed_chrom_col = "chrom",
         bed_start_col = "start",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -132,7 +132,7 @@ test_that("findDMRsFromSeeds detects bed file by extension", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -176,7 +176,7 @@ test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format
             bed_chrom_col = "chrom",
             bed_start_col = "start",
             min_seeds = 2,
-            min_cpgs = 3,
+            min_sites = 3,
             njobs = 1
         ),
         "must be in 'chr:pos' format"
@@ -225,7 +225,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
         bed_chrom_col = "chrom",
         bed_start_col = "start",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -233,7 +233,7 @@ test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosom
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -279,7 +279,7 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
         bed_chrom_col = "my_chr",
         bed_start_col = "my_pos",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -287,6 +287,6 @@ test_that("findDMRsFromSeeds works with bed file and custom column names", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })

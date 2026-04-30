@@ -3,17 +3,17 @@
 #' Augment BSseq Object
 #'
 #' Generate synthetic samples while preserving both per-site coverage and
-#' methylation marginals and the local correlation structure of neighboring CpGs.
+#' methylation marginals and the local correlation structure of neighboring sites.
 #' Coverage and methylation are first fit with per-site Poisson/Beta marginals,
 #' then synthetic samples are drawn through chromosome-local Gaussian copula
-#' fields whose dependence is estimated from adjacent CpGs in the observed data.
+#' fields whose dependence is estimated from adjacent sites in the observed data.
 #'
 #' @param bs A BSseq object
 #' @param n_new_samples Number of new synthetic samples to generate
 #' @param seed Random seed for reproducibility
 #' @param min_samples Minimum number of samples with coverage required per site
 #' @param calibrate_correlation Logical. If `TRUE`, iteratively adjusts the
-#'   latent Gaussian length scales so adjacent-CpG correlations are matched
+#'   latent Gaussian length scales so adjacent-site correlations are matched
 #'   after transforming back through the observed coverage and methylation
 #'   sampling layers.
 #' @param calibration_iterations Maximum number of bisection iterations used
@@ -77,7 +77,7 @@ augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2,
     colnames(SummarizedExperiment::assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
 
     if (nrow(bsseq_filtered) == 0L) {
-        stop("No CpG sites have coverage in at least 'min_samples' samples")
+        stop("No site sites have coverage in at least 'min_samples' samples")
     }
 
     # Extract coverage and methylation counts

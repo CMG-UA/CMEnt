@@ -37,7 +37,7 @@ This vignette provides a comprehensive guide to the configuration available in C
 
 - Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("CMEnt.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
-- A beta matrix with CpG IDs as rownames and sample IDs as column names.
+- A beta matrix with site IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
 - A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by sample columns, existing as row names in the provided pheno data
 
@@ -49,14 +49,14 @@ beta <- loadExampleInputData("beta")
 ### `seeds`
 **Type:** Character or data.frame  
 **Required:** Yes  
-**Description:** CpG sites to use as seeds for DMR detection. Can be:
+**Description:** site sites to use as seeds for DMR detection. Can be:
 
-- Path to a file with line separated CpG IDs
+- Path to a file with line separated site IDs
 - A data.frame with DMP information
 
 **Format requirements:**
-- Row names or first column or the column given by `seeds_id_col` should contain CpG IDs
-- The CpG IDs must match those in the beta data, either as Illumina IDs or genomic coordinates (chr:start). The latter is required when using BED files for beta.
+- Row names or first column or the column given by `seeds_id_col` should contain site IDs
+- The site IDs must match those in the beta data, either as Illumina IDs or genomic coordinates (chr:start). The latter is required when using BED files for beta.
 
 **Example:**
 ```{r}
@@ -161,13 +161,13 @@ dmrs <- findDMRsFromSeeds(
 
 ## Filtering Parameters
 
-### `min_cpg_delta_beta`
+### `ext_site_delta_beta`
 **Type:** Numeric  
-**Default:** `0.1`  
+**Default:** `0.2`  
 **Range:** 0 to 1  
-**Description:** Minimum absolute delta beta value for CpGs to be included in DMRs, during the **second stage** of DMR extension. Use this to filter out low-confidence DMRs.
+**Description:** Absolute delta beta value for neighboring sites to be included in DMRs, during the **second stage** of DMR extension, without considering correlation.
 
-**Recommendation:** Keep 0.1 for balanced precision/recall. Lower to 0.05 or 0 only when prioritizing sensitivity.
+**Recommendation:** Keep 0.2 for balanced precision/recall. Lower to 0.05 or 0 only when prioritizing correlation testing.
 
 **Example:**
 ```{r}
@@ -175,7 +175,7 @@ dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
-    min_cpg_delta_beta = 0.1
+    ext_site_delta_beta = 0.2
 )
 ```
 
@@ -199,7 +199,7 @@ dmrs <- findDMRsFromSeeds(
 ### `min_adj_seeds`
 **Type:** Integer  
 **Default:** `2`  
-**Description:** Minimum number of seeds in a DMR after adjusting for CpG density. Minimum 2. This accounts for regions with different CpG coverage, and it is mostly applicable to array-based data. Only used when min_seeds < min_adj_seeds.
+**Description:** Minimum number of seeds in a DMR after adjusting for site density. Minimum 2. This accounts for regions with different site coverage, and it is mostly applicable to array-based data. Only used when min_seeds < min_adj_seeds.
 
 **Example:**
 ```{r}
@@ -211,10 +211,10 @@ dmrs <- findDMRsFromSeeds(
 )
 ```
 
-### `min_cpgs`
+### `min_sites`
 **Type:** Integer  
 **Default:** `50`  
-**Description:** Minimum number of CpGs required in a DMR after region expansion. Minimum 2.
+**Description:** Minimum number of sites required in a DMR after region expansion. Minimum 2.
 
 **Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep higher (50+) for WGBS data.
 
@@ -224,7 +224,7 @@ dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
-    min_cpgs = 3
+    min_sites = 3
 )
 ```
 
@@ -274,7 +274,7 @@ Set to `<= 0` to compute connectivity genome-wide.
 **Type:** Numeric  
 **Default:** `0.05`  
 **Range:** 0 to 1  
-**Description:** Maximum p-value threshold for considering correlation between seeds as significant during the first stage of connectivity testing, and between proxial CpGs during the second stage DMR extension.
+**Description:** Maximum p-value threshold for considering correlation between seeds as significant during the first stage of connectivity testing, and between proxial sites during the second stage DMR extension.
 
 **Example:**
 ```{r}
@@ -290,7 +290,7 @@ dmrs <- findDMRsFromSeeds(
 **Type:** Character  
 **Options:** `"strong"`, `"weak"`  
 **Default:** `"strong"`  
-**Description:** Strategy for determining connectivity between CpG sites across sample groups:
+**Description:** Strategy for determining connectivity between site sites across sample groups:
 
 - `"strong"`: Requires all sample groups to show significant correlation for two sites to be considered connected. This is more conservative and ensures consistent methylation patterns across all groups.
 - `"weak"`: Requires at least one sample group to show significant correlation. This is more permissive and may identify DMRs that are specific to certain groups.
@@ -461,7 +461,7 @@ dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds_file,
     pheno = pheno,
-    seeds_id_col = "CpG_ID"
+    seeds_id_col = "site_ID"
 )
 ```
 
@@ -772,9 +772,9 @@ dmrs <- findDMRsFromSeeds(
     sample_group_col = "Sample_Group",
     array = "EPIC",
     genome = "hg38",
-    min_cpg_delta_beta = 0.1,
+    ext_site_delta_beta = 0.2,
     min_seeds = 3,
-    min_cpgs = 5,
+    min_sites = 5,
     max_lookup_dist = 5000,
     max_pval = 0.01,
     njobs = 4
@@ -790,7 +790,7 @@ dmrs <- findDMRsFromSeeds(
     pheno = pheno,
     sample_group_col = "Sample_Group",
     min_seeds = 2,
-    min_cpgs = 3,
+    min_sites = 3,
     max_lookup_dist = 20000,
     max_pval = 0.05,
     njobs = 8
@@ -848,9 +848,9 @@ dmrs <- findDMRsFromSeeds(
 
 1. **Start with default parameters** and adjust based on your specific needs.
 
-2. **For array data** (450K, EPIC), use lower `min_cpgs` values (3-5) since CpG coverage is sparse.
+2. **For array data** (450K, EPIC), use lower `min_sites` values (3-5) since site coverage is sparse.
 
-3. **For WGBS data**, keep `min_cpgs` higher (50+) to ensure robust regions.
+3. **For WGBS data**, keep `min_sites` higher (50+) to ensure robust regions.
 
 4. **Avoid heavy pre-filtering** of seeds based on effect size. Let CMEnt handle filtering internally.
 
@@ -879,15 +879,15 @@ dmrs <- findDMRsFromSeeds(
 **Solution:**
 - Increase `max_lookup_dist`
 - Increase `max_pval`
-- Decrease `min_cpg_delta_beta`
+- Decrease `ext_site_delta_beta`
 
 ## Issue: Too Many DMRs
 
 **Solution:**
 - Increase `min_seeds`
-- Increase `min_cpgs`
+- Increase `min_sites`
 - Increase `max_lookup_dist`
-- Increase `min_cpg_delta_beta`
+- Increase `ext_site_delta_beta`
 - Decrease `max_pval`
 
 ## Issue: Slow Performance

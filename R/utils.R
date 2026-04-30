@@ -268,7 +268,7 @@
     isFALSE(nzchar(Sys.getenv("NO_COLOR"))) && cli::num_ansi_colors() > 1L
 }
 
-.col <- function(x, col = c("cyan", "green", "yellow", "blue")) {
+.col <- function(x, col = c("cyan", "green", "yellow", "blue", "red")) {
     col <- strex::match_arg(col, ignore_case = TRUE)
     if (!.has_ansi()) {
         return(x)
@@ -277,16 +277,25 @@
         cyan   = cli::col_cyan(x),
         green  = cli::col_green(x),
         yellow = cli::col_yellow(x),
-        blue   = cli::col_blue(x)
+        blue   = cli::col_blue(x),
+        red    = cli::col_red(x)
     )
 }
 
-#' Internal logging helpers using cli
 
+
+#' @keywords internal
+#' @noRd
+.format_log_output <- function(msg, lead, level, width = getOption("width")) {
+    prefix <- paste(rep("\t", max(0, level - 1)), collapse = "")
+    paste(strwrap(prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""), width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg), collapse = "\n")
+}
+
+#' Internal logging helpers using cli
 .log_error <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$cross, "red")
-    stop(paste(lead, msg), call. = FALSE)
+    stop(.format_log_output(msg, lead = lead, level = 0), call. = FALSE)
 }
 
 #' @keywords internal
@@ -294,7 +303,7 @@
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    warning(paste(lead, msg))
+    warning(.format_log_output(msg, lead = lead, level = 0))
     invisible()
 }
 
@@ -347,10 +356,11 @@
     if (level >= 2) {
         msg <- paste0(msg, " [mem: ", .format_mem_used(), "]")
     }
-    lead <- paste(rep(" ", level - 1), .col(cli::symbol$tick, "green"), sep = "")
-    message(paste(lead, msg))
+    lead <- .col(cli::symbol$tick, "green")
+    message(.format_log_output(msg, lead = lead, level = level))
     invisible()
 }
+
 
 #' @keywords internal
 #' @noRd
@@ -365,8 +375,8 @@
         }
     }
     msg <- paste0(..., collapse = "")
-    lead <- paste(rep(" ", level - 1), .col(cli::symbol$info, "blue"), sep = "")
-    message(paste(lead, msg))
+    lead <- .col(cli::symbol$info, "blue")
+    message(.format_log_output(msg, lead = lead, level = level))
     invisible()
 }
 
@@ -379,8 +389,8 @@
     }
     .CMEnt_log_env$last_step_time[[level]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
-    lead <- paste(rep(" ", level - 1), .col(cli::symbol$arrow_right, "cyan"), sep = "")
-    message(paste(lead, msg))
+    lead <- .col(cli::symbol$arrow_right, "cyan")
+    message(.format_log_output(msg, lead = lead, level = level))
     invisible()
 }
 
@@ -893,7 +903,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #'   \item Saves to cache directory for future reuse
 #' }
 #'
-#' The chunk-based processing ensures that even very large beta files (millions of CpGs)
+#' The chunk-based processing ensures that even very large beta files (millions of sites)
 #' can be converted without running out of memory. The cache directory is located at
 #' \code{tempdir()/CMEnt_tabix_cache/} and persists for the duration of the c session.
 #' Files are named based on the MD5 hash of the input beta file, ensuring that identical
@@ -997,7 +1007,7 @@ convertBetaToTabix <- function(beta_file,
                 close(conn)
                 n_rows <- n_lines - 1 # Exclude header
 
-                .log_info("Processing ", n_rows, " CpG sites...", level = 2)
+                .log_info("Processing ", n_rows, " site sites...", level = 2)
 
                 # Create temporary BED file for writing chunks
                 temp_bed <- tempfile(fileext = ".bed")
@@ -1033,14 +1043,14 @@ convertBetaToTabix <- function(beta_file,
                     # Set column names
                     colnames(chunk_data) <- col_names
 
-                    cpg_ids <- chunk_data[[1]]
+                    site_ids <- chunk_data[[1]]
 
                     # Match with genomic locations
-                    common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
+                    common_sites <- intersect(site_ids, rownames(sorted_locs))
 
-                    if (length(common_cpgs) > 0) {
+                    if (length(common_sites) > 0) {
                         # Create BED format for this chunk with 6 mandatory columns
-                        bed_chunk <- as.data.frame(sorted_locs[common_cpgs, c("chr", "start"), drop = FALSE])
+                        bed_chunk <- as.data.frame(sorted_locs[common_sites, c("chr", "start"), drop = FALSE])
                         bed_chunk$end <- bed_chunk$start + 1
                         bed_chunk$id <- rownames(bed_chunk)
                         bed_chunk$score <- 0
@@ -1048,7 +1058,7 @@ convertBetaToTabix <- function(beta_file,
                         bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
                         # Add beta values as additional columns
-                        beta_subset <- chunk_data[match(common_cpgs, cpg_ids), -1, drop = FALSE]
+                        beta_subset <- chunk_data[match(common_sites, site_ids), -1, drop = FALSE]
                         bed_chunk <- cbind(bed_chunk, beta_subset)
 
                         # Append to temp BED file
@@ -1071,7 +1081,7 @@ convertBetaToTabix <- function(beta_file,
 
                 # Check if any data was written
                 if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
-                    .log_warn("No common CpGs found between beta file and genomic locations")
+                    .log_warn("No common sites found between beta file and genomic locations")
                     return(NULL)
                 }
             } else {
@@ -1242,7 +1252,7 @@ convertBetaToTabix <- function(beta_file,
 #'
 #' @description This helper function sorts a methylation beta values file by genomic coordinates
 #' (chromosome and position) as required by the findDMRsFromSeeds function. The function reads
-#' the beta file, sorts the CpG sites according to their genomic positions using array annotation,
+#' the beta file, sorts the site sites according to their genomic positions using array annotation,
 #' and writes the sorted data to a new file.
 #'
 #' @param beta_file Character. Path to the input beta values file to be sorted
@@ -1258,7 +1268,7 @@ convertBetaToTabix <- function(beta_file,
 #' \enumerate{
 #'   \item Reads the beta values file
 #'   \item Loads the appropriate array annotation (450K or EPIC)
-#'   \item Sorts CpG sites by genomic coordinates (chr:start)
+#'   \item Sorts site sites by genomic coordinates (chr:start)
 #'   \item Writes the sorted data to a new file
 #'   \item Validates that the output is properly sorted
 #' }
@@ -1309,11 +1319,11 @@ sortBetaFileByCoordinates <- function(beta_file,
     # Read the beta file
     beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("CMEnt.verbose", 0) > 1)
 
-    # Get row names (CpG IDs) from first column
-    cpg_ids <- beta_data[[1]]
+    # Get row names (site IDs) from first column
+    site_ids <- beta_data[[1]]
     beta_values <- beta_data[, -1, drop = FALSE]
-    rownames(beta_values) <- cpg_ids
-    .log_success("Beta loaded: ", nrow(beta_values), " CpGs across ", ncol(beta_values), " samples", level = 2)
+    rownames(beta_values) <- site_ids
+    .log_success("Beta loaded: ", nrow(beta_values), " sites across ", ncol(beta_values), " samples", level = 2)
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
@@ -1322,22 +1332,22 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
 
 
-    # Find CpGs that are present in both the beta file and array annotation
-    common_cpgs <- intersect(cpg_ids, rownames(sorted_locs))
-    missing_from_annotation <- setdiff(cpg_ids, rownames(sorted_locs))
+    # Find sites that are present in both the beta file and array annotation
+    common_sites <- intersect(site_ids, rownames(sorted_locs))
+    missing_from_annotation <- setdiff(site_ids, rownames(sorted_locs))
     if (length(missing_from_annotation) > 0) {
         stop(
-            "Found ", length(missing_from_annotation), " CpG sites in beta file that are not in ",
+            "Found ", length(missing_from_annotation), " site sites in beta file that are not in ",
             array, " annotation. First 5 missing: ", paste(head(missing_from_annotation, 5), collapse = ", ")
         )
     }
 
-    missing_from_beta <- setdiff(rownames(sorted_locs), cpg_ids)
+    missing_from_beta <- setdiff(rownames(sorted_locs), site_ids)
     if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " CpGs in ", array, " annotation are missing from beta file", level = 2)
+        .log_info("Note: ", length(missing_from_beta), " sites in ", array, " annotation are missing from beta file", level = 2)
     }
 
-    final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_cpgs]
+    final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_sites]
 
     # Reorder beta values
     sorted_beta_values <- beta_values[final_order, , drop = FALSE]
@@ -1516,7 +1526,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 #' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
-#' @return A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
+#' @return A data frame containing sorted genomic locations with rownames as site IDs and columns:
 #' \itemize{
 #'   \item chr: Chromosome
 #'   \item start: Genomic position
@@ -1667,7 +1677,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 }
 
 #' Orders a vector of indices according to their corresponding genomic
-#' locations (chromosome and position). This function is useful for sorting CpG
+#' locations (chromosome and position). This function is useful for sorting site
 #' sites or other genomic features by their physical positions.
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
@@ -1679,13 +1689,13 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #' @return Integer vector of ordered indices
 #'
 #' @examples
-#' # Order CpG indices by genomic location
-#' cpg_ids <- c("cg00000029", "cg00000108", "cg00000109")
-#' ordered_indices <- orderByLoc(cpg_ids, array = "450K")
+#' # Order site indices by genomic location
+#' site_ids <- c("cg00000029", "cg00000108", "cg00000109")
+#' ordered_indices <- orderByLoc(site_ids, array = "450K")
 #'
 #' # Order using pre-computed genomic locations
 #' locs <- getSortedGenomicLocs("EPIC", "hg38")
-#' ordered_indices <- orderByLoc(cpg_ids, genomic_locs = locs)
+#' ordered_indices <- orderByLoc(site_ids, genomic_locs = locs)
 #'
 #' @export
 orderByLoc <- function(x,
@@ -1731,14 +1741,14 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
-.downsampleFlankIndices <- function(indices, max_sup_cpgs_per_dmr_side) {
-    if (is.null(max_sup_cpgs_per_dmr_side) || max_sup_cpgs_per_dmr_side <= 0) {
+.downsampleFlankIndices <- function(indices, max_sup_sites_per_dmr_side) {
+    if (is.null(max_sup_sites_per_dmr_side) || max_sup_sites_per_dmr_side <= 0) {
         return(indices)
     }
-    if (length(indices) <= max_sup_cpgs_per_dmr_side) {
+    if (length(indices) <= max_sup_sites_per_dmr_side) {
         return(indices)
     }
-    step <- ceiling(length(indices) / max_sup_cpgs_per_dmr_side)
+    step <- ceiling(length(indices) / max_sup_sites_per_dmr_side)
     indices[seq.int(1L, length(indices), by = step)]
 }
 
@@ -1921,17 +1931,17 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
 
 
 #' @export
-getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
+getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
     pkg_name <- .getBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         sequences <- getDMRSequences(regions, genome, use_online = TRUE, njobs = njobs)
-        cpg_counts <- sapply(sequences, function(seq) {
+        site_counts <- sapply(sequences, function(seq) {
             if (is.na(seq)) {
                 return(NA_integer_)
             }
             stringr::str_count(seq, "CG")
         })
-        return(unlist(cpg_counts))
+        return(unlist(site_counts))
     }
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
@@ -1940,18 +1950,18 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
-    cpg_positions_file <- file.path(cache_dir, paste0(
-        pkg_name, "_cpg_positions.rds"
+    site_positions_file <- file.path(cache_dir, paste0(
+        pkg_name, "_site_positions.rds"
     ))
     if (canonical_chr) {
-        cpg_positions_file <- file.path(cache_dir, paste0(
-            pkg_name, "_canonical_chr_cpg_positions.rds"
+        site_positions_file <- file.path(cache_dir, paste0(
+            pkg_name, "_canonical_chr_site_positions.rds"
         ))
     }
-    if (file.exists(cpg_positions_file)) {
-        cpgs <- readRDS(cpg_positions_file)
+    if (file.exists(site_positions_file)) {
+        sites <- readRDS(site_positions_file)
     } else {
-        .log_info("Missing CpG positions cache. Generating CpG positions from BSgenome package...", level = 2)
+        .log_info("Missing site positions cache. Generating site positions from BSgenome package...", level = 2)
         if (!isNamespaceLoaded(pkg_name)) {
             loadNamespace(pkg_name)
         }
@@ -1963,7 +1973,7 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
         cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
         names(cgs) <- chrs
         suppressWarnings(
-            cpgs <- do.call(
+            sites <- do.call(
                 c, lapply(
                     seq_along(chrs),
                     function(x) {
@@ -1975,24 +1985,24 @@ getCpGBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = T
                 )
             )
         )
-        cpgs <- data.table::as.data.table(as.data.frame(cpgs, stringsAsFactors = FALSE))[, 1:2]
-        colnames(cpgs) <- c("chr", "start")
-        cpgs[, "end"] <- cpgs[, "start"]
-        data.table::setkey(cpgs, chr, start, end)
-        saveRDS(cpgs, cpg_positions_file)
+        sites <- data.table::as.data.table(as.data.frame(sites, stringsAsFactors = FALSE))[, 1:2]
+        colnames(sites) <- c("chr", "start")
+        sites[, "end"] <- sites[, "start"]
+        data.table::setkey(sites, chr, start, end)
+        saveRDS(sites, site_positions_file)
     }
     regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, 1:3]
     regions <- data.table::as.data.table(regions)
     colnames(regions) <- c("rchr", "rstart", "rend")
     regions[, "id"] <- seq_len(nrow(regions))
     data.table::setkey(regions, rchr, rstart, rend)
-    cpg_counts <- data.table::foverlaps(regions,
-        cpgs,
+    site_counts <- data.table::foverlaps(regions,
+        sites,
         by.x = c("rchr", "rstart", "rend"),
         by.y = c("chr", "start", "end"),
     )[, .N, by = id]
-    cpg_counts <- cpg_counts[order(cpg_counts$id), "N"]
-    unlist(cpg_counts)
+    site_counts <- site_counts[order(site_counts$id), "N"]
+    unlist(site_counts)
     # }
 }
 

@@ -2,11 +2,11 @@ options("CMEnt.verbose" = 0)
 
 test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with ugap", {
     set.seed(1)
-    cpg_ids <- paste0("cg", 1:10)
+    site_ids <- paste0("cg", 1:10)
     beta <- matrix(runif(60), nrow = 10)
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", 1:6)
-    locs <- data.frame(chr = rep("chr1", 10), start = seq(100, 1000, 100), end = seq(101, 1001, 100), row.names = cpg_ids, stringsAsFactors = FALSE)
+    locs <- data.frame(chr = rep("chr1", 10), start = seq(100, 1000, 100), end = seq(101, 1001, 100), row.names = site_ids, stringsAsFactors = FALSE)
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)
     pheno <- data.frame(g = c("A", "A", "A", "B", "B", "B"), row.names = colnames(beta), stringsAsFactors = FALSE)
     gi <- list(A = 1:3, B = 4:6)
@@ -31,15 +31,15 @@ test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with
 
 test_that("end-of-input is not bridged", {
     set.seed(1)
-    cpg_ids <- c("cg1", "cg2", "cg3", "cg4")
+    site_ids <- c("cg1", "cg2", "cg3", "cg4")
     beta <- matrix(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.11, 0.21, 0.31, 0.41, 0.51, 0.61, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.71, 0.61, 0.51, 0.41, 0.31, 0.21), nrow = 4, byrow = TRUE)
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", 1:6)
     locs <- data.frame(
         chr = c("chr1", "chr1", "chr2", "chr2"),
         start = c(100, 200, 100, 200),
         end = c(101, 201, 101, 201),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)
@@ -69,20 +69,20 @@ test_that("end-of-input is not bridged", {
 
 test_that("upstream gap recheck skips out-of-bounds runs without warnings", {
     set.seed(1)
-    cpg_ids <- c("cg1", "cg2", "cg3", "cg4")
+    site_ids <- c("cg1", "cg2", "cg3", "cg4")
     beta <- matrix(c(
         0.1, 0.2, 0.3, 0.4, 0.5, 0.6,
         0.11, 0.21, 0.31, 0.41, 0.51, 0.61,
         0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
         0.71, 0.61, 0.51, 0.41, 0.31, 0.21
     ), nrow = 4, byrow = TRUE)
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", 1:6)
     locs <- data.frame(
         chr = c("chr1", "chr1", "chr2", "chr2"),
         start = c(100, 200, 100, 200),
         end = c(101, 201, 101, 201),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)
@@ -114,20 +114,20 @@ test_that("upstream gap recheck skips out-of-bounds runs without warnings", {
 
 test_that("downstream gap recheck skips out-of-bounds runs", {
     set.seed(1)
-    cpg_ids <- c("cg1", "cg2", "cg3", "cg4")
+    site_ids <- c("cg1", "cg2", "cg3", "cg4")
     beta <- matrix(c(
         0.1, 0.2, 0.3, 0.4, 0.5, 0.6,
         0.11, 0.21, 0.31, 0.41, 0.51, 0.61,
         0.7, 0.6, 0.5, 0.4, 0.3, 0.2,
         0.71, 0.61, 0.51, 0.41, 0.31, 0.21
     ), nrow = 4, byrow = TRUE)
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", 1:6)
     locs <- data.frame(
         chr = c("chr1", "chr1", "chr2", "chr2"),
         start = c(100, 200, 100, 200),
         end = c(101, 201, 101, 201),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)
@@ -158,19 +158,19 @@ test_that("downstream gap recheck skips out-of-bounds runs", {
 
 
 test_that("bridge recheck follows runs containing newly bridged edges", {
-    cpg_ids <- paste0("cg", seq_len(6))
+    site_ids <- paste0("cg", seq_len(6))
     beta <- matrix(
-        rep(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6), each = length(cpg_ids)),
-        nrow = length(cpg_ids),
+        rep(c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6), each = length(site_ids)),
+        nrow = length(site_ids),
         byrow = FALSE
     )
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", seq_len(6))
     locs <- data.frame(
-        chr = rep("chr1", length(cpg_ids)),
+        chr = rep("chr1", length(site_ids)),
         start = seq(100, 600, 100),
         end = seq(101, 601, 100),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
     bh <- getBetaHandler(beta = beta, sorted_locs = locs)

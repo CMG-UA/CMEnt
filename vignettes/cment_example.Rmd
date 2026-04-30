@@ -64,7 +64,7 @@ pheno <- loadExampleInputData("pheno")
 array_type <- loadExampleInputData("array_type")
 # DMPs are produced from minfi, and have the form of a dataframe
 dmps <- loadExampleInputData("dmps")
-cat(sprintf("Beta matrix dimensions: %d CpGs x %d samples\n", nrow(beta), ncol(beta)))
+cat(sprintf("Beta matrix dimensions: %d sites x %d samples\n", nrow(beta), ncol(beta)))
 cat(sprintf("Phenotype data dimensions: %d samples x %d columns\n", nrow(pheno), ncol(pheno)))
 cat(sprintf("Array type: %s\n", array_type))
 cat(sprintf("Number of DMPs (seeds): %d\n", nrow(dmps)))
@@ -87,7 +87,7 @@ cat(sprintf("Number of DMPs (seeds) on chr16-20: %d\n", nrow(dmps)))
 ```
 
 ## DMR Calling from Seeds
-The `findDMRsFromSeeds` function is used to call DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and CpGs in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
+The `findDMRsFromSeeds` function is used to call DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
 ```{r find_dmrs}
 pheno[, "case_control"] <- pheno$Sample_Group == "cancer"
 # Find DMRs using parallel processing with 4 cores, producing a GRanges object with the called DMRs and their metadata.
@@ -96,9 +96,9 @@ dmrs <- findDMRsFromSeeds(
     seeds = dmps, # The seeds are the DMPs, which are pre-computed and provided as example data.
     seeds_id_col = NULL, # The column in the seeds data that contains the unique identifier for each seed, which will be used to link the seeds to the DMRs. If not provided, like here, the rownames of the seeds data will be used as identifiers. In case of a NGS experiment (of a BED, tabix or bsseq input), the names should be in the format "chr:position" to allow for correct linking to the genomic coordinates.
     pheno = pheno, # The phenotype data, which contains the sample information and covariates. It should have a column with the sample group labels, which will be used for the SVM-based scoring of the DMRs. It can be provided as a TSV file.
-    min_cpgs = 3, # The minimum number of CpGs that a DMR should have to be considered valid. This is used to filter out small regions that may not be biologically relevant.
+    min_sites = 3, # The Minimum number of sites that a DMR should have to be considered valid. This is used to filter out small regions that may not be biologically relevant.
     max_bridge_seeds_gaps = 1, # The maximum number of non-significant seeds that can be bridged when expanding the DMRs. This allows for some flexibility in the region expansion, while still maintaining a focus on significant seeds.
-    max_bridge_extension_gaps = 1, # The maximum number of non-significant CpGs that can be bridged when extending the DMRs beyond the seeds. This allows for some flexibility in the region extension, while still maintaining a focus on significant CpGs.
+    max_bridge_extension_gaps = 1, # The maximum number of non-significant sites that can be bridged when extending the DMRs beyond the seeds. This allows for some flexibility in the region extension, while still maintaining a focus on significant sites.
     casecontrol_col = "case_control", # The column in the phenotype data that contains the binary case-control labels for the samples, which will be used for the SVM-based scoring of the DMRs. It should be a logical or factor column with two levels, where one level is considered as "case" and the other as "control". If not provided, the first level of the sample group column will be considered as "control" and the second level as "case".
     sample_group_col = "Sample_Group", # The column in the phenotype data that contains the sample group labels for the SVM-based scoring.
     covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
@@ -113,7 +113,7 @@ cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", s
 ```
 
 ## DMR Summary
-The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and CpGs, delta-beta, score, CV accuracy, score, and block ID of each DMR.
+The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and sites, delta-beta, score, CV accuracy, score, and block ID of each DMR.
 ```{r}
 summary_tbl <- data.frame(
     chr = as.character(seqnames(dmrs)),
@@ -121,7 +121,7 @@ summary_tbl <- data.frame(
     end = end(dmrs),
     width = width(dmrs),
     seeds_num = mcols(dmrs)$seeds_num,
-    cpgs_num = mcols(dmrs)$cpgs_num,
+    sites_num = mcols(dmrs)$sites_num,
     delta_beta = round(mcols(dmrs)$delta_beta, 4),
     score = round(mcols(dmrs)$score, 4),
     cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
@@ -144,7 +144,7 @@ cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
 Once motifs are extracted, the `computeDMRsInteraction` function can be used to identify "interactions" between DMRs based on motif similarity. 
 The rationale is that DMRs with similar motifs may be co-regulated or functionally related, even if they are not in close genomic proximity.
 The function computes pairwise similarities between the PWMs of the extracted motifs,
-excluding the center CpG positions, corrects for microarray design biases,
+excluding the center site positions, corrects for microarray design biases,
 applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
 The resulting components are annotated with JASPAR motifs if available.
 The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
@@ -154,7 +154,7 @@ interaction_results <- computeDMRsInteraction(
     genome = genome,
     array = array_type,
     min_similarity = 0.8,
-    motif_cpg_flank_size = 5,
+    motif_site_flank_size = 5,
     min_component_size = 2,
     query_components_with_jaspar = TRUE
 )
@@ -213,14 +213,14 @@ plotDMRsManhattan(
 ```
 
 ### Single DMR Plot
-Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the CpGs in the DMR, the seeds, and the motif-based interactions with other DMRs, 
+Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the sites in the DMR, the seeds, and the motif-based interactions with other DMRs, 
 along with JASPAR annotations if existing.
 Here we select a DMR that has more than one merged DMR and has an extension beyond the seed region, in both sides.
 
 ```{r single_dmr_plot, fig.height=10}
 merged_counts <- suppressWarnings(as.numeric(as.character(mcols(dmrs)$merged_dmrs_num)))
-has_extension <- (mcols(dmrs)$start_seed != mcols(dmrs)$start_cpg) &
-    (mcols(dmrs)$end_seed != mcols(dmrs)$end_cpg)
+has_extension <- (mcols(dmrs)$start_seed != mcols(dmrs)$start_site) &
+    (mcols(dmrs)$end_seed != mcols(dmrs)$end_site)
 
 complex_candidates <- which(is.finite(merged_counts) & merged_counts > 1 & has_extension)
 if (length(complex_candidates) == 0) {
@@ -233,11 +233,11 @@ if (length(complex_candidates) == 0) {
 selected_dmr_idx <- complex_candidates[1]
 cat(
     sprintf(
-        "Selected DMR index %d (score=%s, seeds_num=%s, cpgs_num=%s)\n",
+        "Selected DMR index %d (score=%s, seeds_num=%s, sites_num=%s)\n",
         selected_dmr_idx,
         as.character(mcols(dmrs)$score[selected_dmr_idx]),
         as.character(mcols(dmrs)$seeds_num[selected_dmr_idx]),
-        as.character(mcols(dmrs)$cpgs_num[selected_dmr_idx])
+        as.character(mcols(dmrs)$sites_num[selected_dmr_idx])
     )
 )
 
@@ -249,7 +249,7 @@ plotDMR(
     sample_group_col = "Sample_Group",
     genome = genome,
     array = array_type,
-    motif_cpg_flank_size = 5
+    motif_site_flank_size = 5
 )
 
 ```
@@ -259,7 +259,7 @@ A circos plot consisting of the extracted information from CMEnt is drawn along 
 The information includes:
 
 - The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
-- Selected beta values of the DMRs (at most 5 CpGs per DMR, scoring by absolute delta-beta, are shown)
+- Selected beta values of the DMRs (at most 5 sites per DMR, scoring by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
 ```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
@@ -276,10 +276,10 @@ tryCatch(
             array = array_type,
             sample_group_col = "Sample_Group",
             min_similarity = 0.8,
-            motif_cpg_flank_size = 5,
+            motif_site_flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 40,
-            max_cpgs_per_dmr = 5,
+            max_sites_per_dmr = 5,
             max_components = 120,
             chromosomes = paste0("chr", 17:20),
             degenerate_resolution = 1e6,
@@ -311,10 +311,10 @@ tryCatch(
             array = array_type,
             sample_group_col = "Sample_Group",
             min_similarity = 0.8,
-            motif_cpg_flank_size = 5,
+            motif_site_flank_size = 5,
             max_num_samples_per_group = 5,
             max_dmrs_per_chr = 40,
-            max_cpgs_per_dmr = 5,
+            max_sites_per_dmr = 5,
             max_components = 120,
             region = "chr17:2Mb-5Mb, chr17:72Mb-83Mb, chr19:1Mb-12Mb",
             degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.

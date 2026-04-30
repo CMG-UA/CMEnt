@@ -18,11 +18,11 @@ test_that("validateOutputPrefix warns about missing optional files", {
     write.table(
         data.frame(
             chr = "chr1", start = 1000, end = 2000, width = 1000,
-            cpgs_num = 5, seeds_num = 2, delta_beta = 0.3,
-            cases_beta = 0.7, controls_beta = 0.4, cpgs = "cg1,cg2,cg3,cg4,cg5",
-            seeds = "cg2,cg3", upstream_cpgs = "cg1", downstream_cpgs = "cg4,cg5",
+            sites_num = 5, seeds_num = 2, delta_beta = 0.3,
+            cases_beta = 0.7, controls_beta = 0.4, sites = "cg1,cg2,cg3,cg4,cg5",
+            seeds = "cg2,cg3", upstream_sites = "cg1", downstream_sites = "cg4,cg5",
             start_seed = "cg2", end_seed = "cg3", start_seed_pos = 1200, end_seed_pos = 1800,
-            start_cpg = "cg1", end_cpg = "cg5", id = "chr1:cg1-cg5"
+            start_site = "cg1", end_site = "cg5", id = "chr1:cg1-cg5"
         ),
         gz, sep = "\t", row.names = FALSE, quote = FALSE
     )
@@ -31,7 +31,7 @@ test_that("validateOutputPrefix warns about missing optional files", {
     beta_file <- paste0(prefix, ".seeds_beta.tsv.gz")
     gz <- gzfile(beta_file, "w")
     write.table(
-        data.frame(cpg = c("cg1", "cg2", "cg3"), S1 = c(0.5, 0.6, 0.7), S2 = c(0.4, 0.5, 0.6)),
+        data.frame(site = c("cg1", "cg2", "cg3"), S1 = c(0.5, 0.6, 0.7), S2 = c(0.4, 0.5, 0.6)),
         gz, sep = "\t", row.names = FALSE, quote = FALSE
     )
     close(gz)
@@ -383,7 +383,7 @@ test_that("loadViewerCircosCache treats blank cache files as empty tables", {
     expect_equal(nrow(cache$components), 0)
 })
 
-test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", {
+test_that("Circos heatmap prep skips DMR sites missing from viewer beta values", {
     beta <- matrix(
         c(
             0.5, 0.4,
@@ -410,7 +410,7 @@ test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", 
         ranges = IRanges::IRanges(start = c(100L, 200L), end = c(350L, 450L)),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
-    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2,cg4", "cg2,cg3,cg5")
+    S4Vectors::mcols(dmrs)$sites <- c("cg1,cg2,cg4", "cg2,cg3,cg5")
 
     heatmap_data <- NULL
     expect_warning(
@@ -421,7 +421,7 @@ test_that("Circos heatmap prep skips DMR CpGs missing from viewer beta values", 
             sample_group_col = "Sample_Group",
             max_num_samples_per_group = 0
         ),
-        "Skipping 2 supporting CpGs absent from beta values"
+        "Skipping 2 supporting sites absent from beta values"
     )
 
     expect_s3_class(heatmap_data$heatmap_df, "data.frame")
@@ -459,7 +459,7 @@ test_that("plotDMR restores showtext auto hooks after drawing", {
             pheno = pheno,
             array = array_type,
             genome = "hg19",
-            max_cpgs = 20,
+            max_sites = 20,
             max_samples_per_group = 4
         )
     )

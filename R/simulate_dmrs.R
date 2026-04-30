@@ -19,11 +19,11 @@
 #'   `Condition2`.
 #' @param case_group Group receiving the differential shift. Defaults to the
 #'   second group level.
-#' @param max_gap Maximum gap, in bp, used to form candidate CpG clusters.
-#' @param min_cpgs Minimum number of CpGs per candidate DMR cluster.
-#' @param max_cpgs Maximum number of CpGs per candidate DMR cluster.
+#' @param max_gap Maximum gap, in bp, used to form candidate site clusters.
+#' @param min_sites Minimum number of sites per candidate DMR cluster.
+#' @param max_sites Maximum number of sites per candidate DMR cluster.
 #' @param truth_min_delta_beta Minimum intended beta-scale perturbation for a
-#'   CpG to define the reported truth interval. Set to `0` to report the full
+#'   site to define the reported truth interval. Set to `0` to report the full
 #'   selected cluster.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
@@ -64,8 +64,8 @@ simulateDMRs <- function(
     groups = NULL,
     case_group = NULL,
     max_gap = 500L,
-    min_cpgs = 5L,
-    max_cpgs = 500L,
+    min_sites = 5L,
+    max_sites = 500L,
     truth_min_delta_beta = 0.05,
     delta_jitter = 1 / 3,
     profile = c("triweight", "flat"),
@@ -89,8 +89,8 @@ simulateDMRs <- function(
     profile <- match.arg(profile)
     num_dmrs <- as.integer(num_dmrs)
     max_gap <- as.integer(max_gap)
-    min_cpgs <- as.integer(min_cpgs)
-    max_cpgs <- as.integer(max_cpgs)
+    min_sites <- as.integer(min_sites)
+    max_sites <- as.integer(max_sites)
     profile_degree <- as.integer(profile_degree)
 
     if (length(num_dmrs) != 1L || is.na(num_dmrs) || num_dmrs < 1L) {
@@ -102,11 +102,11 @@ simulateDMRs <- function(
     if (length(max_gap) != 1L || is.na(max_gap) || max_gap < 0L) {
         stop("'max_gap' must be a non-negative integer.")
     }
-    if (length(min_cpgs) != 1L || is.na(min_cpgs) || min_cpgs < 1L) {
-        stop("'min_cpgs' must be a positive integer.")
+    if (length(min_sites) != 1L || is.na(min_sites) || min_sites < 1L) {
+        stop("'min_sites' must be a positive integer.")
     }
-    if (length(max_cpgs) != 1L || is.na(max_cpgs) || max_cpgs < min_cpgs) {
-        stop("'max_cpgs' must be an integer greater than or equal to 'min_cpgs'.")
+    if (length(max_sites) != 1L || is.na(max_sites) || max_sites < min_sites) {
+        stop("'max_sites' must be an integer greater than or equal to 'min_sites'.")
     }
     if (length(truth_min_delta_beta) != 1L || !is.finite(truth_min_delta_beta) || truth_min_delta_beta < 0) {
         stop("'truth_min_delta_beta' must be a non-negative numeric scalar.")
@@ -197,12 +197,12 @@ simulateDMRs <- function(
     clusters <- .makeSimulationClusters(chr = chr, pos = pos, max_gap = max_gap)
     index_by_cluster <- split(seq_along(clusters), clusters)
     cluster_lengths <- lengths(index_by_cluster)
-    eligible <- which(cluster_lengths >= min_cpgs & cluster_lengths <= max_cpgs)
+    eligible <- which(cluster_lengths >= min_sites & cluster_lengths <= max_sites)
     if (length(eligible) < num_dmrs) {
         stop(
             "Only ", length(eligible), " eligible candidate clusters found, but ",
             num_dmrs, " DMRs were requested. Decrease 'num_dmrs' or relax ",
-            "'min_cpgs'/'max_cpgs'/'max_gap'."
+            "'min_sites'/'max_sites'/'max_gap'."
         )
     }
 
@@ -266,8 +266,8 @@ simulateDMRs <- function(
             rowMeans(plogis(eta0[, case_samples, drop = FALSE]), na.rm = TRUE)
         intended_delta[!is.finite(intended_delta)] <- 0
         truth_local <- which(abs(intended_delta) >= truth_min_delta_beta)
-        if (length(truth_local) < min(min_cpgs, length(idx))) {
-            truth_local <- order(abs(intended_delta), decreasing = TRUE)[seq_len(min(min_cpgs, length(idx)))]
+        if (length(truth_local) < min(min_sites, length(idx))) {
+            truth_local <- order(abs(intended_delta), decreasing = TRUE)[seq_len(min(min_sites, length(idx)))]
         }
         truth_local <- sort(unique(truth_local))
         truth_idx <- idx[truth_local]
@@ -302,7 +302,7 @@ simulateDMRs <- function(
             start = min(pos[truth_idx]),
             end = max(end_pos[truth_idx]),
             width = max(end_pos[truth_idx]) - min(pos[truth_idx]) + 1L,
-            num_cpgs = length(truth_idx),
+            num_sites = length(truth_idx),
             cov = dmr_mncov[[dmr_i]],
             delta_beta = observed_delta,
             delta_beta_abs = abs(observed_delta),
@@ -320,7 +320,7 @@ simulateDMRs <- function(
     rownames(truth) <- NULL
 
     GenomicRanges::mcols(gr_dmrs)$cov <- dmr_mncov
-    GenomicRanges::mcols(gr_dmrs)$num_cpgs <- dmr_lengths
+    GenomicRanges::mcols(gr_dmrs)$num_sites <- dmr_lengths
     GenomicRanges::mcols(gr_dmrs)$delta_beta <- deltas
     GenomicRanges::mcols(gr_dmrs)$delta_beta_abs <- abs(deltas)
     GenomicRanges::mcols(gr_dmrs)$case_group <- output_case_group

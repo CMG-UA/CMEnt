@@ -67,8 +67,8 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
         beta = bs,
         num_dmrs = 4,
         delta_max0 = 0.25,
-        min_cpgs = 5,
-        max_cpgs = 20,
+        min_sites = 5,
+        max_sites = 20,
         seed = 123
     )
 
@@ -82,14 +82,14 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
         c(paste0("Condition1_Rep", seq_len(3)), paste0("Condition2_Rep", seq_len(3)))
     )
     expect_equal(nrow(sim$truth), 4)
-    expect_true(all(c("seqnames", "start", "end", "delta_beta", "num_cpgs") %in% colnames(sim$truth)))
+    expect_true(all(c("seqnames", "start", "end", "delta_beta", "num_sites") %in% colnames(sim$truth)))
     expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
 test_that("simulateDMRs is reproducible with seed for BSseq input", {
     bs <- create_simulation_bsseq()
-    sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_cpgs = 5, max_cpgs = 20)
-    sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_cpgs = 5, max_cpgs = 20)
+    sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20)
+    sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20)
 
     expect_equal(bsseq::getCoverage(sim1$simulated, type = "M"), bsseq::getCoverage(sim2$simulated, type = "M"))
     expect_equal(sim1$truth, sim2$truth)
@@ -100,7 +100,7 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
     bs_dup <- bs[c(1L, seq_len(nrow(bs))), ]
 
     expect_warning(
-        sim <- simulateDMRs(beta = bs_dup, num_dmrs = 3, seed = 42, min_cpgs = 5, max_cpgs = 20),
+        sim <- simulateDMRs(beta = bs_dup, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20),
         NA
     )
 
@@ -118,8 +118,8 @@ test_that("simulateDMRs uses simDMRs sample names for custom groups", {
         case_group = "treated",
         num_dmrs = 3,
         seed = 42,
-        min_cpgs = 5,
-        max_cpgs = 20
+        min_sites = 5,
+        max_sites = 20
     )
 
     expect_equal(
@@ -139,8 +139,8 @@ test_that("simulateDMRs supports microarray beta input", {
         sorted_locs = array_input$sorted_locs,
         num_dmrs = 4,
         delta_max0 = 0.25,
-        min_cpgs = 4,
-        max_cpgs = 20,
+        min_sites = 4,
+        max_sites = 20,
         max_gap = 500L,
         seed = 321
     )
@@ -164,8 +164,8 @@ test_that("simulateDMRs supports BSseq input provided as an rds path", {
         beta = bs_rds,
         num_dmrs = 3,
         delta_max0 = 0.25,
-        min_cpgs = 5,
-        max_cpgs = 20,
+        min_sites = 5,
+        max_sites = 20,
         seed = 777
     )
 

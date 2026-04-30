@@ -445,10 +445,10 @@
                                     interactions = NULL,
                                     sample_group_col = "Sample_Group",
                                     min_similarity = 0.8,
-                                    motif_cpg_flank_size = 5,
+                                    motif_site_flank_size = 5,
                                     max_num_samples_per_group = 5,
                                     max_dmrs_per_chr = 10,
-                                    max_cpgs_per_dmr = 5,
+                                    max_sites_per_dmr = 5,
                                     min_component_size = 2,
                                     max_components = 30,
                                     query_components_with_jaspar = TRUE,
@@ -491,7 +491,7 @@
             genome,
             array,
             beta_locs = beta_locs,
-            motif_cpg_flank_size = motif_cpg_flank_size
+            motif_site_flank_size = motif_site_flank_size
         )
     } else if (has_precomputed_interaction_state) {
         .log_info("Using precomputed Circos interactions; skipping DMR motif extraction.", level = 2)
@@ -521,7 +521,7 @@
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
         heatmap_dmrs, beta_handler, pheno, sample_group_col,
-        max_cpgs_per_dmr, max_num_samples_per_group
+        max_sites_per_dmr, max_num_samples_per_group
     )
     .log_success("Heatmap data prepared", level = 2)
     .log_info(
@@ -537,7 +537,7 @@
         array = array,
         beta_locs = beta_locs,
         min_similarity = min_similarity,
-        motif_cpg_flank_size = motif_cpg_flank_size,
+        motif_site_flank_size = motif_site_flank_size,
         max_components = max_components,
         min_component_size = min_component_size,
         query_components_with_jaspar = query_components_with_jaspar,
@@ -1452,7 +1452,7 @@
                                           array,
                                           sorted_locs,
                                           min_similarity,
-                                          motif_cpg_flank_size,
+                                          motif_site_flank_size,
                                           min_component_size,
                                           query_components_with_jaspar,
                                           components = NULL,
@@ -1477,7 +1477,7 @@
         array = array,
         min_similarity = min_similarity,
         beta_locs = beta_locs,
-        motif_cpg_flank_size = motif_cpg_flank_size,
+        motif_site_flank_size = motif_site_flank_size,
         min_component_size = min_component_size,
         query_components_with_jaspar = query_components_with_jaspar
     )
@@ -1531,10 +1531,10 @@
 #' @param interactions Data frame. Output from motif interaction detection (optional, will be computed if missing).
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).
-#' @param motif_cpg_flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
+#' @param motif_site_flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
 #' @param max_dmrs_per_chr Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.
-#' @param max_cpgs_per_dmr Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).
+#' @param max_sites_per_dmr Integer. Maximum number of sites to show per DMR in scatter/heatmap (default: 5).
 #' @param min_component_size Integer. Minimum motif component size to retain (default: 2).
 #' @param max_components Integer. Maximum number of interactions to plot (default: 30).
 #' @param chromosomes Character vector. Subset of chromosomes to display (default: NULL, show all available).
@@ -1574,10 +1574,10 @@ plotDMRsCircos <- function(dmrs,
                            interactions = NULL,
                            sample_group_col = "Sample_Group",
                            min_similarity = 0.8,
-                           motif_cpg_flank_size = 5,
+                           motif_site_flank_size = 5,
                            max_num_samples_per_group = 5,
                            max_dmrs_per_chr = 10,
-                           max_cpgs_per_dmr = 5,
+                           max_sites_per_dmr = 5,
                            min_component_size = 2,
                            max_components = 30,
                            chromosomes = NULL,
@@ -1664,7 +1664,7 @@ plotDMRsCircos <- function(dmrs,
             genome,
             array,
             beta_locs = beta_locs,
-            motif_cpg_flank_size = motif_cpg_flank_size
+            motif_site_flank_size = motif_site_flank_size
         )
     } else if (has_precomputed_interaction_state) {
         .log_info("Using precomputed Circos interactions; skipping DMR motif extraction.", level = 2)
@@ -1717,7 +1717,7 @@ plotDMRsCircos <- function(dmrs,
     .log_step("Preparing heatmap data...", level = 2)
     heatmap_data <- .prepareCircosHeatmapData(
         heatmap_dmrs, beta_handler, pheno, sample_group_col,
-        max_cpgs_per_dmr, max_num_samples_per_group
+        max_sites_per_dmr, max_num_samples_per_group
     )
 
     heatmap_df <- heatmap_data$heatmap_df
@@ -1751,7 +1751,7 @@ plotDMRsCircos <- function(dmrs,
         array = array,
         beta_locs = beta_locs,
         min_similarity = min_similarity,
-        motif_cpg_flank_size = motif_cpg_flank_size,
+        motif_site_flank_size = motif_site_flank_size,
         max_components = max_components,
         min_component_size = min_component_size,
         query_components_with_jaspar = query_components_with_jaspar,
@@ -2200,7 +2200,7 @@ plotDMRsCircos <- function(dmrs,
 #'   merged instead of being shown as separate Circos sectors (default: `5e6`).
 #' @inheritParams plotDMRsCircos
 #' @param ... Additional arguments passed to [plotDMRsCircos()]. This is where
-#'   plot-only settings such as `max_dmrs_per_chr`, `max_cpgs_per_dmr`,
+#'   plot-only settings such as `max_dmrs_per_chr`, `max_sites_per_dmr`,
 #'   `max_num_samples_per_group`, `max_components`, `unmatched_interaction_color`,
 #'   `legend_width_ratio`, `degenerate_resolution`, `output_file`, and `verbose`
 #'   can be supplied. Arguments managed by automatic selection, including `region`,
@@ -2232,7 +2232,7 @@ plotAutoDMRsCircos <- function(dmrs,
                                components = NULL,
                                interactions = NULL,
                                min_similarity = 0.8,
-                               motif_cpg_flank_size = 5,
+                               motif_site_flank_size = 5,
                                min_component_size = 2,
                                chromosomes = NULL,
                                query_components_with_jaspar = TRUE,
@@ -2265,7 +2265,7 @@ plotAutoDMRsCircos <- function(dmrs,
             array = array,
             sorted_locs = sorted_locs,
             min_similarity = min_similarity,
-            motif_cpg_flank_size = motif_cpg_flank_size,
+            motif_site_flank_size = motif_site_flank_size,
             min_component_size = min_component_size,
             query_components_with_jaspar = query_components_with_jaspar,
             components = components,
@@ -2294,7 +2294,7 @@ plotAutoDMRsCircos <- function(dmrs,
         components = interaction_state$components,
         interactions = interaction_state$interactions,
         min_similarity = min_similarity,
-        motif_cpg_flank_size = motif_cpg_flank_size,
+        motif_site_flank_size = motif_site_flank_size,
         min_component_size = min_component_size,
         chromosomes = chromosomes,
         region = region_df,
@@ -2379,7 +2379,7 @@ plotAutoDMRsCircos <- function(dmrs,
     sort(selection)
 }
 
-.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, max_sup_cpgs_per_dmr_side = 2, max_num_samples_per_group = 10) {
+.prepareCircosHeatmapData <- function(dmrs, beta_handler, pheno, sample_group_col, max_sup_sites_per_dmr_side = 2, max_num_samples_per_group = 10) {
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- pheno[rownames(pheno) %in% beta_col_names, , drop = FALSE]
     if (nrow(pheno) == 0) {
@@ -2387,33 +2387,33 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    dmrs_cpgs <- as.character(mcols(dmrs)$cpgs)
-    dmrs_cpgs <- dmrs_cpgs[!is.na(dmrs_cpgs)]
-    dmrs_cpgs_list <- base::strsplit(dmrs_cpgs, split = ",", fixed = TRUE)
-    dmrs_cpgs_inds <- trimws(unique(unlist(dmrs_cpgs_list, use.names = FALSE)))
-    dmrs_cpgs_inds <- dmrs_cpgs_inds[nzchar(dmrs_cpgs_inds)]
-    if (length(dmrs_cpgs_inds) == 0) {
-        .log_warn("No supporting CpGs available for selected DMRs. Skipping heatmap track.")
+    dmrs_sites <- as.character(mcols(dmrs)$sites)
+    dmrs_sites <- dmrs_sites[!is.na(dmrs_sites)]
+    dmrs_sites_list <- base::strsplit(dmrs_sites, split = ",", fixed = TRUE)
+    dmrs_sites_inds <- trimws(unique(unlist(dmrs_sites_list, use.names = FALSE)))
+    dmrs_sites_inds <- dmrs_sites_inds[nzchar(dmrs_sites_inds)]
+    if (length(dmrs_sites_inds) == 0) {
+        .log_warn("No supporting sites available for selected DMRs. Skipping heatmap track.")
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     beta_row_names <- beta_handler$getBetaRowNames()
-    missing_cpgs <- dmrs_cpgs_inds[!dmrs_cpgs_inds %in% beta_row_names]
-    if (length(missing_cpgs) > 0) {
+    missing_sites <- dmrs_sites_inds[!dmrs_sites_inds %in% beta_row_names]
+    if (length(missing_sites) > 0) {
         .log_warn(
             "Skipping ",
-            length(missing_cpgs),
-            " supporting CpGs absent from beta values when preparing Circos heatmap: ",
-            paste(head(missing_cpgs, 10), collapse = ", "),
-            if (length(missing_cpgs) > 10) " ..." else ""
+            length(missing_sites),
+            " supporting sites absent from beta values when preparing Circos heatmap: ",
+            paste(head(missing_sites, 10), collapse = ", "),
+            if (length(missing_sites) > 10) " ..." else ""
         )
     }
-    dmrs_cpgs_inds <- dmrs_cpgs_inds[dmrs_cpgs_inds %in% beta_row_names]
-    if (length(dmrs_cpgs_inds) == 0) {
-        .log_warn("No selected DMR supporting CpGs are available in beta values. Skipping heatmap track.")
+    dmrs_sites_inds <- dmrs_sites_inds[dmrs_sites_inds %in% beta_row_names]
+    if (length(dmrs_sites_inds) == 0) {
+        .log_warn("No selected DMR supporting sites are available in beta values. Skipping heatmap track.")
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
 
-    shown_locs <- beta_handler$getBetaLocs()[dmrs_cpgs_inds, c("chr", "start", "end"), drop = FALSE]
+    shown_locs <- beta_handler$getBetaLocs()[dmrs_sites_inds, c("chr", "start", "end"), drop = FALSE]
     shown_locs <- as.data.frame(shown_locs)
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
@@ -2483,7 +2483,7 @@ plotAutoDMRsCircos <- function(dmrs,
                                    array,
                                    beta_locs,
                                    min_similarity,
-                                   motif_cpg_flank_size,
+                                   motif_site_flank_size,
                                    max_components,
                                    min_component_size,
                                    query_components_with_jaspar = TRUE,
@@ -2499,7 +2499,7 @@ plotAutoDMRsCircos <- function(dmrs,
                     array = array,
                     min_similarity = min_similarity,
                     beta_locs = beta_locs,
-                    motif_cpg_flank_size = motif_cpg_flank_size,
+                    motif_site_flank_size = motif_site_flank_size,
                     min_component_size = min_component_size,
                     query_components_with_jaspar = query_components_with_jaspar
                 )
@@ -2531,7 +2531,7 @@ plotAutoDMRsCircos <- function(dmrs,
         if (is.finite(largest_component) && largest_component > 0.8 * length(dmrs)) {
             .log_warn(
                 "Largest interaction component contains ", largest_component, " / ", length(dmrs),
-                " DMRs. This often indicates dense generic CpG-context motif connectivity."
+                " DMRs. This often indicates dense generic site-context motif connectivity."
             )
         }
     }

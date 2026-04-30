@@ -269,7 +269,7 @@ launchCMEntViewer <- function(
     rownames(beta) <- beta[[1]]
     beta <- beta[, -1, drop = FALSE]
     beta <- as.matrix(beta)
-    .log_success("Loaded beta values for ", nrow(beta), " CpGs and ", ncol(beta), " samples", level = 1)
+    .log_success("Loaded beta values for ", nrow(beta), " sites and ", ncol(beta), " samples", level = 1)
 
     beta_handler <- getBetaHandler(
         beta = beta,
@@ -477,7 +477,7 @@ launchCMEntViewer <- function(
                     genome = data$genome,
                     array = data$array,
                     sample_group_col = data$sample_group_col,
-                    max_cpgs = params$max_cpgs,
+                    max_sites = params$max_sites,
                     max_samples_per_group = params$max_samples_per_group,
                     plot_title = TRUE
                 )

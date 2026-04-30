@@ -16,7 +16,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "parametric"
     )
@@ -31,7 +31,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "auto",
@@ -48,7 +48,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "auto",
         empirical_strategy = "auto",
@@ -65,7 +65,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
@@ -82,7 +82,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "permutations",
@@ -98,15 +98,15 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
     # All should produce valid results
     if (!is.null(dmrs_parametric) && length(dmrs_parametric) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_parametric))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_parametric))))
     }
 
     if (!is.null(dmrs_empirical_auto) && length(dmrs_empirical_auto) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_empirical_auto))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_empirical_auto))))
     }
 
     if (!is.null(dmrs_pval_auto) && length(dmrs_pval_auto) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_pval_auto))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_pval_auto))))
     }
 })
 
@@ -126,7 +126,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
@@ -142,7 +142,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
@@ -159,7 +159,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         empirical_strategy = "montecarlo",
@@ -193,7 +193,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 0
@@ -209,7 +209,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         pval_mode = "empirical",
         ntries = 50
@@ -221,7 +221,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     
     # All should produce valid results
     if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
     }
 })
 

@@ -9,7 +9,7 @@ extractDMRMotifs(
   genome = "hg38",
   array = "450k",
   beta_locs = NULL,
-  motif_cpg_flank_size = 5,
+  motif_site_flank_size = 5,
   plot_dir = NULL
 )
 }
@@ -23,7 +23,7 @@ extractDMRMotifs(
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
-\item{motif_cpg_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
 }
 \value{
 The input Dataframe/GRanges object with an additional metadata column:
@@ -44,9 +44,9 @@ dmrs <- data.frame(
     chr = c("chr16", "chr3"),
     start = c(53468112, 37459206),
     end = c(53468712, 37493431),
-    start_cpg = c("cg00000029", "cg00000108"),
+    start_site = c("cg00000029", "cg00000108"),
     start_seed = c("cg00000029", "cg00000108"),
-    end_cpg = c("cg13426503", "cg08730726"),
+    end_site = c("cg13426503", "cg08730726"),
     end_seed = c("cg13426503", "cg08730726"),
     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )

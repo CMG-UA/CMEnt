@@ -1,14 +1,14 @@
 options("CMEnt.verbose" = 0)
 
 .makeOrderingInput <- function(locs) {
-    cpg_ids <- rownames(locs)
-    n_cpg <- length(cpg_ids)
+    site_ids <- rownames(locs)
+    n_site <- length(site_ids)
     beta <- matrix(
-        seq(0.1, by = 0.01, length.out = n_cpg * 6),
-        nrow = n_cpg,
+        seq(0.1, by = 0.01, length.out = n_site * 6),
+        nrow = n_site,
         byrow = TRUE
     )
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", seq_len(6))
 
     pheno <- data.frame(
@@ -19,8 +19,8 @@ options("CMEnt.verbose" = 0)
     )
 
     seeds <- data.frame(
-        pval = rep(1e-6, n_cpg),
-        row.names = cpg_ids,
+        pval = rep(1e-6, n_site),
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
 
@@ -52,8 +52,8 @@ test_that("findDMRsFromSeeds validates start ordering within chromosome", {
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
             min_seeds = 2,
-            min_cpgs = 2,
-            min_cpg_delta_beta = 0,
+            min_sites = 2,
+            ext_site_delta_beta = 0,
             max_lookup_dist = 1000,
             max_pval = 0.05,
             pval_mode = "parametric",
@@ -84,8 +84,8 @@ test_that("findDMRsFromSeeds validates chromosome block contiguity", {
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
             min_seeds = 2,
-            min_cpgs = 2,
-            min_cpg_delta_beta = 0,
+            min_sites = 2,
+            ext_site_delta_beta = 0,
             max_lookup_dist = 1000,
             max_pval = 0.05,
             pval_mode = "parametric",

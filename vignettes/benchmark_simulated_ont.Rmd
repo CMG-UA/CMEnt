@@ -55,14 +55,11 @@ suppressPackageStartupMessages({
     library(ggplot2)
     library(dplyr)
     library(GenomicRanges)
-    library(progressr)
     library(SummarizedExperiment)
     library(S4Vectors)
 })
 
 
-progressr::handlers("cli")
-options(progressr.enable = TRUE)
 get_benchmark_file <- function(filename) {
     folder = "simulated_ont"
     benchmark_file <- ""
@@ -80,15 +77,15 @@ get_benchmark_file <- function(filename) {
     benchmark_file
 }
 
-drop_zero_coverage_cpgs <- function(bs_obj) {
+drop_zero_coverage_sites <- function(bs_obj) {
     cov_assay <- SummarizedExperiment::assay(bs_obj, "Cov", withDimnames = FALSE)
-    valid_cpgs <- DelayedMatrixStats::rowSums2(cov_assay) > 0
+    valid_sites <- DelayedMatrixStats::rowSums2(cov_assay) > 0
     rm(cov_assay)
     gc(verbose = FALSE)
-    if (!all(valid_cpgs)) {
-        bs_obj <- bs_obj[valid_cpgs, ]
+    if (!all(valid_sites)) {
+        bs_obj <- bs_obj[valid_sites, ]
     }
-    rm(valid_cpgs)
+    rm(valid_sites)
     gc(verbose = FALSE)
     bs_obj
 }
@@ -168,7 +165,7 @@ truth_dmrs <- makeGRangesFromDataFrame(
     keep.extra.columns = TRUE
 )
 
-cat(sprintf("Loaded BSseq with %d CpGs and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
+cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
 cat(sprintf("Loaded %d ground-truth DMRs\n", length(truth_dmrs)))
 ```
 
@@ -203,17 +200,17 @@ knitr::kable(
 #### Adjusting parameters for NGS simulation
 ```{r}
 min_seeds <- 1L
-min_cpgs <- 2L
+min_sites <- 5L
 max_pval <- 0.05
-pval_mode  <- "auto"
-min_cpg_delta_beta  <- 0.1
+pval_mode  <- "parametric"
+ext_site_delta_beta  <- 0.2
 max_bridge_seeds_gaps <- 1L
 max_bridge_extension_gaps <- 3L
-max_lookup_dist <- 10000L
+max_lookup_dist <- 1000L
 ```
 
 #### Extract Methylation Matrix and Generate Seeds
-This step is crucial for CMEnt, which relies on seed CpGs to guide DMR assembly.
+This step is crucial for CMEnt, which relies on seed sites to guide DMR assembly.
 We use a DSS approach to identify candidate seeds based on differential methylation evidence. We keep the FDR threshold relatively lenient (0.1), to account for the low sample size.
 ```{r seeds_calculation}
 # Seeds were generated using the simulateDMRs function with the following parameters:
@@ -221,8 +218,8 @@ We use a DSS approach to identify candidate seeds based on differential methylat
 #     bs = base_bs,
 #     num_dmrs = 1000,
 #     delta_max0 = 0.35,
-#     min_cpgs = 10L,
-#     max_cpgs = 500L,
+#     min_sites = 10L,
+#     max_sites = 500L,
 #     truth_min_delta_beta = 0.1,
 #     profile = "triweight",
 #     seed = 42
@@ -241,10 +238,10 @@ if (!file.exists(seeds_tsv)) {
     )
 } else {
     seeds <- data.table::fread(seeds_tsv)
-    rownames(seeds) <- seeds$cpg_id
+    rownames(seeds) <- seeds$site_id
 }
 seeds <- as.data.frame(seeds, stringsAsFactors = FALSE)
-rownames(seeds) <- seeds$cpg_id
+rownames(seeds) <- seeds$site_id
 seeds$Row.names <- NULL
 seed_dist <- unlist(lapply(split(seeds$start, seeds$chr), function(x) {
     if (length(x) < 2) return(numeric(0))
@@ -264,12 +261,12 @@ knitr::kable(
 
 Metrics explanation:
 
-- Seeds_Total: Total number of seed CpGs identified.
-- Seeds_Overlapping_Truth: Number of seed CpGs that overlap any ground-truth DMR.
-- Seeds_Overlap_Pct: Percentage of seed CpGs that overlap ground-truth DMRs.
+- Seeds_Total: Total number of seed sites identified.
+- Seeds_Overlapping_Truth: Number of seed sites that overlap any ground-truth DMR.
+- Seeds_Overlap_Pct: Percentage of seed sites that overlap ground-truth DMRs.
 - Truth_DMRs_Total: Total number of ground-truth DMRs.
-- Truth_DMRs_With_Seed_Pct: Percentage of ground-truth DMRs that have at least one overlapping seed CpG.
-- Truth_DMRs_With_Enough_Seeds_Pct: Percentage of ground-truth DMRs that have enough overlapping seed CpGs to be captured by CMEnt.
+- Truth_DMRs_With_Seed_Pct: Percentage of ground-truth DMRs that have at least one overlapping seed site.
+- Truth_DMRs_With_Enough_Seeds_Pct: Percentage of ground-truth DMRs that have enough overlapping seed sites to be captured by CMEnt.
 - Median_Seeds_Per_Truth_DMR: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
 - Median_Seeds_Per_Hit_Truth_DMR: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
 - Max_Seeds_In_Truth_DMR: Maximum number of overlapping seeds in any single ground-truth DMR.
@@ -379,12 +376,11 @@ if (!file.exists(cment_file)) {
     )
     rm(sim_bs)
     gc(verbose = FALSE)
-    dmrs_cment <- progressr::with_progress(
-        CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::findDMRsFromSeeds(
             beta = beta_handler,
             seeds = seeds,
             pheno = pheno,
-            seeds_id_col = "cpg_id",
+            seeds_id_col = "site_id",
             sample_group_col = "Sample_Group",
             casecontrol_col = "casecontrol",
             genome = "hg38",
@@ -394,15 +390,14 @@ if (!file.exists(cment_file)) {
             max_bridge_seeds_gaps = max_bridge_seeds_gaps,
             max_bridge_extension_gaps = max_bridge_extension_gaps,
             min_seeds = min_seeds,
-            min_cpgs = min_cpgs,
+            min_sites = min_sites,
             max_pval = max_pval,
-            min_cpg_delta_beta = min_cpg_delta_beta,
+            ext_site_delta_beta = ext_site_delta_beta,
             max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
             annotate_with_genes = FALSE,
             extract_motifs = FALSE,
             njobs = cment_njobs
         )
-    )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
@@ -426,8 +421,8 @@ run_dmrcate_bsseq <- function(
     bs_obj,
     design,
     genome = "hg38",
-    max_cpgs_per_chunk = 500000L,
-    chunk_overlap_cpgs = 2000L
+    max_sites_per_chunk = 500000L,
+    chunk_overlap_sites = 2000L
 ) {
     if (!requireNamespace("DMRcate", quietly = TRUE)) {
         warning("DMRcate not installed; returning empty set.")
@@ -501,22 +496,22 @@ run_dmrcate_bsseq <- function(
         }
 
         n_chr <- length(chr_idx)
-        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_cpgs_per_chunk))
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_sites_per_chunk))
         chr_chunk_dmrs <- vector("list", length(chunk_starts))
 
         for (chunk_i in seq_along(chunk_starts)) {
             core_from <- chunk_starts[chunk_i]
-            core_to <- min(core_from + as.integer(max_cpgs_per_chunk) - 1L, n_chr)
+            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, n_chr)
 
-            ext_from <- max(1L, core_from - as.integer(chunk_overlap_cpgs))
-            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_cpgs))
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_sites))
 
             idx_ext <- chr_idx[ext_from:ext_to]
             core_start_pos <- all_pos[chr_idx[core_from]]
             core_end_pos <- all_pos[chr_idx[core_to]]
 
             cat(sprintf(
-                "DMRcate: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)\n",
+                "DMRcate: %s chunk %d/%d (%s sites core, %s sites with overlap)\n",
                 chr_name,
                 chunk_i,
                 length(chunk_starts),
@@ -545,7 +540,7 @@ run_dmrcate_bsseq <- function(
                         ann,
                         lambda = 1000,
                         C = 2,
-                        min.cpgs = 3
+                        min.sites = 3
                     )
                     ranges_out <- DMRcate::extractRanges(dmrcate_res, genome = genome)
                     rm(ann, dmrcate_res)
@@ -621,8 +616,8 @@ if (!file.exists(dmrcate_file)) {
 
 run_dmrseq_bsseq <- function(
     bs_obj,
-    max_cpgs_per_chunk = 500000L,
-    chunk_overlap_cpgs = 2000L,
+    max_sites_per_chunk = 500000L,
+    chunk_overlap_sites = 2000L,
     max_perms = 5L
 ) {
     if (!requireNamespace("dmrseq", quietly = TRUE)) {
@@ -660,22 +655,22 @@ run_dmrseq_bsseq <- function(
         }
 
         n_chr <- length(chr_idx)
-        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_cpgs_per_chunk))
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_sites_per_chunk))
         chr_chunk_dmrs <- vector("list", length(chunk_starts))
 
         for (chunk_i in seq_along(chunk_starts)) {
             core_from <- chunk_starts[chunk_i]
-            core_to <- min(core_from + as.integer(max_cpgs_per_chunk) - 1L, n_chr)
+            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, n_chr)
 
-            ext_from <- max(1L, core_from - as.integer(chunk_overlap_cpgs))
-            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_cpgs))
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_sites))
 
             idx_ext <- chr_idx[ext_from:ext_to]
             core_start_pos <- all_pos[chr_idx[core_from]]
             core_end_pos <- all_pos[chr_idx[core_to]]
 
             cat(sprintf(
-                "dmrseq: %s chunk %d/%d (%s CpGs core, %s CpGs with overlap)\n",
+                "dmrseq: %s chunk %d/%d (%s sites core, %s sites with overlap)\n",
                 chr_name,
                 chunk_i,
                 length(chunk_starts),
@@ -784,7 +779,7 @@ if (!file.exists(dmrseq_file)) {
 run_hummingbird_bsseq <- function(
     bs_obj,
     max_gap = 300L, # default
-    min_cpgs = 3L, # default is 10
+    min_sites = 3L, # default is 10
     min_length = 50L # default is 500
 ) {
     sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
@@ -827,7 +822,7 @@ run_hummingbird_bsseq <- function(
 
     for (chr_name in chr_vec) {
         chr_idx <- which(all_seqnames == chr_name)
-        if (length(chr_idx) < as.integer(min_cpgs)) {
+        if (length(chr_idx) < as.integer(min_sites)) {
             next
         }
 
@@ -859,7 +854,7 @@ run_hummingbird_bsseq <- function(
                     experimentInfoControl = control_se,
                     experimentInfoCase = case_se,
                     maxGap = as.integer(max_gap),
-                    minCpGs = as.integer(min_cpgs),
+                    minsites = as.integer(min_sites),
                     minLength = as.integer(min_length)
                 )
 
@@ -1081,15 +1076,15 @@ Assessing seed-space recoverability and seed capture efficiency.
 Metrics explanation:
 
 - Truth_DMRs_Total: Total number of ground truth DMRs.
-- Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed CpG.
-- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs, which is the minimum for CMEnt stage 1 to potentially recover the region.
-- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed CpGs that also overlap CMEnt-predicted DMRs, indicating they are potentially recoverable and captured by the method.
-- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed CpGs are captured by CMEnt-predicted DMRs, indicating ideal stage 1 capture.
-- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed CpGs that overlap truth DMRs that are also captured by CMEnt-predicted DMRs.
-- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed CpG, the median percentage of those seed CpGs that are captured by CMEnt-predicted DMRs.
-- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed CpG that is not captured by CMEnt-predicted DMRs.
-- Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed CpGs.
-- Max_Missed_Run_Observed: The maximum length of consecutive missed seed CpGs observed across all truth DMRs.
+- Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed site.
+- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed sites, which is the minimum for CMEnt stage 1 to potentially recover the region.
+- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed sites that also overlap CMEnt-predicted DMRs, indicating they are potentially recoverable and captured by the method.
+- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed sites are captured by CMEnt-predicted DMRs, indicating ideal stage 1 capture.
+- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed sites that overlap truth DMRs that are also captured by CMEnt-predicted DMRs.
+- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed site, the median percentage of those seed sites that are captured by CMEnt-predicted DMRs.
+- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed site that is not captured by CMEnt-predicted DMRs.
+- Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed sites.
+- Max_Missed_Run_Observed: The maximum length of consecutive missed seed sites observed across all truth DMRs.
 
 Metrics values:
 

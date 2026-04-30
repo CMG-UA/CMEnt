@@ -16,7 +16,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_seeds = 2,
-            min_cpgs = 3,
+            min_sites = 3,
             max_lookup_dist = 1000,
             expansion_window = 1, # Expand DMRs by 1bp
             max_bridge_seeds_gaps = 2 # Allow bridging up to 2 seeds apart
@@ -25,7 +25,7 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
         expect_gt(length(dmrs_expanded), 0L)
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
         dmr_df <- as.data.frame(dmrs_expanded)
         # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
         win_df <- CMEnt:::.buildConnectivityWindowsFromDMRs(
@@ -43,15 +43,15 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
         }, logical(1))
         expect_true(all(inside_window))
 
-        # Projection from subset indices must preserve original CpG IDs.
+        # Projection from subset indices must preserve original site IDs.
         all_beta_ids <- rownames(beta)
-        used_cpgs <- unique(unlist(base::strsplit(dmr_df$cpgs, ",", fixed = TRUE), use.names = FALSE))
-        used_cpgs <- used_cpgs[nzchar(used_cpgs)]
-        expect_true(all(used_cpgs %in% all_beta_ids))
+        used_sites <- unique(unlist(base::strsplit(dmr_df$sites, ",", fixed = TRUE), use.names = FALSE))
+        used_sites <- used_sites[nzchar(used_sites)]
+        expect_true(all(used_sites %in% all_beta_ids))
     }
 })
 
-test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
+test_that("findDMRsFromSeeds handles ext_site_delta_beta filtering", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
@@ -67,8 +67,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0,
+        min_sites = 3,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000
     )
 
@@ -82,8 +82,8 @@ test_that("findDMRsFromSeeds handles min_cpg_delta_beta filtering", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0.1, # Filter out small changes
+        min_sites = 3,
+        ext_site_delta_beta = 0.1, # Filter out small changes
         max_lookup_dist = 1000
     )
 
@@ -116,8 +116,8 @@ test_that("findDMRsFromSeeds handles adjusted seeds filtering for array data", {
         genome = "hg19",
         min_seeds = 2,
         min_adj_seeds = 3,
-        min_cpgs = 3,
-        min_cpg_delta_beta = 0,
+        min_sites = 3,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000,
         njobs = 1
     )))
@@ -126,15 +126,15 @@ test_that("findDMRsFromSeeds handles adjusted seeds filtering for array data", {
 
     if (!is.null(dmrs_adj) && length(dmrs_adj) > 0L) {
         dmr_df <- as.data.frame(dmrs_adj)
-        expect_true(all(c("cpgs_num_bg", "seeds_num_adj") %in% names(dmr_df)))
-        expect_true(all(is.finite(dmr_df$cpgs_num_bg)))
-        expect_true(all(dmr_df$cpgs_num_bg >= 1))
+        expect_true(all(c("sites_num_bg", "seeds_num_adj") %in% names(dmr_df)))
+        expect_true(all(is.finite(dmr_df$sites_num_bg)))
+        expect_true(all(dmr_df$sites_num_bg >= 1))
         expect_true(all(dmr_df$seeds_num_adj >= 3))
     }
 })
 
 test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
-    cpg_ids <- c("cgA", "cgB", "cgC", "cgD")
+    site_ids <- c("cgA", "cgB", "cgC", "cgD")
     beta <- matrix(
         c(
             0.10, 0.20, 0.30, 0.15, 0.25, 0.35,
@@ -145,14 +145,14 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
         nrow = 4,
         byrow = TRUE
     )
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", seq_len(6))
 
     locs <- data.frame(
         chr = c("chr1", "chr1", "chr2", "chr2"),
         start = c(100, 200, 100, 200),
         end = c(101, 201, 101, 201),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
 
@@ -163,7 +163,7 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
         row.names = colnames(beta),
         stringsAsFactors = FALSE
     )
-    seeds <- data.frame(pval = rep(1e-6, length(cpg_ids)), row.names = cpg_ids)
+    seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -175,8 +175,8 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         min_seeds = 2,
-        min_cpgs = 2,
-        min_cpg_delta_beta = 0,
+        min_sites = 2,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         pval_mode = "parametric",
@@ -189,12 +189,12 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
     expect_true(length(dmrs) > 0)
 
     dmr_df <- as.data.frame(dmrs)
-    cpg_chr <- setNames(locs$chr, rownames(locs))
-    expect_true(all(cpg_chr[dmr_df$start_seed] == cpg_chr[dmr_df$end_seed]))
+    site_chr <- setNames(locs$chr, rownames(locs))
+    expect_true(all(site_chr[dmr_df$start_seed] == site_chr[dmr_df$end_seed]))
 })
 
 test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
-    cpg_ids <- c("cgA", "cgB", "cgC")
+    site_ids <- c("cgA", "cgB", "cgC")
     beta <- matrix(
         c(
             0.10, 0.20, 0.30, 0.15, 0.25, 0.35,
@@ -204,14 +204,14 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
         nrow = 3,
         byrow = TRUE
     )
-    rownames(beta) <- cpg_ids
+    rownames(beta) <- site_ids
     colnames(beta) <- paste0("S", seq_len(6))
 
     locs <- data.frame(
-        chr = rep("chr1", length(cpg_ids)),
+        chr = rep("chr1", length(site_ids)),
         start = c(100, 200, 300),
         end = c(101, 201, 301),
-        row.names = cpg_ids,
+        row.names = site_ids,
         stringsAsFactors = FALSE
     )
 
@@ -222,7 +222,7 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
         row.names = colnames(beta),
         stringsAsFactors = FALSE
     )
-    seeds <- data.frame(pval = rep(1e-6, length(cpg_ids)), row.names = cpg_ids)
+    seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
     dmrs <- expect_no_error(findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -234,8 +234,8 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         min_seeds = 2,
-        min_cpgs = 2,
-        min_cpg_delta_beta = 0,
+        min_sites = 2,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         pval_mode = "parametric",
@@ -248,10 +248,10 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
     expect_equal(length(dmrs), 1L)
 
     dmr_df <- as.data.frame(dmrs)
-    expect_identical(dmr_df$seeds[[1]], paste(cpg_ids, collapse = ","))
-    expect_identical(dmr_df$start_seed[[1]], cpg_ids[[1]])
-    expect_identical(dmr_df$end_seed[[1]], cpg_ids[[length(cpg_ids)]])
-    expect_equal(dmr_df$seeds_num[[1]], length(cpg_ids))
+    expect_identical(dmr_df$seeds[[1]], paste(site_ids, collapse = ","))
+    expect_identical(dmr_df$start_seed[[1]], site_ids[[1]])
+    expect_identical(dmr_df$end_seed[[1]], site_ids[[length(site_ids)]])
+    expect_equal(dmr_df$seeds_num[[1]], length(site_ids))
     expect_equal(length(base::strsplit(dmr_df$seeds[[1]], ",", fixed = TRUE)[[1]]), dmr_df$seeds_num[[1]])
 })
 
@@ -270,7 +270,7 @@ test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and ch
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         expansion_window = 1,
         max_bridge_seeds_gaps = 2

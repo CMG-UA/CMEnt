@@ -7,7 +7,7 @@ options("CMEnt.verbose" = 0)
 
 #' Create a mock BSseq object for testing
 #'
-#' @param n_sites Number of CpG sites
+#' @param n_sites Number of site sites
 #' @param n_samples Number of samples
 #' @param seed Random seed for reproducibility
 #' @return A BSseq object
@@ -49,7 +49,7 @@ create_mock_bsseq <- function(n_sites = 100, n_samples = 4, seed = 42) {
 
 #' Create a BSseq object with some zero coverage sites
 #'
-#' @param n_sites Number of CpG sites
+#' @param n_sites Number of site sites
 #' @param n_samples Number of samples
 #' @param zero_frac Fraction of entries to set to zero
 #' @param seed Random seed
@@ -288,23 +288,23 @@ lag_correlation_profile <- function(bs_obj, sample_idx, max_lag = 5L) {
 make_correlated_bsseq <- function(seed = 1) {
     set.seed(seed)
 
-    n_cpg <- 120L
+    n_site <- 120L
     n_samples <- 16L
-    pos <- seq(100, by = 60, length.out = n_cpg)
-    base_prob <- plogis(seq(-1.25, 1.25, length.out = n_cpg))
+    pos <- seq(100, by = 60, length.out = n_site)
+    base_prob <- plogis(seq(-1.25, 1.25, length.out = n_site))
 
     phi <- exp(-60 / 350)
-    latent <- matrix(0, nrow = n_cpg, ncol = n_samples)
+    latent <- matrix(0, nrow = n_site, ncol = n_samples)
     latent[1, ] <- stats::rnorm(n_samples)
-    for (i in 2:n_cpg) {
+    for (i in 2:n_site) {
         latent[i, ] <- phi * latent[i - 1L, ] + sqrt(1 - phi^2) * stats::rnorm(n_samples)
     }
 
-    cov <- matrix(35L, nrow = n_cpg, ncol = n_samples)
+    cov <- matrix(35L, nrow = n_site, ncol = n_samples)
     prob <- plogis(qlogis(base_prob) + 0.9 * latent)
     meth <- matrix(
-        stats::rbinom(n_cpg * n_samples, size = cov, prob = prob),
-        nrow = n_cpg,
+        stats::rbinom(n_site * n_samples, size = cov, prob = prob),
+        nrow = n_site,
         ncol = n_samples
     )
 
@@ -312,7 +312,7 @@ make_correlated_bsseq <- function(seed = 1) {
     colnames(meth) <- colnames(cov) <- sample_names
 
     bsseq::BSseq(
-        chr = rep("chr1", n_cpg),
+        chr = rep("chr1", n_site),
         pos = pos,
         M = meth,
         Cov = cov,
@@ -320,7 +320,7 @@ make_correlated_bsseq <- function(seed = 1) {
     )
 }
 
-test_that("augmentBSSeq preserves neighboring CpG correlation", {
+test_that("augmentBSSeq preserves neighboring site correlation", {
     bs <- make_correlated_bsseq(seed = 42)
 
     aug <- augmentBSSeq(bs, n_new_samples = 30, seed = 99)

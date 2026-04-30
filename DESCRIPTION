@@ -69,7 +69,6 @@ Imports:
     matrixStats,
     methods,
     Organism.dplyr,
-    progressr,
     plotly,
     R.utils,
     R6,

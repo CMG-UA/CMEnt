@@ -78,14 +78,14 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
             pheno = pheno,
             sample_group_col = "Sample_Group",
             min_seeds = 2,
-            min_cpgs = 3,
+            min_sites = 3,
             max_lookup_dist = 1000
         )
     )
     # Assertions
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -104,7 +104,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -126,7 +126,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         njobs = 1
     )
@@ -134,7 +134,7 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -296,17 +296,17 @@ test_that("findDMRsFromSeeds works with BSseq input", {
     )
     rownames(pheno) <- sample_names
     seeds <- data.frame(
-        cpg_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
+        site_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
         pval = rep(0.001, length(dmr_region_idx))
     )
     expect_warning(
         dmrs <- findDMRsFromSeeds(
             beta = bsseq_obj,
-            seeds_id_col = "cpg_id",
+            seeds_id_col = "site_id",
             seeds = seeds,
             pheno = pheno,
             sample_group_col = "Group",
-            min_cpgs = 5,
+            min_sites = 5,
             max_lookup_dist = 200,
             njobs = 1,
             annotate_with_genes = FALSE
@@ -338,7 +338,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 2,
+        min_sites = 2,
         max_lookup_dist = 1000
     )
 
@@ -346,7 +346,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })
 
@@ -391,13 +391,13 @@ test_that("findDMRsFromSeeds works with minimal bed file", {
         bed_chrom_col = "chrom",
         bed_start_col = "start",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000
     )
 
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
     }
 })

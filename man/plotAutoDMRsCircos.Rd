@@ -19,7 +19,7 @@ plotAutoDMRsCircos(
   components = NULL,
   interactions = NULL,
   min_similarity = 0.8,
-  motif_cpg_flank_size = 5,
+  motif_site_flank_size = 5,
   min_component_size = 2,
   chromosomes = NULL,
   query_components_with_jaspar = TRUE,
@@ -60,7 +60,7 @@ merged instead of being shown as separate Circos sectors (default: \code{5e6}).}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).}
 
-\item{motif_cpg_flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
+\item{motif_site_flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
 
 \item{min_component_size}{Integer. Minimum motif component size to retain (default: 2).}
 
@@ -70,7 +70,7 @@ merged instead of being shown as separate Circos sectors (default: \code{5e6}).}
 before plotting (default: \code{TRUE}). Set to \code{FALSE} to keep link computation cheaper.}
 
 \item{...}{Additional arguments passed to \code{\link[=plotDMRsCircos]{plotDMRsCircos()}}. This is where
-plot-only settings such as \code{max_dmrs_per_chr}, \code{max_cpgs_per_dmr},
+plot-only settings such as \code{max_dmrs_per_chr}, \code{max_sites_per_dmr},
 \code{max_num_samples_per_group}, \code{max_components}, \code{unmatched_interaction_color},
 \code{legend_width_ratio}, \code{degenerate_resolution}, \code{output_file}, and \code{verbose}
 can be supplied. Arguments managed by automatic selection, including \code{region},

@@ -217,7 +217,7 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
     S4Vectors::mcols(dmrs)$delta_beta <- c(0.3, -0.2)
-    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2", "cg3,cg4")
+    S4Vectors::mcols(dmrs)$sites <- c("cg1,cg2", "cg3,cg4")
     S4Vectors::mcols(dmrs)$seeds <- c("cg1,cg2", "cg3,cg4")
 
     beta <- matrix(
@@ -286,7 +286,7 @@ test_that("plotDMRsCircos skips non-drawable gneg-only ideograms without warning
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
     S4Vectors::mcols(dmrs)$delta_beta <- 0.3
-    S4Vectors::mcols(dmrs)$cpgs <- "cg1,cg2"
+    S4Vectors::mcols(dmrs)$sites <- "cg1,cg2"
     S4Vectors::mcols(dmrs)$seeds <- "cg1,cg2"
 
     beta <- matrix(
@@ -348,7 +348,7 @@ test_that("plotDMRsCircos reuses precomputed interactions without extracting mot
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
     )
     S4Vectors::mcols(dmrs)$delta_beta <- c(0.3, -0.2)
-    S4Vectors::mcols(dmrs)$cpgs <- c("cg1,cg2", "cg3,cg4")
+    S4Vectors::mcols(dmrs)$sites <- c("cg1,cg2", "cg3,cg4")
     S4Vectors::mcols(dmrs)$seeds <- c("cg1,cg2", "cg3,cg4")
 
     beta <- matrix(
@@ -591,7 +591,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
             max_regions_per_chr = 1,
             query_components_with_jaspar = FALSE,
             max_dmrs_per_chr = 1,
-            max_cpgs_per_dmr = 1,
+            max_sites_per_dmr = 1,
             max_num_samples_per_group = 2
         )
     )

@@ -12,7 +12,7 @@ findDMRsFromSeeds(
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
   covariates = NULL,
-  min_cpg_delta_beta = 0.1,
+  ext_site_delta_beta = 0.1,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = NULL,
   max_pval = 0.05,
@@ -27,7 +27,7 @@ findDMRsFromSeeds(
   max_bridge_extension_gaps = 1L,
   min_seeds = 2,
   min_adj_seeds = 2,
-  min_cpgs = 3,
+  min_sites = 3,
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
@@ -58,7 +58,7 @@ findDMRsFromSeeds(
 
 \item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
-\item{min_cpg_delta_beta}{Numeric. Minimum delta beta value for CpGs. Default is 0.1.}
+\item{ext_site_delta_beta}{Numeric. Minimum absolute delta beta value that will force proximal CpG pairs to be treated as connected during Stage 2 expansion, regardless of their correlation p-value. Default is 0.1.}
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
@@ -86,7 +86,7 @@ findDMRsFromSeeds(
 
 \item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array CpG density, in a DMR after extension. Minimum is 2. Default is 2.}
 
-\item{min_cpgs}{Numeric. Minimum number of CpGs in a DMR after extension, including the seeds. Minimum is 2. Default is 3.}
+\item{min_sites}{Numeric. Minimum number of sites in a DMR after extension, including the seeds. Minimum is 2. Default is 3.}
 
 \item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
 

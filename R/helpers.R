@@ -18,7 +18,7 @@
 #' @param output_file An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
 #' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is the number of available CPU cores minus one.
 #'
-#' @return A data frame of identified DMPs with columns for chromosome, position, CpG ID, p-value, q-value, delta beta, and DMP score.
+#' @return A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 #' 
 #' @examples
 #' \dontrun{
@@ -208,10 +208,10 @@ findDMPsBSSeq <- function(
         drop = FALSE
     ]
     if (nrow(dml_test) == 0) {
-        stop("DSS::DMLtest returned no usable CpGs for DMP generation.")
+        stop("DSS::DMLtest returned no usable sites for DMP generation.")
     }
 
-    dml_test$cpg_id <- paste0(dml_test$chr, ":", dml_test$pos)
+    dml_test$site_id <- paste0(dml_test$chr, ":", dml_test$pos)
     dml_test$score <- -log10(dml_test$pvals + .Machine$double.xmin) * abs(dml_test$delta_beta)
     dml_test$score <- (dml_test$score - min(dml_test$score)) / (max(dml_test$score) - min(dml_test$score) + .Machine$double.xmin)
 
@@ -221,7 +221,7 @@ findDMPsBSSeq <- function(
             chr = character(),
             start = integer(),
             end = integer(),
-            cpg_id = character(),
+            site_id = character(),
             pval = numeric(),
             qval = numeric(),
             delta_beta = numeric(),
@@ -236,7 +236,7 @@ findDMPsBSSeq <- function(
             chr = as.character(dml_sig$chr),
             start = as.integer(dml_sig$pos),
             end = as.integer(dml_sig$pos),
-            cpg_id = dml_sig$cpg_id,
+            site_id = dml_sig$site_id,
             pval = dml_sig$pvals,
             qval = dml_sig$fdrs,
             delta_beta = dml_sig$delta_beta,

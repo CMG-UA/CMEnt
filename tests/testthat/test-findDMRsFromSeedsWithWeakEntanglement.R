@@ -15,7 +15,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
         pval_mode = "parametric"
@@ -31,7 +31,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
         pval_mode = "parametric",
@@ -39,7 +39,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
 
     expect_true(is.null(dmrs_relaxed) || inherits(dmrs_relaxed, "GRanges"))
     if (!is.null(dmrs_relaxed) && length(dmrs_relaxed) > 0) {
-        expect_true(all(c("cpgs_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_relaxed))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_relaxed))))
     }
 })
 
@@ -59,7 +59,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "strong",
         pval_mode = "parametric"
@@ -74,7 +74,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
         pval_mode = "parametric"

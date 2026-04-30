@@ -43,7 +43,7 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
         pheno = pheno,
         sample_group_col = "Sample_Group",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000
     )
 
@@ -86,7 +86,7 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
         sample_group_col = "Sample_Group",
         ignored_sample_groups = "cancer",
         min_seeds = 2,
-        min_cpgs = 2,
+        min_sites = 2,
         max_lookup_dist = 2000,
         njobs = 1
     )

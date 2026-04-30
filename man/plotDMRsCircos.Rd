@@ -15,10 +15,10 @@ plotDMRsCircos(
   interactions = NULL,
   sample_group_col = "Sample_Group",
   min_similarity = 0.8,
-  motif_cpg_flank_size = 5,
+  motif_site_flank_size = 5,
   max_num_samples_per_group = 5,
   max_dmrs_per_chr = 10,
-  max_cpgs_per_dmr = 5,
+  max_sites_per_dmr = 5,
   min_component_size = 2,
   max_components = 30,
   chromosomes = NULL,
@@ -54,13 +54,13 @@ rownames matching beta column names (required for beta track).}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).}
 
-\item{motif_cpg_flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
+\item{motif_site_flank_size}{Integer. Flanking region size for motif extraction in bp (default: 5).}
 
 \item{max_num_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 5).}
 
 \item{max_dmrs_per_chr}{Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.}
 
-\item{max_cpgs_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
+\item{max_sites_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
 
 \item{min_component_size}{Integer. Minimum motif component size to retain (default: 2).}
 

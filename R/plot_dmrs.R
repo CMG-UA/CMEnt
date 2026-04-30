@@ -1,14 +1,3 @@
-# Avoid NSE warnings from R CMD check for ggplot2 aes()
-if (getRversion() >= "2.15.1") {
-    utils::globalVariables(c(
-        "Sample", "Beta", "Position", "x", "xend", "y", "yend", "start", "position",
-        "score", "dmr_class", "chr", "target_x", "target_y", "label_x", "label_y",
-        "label", "Group", "block_id", "xmin", "xmax", "ymin", "ymax", "midpoint",
-        "score_raw", "score_smoothed", "end_bp", "start_bp", "right_bp", "slope",
-        "hover_text", "candidate_id", "segment_id", "block_local_id", "dmr_id"
-    ))
-}
-
 .resolveShowtextDpi <- function(default = 300) {
     tryCatch({
         px <- grDevices::dev.size("px")
@@ -106,13 +95,13 @@ if (getRversion() >= "2.15.1") {
     paste0(chr, ":", start_chr, "-", end_chr)
 }
 
-#' Plot DMR Structure with seeds and Extended CpGs
+#' Plot DMR Structure with seeds and Extended sites
 #'
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
 #' identified by findDMRsFromSeeds, showing the underlying seeds as stem plots connected
-#' by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
+#' by horizontal lines to form DMRs, with extended site regions shown as vertical lines.
 #' The plot distinguishes between seeds (differentially methylated positions), supporting
-#' CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
+#' sites that extend the DMR, and non-supporting sites in the surrounding region.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
@@ -137,9 +126,9 @@ if (getRversion() >= "2.15.1") {
     .locsToDf <- function(gr_subset) {
         df <- as.data.frame(gr_subset)
         if (nrow(df) > 0) {
-            df$cpg_id <- rownames(gr_subset)
+            df$site_id <- rownames(gr_subset)
         } else {
-            df$cpg_id <- character(0)
+            df$site_id <- character(0)
         }
         rownames(df) <- NULL
         df
@@ -162,29 +151,29 @@ if (getRversion() >= "2.15.1") {
 
     # Extract DMR information
     seeds <- base::strsplit(dmr_data$seeds, split = ",")[[1]]
-    cpgs <- base::strsplit(dmr_data$cpgs, split = ",")[[1]]
-    downstream_sup_cpgs <- base::strsplit(dmr_data$downstream_cpgs, split = ",")[[1]]
-    downstream_sup_cpgs <- setdiff(downstream_sup_cpgs, seeds)
-    downstream_sup_cpgs_locs <- .locsToDf(beta_locs[downstream_sup_cpgs, , drop = FALSE])
-    upstream_sup_cpgs <- base::strsplit(dmr_data$upstream_cpgs, split = ",")[[1]]
-    upstream_sup_cpgs <- setdiff(upstream_sup_cpgs, seeds)
-    upstream_sup_cpgs_locs <- .locsToDf(beta_locs[upstream_sup_cpgs, , drop = FALSE])
-    if (length(upstream_sup_cpgs) == 0) {
-        start_cpg <- seeds[[1]]
+    sites <- base::strsplit(dmr_data$sites, split = ",")[[1]]
+    downstream_sup_sites <- base::strsplit(dmr_data$downstream_sites, split = ",")[[1]]
+    downstream_sup_sites <- setdiff(downstream_sup_sites, seeds)
+    downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
+    upstream_sup_sites <- base::strsplit(dmr_data$upstream_sites, split = ",")[[1]]
+    upstream_sup_sites <- setdiff(upstream_sup_sites, seeds)
+    upstream_sup_sites_locs <- .locsToDf(beta_locs[upstream_sup_sites, , drop = FALSE])
+    if (length(upstream_sup_sites) == 0) {
+        start_site <- seeds[[1]]
     } else {
-        start_cpg <- upstream_sup_cpgs[[1]]
+        start_site <- upstream_sup_sites[[1]]
     }
-    if (length(downstream_sup_cpgs) == 0) {
-        end_cpg <- seeds[[length(seeds)]]
+    if (length(downstream_sup_sites) == 0) {
+        end_site <- seeds[[length(seeds)]]
     } else {
-        end_cpg <- downstream_sup_cpgs[[length(downstream_sup_cpgs)]]
+        end_site <- downstream_sup_sites[[length(downstream_sup_sites)]]
     }
     beta_locs_rownames <- rownames(beta_locs)
 
-    dmr_locs <- beta_locs[match(start_cpg, beta_locs_rownames):match(end_cpg, beta_locs_rownames), , drop = FALSE]
+    dmr_locs <- beta_locs[match(start_site, beta_locs_rownames):match(end_site, beta_locs_rownames), , drop = FALSE]
 
-    nsup_cpgs <- setdiff(rownames(dmr_locs), cpgs)
-    nsup_cpgs_locs <- .locsToDf(dmr_locs[nsup_cpgs, , drop = FALSE])
+    nsup_sites <- setdiff(rownames(dmr_locs), sites)
+    nsup_sites_locs <- .locsToDf(dmr_locs[nsup_sites, , drop = FALSE])
 
     chr <- as.character(GenomicRanges::seqnames(dmr))
     dmr_start <- GenomicRanges::start(dmr)
@@ -193,8 +182,8 @@ if (getRversion() >= "2.15.1") {
 
     # Get positions
 
-    start_cpg_pos <- as.integer(dmr_locs[start_cpg, "start"])
-    end_cpg_pos <- as.integer(dmr_locs[end_cpg, "start"])
+    start_site_pos <- as.integer(dmr_locs[start_site, "start"])
+    end_site_pos <- as.integer(dmr_locs[end_site, "start"])
     seed_positions <- as.integer(dmr_locs[seeds, "start"])
     start_seed_pos <- dmr_data$start_seed_pos
     end_seed_pos <- dmr_data$end_seed_pos
@@ -206,15 +195,15 @@ if (getRversion() >= "2.15.1") {
         ext <- 0
     }
     ext <- max(ext, min_extension_bp)
-    plot_start <- max(1, start_cpg_pos - ext)
-    plot_end <- end_cpg_pos + ext
+    plot_start <- max(1, start_site_pos - ext)
+    plot_end <- end_site_pos + ext
 
-    downstream_nsup_cpgs_locs <- .locsToDf(dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE])
-    upstream_nsup_cpgs_locs <- .locsToDf(dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE])
-    extended_nsup_cpgs_locs <- rbind(
-        nsup_cpgs_locs,
-        upstream_nsup_cpgs_locs,
-        downstream_nsup_cpgs_locs
+    downstream_nsup_sites_locs <- .locsToDf(dmr_locs[which(dmr_locs$start > dmr_end & dmr_locs$start <= plot_end), , drop = FALSE])
+    upstream_nsup_sites_locs <- .locsToDf(dmr_locs[which(dmr_locs$start < dmr_start & dmr_locs$start >= plot_start), , drop = FALSE])
+    extended_nsup_sites_locs <- rbind(
+        nsup_sites_locs,
+        upstream_nsup_sites_locs,
+        downstream_nsup_sites_locs
     )
 
 
@@ -237,10 +226,10 @@ if (getRversion() >= "2.15.1") {
         stringsAsFactors = FALSE
     )
 
-    # 3. Extended supporting CpGs (vertical lines at y=0.5)
-    if (start_cpg_pos != start_seed_pos) {
+    # 3. Extended supporting sites (vertical lines at y=0.5)
+    if (start_site_pos != start_seed_pos) {
         dmr_upstream_line <- data.frame(
-            x = start_cpg_pos,
+            x = start_site_pos,
             xend = start_seed_pos,
             y = 0.5,
             yend = 1,
@@ -257,10 +246,10 @@ if (getRversion() >= "2.15.1") {
             stringsAsFactors = FALSE
         )
     }
-    if (end_cpg_pos != end_seed_pos) {
+    if (end_site_pos != end_seed_pos) {
         dmr_downstream_line <- data.frame(
             x = end_seed_pos,
-            xend = end_cpg_pos,
+            xend = end_site_pos,
             y = 1,
             yend = 0.5,
             type = "DMR_Extension",
@@ -277,35 +266,35 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    extended_sup_cpgs_locs <- rbind(
-        upstream_sup_cpgs_locs,
-        downstream_sup_cpgs_locs
+    extended_sup_sites_locs <- rbind(
+        upstream_sup_sites_locs,
+        downstream_sup_sites_locs
     )
-    if (nrow(extended_sup_cpgs_locs) > 0) {
-        extended_sup_cpgs_df <- data.frame(
-            start = extended_sup_cpgs_locs$start,
+    if (nrow(extended_sup_sites_locs) > 0) {
+        extended_sup_sites_df <- data.frame(
+            start = extended_sup_sites_locs$start,
             y = 0.5,
-            type = "Extended_CpG",
+            type = "Extended_site",
             stringsAsFactors = FALSE
         )
     } else {
-        extended_sup_cpgs_df <- data.frame(
+        extended_sup_sites_df <- data.frame(
             start = numeric(0),
             y = numeric(0),
             type = character(0),
             stringsAsFactors = FALSE
         )
     }
-    # 4. Non-supporting CpGs in extended region
-    if (nrow(extended_nsup_cpgs_locs) > 0) {
-        extended_nsup_cpgs_df <- data.frame(
-            start = extended_nsup_cpgs_locs$start,
+    # 4. Non-supporting sites in extended region
+    if (nrow(extended_nsup_sites_locs) > 0) {
+        extended_nsup_sites_df <- data.frame(
+            start = extended_nsup_sites_locs$start,
             y = 0.5,
-            type = "Extended_CpG",
+            type = "Extended_site",
             stringsAsFactors = FALSE
         )
     } else {
-        extended_nsup_cpgs_df <- data.frame(
+        extended_nsup_sites_df <- data.frame(
             start = numeric(0),
             y = numeric(0),
             type = character(0),
@@ -336,8 +325,8 @@ if (getRversion() >= "2.15.1") {
         alpha = 0.1,
         fill = "#E41A1C"
     )
-    # if upstream extended CpGs exist add shading in the form of a trapezoid
-    if (nrow(upstream_sup_cpgs_locs) > 0) {
+    # if upstream extended sites exist add shading in the form of a trapezoid
+    if (nrow(upstream_sup_sites_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_upstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -347,15 +336,15 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_cpgs_locs$start), start_seed_pos, start_seed_pos, min(upstream_sup_cpgs_locs$start)),
+            x = c(min(upstream_sup_sites_locs$start), start_seed_pos, start_seed_pos, min(upstream_sup_sites_locs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
         )
     }
 
-    # if downstream extended CpGs exist add shading in the form of a trapezoid
-    if (nrow(downstream_sup_cpgs_locs) > 0) {
+    # if downstream extended sites exist add shading in the form of a trapezoid
+    if (nrow(downstream_sup_sites_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_downstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -365,7 +354,7 @@ if (getRversion() >= "2.15.1") {
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_seed_pos, max(downstream_sup_cpgs_locs$start), max(downstream_sup_cpgs_locs$start), end_seed_pos),
+            x = c(end_seed_pos, max(downstream_sup_sites_locs$start), max(downstream_sup_sites_locs$start), end_seed_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -392,10 +381,10 @@ if (getRversion() >= "2.15.1") {
         alpha = 1
     )
 
-    # Plot supported CpG stems
-    if (nrow(extended_sup_cpgs_df) > 0) {
+    # Plot supported site stems
+    if (nrow(extended_sup_sites_df) > 0) {
         p <- p + ggplot2::geom_segment(
-            data = extended_sup_cpgs_df,
+            data = extended_sup_sites_df,
             ggplot2::aes(x = start, xend = start, y = 0, yend = y),
             color = "#377EB8",
             linewidth = 0.8,
@@ -403,10 +392,10 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    # Plot supporting CpG points
-    if (nrow(extended_sup_cpgs_df) > 0) {
+    # Plot supporting site points
+    if (nrow(extended_sup_sites_df) > 0) {
         p <- p + ggplot2::geom_point(
-            data = extended_sup_cpgs_df,
+            data = extended_sup_sites_df,
             ggplot2::aes(x = start, y = y),
             color = "#377EB8",
             size = 2,
@@ -415,10 +404,10 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    # Plot non-supported CpG stems
-    if (nrow(extended_nsup_cpgs_df) > 0) {
+    # Plot non-supported site stems
+    if (nrow(extended_nsup_sites_df) > 0) {
         p <- p + ggplot2::geom_segment(
-            data = extended_nsup_cpgs_df,
+            data = extended_nsup_sites_df,
             ggplot2::aes(x = start, xend = start, y = 0, yend = y),
             color = "gray50",
             linewidth = 0.8,
@@ -426,10 +415,10 @@ if (getRversion() >= "2.15.1") {
         )
     }
 
-    # Plot non-supporting CpG points
-    if (nrow(extended_nsup_cpgs_df) > 0) {
+    # Plot non-supporting site points
+    if (nrow(extended_nsup_sites_df) > 0) {
         p <- p + ggplot2::geom_point(
-            data = extended_nsup_cpgs_df,
+            data = extended_nsup_sites_df,
             ggplot2::aes(x = start, y = y),
             color = "gray50",
             size = 2,
@@ -441,7 +430,7 @@ if (getRversion() >= "2.15.1") {
 
     # Add labels for DMR extensions if they exist
     extension_df <- list()
-    if (nrow(upstream_sup_cpgs_locs) > 0) {
+    if (nrow(upstream_sup_sites_locs) > 0) {
         upstream_mid_x <- (dmr_upstream_line$x + dmr_upstream_line$xend) / 2
         upstream_mid_y <- (dmr_upstream_line$y + dmr_upstream_line$yend) / 2
         upstream_label_df <- data.frame(
@@ -454,7 +443,7 @@ if (getRversion() >= "2.15.1") {
         )
         extension_df <- c(extension_df, list(upstream_label_df))
     }
-    if (nrow(downstream_sup_cpgs_locs) > 0) {
+    if (nrow(downstream_sup_sites_locs) > 0) {
         downstream_mid_x <- (dmr_downstream_line$x + dmr_downstream_line$xend) / 2
         downstream_mid_y <- (dmr_downstream_line$y + dmr_downstream_line$yend) / 2
         downstream_label_df <- data.frame(
@@ -517,11 +506,11 @@ if (getRversion() >= "2.15.1") {
     }
 
     # Styling
-    if (nrow(extended_nsup_cpgs_locs) > 0 || nrow(extended_sup_cpgs_locs) > 0) {
+    if (nrow(extended_nsup_sites_locs) > 0 || nrow(extended_sup_sites_locs) > 0) {
         p <- p +
             ggplot2::scale_y_continuous(
                 breaks = c(0.5, 1),
-                labels = c("Array CpGs", "Seeds\n(Used in Motif Analysis)"),
+                labels = c("Array sites", "Seeds\n(Used in Motif Analysis)"),
                 limits = c(-0.1, 1.15)
             )
     } else {
@@ -546,17 +535,17 @@ if (getRversion() >= "2.15.1") {
         )
 
     # Add ticks for the seeds on the x-axis
-    start_cpg_ind <- which(beta_locs_rownames == start_cpg)
-    end_cpg_ind <- which(beta_locs_rownames == end_cpg)
-    breaks <- c(plot_start, as.integer(beta_locs[start_cpg_ind:end_cpg_ind, "start"]), plot_end)
-    cpg_positions <- as.integer(beta_locs[start_cpg_ind:end_cpg_ind, "start"])
-    cpg_ids <- rownames(beta_locs[start_cpg_ind:end_cpg_ind, , drop = FALSE])
-    cpgs_labs <- paste0(
-        format(cpg_positions, big.mark = ",", scientific = FALSE),
-        " (", cpg_ids, ")"
+    start_site_ind <- which(beta_locs_rownames == start_site)
+    end_site_ind <- which(beta_locs_rownames == end_site)
+    breaks <- c(plot_start, as.integer(beta_locs[start_site_ind:end_site_ind, "start"]), plot_end)
+    site_positions <- as.integer(beta_locs[start_site_ind:end_site_ind, "start"])
+    site_ids <- rownames(beta_locs[start_site_ind:end_site_ind, , drop = FALSE])
+    sites_labs <- paste0(
+        format(site_positions, big.mark = ",", scientific = FALSE),
+        " (", site_ids, ")"
     )
     breaks_labels <- c(
-        format(plot_start, big.mark = ",", scientific = FALSE), cpgs_labs,
+        format(plot_start, big.mark = ",", scientific = FALSE), sites_labs,
         format(plot_end, big.mark = ",", scientific = FALSE)
     )
     p <- p + ggplot2::scale_x_continuous(
@@ -570,20 +559,20 @@ if (getRversion() >= "2.15.1") {
     }
 
     if (.ret_details) {
-        nsup_df <- extended_nsup_cpgs_locs
-        if (!"cpg_id" %in% colnames(nsup_df)) {
-            nsup_df$cpg_id <- character(0)
+        nsup_df <- extended_nsup_sites_locs
+        if (!"site_id" %in% colnames(nsup_df)) {
+            nsup_df$site_id <- character(0)
         }
-        sup_df <- extended_sup_cpgs_locs
-        if (!"cpg_id" %in% colnames(sup_df)) {
-            sup_df$cpg_id <- character(0)
+        sup_df <- extended_sup_sites_locs
+        if (!"site_id" %in% colnames(sup_df)) {
+            sup_df$site_id <- character(0)
         }
         seed_df <- .locsToDf(dmr_locs[seeds, , drop = FALSE])
         total_shown_positions <- rbind(nsup_df, sup_df, seed_df)
-        total_shown_positions <- total_shown_positions[!duplicated(total_shown_positions$cpg_id), , drop = FALSE]
-        rownames(total_shown_positions) <- total_shown_positions$cpg_id
+        total_shown_positions <- total_shown_positions[!duplicated(total_shown_positions$site_id), , drop = FALSE]
+        rownames(total_shown_positions) <- total_shown_positions$site_id
         total_shown_positions <- total_shown_positions[order(total_shown_positions$start), , drop = FALSE]
-        total_shown_positions$cpg_id <- NULL
+        total_shown_positions$site_id <- NULL
         return(invisible(list(structure_plot = p, breaks = breaks, breaks_labels = breaks_labels, chr = chr, total_locs = total_shown_positions)))
     }
     invisible(p)
@@ -592,18 +581,18 @@ if (getRversion() >= "2.15.1") {
 
 # Create beta heatmap plot
 .plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, max_samples_per_group = 10, sample_group_col = "Sample_Group") {
-    cpg_ids <- rownames(total_shown_positions)
-    cpg_locs <- total_shown_positions[, c("chr", "start")]
+    site_ids <- rownames(total_shown_positions)
+    site_locs <- total_shown_positions[, c("chr", "start")]
 
 
     # Mark seeds
     seed_ids <- unlist(base::strsplit(as.character(dmr_data$seeds), ","))
-    is_seed <- cpg_ids %in% seed_ids
+    is_seed <- site_ids %in% seed_ids
 
     # Create heatmap
     # Prepare data
     beta_data <- as.data.frame(beta_data)
-    beta_data[, "CpG"] <- rownames(beta_data)
+    beta_data[, "site"] <- rownames(beta_data)
 
     # if there are more than max_samples_per_group samples in any group, limit to max_samples_per_group samples per group for plotting
     selected_samples <- NULL
@@ -632,21 +621,21 @@ if (getRversion() >= "2.15.1") {
         if (ncol(beta_data) - 1 > max_samples_per_group) {
             .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
             set.seed(123) # for reproducibility
-            sample_cols <- setdiff(colnames(beta_data), "CpG")
+            sample_cols <- setdiff(colnames(beta_data), "site")
             selected_samples <- sample(sample_cols, max_samples_per_group)
         }
     }
     if (!is.null(selected_samples)) {
-        beta_data <- beta_data[, c("CpG", selected_samples), drop = FALSE]
+        beta_data <- beta_data[, c("site", selected_samples), drop = FALSE]
         if (!is.null(pheno) && !is.null(sample_group_col)) {
             pheno <- pheno[selected_samples, , drop = FALSE]
         }
     }
 
-    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "CpG")))
-    colnames(beta_melted) <- c("CpG", "Sample", "Beta")
-    beta_melted$Position <- cpg_locs[as.character(beta_melted$CpG), "start"]
-    beta_melted$is_seed <- is_seed[match(beta_melted$CpG, cpg_ids)]
+    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "site")))
+    colnames(beta_melted) <- c("site", "Sample", "Beta")
+    beta_melted$Position <- site_locs[as.character(beta_melted$site), "start"]
+    beta_melted$is_seed <- is_seed[match(beta_melted$site, site_ids)]
     sample_order <- unique(as.character(beta_melted$Sample))
     sample_label_colors <- rep("#222222", length(sample_order))
     names(sample_label_colors) <- sample_order
@@ -715,7 +704,7 @@ minmaxscale <- function(x) {
     (x - min(x)) / max(max(x) - min(x), 1e-10)
 }
 
-.summarizeMotifContext <- function(dmrs, dmr_index, genome, array, beta_locs, motif_cpg_flank_size = 5) {
+.summarizeMotifContext <- function(dmrs, dmr_index, genome, array, beta_locs, motif_site_flank_size = 5) {
     ret <- list(top_interactions = data.frame(), jaspar = data.frame())
     if (length(dmrs) < 2) {
         return(ret)
@@ -743,7 +732,7 @@ minmaxscale <- function(x) {
             genome = genome,
             array = array,
             beta_locs = beta_locs,
-            motif_cpg_flank_size = motif_cpg_flank_size
+            motif_site_flank_size = motif_site_flank_size
         )
     }
     local_idx <- match(dmr_index, candidate_inds)
@@ -755,7 +744,7 @@ minmaxscale <- function(x) {
         return(ret)
     }
 
-    sim_matrix <- .extractMotifsSimilarity(cand_dmrs, motif_cpg_flank_size = motif_cpg_flank_size)
+    sim_matrix <- .extractMotifsSimilarity(cand_dmrs, motif_site_flank_size = motif_site_flank_size)
     sim_vec <- sim_matrix[local_idx, ]
     sim_vec[local_idx] <- NA_real_
     valid <- which(is.finite(sim_vec))
@@ -855,12 +844,12 @@ minmaxscale <- function(x) {
         )
 }
 
-.plotPWM <- function(dmr, genome, array, beta_locs, motif_cpg_flank_size = 5) {
+.plotPWM <- function(dmr, genome, array, beta_locs, motif_site_flank_size = 5) {
     # Extract DMR motifs if not already present
     if (!"pwm" %in% colnames(S4Vectors::mcols(dmr))) {
         dmr <- extractDMRMotifs(dmr,
             genome = genome, array = array,
-            beta_locs = beta_locs, motif_cpg_flank_size = motif_cpg_flank_size
+            beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size
         )
     }
     pwm <- mcols(dmr)$pwm[[1]]
@@ -905,7 +894,7 @@ minmaxscale <- function(x) {
         )
     }
 
-    position_labels <- c(seq(-motif_cpg_flank_size, 0), seq(0, motif_cpg_flank_size))
+    position_labels <- c(seq(-motif_site_flank_size, 0), seq(0, motif_site_flank_size))
 
     rownames(pwm) <- Biostrings::DNA_BASES
 
@@ -923,7 +912,7 @@ minmaxscale <- function(x) {
                 aspect.ratio = 0.22
             ) +
             ggplot2::labs(
-                x = "Position Relative to CpG",
+                x = "Position Relative to site",
                 y = "Relative base weight",
                 subtitle = pwm_subtitle,
                 title = paste0("Motif PWM (consensus: ", consensus_seq, ")")
@@ -1041,11 +1030,11 @@ plotDMRs <- function(dmrs,
 #' Plot DMR
 #'
 #' @description Creates a detailed DMR plot with an integrated heatmap showing
-#' beta values across samples for seeds and surrounding CpGs. The plot consists of
-#' two panels: the top panel shows the DMR structure with seeds and extended CpGs,
+#' beta values across samples for seeds and surrounding sites. The plot consists of
+#' two panels: the top panel shows the DMR structure with seeds and extended sites,
 #' and the bottom panel displays a heatmap of beta values for all samples, if beta values are provided.
 #' Additionally, if motif information is available or can be extracted, a sequence logo
-#' plot is added showing the nucleotide composition and information content around CpG sites in the DMR.
+#' plot is added showing the nucleotide composition and information content around site sites in the DMR.
 #'
 #' @param dmrs GRanges object. Output from findDMRsFromSeeds.
 #' @param dmr_index Integer. Which DMR to plot.
@@ -1058,10 +1047,10 @@ plotDMRs <- function(dmrs,
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
-#' @param max_cpgs Integer. Maximum number of CpGs to show in heatmap (default: 100).
+#' @param max_sites Integer. Maximum number of sites to show in heatmap (default: 100).
 #' @param max_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 10).
 #' @param plot_motif Logical. Whether to plot the sequence logo motif (default: TRUE).
-#' @param motif_cpg_flank_size Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).
+#' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #' @param output_file Character. If provided, saves the plot to the specified file path (PDF format).
 #'
@@ -1080,7 +1069,7 @@ plotDMRs <- function(dmrs,
 #' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df)
 #'
 #' # With custom flank size for motif extraction
-#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_cpg_flank_size = 10)
+#' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_site_flank_size = 10)
 #'
 #' # Without motif plot
 #' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
@@ -1096,10 +1085,10 @@ plotDMR <- function(dmrs,
                     sample_group_col = "Sample_Group",
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
-                    max_cpgs = 100,
+                    max_sites = 100,
                     max_samples_per_group = 10,
                     plot_motif = TRUE,
-                    motif_cpg_flank_size = 5,
+                    motif_site_flank_size = 5,
                     plot_title = TRUE,
                     output_file = NULL,
                     width = 8,
@@ -1258,7 +1247,7 @@ plotDMR <- function(dmrs,
 
     if (plot_motif) {
         .log_info("Generating motif PWM plot...", level = 3)
-        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_cpg_flank_size = motif_cpg_flank_size)
+        pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size)
         if (!is.null(pwm_plot)) {
             motif_context <- .summarizeMotifContext(
                 dmrs = dmrs,
@@ -1266,7 +1255,7 @@ plotDMR <- function(dmrs,
                 genome = genome,
                 array = array,
                 beta_locs = beta_locs,
-                motif_cpg_flank_size = motif_cpg_flank_size
+                motif_site_flank_size = motif_site_flank_size
             )
             motif_lines <- .buildMotifContextLines(motif_context)
             motif_context_plot <- .plotMotifContext(motif_lines)
@@ -1994,8 +1983,8 @@ plotDMRsManhattan <- function(dmrs,
     } else {
         NA_real_
     }
-    dmr_df$cpgs_num <- if ("cpgs_num" %in% colnames(mcols_df)) {
-        suppressWarnings(as.numeric(mcols_df$cpgs_num))
+    dmr_df$sites_num <- if ("sites_num" %in% colnames(mcols_df)) {
+        suppressWarnings(as.numeric(mcols_df$sites_num))
     } else {
         NA_real_
     }
@@ -2057,7 +2046,7 @@ plotDMRsManhattan <- function(dmrs,
             .hoverLine("Score", dmr_df$score[i], digits = 3),
             .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
             .hoverLine("Primary region", dmr_df$dmr_class[i]),
-            .hoverLine("CpGs", dmr_df$cpgs_num[i]),
+            .hoverLine("sites", dmr_df$sites_num[i]),
             .hoverLine("Seeds", dmr_df$seeds_num[i]),
             .hoverLine("Block", dmr_df$block_id[i]),
             .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),

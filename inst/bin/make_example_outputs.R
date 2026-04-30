@@ -8,7 +8,6 @@ if (length(files_to_make) == 0) {
     cat("All example output files already exist. Skipping generation.\n")
     quit(save = "no")
 }
-progressr::handlers("cli")
 options("CMEnt.verbose" = 1)
 options("CMEnt.njobs" = 8)
 for (case in names(files_to_make)) {
@@ -22,7 +21,7 @@ for (case in names(files_to_make)) {
     dmps <- fun("dmps")
     pheno <- fun("pheno")
     pheno[, "casecontrol"] <- pheno$Sample_Group == "cancer"
-    dmrs_cment <- progressr::with_progress(CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::findDMRsFromSeeds(
         beta = beta,
         seeds = dmps,
         pheno = pheno,
@@ -34,13 +33,13 @@ for (case in names(files_to_make)) {
         array = "450K",
         genome = "hg19",
         min_seeds = 2,
-        min_cpgs = 3,
+        min_sites = 3,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         pval_mode = "parametric",
         entanglement = "weak",
         output_prefix = paste0("inst/extdata/", case),
         .score_dmrs = TRUE
-    ))
+    )
     saveRDS(dmrs_cment, cment_file)
 }
