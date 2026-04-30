@@ -76,7 +76,7 @@
             "--ext_site_delta_beta",
             default = 0.2,
             type = "double",
-            help = "Minimum absolute site delta beta that force-connects proximal site pairs during DMR expansion, even when the correlation test fails (default: 0.2)."
+            help = "Minimum absolute site delta beta that force-connects proximal site pairs during DMR expansion, even when the correlation test fails. Use NA to disable this shortcut; 0 means any proximal site with a non-missing case-control delta beta can be force-connected (default: 0.2)."
         ),
         optparse::make_option(
             "--ignored_sample_groups",

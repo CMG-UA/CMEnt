@@ -63,7 +63,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
             seeds = sig_dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
-            ext_site_delta_beta = 0,
+            ext_site_delta_beta = NA_real_,
             min_seeds = 2,
             min_sites = 3,
             max_lookup_dist = 10000,

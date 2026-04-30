@@ -164,10 +164,10 @@ dmrs <- findDMRsFromSeeds(
 ### `ext_site_delta_beta`
 **Type:** Numeric  
 **Default:** `0.2`  
-**Range:** 0 to 1  
+**Range:** 0 to 1, or `NA` to disable  
 **Description:** Absolute delta beta value for neighboring sites to be included in DMRs, during the **second stage** of DMR extension, without considering correlation.
 
-**Recommendation:** Keep 0.2 for balanced precision/recall. Lower to 0.05 or 0 only when prioritizing correlation testing.
+**Recommendation:** Keep 0.2 for balanced precision/recall. Use `NA` to disable the shortcut entirely. Set to 0 only when you intentionally want any proximal site with a non-missing case/control delta beta to be eligible for force-connection.
 
 **Example:**
 ```{r}
@@ -877,18 +877,19 @@ dmrs <- findDMRsFromSeeds(
 ## Issue: DMRs Too Small
 
 **Solution:**
-- Increase `max_lookup_dist`
-- Increase `max_pval`
-- Decrease `ext_site_delta_beta`
+- Increase `max_lookup_dist`. This will allow seeds that are farther apart to be connected, leading to larger DMRs.
+- Increase `max_pval`. This will make connectivity testing less stringent, allowing more sites to be connected and thus larger DMRs.
+- Decrease `ext_site_delta_beta` . This will allow more sites to be included in DMRs during the second stage of extension, leading to larger DMRs.
+
 
 ## Issue: Too Many DMRs
 
 **Solution:**
-- Increase `min_seeds`
-- Increase `min_sites`
-- Increase `max_lookup_dist`
-- Increase `ext_site_delta_beta`
-- Decrease `max_pval`
+- Increase `min_seeds`. This will require more seeds to be connected to form a DMR, leading to fewer total DMRs.
+- Increase `min_sites`. This will require more sites to be included in a DMR, leading to fewer total DMRs.
+- Decrease `max_pval`. This will make connectivity testing more stringent, leading to fewer connected sites and thus fewer DMRs.
+- Increase `max_lookup_dist`. This will join more seeds into the same DMRs, reducing the total number of DMRs.
+- Decrease `ext_site_delta_beta`. This will allow more sites to be included in DMRs during the second stage of extension, leading to more merging of nearby DMRs and thus fewer total DMRs.
 
 ## Issue: Slow Performance
 

@@ -25,7 +25,9 @@
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param ext_site_delta_beta Numeric. Minimum absolute delta beta value that will
 #' force proximal sites to be treated as connected during Stage 2 expansion,
-#' regardless of their correlation p-value. Default is 0.1.
+#' regardless of their correlation p-value. Set to `NA`, `NULL`, or `Inf` to
+#' disable this shortcut. A value of `0` means any proximal site with a
+#' non-missing case-control delta beta can be force-connected. Default is 0.2.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -256,6 +258,33 @@
     }
 
     "hg38"
+}
+
+
+#' @keywords internal
+#' @noRd
+.normalizeForceConnectDeltaBeta <- function(force_connect_delta_beta, arg_name = "force_connect_delta_beta") {
+    if (is.null(force_connect_delta_beta)) {
+        return(NA_real_)
+    }
+    if (!is.numeric(force_connect_delta_beta) || length(force_connect_delta_beta) != 1L) {
+        stop("'", arg_name, "' must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+    }
+    force_connect_delta_beta <- as.numeric(force_connect_delta_beta)[1]
+    if (is.na(force_connect_delta_beta) || is.infinite(force_connect_delta_beta)) {
+        return(NA_real_)
+    }
+    if (force_connect_delta_beta < 0 || force_connect_delta_beta > 1) {
+        stop("'", arg_name, "' must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+    }
+    force_connect_delta_beta
+}
+
+
+#' @keywords internal
+#' @noRd
+.forceConnectDeltaBetaEnabled <- function(force_connect_delta_beta) {
+    !is.na(force_connect_delta_beta) && is.finite(force_connect_delta_beta)
 }
 
 
@@ -497,7 +526,7 @@
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
-    min_delta_beta = 0,
+    force_connect_delta_beta = NA_real_,
     covariates = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
@@ -509,6 +538,7 @@
     beta_row_ids = NULL,
     beta_row_ids_offset = 0L
 ) {
+    force_connect_delta_beta <- .normalizeForceConnectDeltaBeta(force_connect_delta_beta)
     pair_start <- as.integer(split[[1]])
     pair_end <- as.integer(split[[2]])
     site_start <- pair_start
@@ -548,7 +578,7 @@
         pheno = pheno,
         covariates = covariates,
         max_pval = max_pval,
-        min_delta_beta = min_delta_beta,
+        force_connect_delta_beta = force_connect_delta_beta,
         max_lookup_dist = max_lookup_dist,
         site_starts = site_starts,
         entanglement = entanglement,
@@ -581,7 +611,7 @@
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
-    min_delta_beta = 0,
+    force_connect_delta_beta = NA_real_,
     covariates = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
@@ -597,6 +627,7 @@
     splits = NULL,
     verbose = 1
 ) {
+    force_connect_delta_beta <- .normalizeForceConnectDeltaBeta(force_connect_delta_beta)
     if (is.null(beta_locs)) {
         beta_locs <- beta_handler$getBetaLocs()
     }
@@ -621,7 +652,7 @@
         } else {
             ret$failing_groups <- rep("", n_sites)
         }
-        if (min_delta_beta > 0) {
+        if (.forceConnectDeltaBetaEnabled(force_connect_delta_beta)) {
             ret$delta_beta <- rep(NA_real_, n_sites)
         }
         return(list(connectivity_array = ret, splits = NULL, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
@@ -664,7 +695,7 @@
         } else {
             ret$failing_groups <- rep("", nrows)
         }
-        if (min_delta_beta > 0) {
+        if (.forceConnectDeltaBetaEnabled(force_connect_delta_beta)) {
             ret$delta_beta <- rep(NA_real_, nrows)
         }
         ret
@@ -1015,7 +1046,7 @@
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = col_names,
             max_pval = max_pval,
-            min_delta_beta = min_delta_beta,
+            force_connect_delta_beta = force_connect_delta_beta,
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             entanglement = entanglement,
@@ -1107,7 +1138,7 @@
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = col_names,
             max_pval = max_pval,
-            min_delta_beta = min_delta_beta,
+            force_connect_delta_beta = force_connect_delta_beta,
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             entanglement = entanglement,
@@ -1200,7 +1231,7 @@
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
-    min_delta_beta = 0,
+    force_connect_delta_beta = NA_real_,
     covariates = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
@@ -1212,6 +1243,7 @@
     max_bridge_gaps = 0,
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
+    force_connect_delta_beta <- .normalizeForceConnectDeltaBeta(force_connect_delta_beta)
     connectivity_array <- NULL
     splits <- NULL
     for (gap in seq(0L, max_bridge_gaps)) {
@@ -1229,7 +1261,7 @@
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
-            min_delta_beta = min_delta_beta,
+            force_connect_delta_beta = force_connect_delta_beta,
             entanglement = entanglement,
             aggfun = aggfun,
             pval_mode_per_group = pval_mode_per_group,
@@ -1557,12 +1589,13 @@
                                    pval_mode_per_group,
                                    empirical_strategy_per_group,
                                    max_pval, covariates = NULL,
-                                   min_delta_beta = 0,
+                                   force_connect_delta_beta = NA_real_,
                                    max_lookup_dist = NULL, site_starts = NULL,
                                    entanglement = "strong",
                                    aggfun = mean,
                                    ntries = 0, mid_p = FALSE,
                                    check_non_overlapping = FALSE) {
+    force_connect_delta_beta <- .normalizeForceConnectDeltaBeta(force_connect_delta_beta)
     n_sites <- nrow(sites_beta)
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
@@ -1617,23 +1650,23 @@
     .log_info(sum(exceeded_dist), " out of ", n_pairs, " site pairs exceeded the maximum lookup distance and will be marked as not connected.", level = 4)
 
     high_delta <- rep(FALSE, n_pairs)
-    if (min_delta_beta > 0 && length(unique(pheno[, .CASE_CONTROL_COL])) > 1) {
+    if (.forceConnectDeltaBetaEnabled(force_connect_delta_beta) && length(unique(pheno[, .CASE_CONTROL_COL])) > 1) {
         # Compute this inexpensive case-control effect-size screen up front so
         # proximal high-delta pairs can bypass correlation testing entirely.
         site2_beta_mat <- sites_beta[end_pair_inds, , drop = FALSE]
         case_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
         control_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         delta_betas <- case_betas - control_betas
-        high_delta <- !is.na(delta_betas) & abs(delta_betas) >= min_delta_beta & nexdist_mask
+        high_delta <- !is.na(delta_betas) & abs(delta_betas) >= force_connect_delta_beta & nexdist_mask
         connected[high_delta] <- TRUE
-        reasons[high_delta] <- "delta_beta>=min_delta_beta"
+        reasons[high_delta] <- "abs(delta_beta)>=force_connect_delta_beta"
     }
     corr_mask <- nexdist_mask & !high_delta
 
     if (!strict_mode && n_groups > 0) {
         per_group_reasons <- matrix("", nrow = n_groups, ncol = n_pairs)
         per_group_reasons[, exceeded_dist] <- "exceeded max distance"
-        per_group_reasons[, high_delta] <- "delta_beta>=min_delta_beta"
+        per_group_reasons[, high_delta] <- "abs(delta_beta)>=force_connect_delta_beta"
         per_group_p <- matrix(NA_real_, nrow = n_groups, ncol = n_pairs)
         rownames(per_group_reasons) <- names(group_inds)
         rownames(per_group_p) <- names(group_inds)
@@ -2154,7 +2187,7 @@
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = beta_col_names_detection,
             max_pval = max_pval,
-            min_delta_beta = 0, # delta-beta based rescue is applied later during the extension
+            force_connect_delta_beta = NA_real_, # delta-beta based rescue is applied later during the extension
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             entanglement = entanglement,
@@ -2318,7 +2351,7 @@
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = beta_col_names_detection,
             max_pval = max_pval,
-            min_delta_beta = ext_site_delta_beta,
+            force_connect_delta_beta = ext_site_delta_beta,
             covariates = covariates,
             max_lookup_dist = max_lookup_dist,
             entanglement = entanglement,
@@ -2747,7 +2780,9 @@
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
 #' @param ext_site_delta_beta Numeric. Minimum absolute delta beta value that will
 #' force proximal sites to be treated as connected during Stage 2 expansion,
-#' regardless of their correlation p-value. Default is 0.2.
+#' regardless of their correlation p-value. Set to `NA`, `NULL`, or `Inf` to
+#' disable this shortcut. A value of `0` means any proximal site with a
+#' non-missing case-control delta beta can be force-connected. Default is 0.2.
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
 #' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
@@ -2956,8 +2991,11 @@ findDMRsFromSeeds <- function(
     if (min_adj_seeds < 2) {
         stop("min_adj_seeds must be at least 2, to define a DMR")
     }
-    stopifnot(!is.null(ext_site_delta_beta))
     stopifnot(!is.null(max_lookup_dist))
+    ext_site_delta_beta <- .normalizeForceConnectDeltaBeta(
+        ext_site_delta_beta,
+        arg_name = "ext_site_delta_beta"
+    )
     if (expansion_window == "auto") {
         expansion_window <- if (array_based) -1 else 10000
         if (array_based) {

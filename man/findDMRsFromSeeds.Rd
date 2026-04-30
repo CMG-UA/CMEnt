@@ -12,7 +12,7 @@ findDMRsFromSeeds(
   sample_group_col = "Sample_Group",
   casecontrol_col = NULL,
   covariates = NULL,
-  ext_site_delta_beta = 0.1,
+  ext_site_delta_beta = 0.2,
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = NULL,
   max_pval = 0.05,
@@ -58,7 +58,7 @@ findDMRsFromSeeds(
 
 \item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
-\item{ext_site_delta_beta}{Numeric. Minimum absolute delta beta value that will force proximal CpG pairs to be treated as connected during Stage 2 expansion, regardless of their correlation p-value. Default is 0.1.}
+\item{ext_site_delta_beta}{Numeric. Minimum absolute delta beta value that will force proximal CpG pairs to be treated as connected during Stage 2 expansion, regardless of their correlation p-value. Set to \code{NA}, \code{NULL}, or \code{Inf} to disable this shortcut. A value of \code{0} means any proximal site with a non-missing case-control delta beta can be force-connected. Default is 0.2.}
 
 \item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
