@@ -2863,7 +2863,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         if (verbose_setting >= 2) {
             .log_info("Loading ", resource, " from existing local path", level = 2)
         }
-        return(readRDS(local_path))
+        return(load(local_path))
     }
 
     # Fall back to ExperimentHub when local example files are unavailable.
@@ -2912,7 +2912,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         if (verbose_setting >= 2) {
             .log_info("Loading ", resource, " from existing local path", level = 2)
         }
-        return(readRDS(local_path))
+        return(load(local_path))
     }
 
     # If we get here, the resource was not found
