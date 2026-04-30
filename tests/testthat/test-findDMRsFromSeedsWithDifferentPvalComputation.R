@@ -117,6 +117,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run with same seed twice
+    options("CMEnt.random_seed" = 42)
     dmrs_seed1_run1 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -132,7 +133,6 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         empirical_strategy = "montecarlo",
         ntries = 50
     ))
-    options("CMEnt.random_seed" = 42)
     dmrs_seed1_run2 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -218,7 +218,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
     # Assertions
     expect_true(is.null(dmrs_ntries_0) || inherits(dmrs_ntries_0, "GRanges"))
     expect_true(is.null(dmrs_ntries_50) || inherits(dmrs_ntries_50, "GRanges"))
-    
+
     # All should produce valid results
     if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
         expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
