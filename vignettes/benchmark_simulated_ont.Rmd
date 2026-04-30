@@ -36,8 +36,8 @@ Methods:
 
 Data:
 
-- BSseq object: `data/sim_bs_1000.rds`
-- Ground-truth DMRs: `data/sim_dmrs_1000.tsv`
+- BSseq object: `"https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1"`
+- Ground-truth DMRs: `"https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1"`
 
 Primary goal:
 
@@ -123,7 +123,11 @@ cment_file <- get_benchmark_file("dmrs.CMEnt.rds")
 dmrcate_file <- get_benchmark_file("dmrs.DMRcate.rds")
 dmrseq_file <- get_benchmark_file("dmrs.dmrseq.rds")
 hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
-computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file)
+pheno_file <- get_benchmark_file("phenotype.tsv")
+seeds_file <- get_benchmark_file("seeds.tsv.gz")
+
+computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file) || !file.exists(pheno_file) || !file.exists(seeds_file)
+
 resolve_input_path <- function(path_in_repo) {
     candidates <- c(
         path_in_repo,
@@ -136,26 +140,29 @@ resolve_input_path <- function(path_in_repo) {
     hit
 }
 
-sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
-sim_truth_path <- resolve_input_path("data/sim_dmrs_1000.tsv")
+sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
+if (computation_needed) {
+    dir.create("data", showWarnings = FALSE, recursive = TRUE)
+    sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
+    if (!file.exists(sim_bs_path)) {
+        curl::curl_download(
+            url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
+            destfile = sim_bs_path
+        )
+    }
 
-dir.create("data", showWarnings = FALSE, recursive = TRUE)
-if (!file.exists(sim_bs_path)) {
-    curl::curl_download(
-        url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
-        destfile = sim_bs_path
-    )
+    sim_bs <- readRDS(sim_bs_path)
+    stopifnot(inherits(sim_bs, "BSseq"))
+    cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
+
 }
+
 if (!file.exists(sim_truth_path)) {
     curl::curl_download(
         url = "https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1",
         destfile = sim_truth_path
     )
 }
-
-sim_bs <- readRDS(sim_bs_path)
-stopifnot(inherits(sim_bs, "BSseq"))
-
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
     truth_df,
@@ -165,27 +172,34 @@ truth_dmrs <- makeGRangesFromDataFrame(
     keep.extra.columns = TRUE
 )
 
-cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
 cat(sprintf("Loaded %d ground-truth DMRs\n", length(truth_dmrs)))
+
+
+
 ```
 
 ## Build Phenotype Table from Sample Names
 
 ```{r}
-sample_ids <- colnames(sim_bs)
-sample_group <- ifelse(grepl("^Condition1", sample_ids), "Condition1", "Condition2")
+if (!file.exists(pheno_file)) {
+    sample_ids <- colnames(sim_bs)
+    sample_group <- ifelse(grepl("^Condition1", sample_ids), "Condition1", "Condition2")
 
-pheno <- data.frame(
-    Sample_ID = sample_ids,
-    Sample_Group = sample_group,
-    casecontrol = sample_group == "Condition2",
-    stringsAsFactors = FALSE
-)
-rownames(pheno) <- pheno$Sample_ID
-
-colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
-sim_bs  <- sort(sim_bs)
-
+    pheno <- data.frame(
+        Sample_ID = sample_ids,
+        Sample_Group = sample_group,
+        casecontrol = sample_group == "Condition2",
+        stringsAsFactors = FALSE
+    )
+    rownames(pheno) <- pheno$Sample_ID
+    data.table::fwrite(pheno, pheno_file, sep = "\t")
+} else {
+    pheno <- data.table::fread(pheno_file, data.table = FALSE)
+}
+if (computation_needed) {
+    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    sim_bs  <- sort(sim_bs)
+}
 knitr::kable(
     table(pheno$Sample_Group),
     caption = "Phenotype Frequency Table"
@@ -224,8 +238,7 @@ We use a DSS approach to identify candidate seeds based on differential methylat
 #     profile = "triweight",
 #     seed = 42
 # )
-seeds_tsv <- get_benchmark_file("seeds.tsv.gz")
-if (!file.exists(seeds_tsv)) {
+if (!file.exists(seeds_file)) {
     seeds <- findDMPsBSSeq(
         bsseq = sim_bs,
         samplesheet = pheno,
@@ -234,10 +247,10 @@ if (!file.exists(seeds_tsv)) {
         case_group = "Condition2",
         covariates = NULL,
         fdr_thres = max_pval,
-        output_file = seeds_tsv
+        output_file = seeds_file
     )
 } else {
-    seeds <- data.table::fread(seeds_tsv)
+    seeds <- data.table::fread(seeds_file)
     rownames(seeds) <- seeds$site_id
 }
 seeds <- as.data.frame(seeds, stringsAsFactors = FALSE)

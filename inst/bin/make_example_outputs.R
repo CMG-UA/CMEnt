@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 devtools::load_all()
-cases <- c("example_output", "example_outputChr5And11")
+cases <- c("example_outputChr5And11")
 files_to_make <- file.path("inst/extdata", paste0(cases, ".rds"))
 names(files_to_make) <- cases
 # files_to_make <- files_to_make[!file.exists(files_to_make)]
@@ -12,11 +12,7 @@ options("CMEnt.verbose" = 1)
 options("CMEnt.njobs" = 8)
 for (case in names(files_to_make)) {
     cment_file <- files_to_make[[case]]
-    if (case == "example_outputChr5And11") {
-        fun <- loadExampleInputDataChr5And11
-    } else {
-        fun <- loadExampleInputData
-    }
+    fun <- loadExampleInputDataChr5And11
     beta <- fun("beta")
     dmps <- fun("dmps")
     pheno <- fun("pheno")

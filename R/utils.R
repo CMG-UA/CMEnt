@@ -2794,12 +2794,12 @@ convertToDataFrame <- function(gr) {
     )
 }
 
-#' Load CMEnt Data Resources
+#' Load CMEnt Example Resources
 #'
-#' @description Helper function to load data resources from the package data folder.
-#' Resources are lazy loaded when the package is loaded, so they exist in the package
-#' namespace. If a resource is not found in the package, it will attempt to query
-#' ExperimentHub. If that also fails, it provides instructions to generate the data.
+#' @description Helper function to load lightweight example resources bundled in
+#' `inst/extdata`. The shipped local example bundle is a compact chr5/chr11 subset
+#' intended for package examples, tests, and vignettes. If a local resource is not
+#' found, the function can fall back to ExperimentHub.
 #'
 #' @param resource Character. Name of the resource to load. Available resources:
 #' \itemize{
@@ -2811,23 +2811,22 @@ convertToDataFrame <- function(gr) {
 #' @param use_experiment_hub Logical. Whether to attempt loading from ExperimentHub
 #'   if the resource is not found locally (default: TRUE)
 #'
-#' @return The requested data object, or NULL if not found
+#' @return The requested example object
 #'
 #' @details
 #' The function follows this priority order:
 #' \enumerate{
-#'   \item Check if the resource exists in the package namespace (lazy loaded)
-#'   \item If not found, try loading directly from the data file
+#'   \item Load the packaged example resource from `inst/extdata`
 #'   \item If use_experiment_hub is TRUE, query ExperimentHub
-#'   \item If all fail, provide instructions for generating the data
+#'   \item If all fail, raise an informative error
 #' }
 #'
-#' Available resources correspond to .rda files in the data/ folder:
+#' Available local resources correspond to `.rds` files in `inst/extdata`:
 #' \itemize{
-#'   \item beta.rda - Example methylation beta values
-#'   \item pheno.rda - Example phenotype/sample information
-#'   \item dmps.rda - Example differential methylation results
-#'   \item array_type.rda - Array platform type
+#'   \item `example_beta_chr5_chr11.rds` - Example methylation beta values
+#'   \item `example_pheno.rds` - Example phenotype/sample information
+#'   \item `example_dmps_chr5_chr11.rds` - Example differential methylation results
+#'   \item `example_array_type.rds` - Array platform type
 #' }
 #'
 #' @examples
@@ -2847,48 +2846,27 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
         )
     }
 
-    # First, try using data() to load the resource
-    # This works even during coverage-instrumented runs.
     verbose_setting <- getOption("CMEnt.verbose", 1)
-    tryCatch(
-        {
-            # Suppress data() output
-            invisible(utils::data(list = resource, package = "CMEnt", envir = environment()))
-            if (exists(resource, inherits = FALSE)) {
-                if (verbose_setting >= 2) {
-                    .log_info("Loaded ", resource, " using data()", level = 2)
-                }
-                return(get(resource, inherits = FALSE))
-            }
-        },
-        error = function(e) {
-            # Silently continue to next method
-        }
+    resource_files <- c(
+        beta = "example_beta_chr5_chr11.rds",
+        pheno = "example_pheno.rds",
+        dmps = "example_dmps_chr5_chr11.rds",
+        array_type = "example_array_type.rds"
     )
-
-    # Second, check if the resource exists in the package namespace (lazy loaded)
-    if (exists(resource, envir = asNamespace("CMEnt"), inherits = FALSE)) {
+    resource_file <- unname(resource_files[[resource]])
+    local_candidates <- c(
+        system.file("data", resource_file, package = "CMEnt", mustWork = FALSE),
+        file.path("data", resource_file)
+    )
+    local_path <- local_candidates[file.exists(local_candidates)][1]
+    if (!is.na(local_path)) {
         if (verbose_setting >= 2) {
-            .log_info("Loading ", resource, " from package namespace (lazy loaded)", level = 2)
+            .log_info("Loading ", resource, " from existing local path", level = 2)
         }
-        return(get(resource, envir = asNamespace("CMEnt"), inherits = FALSE))
+        return(readRDS(local_path))
     }
 
-    # Third, try to load from data file directly
-    data_file <- paste0(resource, ".rda")
-    data_path <- system.file("data", data_file, package = "CMEnt", mustWork = FALSE)
-    if (file.exists(data_path)) {
-        if (verbose_setting >= 2) {
-            .log_info("Loading ", resource, " from package data file", level = 2)
-        }
-        env <- new.env()
-        load(data_path, envir = env)
-        if (exists(resource, envir = env)) {
-            return(get(resource, envir = env))
-        }
-    }
-
-    # Fourth, try ExperimentHub if enabled
+    # Fall back to ExperimentHub when local example files are unavailable.
     if (use_experiment_hub) {
         if (verbose_setting >= 2) {
             .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
@@ -2935,6 +2913,11 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
     )
 }
 
+#' @rdname loadExampleInputData
+#' @description Compatibility wrapper returning the chr5/chr11 example subset.
+#' The packaged local example resources already correspond to chr5/chr11, so this
+#' wrapper is mainly kept for backwards compatibility with earlier releases and
+#' still subsets ExperimentHub-backed resources when needed.
 #' @export
 loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
     ret <- loadExampleInputData(resource, use_experiment_hub = use_experiment_hub)

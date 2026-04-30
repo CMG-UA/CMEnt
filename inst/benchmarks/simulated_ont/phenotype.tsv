@@ -1,0 +1,11 @@
+Sample_ID	Sample_Group	casecontrol
+Condition1_Rep1	Condition1	FALSE
+Condition1_Rep2	Condition1	FALSE
+Condition1_Rep3	Condition1	FALSE
+Condition1_Rep4	Condition1	FALSE
+Condition1_Rep5	Condition1	FALSE
+Condition2_Rep1	Condition2	TRUE
+Condition2_Rep2	Condition2	TRUE
+Condition2_Rep3	Condition2	TRUE
+Condition2_Rep4	Condition2	TRUE
+Condition2_Rep5	Condition2	TRUE

@@ -831,7 +831,7 @@
 #' pheno <- loadExampleInputData("pheno")
 #'
 #' # Load pre-computed DMRs
-#' dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "CMEnt"))
+#' dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
 #'
 #' # score DMRs
 #' scoring_dmrs <- scoreDMRs(

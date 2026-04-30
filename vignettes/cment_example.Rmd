@@ -58,7 +58,8 @@ genome <- "hg19"
 ## Load Example Inputs and Benchmark DMRs
 
 ```{r load_inputs}
-# loadExampleInputData is a helper function to load example data included in the package.
+# loadExampleInputData is a helper function to load lightweight example data
+# included in the package.
 beta <- loadExampleInputData("beta")
 pheno <- loadExampleInputData("pheno")
 array_type <- loadExampleInputData("array_type")
@@ -73,16 +74,18 @@ print(head(pheno))
 cat(sprintf("Head of DMPs:\n"))
 print(head(dmps))
 
-
 # The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform the SVM-based scoring of the DMRs.
 # It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
 # The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
 
-# For the sake of the example, we look only at chromosomes 16-20.
+# The packaged example bundle already targets chr5/chr11, so we keep a smaller
+# dense prefix to make the vignette fast to run during package checks.
 dmps_locs <- beta_handler$getGenomicLocs()[rownames(dmps), ]
-dmps <- dmps[dmps_locs[, "chr"]  %in% paste0("chr", 16:20), ]
-cat(sprintf("Number of DMPs (seeds) on chr16-20: %d\n", nrow(dmps)))
+ord <- order(as.character(dmps_locs[, "chr"]), dmps_locs[, "start"])
+dmps <- dmps[ord, , drop = FALSE]
+dmps <- dmps[seq_len(min(250, nrow(dmps))), , drop = FALSE]
+cat(sprintf("Number of DMPs (seeds) used in the vignette: %d\n", nrow(dmps)))
 
 ```
 
