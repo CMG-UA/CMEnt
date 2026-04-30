@@ -2848,10 +2848,10 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
 
     verbose_setting <- getOption("CMEnt.verbose", 1)
     resource_files <- c(
-        beta = "example_beta_chr5_chr11.rds",
-        pheno = "example_pheno.rds",
-        dmps = "example_dmps_chr5_chr11.rds",
-        array_type = "example_array_type.rds"
+        beta = "beta.rda",
+        pheno = "pheno.rda",
+        dmps = "dmps.rda",
+        array_type = "array_type.rda"
     )
     resource_file <- unname(resource_files[[resource]])
     local_candidates <- c(
@@ -2883,7 +2883,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
                     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
                     eh <- ExperimentHub::ExperimentHub()
                     # Query for CMEntdata resources
-                    cment_resources <- AnnotationHub::query(eh, "CMEntdata")
+                    cment_resources <- AnnotationHub::query(eh, "DMRsegaldata")
                     # Find the specific resource
                     resource_match <- cment_resources[grepl(resource, cment_resources$title, ignore.case = TRUE)]
                     if (length(resource_match) > 0) {
@@ -2904,6 +2904,15 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
                 }
             )
         }
+    }
+    # If we get here, both local and ExperimentHub loading attempts have failed, we use the make_data function to generate the resource
+    source(system.file("inst/bin", "make_data.R", package = "CMEnt", mustWork = TRUE), local = TRUE)
+    local_path <- local_candidates[file.exists(local_candidates)][1]
+    if (!is.na(local_path)) {
+        if (verbose_setting >= 2) {
+            .log_info("Loading ", resource, " from existing local path", level = 2)
+        }
+        return(readRDS(local_path))
     }
 
     # If we get here, the resource was not found
