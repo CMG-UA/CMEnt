@@ -60,11 +60,11 @@ genome <- "hg19"
 ```{r load_inputs}
 # loadExampleInputData is a helper function to load lightweight example data
 # included in the package.
-beta <- loadExampleInputData("beta")
-pheno <- loadExampleInputData("pheno")
-array_type <- loadExampleInputData("array_type")
+beta <- loadExampleInputDataChr5And11("beta")
+pheno <- loadExampleInputDataChr5And11("pheno")
+array_type <- loadExampleInputDataChr5And11("array_type")
 # DMPs are produced from minfi, and have the form of a dataframe
-dmps <- loadExampleInputData("dmps")
+dmps <- loadExampleInputDataChr5And11("dmps")
 cat(sprintf("Beta matrix dimensions: %d sites x %d samples\n", nrow(beta), ncol(beta)))
 cat(sprintf("Phenotype data dimensions: %d samples x %d columns\n", nrow(pheno), ncol(pheno)))
 cat(sprintf("Array type: %s\n", array_type))
@@ -78,14 +78,6 @@ print(head(dmps))
 # It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
 # The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
-
-# The packaged example bundle already targets chr5/chr11, so we keep a smaller
-# dense prefix to make the vignette fast to run during package checks.
-dmps_locs <- beta_handler$getGenomicLocs()[rownames(dmps), ]
-ord <- order(as.character(dmps_locs[, "chr"]), dmps_locs[, "start"])
-dmps <- dmps[ord, , drop = FALSE]
-dmps <- dmps[seq_len(min(250, nrow(dmps))), , drop = FALSE]
-cat(sprintf("Number of DMPs (seeds) used in the vignette: %d\n", nrow(dmps)))
 
 ```
 
@@ -108,7 +100,7 @@ dmrs <- findDMRsFromSeeds(
     entanglement = "weak", # The entanglement strategy to use, either demand at least a  single group seeds to be correlated ("weak", slower), or demand that all groups  seeds are correlated ("strong", the default, quicker).
     genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
     array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
-    output_prefix = "tmp/CMEnt_example" # The prefix for the output files. It is required to provide this if you want to use the CMEntViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.  
+    output_prefix = "tmp/CMEnt_example" # The prefix for the output files. It is required to provide this if you want to use the CMEntViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.
 )
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
 cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))
@@ -258,7 +250,7 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
-A circos plot consisting of the extracted information from CMEnt is drawn along the genome or a specified region, here from chromosome 17 to 19. 
+A circos plot consisting of the extracted information from CMEnt is drawn along the genome or a specified region. 
 The information includes:
 
 - The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
@@ -284,7 +276,7 @@ tryCatch(
             max_dmrs_per_chr = 40,
             max_sites_per_dmr = 5,
             max_components = 120,
-            chromosomes = paste0("chr", 17:20),
+            #region = "chr11:2Mb-5Mb, chr11:72Mb-83Mb, chr5:1Mb-12Mb", # nolint
             degenerate_resolution = 1e6,
             verbose = 1
         )
