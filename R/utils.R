@@ -1051,7 +1051,11 @@ convertBetaToTabix <- function(beta_file,
                     if (length(common_sites) > 0) {
                         # Create BED format for this chunk with 6 mandatory columns
                         bed_chunk <- as.data.frame(sorted_locs[common_sites, c("chr", "start"), drop = FALSE])
-                        bed_chunk$end <- bed_chunk$start + 1
+                        # Tabix requires plain integer coordinates; fwrite may emit
+                        # scientific notation for doubles like 45000000 ("4.5e+07"),
+                        # which tabix then parses as 4 and rejects as an invalid BED interval.
+                        bed_chunk$start <- as.integer(round(bed_chunk$start))
+                        bed_chunk$end <- bed_chunk$start + 1L
                         bed_chunk$id <- rownames(bed_chunk)
                         bed_chunk$score <- 0
                         bed_chunk$strand <- "*"

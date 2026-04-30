@@ -207,6 +207,46 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     expect_equal(mem_connectivity, tabix_connectivity)
 })
 
+test_that("convertBetaToTabix writes integer BED coordinates for tabix", {
+    skip_if_not(nzchar(Sys.which("tabix")))
+    skip_if_not(nzchar(Sys.which("bgzip")))
+
+    beta_file <- tempfile(fileext = ".tsv")
+    output_file <- tempfile(fileext = ".bed.gz")
+    withr::defer(unlink(c(beta_file, output_file, paste0(output_file, ".tbi"))))
+
+    writeLines(
+        c(
+            "\tsample1",
+            "cg22000980\t0.5"
+        ),
+        con = beta_file
+    )
+
+    sorted_locs <- data.frame(
+        chr = "chr7",
+        start = 44999999,
+        row.names = "cg22000980",
+        stringsAsFactors = FALSE
+    )
+
+    tabix_file <- convertBetaToTabix(
+        beta_file = beta_file,
+        output_file = output_file,
+        array = "450K",
+        genome = "hg38",
+        sorted_locs = sorted_locs
+    )
+
+    expect_identical(tabix_file, output_file)
+
+    bed_lines <- readLines(gzfile(output_file, "r"))
+    expect_identical(
+        strsplit(bed_lines[2], "\t", fixed = TRUE)[[1]][1:3],
+        c("chr7", "44999999", "45000000")
+    )
+})
+
 test_that("parallel connectivity matches sequential connectivity", {
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
