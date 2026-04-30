@@ -52,3 +52,5 @@ tmp/
 .lintr
 data
 inst/benchmarks/simulated_ont/sim_bs_1000_hdf5
+
+CMEnt_*.tar.gz
