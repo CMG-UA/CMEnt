@@ -230,6 +230,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
             .log_warn(sum(!valid_site_seqs), " background motif windows had unexpected length and were ignored.")
         }
         site_seqs <- site_seqs[valid_site_seqs]
+        site_seqs <- .normalizeMotifSiteSequences(site_seqs, motif_site_flank_size)
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {
@@ -252,6 +253,32 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         bg_pwm <- readRDS(cache_file)
     }
     bg_pwm
+}
+
+
+.normalizeMotifSiteSequences <- function(site_seqs, motif_site_flank_size) {
+    if (length(site_seqs) == 0L) {
+        return(site_seqs)
+    }
+
+    center_idx <- motif_site_flank_size + 1L
+    next_idx <- center_idx + 1L
+    site_center_base <- toupper(substr(site_seqs, center_idx, center_idx))
+    complement_mask <- site_center_base == "G"
+    if (any(complement_mask)) {
+        site_seqs[complement_mask] <- chartr("ACGTacgt", "TGCAtgca", site_seqs[complement_mask])
+    }
+
+    site_center_base <- toupper(substr(site_seqs, center_idx, center_idx))
+    site_next_base <- toupper(substr(site_seqs, next_idx, next_idx))
+    revcomp_mask <- site_center_base != "C" & site_next_base == "G"
+    if (any(revcomp_mask)) {
+        site_seqs[revcomp_mask] <- as.character(
+            Biostrings::reverseComplement(Biostrings::DNAStringSet(site_seqs[revcomp_mask]))
+        )
+    }
+
+    site_seqs
 }
 
 
@@ -350,6 +377,7 @@ extractDMRMotifs <- function(
             .log_warn(sum(!valid_site_seqs), " motif windows had unexpected length and were ignored for one DMR.")
             site_seqs <- site_seqs[valid_site_seqs]
         }
+        site_seqs <- .normalizeMotifSiteSequences(site_seqs, motif_site_flank_size)
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {

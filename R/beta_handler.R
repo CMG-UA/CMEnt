@@ -9,7 +9,7 @@ is_bsseq <- function(obj) {
 }
 
 .bsseqIsSorted <- function(obj) {
-    gr <- granges(obj)
+    gr <- GenomicRanges::granges(obj)
     if (length(gr) < 2L) {
         return(TRUE)
     }
@@ -111,6 +111,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     end = end(gr),
                     stringsAsFactors = FALSE
                 )
+                rownames(sorted_locs) <- paste0(sorted_locs$chr, ":", sorted_locs$start)
                 .log_success("Constructed sorted_locs delayed data frame..", level = 3)
 
                 .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " sites", level = 2)
@@ -169,7 +170,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
                 mem_thres <- getOption("CMEnt.beta_in_mem_threshold_mb", 500)
-                if (file_size_mb < mem_thres ) {
+                if (file_size_mb < mem_thres) {
                     private$.beta_file_in_memory <- tryCatch(
                         {
                             temp_data <- data.table::fread(
@@ -299,8 +300,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             header = TRUE,
                             showProgress = TRUE,
                             nThread = self$njobs
-                        ), sep = ":"
-                        )
+                        ), sep = ":")
                     )
                     names(private$.beta_row_names) <- NULL
                 }
@@ -396,7 +396,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     warning("Consider running sortBetaFileByCoordinates() on the original file and providing the sorted file to avoid this overhead in the future.")
                     sorted_beta_file <- sortBetaFileByCoordinates(
                         beta_file = private$.beta_file,
-                        sorted_locs = sorted_locs,
+                        genomic_locs = sorted_locs,
                         genome = self$genome,
                         output_file = tempfile(fileext = ".tsv.gz"),
                         njobs = self$njobs
@@ -718,7 +718,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     regions <- data.frame(chr = base::strsplit(chr, ",")[[1]])
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
-                    qregions <- regions[!duplicated(regions),]
+                    qregions <- regions[!duplicated(regions), ]
                     qregions <- qregions[str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
                 }
                 beta_subset <- bedr::tabix(qregions, private$.tabix_file,
@@ -733,7 +733,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     merge_on <- c("chr", "start")
                     beta_subset <- merge(
                         regions[, c(merge_on, "name")],
-                        beta_subset, by.x = merge_on, by.y = merge_on,
+                        beta_subset,
+                        by.x = merge_on, by.y = merge_on,
                         all.x = TRUE, all.y = FALSE
                     )
                 }

@@ -56,6 +56,7 @@
 #'   locations for non-BSseq inputs (`beta_locs`), and dmrseq-like metadata:
 #'   `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`, `selected_regions`,
 #'   `groups`, and `case_group`.
+#' @importFrom stats qlogis plogis
 #' @export
 simulateDMRs <- function(
     beta,
@@ -609,6 +610,7 @@ simulateDMRs <- function(
     groups
 }
 
+#' @importFrom stats ave
 .makeSimulationSampleNames <- function(groups) {
     reps <- ave(seq_along(groups), groups, FUN = seq_along)
     paste0(groups, "_Rep", as.integer(reps))

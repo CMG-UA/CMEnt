@@ -31,12 +31,14 @@ VignetteBuilder: knitr
 biocViews: DNAMethylation, DifferentialMethylation, Epigenetics, StatisticalMethod, WorkflowStep, Annotation
 Depends:
     R (>= 4.3.0)
+LazyData: false
 Imports:
     AnnotationDbi,
     bedr,
     BiocGenerics,
     BiocParallel,
     Biostrings,
+    BSgenome,
     bslib (>= 0.5.0),
     bsseq,
     callr,
@@ -112,7 +114,6 @@ Suggests:
     UpSetR,
     TxDb.Hsapiens.UCSC.hg19.knownGene,
     TxDb.Hsapiens.UCSC.hg38.knownGene,
-    BSgenome,
     BSgenome.Hsapiens.UCSC.hg19,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Hsapiens.UCSC.hs1,
@@ -123,8 +124,7 @@ Suggests:
     JASPAR2024,
     optparse,
     bsseqData,
-    pkgload,
-    TxDb.Mmusculus.UCSC.mm10.ensGene
+    pkgload
 Config/testthat/edition: 3
 Collate:
     'utils.R'

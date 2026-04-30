@@ -455,6 +455,16 @@ test_that("extractDMRMotifs ignores seed windows not centered on C", {
     expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 1L), "C")
 })
 
+test_that("motif site windows are normalized when extracted on the complementary orientation", {
+    normalized <- CMEnt:::.normalizeMotifSiteSequences(
+        c("TTTTTGCTTTTT", "AAAATTGCCCAA"),
+        motif_site_flank_size = 5L
+    )
+
+    expect_equal(normalized[[1]], "AAAAACGAAAAA")
+    expect_equal(substr(normalized[[2]], 6L, 6L), "C")
+})
+
 test_that("motif similarity tolerates DMRs without valid PWMs", {
     pwm <- matrix(
         rep(c(0, 1, 0, 0), 12),

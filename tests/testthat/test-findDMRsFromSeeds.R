@@ -38,7 +38,8 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
         beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
         beta_mat <- as.matrix(beta_handler$getBeta())
         locs <- beta_handler$getBetaLocs()
-        mvalues <- minfi::logit2(beta_mat)
+        logit2 <- function(x) log2(x) - log2(1 - x)
+        mvalues <- logit2(beta_mat)
         pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
         # Find DMPs using minfi's dmpFinder

@@ -1966,6 +1966,7 @@
 }
 
 #' @keywords internal
+#' @importFrom stats aggregate
 #' @noRd
 .aggregateDMRBetaStats <- function(beta_stats_df,
                                    aggfun,
@@ -2037,7 +2038,42 @@
     array_based <- beta_handler$isArrayBased()
     beta_locs <- beta_handler$getBetaLocs()
     all_sites <- .explicitRowNames(beta_locs)
+    chromosome_levels <- unique(as.character(beta_locs[, "chr"]))
+    chromosome_progress <- NULL
+    chromosome_progress_step <- 0L
+    chromosome_progress_total <- 6L +
+        as.integer(isTRUE(annotate_with_genes)) +
+        as.integer(isTRUE(.score_dmrs)) +
+        as.integer(isTRUE(extract_motifs))
+    if (verbose >= 1L && length(chromosome_levels) == 1L && chromosome_progress_total > 0L) {
+        chromosome_progress <- utils::txtProgressBar(
+            min = 0,
+            max = chromosome_progress_total,
+            style = 3,
+            file = stderr()
+        )
+        on.exit(
+            {
+                if (!is.null(chromosome_progress)) {
+                    close(chromosome_progress)
+                }
+            },
+            add = TRUE
+        )
+    }
+    .advanceChromosomeProgress <- function() {
+        if (is.null(chromosome_progress)) {
+            return(invisible(NULL))
+        }
+        chromosome_progress_step <<- chromosome_progress_step + 1L
+        utils::setTxtProgressBar(
+            chromosome_progress,
+            min(chromosome_progress_step, chromosome_progress_total)
+        )
+        invisible(NULL)
+    }
 
+    .advanceChromosomeProgress()
     .log_step("Preparing input..", level = 2)
 
 
@@ -2092,6 +2128,7 @@
     gc(verbose = FALSE)
 
     .log_success("Input preparation complete.", level = 2)
+    .advanceChromosomeProgress()
     .log_step("Stage 1: Connecting seeds to form initial DMRs..", level = 2)
 
 
@@ -2216,6 +2253,7 @@
     .checkResult(dmrs, "1", start_col = "start_seed_pos", end_col = "end_seed_pos")
 
     .log_success("Initial DMRs formed: ", nrow(dmrs), level = 2)
+    .advanceChromosomeProgress()
     .log_step("Stage 2: Expanding DMRs on neighborhood sites..", level = 2)
 
     # Set up progress tracking for DMR expansion
@@ -2320,7 +2358,7 @@
     chromosome <- dmr_chromosomes[[1L]]
     .log_info("Processing ", chromosome, level = 2)
     dmrs_to_expand <- dmrs
-    locs <- as.data.frame(stage2_beta_locs, drop = FALSE)
+    locs <- as.data.frame(stage2_beta_locs)
     connectivity <- connectivity_array
     locs_rownames <- rownames(locs)
     locs_idx_map <- setNames(seq_along(locs_rownames), locs_rownames)
@@ -2382,6 +2420,7 @@
     .log_info("Table of upstream_expansion_length:\n\t", paste(capture.output(upstream_expansion_length_table), collapse = "\n\t"), level = 2)
     .log_info("Table of downstream_expansion_length:\n\t", paste(capture.output(downstream_expansion_length_table), collapse = "\n\t"), level = 2)
 
+    .advanceChromosomeProgress()
     .log_step("Post-processing extended DMRs..", level = 2)
 
     extended_dmrs <- as.data.frame(do.call(rbind, ret))
@@ -2407,6 +2446,7 @@
             quote = FALSE
         )
     }
+    .advanceChromosomeProgress()
     .log_step("Stage 3: Merging overlapping extended DMRs..", level = 2)
 
     extended_dmrs_ranges <- GenomicRanges::makeGRangesFromDataFrame(
@@ -2505,6 +2545,7 @@
         )
     }
 
+    .advanceChromosomeProgress()
     .log_step("Stage 4: Filtering and annotating resulting DMRs..", level = 2)
 
     if (min_sites > 1 || min_seeds > 1) {
@@ -2522,7 +2563,7 @@
             " supporting seeds and at least ",
             min_sites,
             " sites in the DMR interval.",
-            level = 1
+            level = 2
         )
     } else {
         filtered_dmrs_ranges <- merged_dmrs_ranges
@@ -2648,12 +2689,14 @@
     .log_success("DMR delta-beta information added.", level = 3)
 
     if (annotate_with_genes) {
+        .advanceChromosomeProgress()
         .log_step("Annotating DMRs with gene information...", level = 2)
         annotated_dmrs <- annotateDMRsWithGenes(annotated_dmrs, genome = genome, njobs = njobs)
         .log_success("DMR annotation completed.", level = 2)
     }
 
     if (.score_dmrs) {
+        .advanceChromosomeProgress()
         .log_step("Scoring DMRs...", level = 2)
         annotated_dmrs <- scoreDMRs(
             annotated_dmrs,
@@ -2675,6 +2718,7 @@
     }
 
     if (extract_motifs) {
+        .advanceChromosomeProgress()
         .log_step("Extracting DMR motifs...", level = 2)
         annotated_dmrs <- extractDMRMotifs(annotated_dmrs, genome = genome, array = array, beta_locs = beta_locs)
         .log_success("DMR motifs computed.", level = 2)
@@ -3069,7 +3113,7 @@ findDMRsFromSeeds <- function(
     chr_results <- vector("list", length(chromosomes))
     names(chr_results) <- chromosomes
     for (chr in chromosomes) {
-        .log_step("Chromosome ", chr, ": preparing scoped beta/seeds.", level = 1)
+        .log_step("Processing chromosome ", chr, "...", level = 1)
         chr_beta_idx <- which(beta_chr == chr)
         chr_row_ids <- if (is.null(beta_locs_rownames)) chr_beta_idx else beta_row_ids_all[chr_beta_idx]
         chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names)

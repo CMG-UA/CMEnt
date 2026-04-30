@@ -26,6 +26,7 @@
 }
 
 #' @keywords internal
+#' @importFrom stats predict
 #' @noRd
 .performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("CMEnt.scoring_nfold", 5)) {
     groups <- as.factor(groups)

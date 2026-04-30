@@ -61,7 +61,7 @@ suppressPackageStartupMessages({
 
 
 get_benchmark_file <- function(filename) {
-    folder = "simulated_ont"
+    folder <- "simulated_ont"
     benchmark_file <- ""
     try(benchmark_file <- system.file("benchmarks", folder, filename, package = "CMEnt"), silent = TRUE)
     if (benchmark_file == "") {
@@ -377,27 +377,27 @@ if (!file.exists(cment_file)) {
     rm(sim_bs)
     gc(verbose = FALSE)
     dmrs_cment <- CMEnt::findDMRsFromSeeds(
-            beta = beta_handler,
-            seeds = seeds,
-            pheno = pheno,
-            seeds_id_col = "site_id",
-            sample_group_col = "Sample_Group",
-            casecontrol_col = "casecontrol",
-            genome = "hg38",
-            array = "NULL",
-            entanglement = "weak",
-            pval_mode = pval_mode,
-            max_bridge_seeds_gaps = max_bridge_seeds_gaps,
-            max_bridge_extension_gaps = max_bridge_extension_gaps,
-            min_seeds = min_seeds,
-            min_sites = min_sites,
-            max_pval = max_pval,
-            ext_site_delta_beta = ext_site_delta_beta,
-            max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
-            annotate_with_genes = FALSE,
-            extract_motifs = FALSE,
-            njobs = cment_njobs
-        )
+        beta = beta_handler,
+        seeds = seeds,
+        pheno = pheno,
+        seeds_id_col = "site_id",
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        genome = "hg38",
+        array = "NULL",
+        entanglement = "weak",
+        pval_mode = pval_mode,
+        max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+        max_bridge_extension_gaps = max_bridge_extension_gaps,
+        min_seeds = min_seeds,
+        min_sites = min_sites,
+        max_pval = max_pval,
+        ext_site_delta_beta = ext_site_delta_beta,
+        max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
+        njobs = cment_njobs
+    )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
@@ -799,7 +799,8 @@ run_hummingbird_bsseq <- function(
     # granges to gpos for hummingbird
     row_gr <- GPos(
         seqnames = GenomicRanges::seqnames(row_gr),
-        pos = GenomicRanges::start(row_gr))
+        pos = GenomicRanges::start(row_gr)
+    )
 
     to_count_matrix <- function(x) {
         x <- as.matrix(x)

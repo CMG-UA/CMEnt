@@ -72,8 +72,8 @@ test_that("findDMRsFromSeeds handles ext_site_delta_beta filtering", {
         max_lookup_dist = 1000
     )
 
-    # Test with delta beta filtering
-    dmrs_with_filter <- findDMRsFromSeeds(
+    # Test with delta beta extension
+    dmrs_with_db_ext <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
@@ -83,18 +83,18 @@ test_that("findDMRsFromSeeds handles ext_site_delta_beta filtering", {
         sample_group_col = "Sample_Group",
         min_seeds = 2,
         min_sites = 3,
-        ext_site_delta_beta = 0.1, # Filter out small changes
+        ext_site_delta_beta = 0.1, # Extend DMRs to include sites with delta beta >= 0.1
         max_lookup_dist = 1000
     )
 
 
     # Assertions
     expect_true(is.null(dmrs_no_filter) || inherits(dmrs_no_filter, "GRanges"))
-    expect_true(is.null(dmrs_with_filter) || inherits(dmrs_with_filter, "GRanges"))
+    expect_true(is.null(dmrs_with_db_ext) || inherits(dmrs_with_db_ext, "GRanges"))
 
-    # Filtered results should have fewer or equal DMRs
-    if (!is.null(dmrs_no_filter) && !is.null(dmrs_with_filter)) {
-        expect_true(length(dmrs_with_filter) <= length(dmrs_no_filter))
+    # Extended results by delta beta comparison should have more or equal DMRs
+    if (!is.null(dmrs_no_filter) && !is.null(dmrs_with_db_ext)) {
+        expect_true(length(dmrs_with_db_ext) >= length(dmrs_no_filter))
     }
 })
 

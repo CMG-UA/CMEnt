@@ -126,7 +126,8 @@ genome <- "hg19"
 beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
-mvalues <- minfi::logit2(beta_mat)
+logit2 <- function(x) log2(x) - log2(1 - x)
+mvalues <- logit2(beta_mat)
 pheno$casecontrol <- pheno$Sample_Group == "cancer"
 ```
 
@@ -185,11 +186,11 @@ if (!file.exists(cment_file)) {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         covariates = c("Age", "Gender"),
-        max_bridge_seeds_gaps  = 0,
+        max_bridge_seeds_gaps  = 1,
         max_bridge_extension_gaps = 3,
         min_seeds = 2,
         min_sites = 3,
-        ext_site_delta_beta = 0,
+        ext_site_delta_beta = 0.2,
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",

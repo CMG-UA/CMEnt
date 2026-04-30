@@ -43,6 +43,7 @@
 #'    njobs = 4
 #' )
 #' }
+#' @importFrom stats as.formula
 #' @export
 findDMPsBSSeq <- function(
     bsseq,
@@ -63,6 +64,7 @@ findDMPsBSSeq <- function(
     if (!requireNamespace("DSS", quietly = TRUE)) {
         BiocManager::install("DSS", update = FALSE, ask = FALSE)
     }
+    require(DSS)
     if (chr == "auto") {
         chr <- paste0("chr", c(1:22))
     } else if (chr == "all") {
