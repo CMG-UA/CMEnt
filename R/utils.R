@@ -1457,7 +1457,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("CMEnt", "annotations"))
+        .getOSCacheDir(file.path("CMEnt", "annotation_cache"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2005,7 +2005,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     array <- strex::match_arg(array, ignore_case = TRUE)
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
+        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2310,7 +2310,7 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
     }
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
+        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -2571,7 +2571,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
+        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- convertToGRanges(dmrs, genome)

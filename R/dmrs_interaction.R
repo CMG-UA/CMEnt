@@ -205,7 +205,7 @@ comparePWMToJaspar <- function(pwm_queries) {
 
 getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .sorted_locs = NULL) {
     cache_dir <- getOption("CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "CMEnt", "annotations"))
+        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
     cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", motif_site_flank_size, ".rds"))
