@@ -54,15 +54,12 @@ suppressPackageStartupMessages({
 get_benchmark_file <- function(filename) {
     benchmark_file <- ""
     folder <- "microarray"
-    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "CMEnt"), silent = TRUE)
-    if (benchmark_file == "") {
-        if (getwd() == "vignettes") {
-            benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
-        } else if ("NAMESPACE" %in% dir()) {
-            benchmark_file <- file.path("inst", "benchmarks", folder, filename)
-        } else {
-            benchmark_file <- file.path("benchmarks", folder, filename)
-        }
+    if (getwd() == "notebooks") {
+        benchmark_file <- file.path("benchmarks", folder, filename)
+    } else if ("NAMESPACE" %in% dir()) {
+        benchmark_file <- file.path("notebooks", "benchmarks", folder, filename)
+    } else {
+        benchmark_file <- file.path("benchmarks", folder, filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file

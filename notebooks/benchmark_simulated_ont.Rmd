@@ -56,35 +56,18 @@ suppressPackageStartupMessages({
     library(S4Vectors)
 })
 
-
 get_benchmark_file <- function(filename) {
-    folder <- "simulated_ont"
     benchmark_file <- ""
-    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "CMEnt"), silent = TRUE)
-    if (benchmark_file == "") {
-        if (getwd() == "vignettes") {
-            benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
-        } else if ("NAMESPACE" %in% dir()) {
-            benchmark_file <- file.path("inst", "benchmarks", folder, filename)
-        } else {
-            benchmark_file <- file.path("benchmarks", folder, filename)
-        }
+    folder <- "simulated_ont"
+    if (getwd() == "notebooks") {
+        benchmark_file <- file.path("benchmarks", folder, filename)
+    } else if ("NAMESPACE" %in% dir()) {
+        benchmark_file <- file.path("notebooks", "benchmarks", folder, filename)
+    } else {
+        benchmark_file <- file.path("benchmarks", folder, filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
-}
-
-drop_zero_coverage_sites <- function(bs_obj) {
-    cov_assay <- SummarizedExperiment::assay(bs_obj, "Cov", withDimnames = FALSE)
-    valid_sites <- DelayedMatrixStats::rowSums2(cov_assay) > 0
-    rm(cov_assay)
-    gc(verbose = FALSE)
-    if (!all(valid_sites)) {
-        bs_obj <- bs_obj[valid_sites, ]
-    }
-    rm(valid_sites)
-    gc(verbose = FALSE)
-    bs_obj
 }
 
 ```
