@@ -108,22 +108,10 @@ seeds_file <- get_benchmark_file("seeds.tsv.gz")
 
 computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file) || !file.exists(pheno_file) || !file.exists(seeds_file)
 
-resolve_input_path <- function(path_in_repo) {
-    candidates <- c(
-        path_in_repo,
-        file.path("..", path_in_repo)
-    )
-    hit <- candidates[file.exists(candidates)][1]
-    if (is.na(hit)) {
-        return(path_in_repo)
-    }
-    hit
-}
-
 sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
 if (computation_needed) {
     dir.create("data", showWarnings = FALSE, recursive = TRUE)
-    sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
+    sim_bs_path <- get_benchmark_file("sim_bs_1000.rds")
     if (!file.exists(sim_bs_path)) {
         curl::curl_download(
             url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
