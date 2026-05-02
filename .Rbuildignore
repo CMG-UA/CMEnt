@@ -18,7 +18,6 @@
 ^CMEnt\.Rcheck$
 ^vignettes/.*\.(md|html)$
 ^codecov\.yml$
-^data($|/)
 ^inst/extdata/example_output\.rds$
 ^inst/extdata/example_output\.dmrs\.tsv\.gz$
 ^inst/extdata/example_output\.seeds_beta\.tsv\.gz$

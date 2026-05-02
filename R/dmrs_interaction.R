@@ -289,6 +289,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site (default: 5)
+#' @param plot_dir Character. Optional directory where diagnostic motif plots may be written.
 #' @return The input Dataframe/GRanges object with an additional metadata column:
 #' \itemize{
 #'   \item pwm: A matrix of base frequencies (rows: positions relative to site, columns: bases A, C, G, T)
@@ -487,13 +488,17 @@ extractDMRMotifs <- function(
 #'     start = c(53468112, 37459206),
 #'     end = c(53468712, 37493431),
 #'     start_site = c("cg00000029", "cg00000108"),
-#'     end_site = c("cg13426503", "cg08730726")
+#'     start_seed = c("cg00000029", "cg00000108"),
+#'     end_site = c("cg13426503", "cg08730726"),
+#'     end_seed = c("cg13426503", "cg08730726"),
+#'     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 #' )
 #' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 #' interactions <- computeDMRsInteraction(
 #'     dmrs_with_motifs,
 #'     genome = "hg38",
 #'     array = "450K",
+#'     query_components_with_jaspar = FALSE
 #' )
 #' @export
 computeDMRsInteraction <- function(

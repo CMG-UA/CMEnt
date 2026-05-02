@@ -1051,6 +1051,8 @@ plotDMRs <- function(dmrs,
 #' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site for motif extraction (default: 5).
 #' @param plot_title Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).
 #' @param output_file Character. If provided, saves the plot to the specified file path (PDF format).
+#' @param width Numeric. Width of the output PDF in inches when `output_file` is provided (default: `8`).
+#' @param height Numeric. Height of the output PDF in inches when `output_file` is provided (default: `12`).
 #'
 #' @return A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),
 #'   and sequence logo motif plot (if motif information is available and plot_motif is TRUE).

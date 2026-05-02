@@ -48,7 +48,23 @@
 #' @import GenomicRanges
 #' @import IRanges
 #' @import methods
-#' @importFrom stats p.adjust na.omit pt setNames
-#' @importFrom utils read.table write.table capture.output head
+#' @importFrom stats aggregate as.formula ave p.adjust na.omit plogis predict pt qlogis setNames
+#' @importFrom utils capture.output getFromNamespace head read.table tail write.table
 #' @importFrom data.table fread
 NULL
+
+if (getRversion() >= "2.15.1") {
+    utils::globalVariables(
+        c(
+            ".", ".N", "Beta", "Sample",
+            "cases_beta", "cases_beta_sd", "chr", "controls_beta",
+            "controls_beta_sd", "dmr_id", "end_bp", "end_score",
+            "hover_text", "id", "label", "label_x", "label_y",
+            "line_ymax", "line_ymin", "midpoint", "position",
+            "rchr", "rend", "right_bp", "rstart", "score_raw",
+            "score_smoothed", "start_bp", "start_score", "target_x",
+            "target_y", "x", "xend", "xmax", "xmin", "y", "yend",
+            "ymax", "ymax_band", "ymin", "ymin_band"
+        )
+    )
+}

@@ -871,10 +871,12 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
 #' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
+#' @param locations_file Character. Optional path to an explicit genomic locations file passed through to `getSortedGenomicLocs()`.
 #' @param output_file Character. Path for the output tabix file. If NULL, a temporary
 #'   file is used unless `output_prefix` is supplied.
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
 #' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
+#' @param .bed_file Character. Internal precomputed BED path used to skip beta-to-BED conversion.
 #' @param output_prefix Character. Optional prefix used to persist derived tabix
 #'   artifacts next to analysis outputs.
 #'
@@ -3224,8 +3226,8 @@ convertToDataFrame <- function(gr) {
 
 #' Load CMEnt Example Resources
 #'
-#' @description Helper function to load lightweight example resources bundled in
-#' `inst/extdata`. The shipped local example bundle is a compact chr5/chr11 subset
+#' @description Helper function to load lightweight example resources bundled as
+#' package data. The shipped local example bundle is a compact chr5/chr11 subset
 #' intended for package examples, tests, and vignettes. If a local resource is not
 #' found, the function can fall back to ExperimentHub.
 #'
@@ -3244,17 +3246,17 @@ convertToDataFrame <- function(gr) {
 #' @details
 #' The function follows this priority order:
 #' \enumerate{
-#'   \item Load the packaged example resource from `inst/extdata`
+#'   \item Load the packaged example resource from the installed package `data/`
 #'   \item If use_experiment_hub is TRUE, query ExperimentHub
 #'   \item If all fail, raise an informative error
 #' }
 #'
-#' Available local resources correspond to `.rds` files in `inst/extdata`:
+#' Available local resources correspond to `.rda` files in `data/`:
 #' \itemize{
-#'   \item `example_beta_chr5_chr11.rds` - Example methylation beta values
-#'   \item `example_pheno.rds` - Example phenotype/sample information
-#'   \item `example_dmps_chr5_chr11.rds` - Example differential methylation results
-#'   \item `example_array_type.rds` - Array platform type
+#'   \item `beta.rda` - Example methylation beta values
+#'   \item `pheno.rda` - Example phenotype/sample information
+#'   \item `dmps.rda` - Example differential methylation results
+#'   \item `array_type.rda` - Array platform type
 #' }
 #'
 #' @examples

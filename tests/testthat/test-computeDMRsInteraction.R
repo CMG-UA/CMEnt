@@ -1,3 +1,5 @@
+.example_dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt", mustWork = FALSE)
+
 .reduceAndClearMotifs <- function(dmrs, size = 200) {
     if (length(dmrs) > size) {
         dmrs <- dmrs[seq_len(size)]
@@ -21,7 +23,7 @@
 }
 
 test_that("computeDMRsInteraction returns correct structure with valid input", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -60,7 +62,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 })
 
 test_that("computeDMRsInteraction handles GRanges input", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -81,7 +83,7 @@ test_that("computeDMRsInteraction handles GRanges input", {
 test_that("computeDMRsInteraction works with not precomputed motifs", {
     skip_if_missing_motif_extraction_deps(array = "450K", genome = "hg19")
 
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .reduceAndClearMotifs(dmrs)
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
@@ -97,7 +99,7 @@ test_that("computeDMRsInteraction works with not precomputed motifs", {
 })
 
 test_that("computeDMRsInteraction handles different similarity thresholds", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_high <- suppressWarnings(computeDMRsInteraction(
@@ -125,10 +127,10 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
 })
 
 test_that("computeDMRsInteraction returns NULL when no interactions found", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
-    if (length(dmrs) == 0 || !file.exists(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))) {
+    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
         skip("Benchmark DMRs not available")
     }
     result <- suppressWarnings(computeDMRsInteraction(
@@ -147,7 +149,7 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
 })
 
 test_that("computeDMRsInteraction handles custom motif_site_flank_size", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result_default <- suppressWarnings(computeDMRsInteraction(
@@ -171,7 +173,7 @@ test_that("computeDMRsInteraction handles custom motif_site_flank_size", {
 })
 
 test_that("computeDMRsInteraction does not collapse into a giant component at strict threshold", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -189,7 +191,7 @@ test_that("computeDMRsInteraction does not collapse into a giant component at st
 })
 
 test_that("computeDMRsInteraction validates similarity values", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -207,7 +209,7 @@ test_that("computeDMRsInteraction validates similarity values", {
 })
 
 test_that("computeDMRsInteraction assigns contiguous positive component IDs when scores exist", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     mcols(dmrs)$score <- seq_along(dmrs)
@@ -234,7 +236,7 @@ test_that("computeDMRsInteraction assigns contiguous positive component IDs when
 })
 
 test_that("computeDMRsInteraction components are ordered by size", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -252,7 +254,7 @@ test_that("computeDMRsInteraction components are ordered by size", {
 })
 
 test_that("computeDMRsInteraction consensus sequences are valid", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
@@ -271,7 +273,7 @@ test_that("computeDMRsInteraction consensus sequences are valid", {
 })
 
 test_that("computeDMRsInteraction works with different array types", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -296,7 +298,7 @@ test_that("computeDMRsInteraction works with different array types", {
 })
 
 test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 
@@ -322,7 +324,7 @@ test_that("computeDMRsInteraction creates plot when plot_dir is specified", {
 })
 
 test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
-    dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
+    dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
 

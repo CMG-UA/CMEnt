@@ -576,7 +576,7 @@ launchCMEntViewer <- function(
                 )
             }
 
-            CMEnt:::.viewerRunBackgroundTask(
+            .viewerRunBackgroundTask(
                 task_type = task_type,
                 output_prefix = output_prefix,
                 params = params
@@ -619,7 +619,7 @@ launchCMEntViewer <- function(
                     assign(
                         ".cment_viewer_worker_data",
                         suppressMessages(
-                            CMEnt:::.loadCMEntData(output_prefix)
+                            .loadCMEntData(output_prefix)
                         ),
                         envir = .GlobalEnv
                     )
@@ -888,7 +888,7 @@ launchCMEntViewer <- function(
                                 }
 
                                 data <- get(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
-                                result <- CMEnt:::.viewerRunBackgroundTaskFromData(
+                                result <- .viewerRunBackgroundTaskFromData(
                                     task_type = task_type,
                                     data = data,
                                     params = params

@@ -2,7 +2,7 @@ options("CMEnt.verbose" = 0)
 test_that("plotDMRsManhattan returns a ggplot object", {
     skip_if_not_installed("ggplot2")
 
-    dmrs_path <- system.file("extdata/example_output.rds", package = "CMEnt")
+    dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     if (!nzchar(dmrs_path) || !file.exists(dmrs_path)) {
         skip("Benchmark DMRs not available")
     }

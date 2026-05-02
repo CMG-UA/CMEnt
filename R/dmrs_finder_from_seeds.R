@@ -34,6 +34,7 @@
 #' @param testing_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
 #' @param empirical_strategy Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).
+#' @param mid_p Logical. Whether to use mid-p adjustment when `testing_mode = "empirical"`. Default is `FALSE`.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
@@ -87,7 +88,7 @@
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
-#'     seeds = seeds,
+#'     seeds = dmps,
 #'     pheno = pheno
 #' )
 #'
