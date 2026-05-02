@@ -1,0 +1,6 @@
+organism,OrgDb,TxDb
+Homo sapiens,org.Hs.eg.db,TxDb.Hsapiens.UCSC.hg19.knownGene
+Homo sapiens,org.Hs.eg.db,TxDb.Hsapiens.UCSC.hg38.knownGene
+Mus musculus,org.Mm.eg.db,TxDb.Mmusculus.UCSC.mm10.ensGene
+Mus musculus,org.Mm.eg.db,TxDb.Mmusculus.UCSC.mm10.knownGene
+Mus musculus,org.Mm.eg.db,TxDb.Mmusculus.UCSC.mm9.knownGene

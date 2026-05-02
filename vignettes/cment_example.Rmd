@@ -335,6 +335,18 @@ which allows for interactive exploration of the DMRs and the aforementioned plot
 launchCMEntViewer("tmp/CMEnt_example")
 ```
 
+
+## Benchmarking notebooks
+
+The CMEnt package includes benchmarking notebooks for both microarray and NGS datasets, which can be found in the `notebooks` folder of the package GitHub repo: https://github.com/CMEnt/CMEnt/tree/master/notebooks. 
+These notebooks provide a comprehensive evaluation of the performance of CMEnt in terms of DMR calling, 
+scoring, and motif-based interactions, using both simulated and real datasets. 
+The notebooks can be run end-to-end to reproduce the benchmarking results, 
+or can be used as templates for benchmarking CMEnt on custom datasets.
+
+
+
+
 ## Session Info
 
 ```{r session_info}

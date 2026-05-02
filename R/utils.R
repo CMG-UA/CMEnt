@@ -1709,11 +1709,19 @@ sortBetaFileByCoordinates <- function(beta_file,
     )
 }
 
+supportedOrganisms <- function() {
+    filename <- system.file(
+        "extdata",
+        "supportedOrganisms.csv"
+    )
+    csv <- read.csv(filename, header = TRUE, stringsAsFactors = FALSE)
+    tibble::as_tibble(csv)
+}
 
 .getGeneAnnotationPackages <- function(genome) {
     target_genome <- tolower(genome)
     annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
-    supported_organisms <- Organism.dplyr::supportedOrganisms()
+    supported_organisms <- supportedOrganisms()
     matched_row <- supported_organisms[grepl(annotation_source_genome, tolower(supported_organisms$TxDb)), , drop = FALSE]
     if (nrow(matched_row) == 0L) {
         stop("Unsupported genome: ", genome, call. = FALSE)

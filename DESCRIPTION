@@ -71,7 +71,6 @@ Imports:
     jsonlite,
     matrixStats,
     methods,
-    Organism.dplyr,
     plotly,
     R.utils,
     R6,
