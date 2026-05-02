@@ -1555,7 +1555,7 @@
 #' @return `NULL` invisibly after drawing the plot.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
@@ -2210,7 +2210,7 @@ plotDMRsCircos <- function(dmrs,
 #'   `start`, and `end`.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")

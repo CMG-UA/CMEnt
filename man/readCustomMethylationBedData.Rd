@@ -81,6 +81,7 @@ storage.
 }
 
 \examples{
+\dontrun{
 # Create a simple phenotype data frame
 pheno <- data.frame(
     sample_group = c("case", "case", "control", "control"),
@@ -114,6 +115,7 @@ result <- readCustomMethylationBedData(
 # Access the processed files
 tabix_file <- result$tabix_file
 locations <- result$locations
+}
 
 }
 \seealso{

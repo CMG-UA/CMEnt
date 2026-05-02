@@ -143,5 +143,6 @@ Collate:
     'augment_bsseq.R'
     'simulate_dmrs.R'
     'helpers.R'
+    'data.R'
     'zzz.R'
 NeedsCompilation: no

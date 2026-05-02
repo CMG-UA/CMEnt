@@ -1,16 +1,11 @@
+name: Render and deploy notebooks
+
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main, master]
-    paths:
-      - "notebooks/**"
-      - "DESCRIPTION"
-      - ".github/workflows/render-notebooks.yaml"
-
-name: Render and deploy notebooks
 
 permissions:
   contents: read
+  packages: write
   pages: write
   id-token: write
 
@@ -19,76 +14,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare-image:
+    uses: ./.github/workflows/prepare-cment-env-image.yaml
+    with:
+      dockerfile: ".github/docker/cment-env/Dockerfile"
+      docker_context: "."
+      docker_dir: ".github/docker/cment-env"
+      image_suffix: "cment-env"
   render:
     runs-on: ubuntu-latest
+
+    needs:
+      - prepare-image
+
+    container:
+      image: ${{ needs.prepare-image.outputs.image_uri  }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: true
+      - name: Install current package source
+        run: |
+          R CMD INSTALL .
 
-      - name: Set up Pandoc
-        uses: r-lib/actions/setup-pandoc@v2
-
-      - name: Install rendering dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          packages: |
-            any::rmarkdown
-            any::knitr
-            any::BiocStyle
-            any::sessioninfo
-            deps::.
-
-      - name: Render notebooks to _site/articles
+      - name: Render notebooks
         shell: Rscript {0}
         run: |
-          dir.create("_site/articles", recursive = TRUE, showWarnings = FALSE)
+          site_dir <- "_site"
+          articles_dir <- file.path(site_dir, "articles")
+
+          dir.create(articles_dir, recursive = TRUE, showWarnings = FALSE)
 
           notebooks <- list.files(
             "notebooks",
-            pattern = "\\.(Rmd|qmd)$",
+            pattern = "\\.Rmd$",
             full.names = TRUE
           )
 
           if (length(notebooks) == 0L) {
-            message("No notebooks found.")
-            quit(save = "no", status = 0)
-          }
+            message("No Rmd notebooks found.")
+          } else {
+            for (nb in notebooks) {
+              message("Rendering: ", nb)
 
-          for (nb in notebooks) {
-            message("Rendering: ", nb)
-
-            out_file <- paste0(
-              tools::file_path_sans_ext(basename(nb)),
-              ".html"
-            )
-
-            if (grepl("\\.qmd$", nb, ignore.case = TRUE)) {
-              if (!nzchar(Sys.which("quarto"))) {
-                stop("Quarto notebook found, but quarto is not installed.")
-              }
-
-              system2(
-                "quarto",
-                args = c(
-                  "render",
-                  nb,
-                  "--to", "html",
-                  "--output-dir", "_site/articles"
-                ),
-                stdout = TRUE,
-                stderr = TRUE
+              out_file <- paste0(
+                tools::file_path_sans_ext(basename(nb)),
+                ".html"
               )
-            } else {
+
               rmarkdown::render(
                 input = nb,
                 output_format = "html_document",
-                output_dir = "_site/articles",
+                output_dir = articles_dir,
                 output_file = out_file,
                 envir = new.env(parent = globalenv()),
                 quiet = FALSE
@@ -96,22 +77,22 @@ jobs:
             }
           }
 
-      - name: Create index page
-        shell: Rscript {0}
-        run: |
           html_files <- list.files(
-            "_site/articles",
+            articles_dir,
             pattern = "\\.html$",
-            recursive = FALSE,
             full.names = FALSE
           )
 
-          links <- paste0(
-            '<li><a href="articles/', html_files, '">',
-            tools::file_path_sans_ext(html_files),
-            "</a></li>",
-            collapse = "\n"
-          )
+          links <- if (length(html_files) > 0L) {
+            paste0(
+              '<li><a href="articles/', html_files, '">',
+              tools::file_path_sans_ext(html_files),
+              "</a></li>",
+              collapse = "\n"
+            )
+          } else {
+            "<li>No rendered notebooks found.</li>"
+          }
 
           index <- paste0(
             '<!DOCTYPE html>\n',
@@ -129,7 +110,7 @@ jobs:
             '</html>\n'
           )
 
-          writeLines(index, "_site/index.html")
+          writeLines(index, file.path(site_dir, "index.html"))
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
@@ -138,13 +119,14 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: "_site"
+
   deploy:
+    runs-on: ubuntu-latest
+    needs: render
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
-    runs-on: ubuntu-latest
-    needs: render
 
     steps:
       - name: Deploy to GitHub Pages

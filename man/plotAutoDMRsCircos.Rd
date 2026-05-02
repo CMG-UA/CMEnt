@@ -88,7 +88,7 @@ falls back to top-scoring individual DMR windows. Both selectors are greedy and
 avoid exhaustive optimization to keep region finding inexpensive.
 }
 \examples{
-\donttest{
+\dontrun{
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")

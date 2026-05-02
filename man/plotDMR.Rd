@@ -76,6 +76,7 @@ Additionally, if motif information is available or can be extracted, a sequence 
 plot is added showing the nucleotide composition and information content around site sites in the DMR.
 }
 \examples{
+\dontrun{
 # Using BetaHandler
 beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg38")
 plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
@@ -91,5 +92,6 @@ plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, motif_site_flank_size = 1
 
 # Without motif plot
 plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
+}
 
 }

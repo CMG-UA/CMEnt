@@ -63,6 +63,7 @@ njobs > 1 when using the online API, or install the appropriate BSgenome package
 for much faster local sequence retrieval.
 }
 \examples{
+\dontrun{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
@@ -73,5 +74,6 @@ sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 gc_content <- sapply(sequences, function(s) {
     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 })
+}
 
 }

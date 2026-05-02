@@ -210,6 +210,7 @@
 #' @return None, outputs results to files
 #'
 #' @examples
+#' \dontrun{
 #' if (requireNamespace("optparse", quietly = TRUE)) {
 #'     args <- list(
 #'         beta = "path/to/beta_values.rds",
@@ -224,8 +225,9 @@
 #'         verbose = 1,
 #'         entanglement = "strong"
 #'     )
-#'
+#' 
 #'     findDMRsFromSeedsCLI(args)
+#' }
 #' }
 #'
 #' @export

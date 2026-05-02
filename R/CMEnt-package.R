@@ -49,7 +49,7 @@
 #' @import IRanges
 #' @import methods
 #' @importFrom stats aggregate as.formula ave p.adjust na.omit plogis predict pt qlogis setNames
-#' @importFrom utils capture.output getFromNamespace head read.table tail write.table
+#' @importFrom utils capture.output getFromNamespace head read.csv read.table tail write.table
 #' @importFrom data.table fread
 NULL
 

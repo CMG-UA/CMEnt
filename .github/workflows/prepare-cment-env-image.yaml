@@ -1,0 +1,219 @@
+name: Prepare cment-env image
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        required: false
+        type: string
+        default: ".github/docker/cment-env/Dockerfile"
+      docker_context:
+        required: false
+        type: string
+        default: "."
+      docker_dir:
+        required: false
+        type: string
+        default: ".github/docker/cment-env"
+      image_suffix:
+        required: false
+        type: string
+        default: "cment-env"
+    outputs:
+      image_name:
+        description: "GHCR image name without tag"
+        value: ${{ jobs.generate-requirements.outputs.image_name }}
+      image_tag:
+        description: "Dependency hash image tag"
+        value: ${{ jobs.generate-requirements.outputs.requirements_hash }}
+      image_uri:
+        description: "Full image URI"
+        value: ${{ jobs.generate-requirements.outputs.image_uri }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  generate-requirements:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_name: ${{ steps.meta.outputs.image_name }}
+      requirements_hash: ${{ steps.hash.outputs.requirements_hash }}
+      image_uri: ${{ steps.meta.outputs.image_name }}:${{ steps.hash.outputs.requirements_hash }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Define image name
+        id: meta
+        shell: bash
+        run: |
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_suffix }}"
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install BiocManager
+        shell: Rscript {0}
+        run: |
+          install.packages("BiocManager", repos = "https://cloud.r-project.org")
+
+      - name: Generate requirements from DESCRIPTION
+        shell: Rscript {0}
+        run: |
+          desc <- read.dcf("DESCRIPTION")[1, ]
+
+          fields <- c("Depends", "Imports", "LinkingTo", "Suggests")
+          fields <- intersect(fields, colnames(desc))
+
+          raw <- unlist(desc[, fields, drop = TRUE], use.names = FALSE)
+          raw <- raw[!is.na(raw)]
+
+          parse_deps <- function(x) {
+            deps <- unlist(strsplit(x, ",", fixed = TRUE), use.names = FALSE)
+            deps <- trimws(deps)
+            deps <- sub("\\s*\\(.*\\)$", "", deps)
+            deps <- deps[nzchar(deps)]
+            deps <- setdiff(deps, c("R"))
+            sort(unique(deps))
+          }
+
+          pkgs <- parse_deps(raw)
+
+          extra <- c(
+            "BiocManager",
+            "BiocStyle",
+            "knitr",
+            "rmarkdown",
+            "sessioninfo"
+          )
+
+          pkgs <- sort(unique(c(pkgs, extra)))
+
+          outdir <- "${{ inputs.docker_dir }}"
+          dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+          repos <- BiocManager::repositories()
+          ap <- available.packages(repos = repos)
+
+          present <- intersect(pkgs, rownames(ap))
+          missing <- setdiff(pkgs, present)
+
+          if (length(missing) > 0L) {
+            message(
+              "Packages not found in configured CRAN/Bioc repositories: ",
+              paste(missing, collapse = ", ")
+            )
+          }
+
+          repo <- ap[present, "Repository"]
+          names(repo) <- present
+
+          is_cran <- grepl("/src/contrib$", repo) &
+            grepl("CRAN|cloud.r-project.org|cran.r-project.org", repo, ignore.case = TRUE)
+
+          cran <- names(repo)[is_cran]
+          bioc <- setdiff(present, cran)
+
+          writeLines(sort(unique(cran)), file.path(outdir, "cran-requirements.txt"))
+          writeLines(sort(unique(bioc)), file.path(outdir, "bioc-requirements.txt"))
+
+      - name: Compute requirements hash
+        id: hash
+        shell: bash
+        run: |
+          HASH=$(sha256sum \
+            "${{ inputs.docker_dir }}/cran-requirements.txt" \
+            "${{ inputs.docker_dir }}/bioc-requirements.txt" \
+            "${{ inputs.docker_dir }}/install-requirements.R" \
+            "${{ inputs.dockerfile }}" \
+            | sha256sum | cut -d ' ' -f 1)
+
+          echo "requirements_hash=${HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload generated requirements
+        uses: actions/upload-artifact@v4
+        with:
+          name: cment-env-requirements
+          path: |
+            ${{ inputs.docker_dir }}/cran-requirements.txt
+            ${{ inputs.docker_dir }}/bioc-requirements.txt
+
+  check-image:
+    runs-on: ubuntu-latest
+    needs: generate-requirements
+
+    outputs:
+      image_exists: ${{ steps.check.outputs.image_exists }}
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check whether dependency image already exists
+        id: check
+        shell: bash
+        run: |
+          IMAGE="${{ needs.generate-requirements.outputs.image_uri }}"
+
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "image_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Found existing image: $IMAGE"
+          else
+            echo "image_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Image does not exist yet: $IMAGE"
+          fi
+
+  build-image:
+    runs-on: ubuntu-latest
+    needs:
+      - generate-requirements
+      - check-image
+
+    if: needs.check-image.outputs.image_exists != 'true'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download generated requirements
+        uses: actions/download-artifact@v4
+        with:
+          name: cment-env-requirements
+          path: ${{ inputs.docker_dir }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push notebook render image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.docker_context }}
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: |
+            ${{ needs.generate-requirements.outputs.image_uri }}
+            ${{ needs.generate-requirements.outputs.image_name }}:latest
+          cache-from: |
+            type=gha,scope=${{ inputs.image_suffix }}
+            type=registry,ref=${{ needs.generate-requirements.outputs.image_name }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=${{ inputs.image_suffix }}
+            type=registry,ref=${{ needs.generate-requirements.outputs.image_name }}:buildcache,mode=max

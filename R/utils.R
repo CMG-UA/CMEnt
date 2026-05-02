@@ -703,6 +703,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' storage.
 #'
 #' @examples
+#' \dontrun{
 #' # Create a simple phenotype data frame
 #' pheno <- data.frame(
 #'     sample_group = c("case", "case", "control", "control"),
@@ -736,6 +737,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' # Access the processed files
 #' tabix_file <- result$tabix_file
 #' locations <- result$locations
+#' }
 #'
 #' @seealso
 #' \code{\link{convertBetaToTabix}} for converting standard beta files to tabix format
@@ -893,6 +895,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #' }
 #'
 #' @examples
+#' \dontrun{
 #' # Convert a beta file to tabix format
 #' tabix_file <- convertBetaToTabix(
 #'     beta_file = "methylation_beta.txt",
@@ -905,6 +908,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #'     output_file = "my_custom_location.bed.gz",
 #'     array = "EPIC"
 #' )
+#' }
 #'
 #' @export
 convertBetaToTabix <- function(beta_file,
@@ -1245,6 +1249,7 @@ convertBetaToTabix <- function(beta_file,
 #' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 #'
 #' @examples
+#' \dontrun{
 #' # Sort a beta file for 450K array
 #' sorted_file <- sortBetaFileByCoordinates(
 #'     beta_file = "unsorted_beta.txt",
@@ -1257,6 +1262,7 @@ convertBetaToTabix <- function(beta_file,
 #'     beta_file = "epic_beta.txt",
 #'     array = "EPIC"
 #' )
+#' }
 #'
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
@@ -2315,6 +2321,7 @@ orderByLoc <- function(x,
 #' for much faster local sequence retrieval.
 #'
 #' @examples
+#' \dontrun{
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
@@ -2325,6 +2332,7 @@ orderByLoc <- function(x,
 #' gc_content <- sapply(sequences, function(s) {
 #'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
 #' })
+#' }
 #'
 #' @importFrom BSgenome getSeq
 #' @importFrom rtracklayer import.chain liftOver

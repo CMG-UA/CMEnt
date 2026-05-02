@@ -59,11 +59,13 @@ Creates a grid of DMR plots for multiple regions. Can optionally
 include beta value heatmaps if beta and pheno data are provided.
 }
 \examples{
+\dontrun{
 # Plot structure only
 dmrs <- readRDS("dmrs.rds")
 plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
 
 # Plot with beta values heatmap
 plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+}
 
 }

@@ -61,6 +61,7 @@ The function performs the following steps:
 }
 }
 \examples{
+\dontrun{
 # Convert a beta file to tabix format
 tabix_file <- convertBetaToTabix(
     beta_file = "methylation_beta.txt",
@@ -73,5 +74,6 @@ tabix_file <- convertBetaToTabix(
     output_file = "my_custom_location.bed.gz",
     array = "EPIC"
 )
+}
 
 }

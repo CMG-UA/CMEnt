@@ -75,6 +75,8 @@ launchCMEntViewer <- function(
     invisible(do.call(shiny::runApp, run_args))
 }
 
+.viewer_worker_env <- new.env(parent = emptyenv())
+
 .viewerOutputFiles <- function(output_prefix) {
     list(
         dmrs_file = paste0(output_prefix, ".dmrs.tsv.gz"),
@@ -621,7 +623,7 @@ launchCMEntViewer <- function(
                         suppressMessages(
                             .loadCMEntData(output_prefix)
                         ),
-                        envir = .GlobalEnv
+                        envir = .viewer_worker_env
                     )
                     TRUE
                 },
@@ -883,11 +885,11 @@ launchCMEntViewer <- function(
                     worker$call(
                         func = function(task_type, params) {
                             suppressMessages({
-                                if (!exists(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)) {
+                                if (!exists(".cment_viewer_worker_data", envir = .viewer_worker_env, inherits = FALSE)) {
                                     stop("Viewer worker data is not initialized.", call. = FALSE)
                                 }
 
-                                data <- get(".cment_viewer_worker_data", envir = .GlobalEnv, inherits = FALSE)
+                                data <- get(".cment_viewer_worker_data", envir = .viewer_worker_env, inherits = FALSE)
                                 result <- .viewerRunBackgroundTaskFromData(
                                     task_type = task_type,
                                     data = data,
@@ -897,7 +899,7 @@ launchCMEntViewer <- function(
                                 if (identical(task_type, "circos_cache_compute") && is.list(result$cache)) {
                                     data$interactions <- result$cache$interactions
                                     data$components <- result$cache$components
-                                    assign(".cment_viewer_worker_data", data, envir = .GlobalEnv)
+                                    assign(".cment_viewer_worker_data", data, envir = .viewer_worker_env)
                                 }
 
                                 result

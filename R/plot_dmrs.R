@@ -945,12 +945,14 @@ minmaxscale <- function(x) {
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples
+#' \dontrun{
 #' # Plot structure only
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
 #'
 #' # Plot with beta values heatmap
 #' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+#' }
 #'
 #' @export
 plotDMRs <- function(dmrs,
@@ -1058,6 +1060,7 @@ plotDMRs <- function(dmrs,
 #'   and sequence logo motif plot (if motif information is available and plot_motif is TRUE).
 #'
 #' @examples
+#' \dontrun{
 #' # Using BetaHandler
 #' beta_handler <- getBetaHandler(beta = "beta.txt", array = "450K", genome = "hg38")
 #' plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
@@ -1073,6 +1076,7 @@ plotDMRs <- function(dmrs,
 #'
 #' # Without motif plot
 #' plotDMR(dmrs, 1, beta = beta_matrix, pheno = pheno_df, plot_motif = FALSE)
+#' }
 #'
 #' @export
 plotDMR <- function(dmrs,
@@ -1614,7 +1618,7 @@ plotDMR <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' dmrs <- readRDS("dmrs.rds")
 #' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
 #' print(p)
@@ -1906,7 +1910,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \donttest{
+#' \dontrun{
 #' dmrs <- readRDS("dmrs.rds")
 #' p <- plotDMRsManhattan(dmrs)
 #' print(p)
