@@ -49,6 +49,5 @@ tmp/
 .Rprofile
 .lintr
 data
-notebooks/benchmarks/simulated_ont/sim_bs_1000.rds
 
 CMEnt_*.tar.gz
