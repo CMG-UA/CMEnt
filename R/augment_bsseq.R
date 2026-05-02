@@ -13,23 +13,23 @@
 #' @param n_new_samples Number of new synthetic samples to generate
 #' @param min_samples Minimum number of samples with coverage required per site
 #' @param calibrate_correlation Logical. If `TRUE`, iteratively adjusts the
-#'   latent Gaussian length scales so adjacent-site correlations are matched
-#'   after transforming back through the observed coverage and methylation
-#'   sampling layers.
+#'     latent Gaussian length scales so adjacent-site correlations are matched
+#'     after transforming back through the observed coverage and methylation
+#'     sampling layers.
 #' @param calibration_iterations Maximum number of bisection iterations used
-#'   for each correlation calibration.
+#'     for each correlation calibration.
 #' @param calibration_samples Number of synthetic samples used internally for
-#'   correlation calibration. If `NULL`, a capped conservative default is
-#'   chosen from the input and requested output sample sizes.
+#'     correlation calibration. If `NULL`, a capped conservative default is
+#'     chosen from the input and requested output sample sizes.
 #' @importFrom SummarizedExperiment assays
 #' @return A BSseq object with original and synthetic samples
 #' @examples
 #' \donttest{
-#' # Load example BSseq data
-#' data("BSobj", package = "bsseq")
-#' set.seed(123)
-#' # Augment with 5 synthetic samples
-#' augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
+#'     # Load example BSseq data
+#'     data("BSobj", package = "bsseq")
+#'     set.seed(123)
+#'     # Augment with 5 synthetic samples
+#'     augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
 #' }
 #' @export
 augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,

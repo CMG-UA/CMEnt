@@ -36,8 +36,6 @@ Rd2.tex
 .github/copilot-instructions.md
 *.bak
 *_cache/
-data/sim_bs_1000.rds
-data/sim_dmrs_1000.tsv
 
 *.log
 figure-html
@@ -51,6 +49,6 @@ tmp/
 .Rprofile
 .lintr
 data
-inst/benchmarks/simulated_ont/sim_bs_1000_hdf5
+notebooks/benchmarks/simulated_ont/sim_bs_1000.rds
 
 CMEnt_*.tar.gz

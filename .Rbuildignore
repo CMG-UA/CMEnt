@@ -19,8 +19,6 @@
 ^vignettes/.*\.(md|html)$
 ^codecov\.yml$
 ^data($|/)
-^inst/benchmarks/simulated_ont/sim_bs_1000_hdf5($|/)
-^inst/benchmarks/simulated_ont/sim_bs_1000\.rds$
 ^inst/extdata/example_output\.rds$
 ^inst/extdata/example_output\.dmrs\.tsv\.gz$
 ^inst/extdata/example_output\.seeds_beta\.tsv\.gz$
