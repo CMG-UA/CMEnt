@@ -70,9 +70,9 @@ jobs:
           desc <- read.dcf("DESCRIPTION")[1, ]
 
           fields <- c("Depends", "Imports", "LinkingTo", "Suggests")
-          fields <- intersect(fields, colnames(desc))
+          fields <- intersect(fields, names(desc))
 
-          raw <- unlist(desc[, fields, drop = TRUE], use.names = FALSE)
+          raw <- unname(desc[fields])
           raw <- raw[!is.na(raw)]
 
           parse_deps <- function(x) {
