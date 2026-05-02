@@ -1,0 +1,1355 @@
+---
+title: "Benchmarking CMEnt on Simulated ONT Data"
+subtitle: "CMEnt vs DMRcate vs dmrseq vs hummingbird"
+author: "CMEnt Package"
+date: "`r Sys.Date()`"
+output:
+    BiocStyle::html_document:
+        code_folding: hide
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    results = "asis",
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 8,
+    fig.height = 6,
+    dpi = 300
+)
+```
+
+## Introduction
+
+This vignette benchmarks DMR detection on simulated ONT-style methylation data with known ground truth.
+
+Methods:
+
+- **CMEnt** seed-guided, correlation-based DMR assembly
+- **DMRcate** Gaussian Kernel smoothing-based DMR detection
+- **dmrseq** BSseq-native region-level inference
+- **hummingbird** HMM-based DMR detection
+
+Data:
+
+- BSseq object: `"https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1"`
+- Ground-truth DMRs: `"https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1"`
+
+Primary goal:
+
+- assess CMEnt performance against ground truth
+- compare with DMRcate, dmrseq, and hummingbird using the same dataset
+
+## Setup and Dependencies
+
+```{r}
+try(devtools::load_all(), silent = TRUE)
+suppressPackageStartupMessages({
+    try(library(CMEnt), silent = TRUE)
+    library(bsseq)
+    library(data.table)
+    library(ggplot2)
+    library(dplyr)
+    library(GenomicRanges)
+    library(SummarizedExperiment)
+    library(S4Vectors)
+})
+
+
+get_benchmark_file <- function(filename) {
+    folder <- "simulated_ont"
+    benchmark_file <- ""
+    try(benchmark_file <- system.file("benchmarks", folder, filename, package = "CMEnt"), silent = TRUE)
+    if (benchmark_file == "") {
+        if (getwd() == "vignettes") {
+            benchmark_file <- file.path("..", "inst", "benchmarks", folder, filename)
+        } else if ("NAMESPACE" %in% dir()) {
+            benchmark_file <- file.path("inst", "benchmarks", folder, filename)
+        } else {
+            benchmark_file <- file.path("benchmarks", folder, filename)
+        }
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
+
+drop_zero_coverage_sites <- function(bs_obj) {
+    cov_assay <- SummarizedExperiment::assay(bs_obj, "Cov", withDimnames = FALSE)
+    valid_sites <- DelayedMatrixStats::rowSums2(cov_assay) > 0
+    rm(cov_assay)
+    gc(verbose = FALSE)
+    if (!all(valid_sites)) {
+        bs_obj <- bs_obj[valid_sites, ]
+    }
+    rm(valid_sites)
+    gc(verbose = FALSE)
+    bs_obj
+}
+
+```
+
+### Install External Dependencies
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+
+if (!requireNamespace("DMRcate", quietly = TRUE)) {
+    BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("dmrseq", quietly = TRUE)) {
+    BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("hummingbird", quietly = TRUE)) {
+    BiocManager::install("hummingbird", update = FALSE, ask = FALSE)
+}
+
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+    install.packages("tidyr")
+}
+```
+
+## Load Simulated Data and Ground Truth
+
+```{r}
+cment_file <- get_benchmark_file("dmrs.CMEnt.rds")
+dmrcate_file <- get_benchmark_file("dmrs.DMRcate.rds")
+dmrseq_file <- get_benchmark_file("dmrs.dmrseq.rds")
+hummingbird_file <- get_benchmark_file("dmrs.hummingbird.rds")
+pheno_file <- get_benchmark_file("phenotype.tsv")
+seeds_file <- get_benchmark_file("seeds.tsv.gz")
+
+computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file) || !file.exists(pheno_file) || !file.exists(seeds_file)
+
+resolve_input_path <- function(path_in_repo) {
+    candidates <- c(
+        path_in_repo,
+        file.path("..", path_in_repo)
+    )
+    hit <- candidates[file.exists(candidates)][1]
+    if (is.na(hit)) {
+        return(path_in_repo)
+    }
+    hit
+}
+
+sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
+if (computation_needed) {
+    dir.create("data", showWarnings = FALSE, recursive = TRUE)
+    sim_bs_path <- resolve_input_path("data/sim_bs_1000.rds")
+    if (!file.exists(sim_bs_path)) {
+        curl::curl_download(
+            url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
+            destfile = sim_bs_path
+        )
+    }
+
+    sim_bs <- readRDS(sim_bs_path)
+    stopifnot(inherits(sim_bs, "BSseq"))
+    cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
+
+}
+
+if (!file.exists(sim_truth_path)) {
+    curl::curl_download(
+        url = "https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1",
+        destfile = sim_truth_path
+    )
+}
+truth_df <- data.table::fread(sim_truth_path)
+truth_dmrs <- makeGRangesFromDataFrame(
+    truth_df,
+    seqnames.field = "seqnames",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+)
+
+cat(sprintf("Loaded %d ground-truth DMRs\n", length(truth_dmrs)))
+
+
+
+```
+
+## Build Phenotype Table from Sample Names
+
+```{r}
+if (!file.exists(pheno_file)) {
+    sample_ids <- colnames(sim_bs)
+    sample_group <- ifelse(grepl("^Condition1", sample_ids), "Condition1", "Condition2")
+
+    pheno <- data.frame(
+        Sample_ID = sample_ids,
+        Sample_Group = sample_group,
+        casecontrol = sample_group == "Condition2",
+        stringsAsFactors = FALSE
+    )
+    rownames(pheno) <- pheno$Sample_ID
+    data.table::fwrite(pheno, pheno_file, sep = "\t")
+} else {
+    pheno <- data.table::fread(pheno_file, data.table = FALSE)
+}
+if (computation_needed) {
+    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    sim_bs  <- sort(sim_bs)
+}
+knitr::kable(
+    table(pheno$Sample_Group),
+    caption = "Phenotype Frequency Table"
+)
+```
+
+## Benchmarking DMR Detection Methods
+
+
+### CMEnt
+
+#### Adjusting parameters for NGS simulation
+```{r}
+min_seeds <- 1L
+min_sites <- 50L
+max_pval <- 0.05
+testing_mode  <- "parametric"
+ext_site_delta_beta  <- 0.2
+max_bridge_seeds_gaps <- 1L
+max_bridge_extension_gaps <- 3L
+max_lookup_dist <- 1000L
+```
+
+#### Extract Methylation Matrix and Generate Seeds
+This step is crucial for CMEnt, which relies on seed sites to guide DMR assembly.
+We use a DSS approach to identify candidate seeds based on differential methylation evidence. We keep the FDR threshold relatively lenient (0.1), to account for the low sample size.
+```{r seeds_calculation}
+# Seeds were generated using the simulateDMRs function with the following parameters:
+# simulateDMRs(
+#     bs = base_bs,
+#     num_dmrs = 1000,
+#     delta_max0 = 0.35,
+#     min_sites = 10L,
+#     max_sites = 500L,
+#     truth_min_delta_beta = 0.1,
+#     profile = "triweight",
+#     seed = 42
+# )
+if (!file.exists(seeds_file)) {
+    seeds <- findDMPsBSSeq(
+        bsseq = sim_bs,
+        samplesheet = pheno,
+        group_col = "Sample_Group",
+        id_col = "Sample_ID",
+        case_group = "Condition2",
+        covariates = NULL,
+        fdr_thres = max_pval,
+        output_file = seeds_file
+    )
+} else {
+    seeds <- data.table::fread(seeds_file)
+    rownames(seeds) <- seeds$site_id
+}
+seeds <- as.data.frame(seeds, stringsAsFactors = FALSE)
+rownames(seeds) <- seeds$site_id
+seeds$Row.names <- NULL
+seed_dist <- unlist(lapply(split(seeds$start, seeds$chr), function(x) {
+    if (length(x) < 2) return(numeric(0))
+    diff(x)
+}))
+seeds_qs <- round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)))
+cat(sprintf("Number of seeds for CMEnt: %d\n", nrow(seeds)))
+knitr::kable(
+    seeds_qs,
+    digits = 2,
+    col.names = "Distance (bp)",
+    caption = sprintf("Seed distance quantiles")
+)
+```
+
+#### Seed Overlap with Ground Truth
+
+Metrics explanation:
+
+- Seeds_Total: Total number of seed sites identified.
+- Seeds_Overlapping_Truth: Number of seed sites that overlap any ground-truth DMR.
+- Seeds_Overlap_Pct: Percentage of seed sites that overlap ground-truth DMRs.
+- Truth_DMRs_Total: Total number of ground-truth DMRs.
+- Truth_DMRs_With_Seed_Pct: Percentage of ground-truth DMRs that have at least one overlapping seed site.
+- Truth_DMRs_With_Enough_Seeds_Pct: Percentage of ground-truth DMRs that have enough overlapping seed sites to be captured by CMEnt.
+- Median_Seeds_Per_Truth_DMR: Median number of overlapping seeds per ground-truth DMR (including those with zero seeds).
+- Median_Seeds_Per_Hit_Truth_DMR: Median number of overlapping seeds among ground-truth DMRs that have at least one seed.
+- Max_Seeds_In_Truth_DMR: Maximum number of overlapping seeds in any single ground-truth DMR.
+- Overlap_Pairs_Direction_Match_Pct: Among seed-truth overlap pairs, the percentage where the direction of methylation change (hyper/hypo) matches between the seed and the truth DMR.
+- Overlapping_Seeds_Any_Direction_Match_Pct: Percentage of seeds that have at least one overlapping truth DMR with a matching direction of change.
+
+Metrics values:
+
+```{r}
+seed_df <- as.data.frame(seeds, stringsAsFactors = FALSE)
+seed_df <- seed_df[!is.na(seed_df$start) & nzchar(seed_df$chr), , drop = FALSE]
+
+seed_gr <- GenomicRanges::makeGRangesFromDataFrame(
+    seed_df,
+    seqnames.field = "chr",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+)
+
+seed_truth_hits <- GenomicRanges::findOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+seed_overlaps_truth <- rep(FALSE, length(seed_gr))
+truth_has_seed <- rep(FALSE, length(truth_dmrs))
+truth_has_enough_seeds <- 0L
+
+if (length(seed_truth_hits) > 0) {
+    seed_overlaps_truth[unique(S4Vectors::queryHits(seed_truth_hits))] <- TRUE
+    truth_has_seed[unique(S4Vectors::subjectHits(seed_truth_hits))] <- TRUE
+}
+
+seeds_per_truth <- if (length(truth_dmrs) > 0) {
+    tabulate(S4Vectors::subjectHits(seed_truth_hits), nbins = length(truth_dmrs))
+} else {
+    integer(0)
+}
+truth_has_enough_seeds <- sum(seeds_per_truth >= min_seeds)
+safe_pct <- function(x) if (length(x) == 0) 0 else round(100 * mean(x), 1)
+
+seed_truth_summary <- data.frame(
+    Seeds_Total = length(seed_gr),
+    Seeds_Overlapping_Truth = sum(seed_overlaps_truth),
+    Seeds_Overlap_Pct = safe_pct(seed_overlaps_truth),
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_With_Seed_Pct = safe_pct(truth_has_seed),
+    Truth_DMRs_With_Enough_Seeds_Pct = ifelse(length(truth_dmrs) == 0, 0, 100 * truth_has_enough_seeds / length(truth_dmrs)),
+    Median_Seeds_Per_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_real_, stats::median(seeds_per_truth)),
+    Median_Seeds_Per_Hit_Truth_DMR = ifelse(sum(truth_has_seed) == 0, 0, stats::median(seeds_per_truth[truth_has_seed])),
+    Max_Seeds_In_Truth_DMR = ifelse(length(seeds_per_truth) == 0, NA_integer_, max(seeds_per_truth))
+)
+seed_sign <- sign(as.numeric(seed_df$delta_beta))
+truth_sign <- sign(as.numeric(SummarizedExperiment::mcols(truth_dmrs)$delta_beta))
+pair_match <- seed_sign[S4Vectors::queryHits(seed_truth_hits)] ==
+    truth_sign[S4Vectors::subjectHits(seed_truth_hits)]
+
+seed_pair_direction_match_pct <- if (all(is.na(pair_match))) NA_real_ else 100 * mean(pair_match, na.rm = TRUE)
+per_seed_dir_match <- tapply(pair_match, S4Vectors::queryHits(seed_truth_hits), function(x) any(x, na.rm = TRUE))
+seed_any_direction_match_pct <- if (length(per_seed_dir_match) == 0) NA_real_ else 100 * mean(per_seed_dir_match)
+
+seed_truth_summary$Overlap_Pairs_Direction_Match_Pct <- round(seed_pair_direction_match_pct, 1)
+seed_truth_summary$Overlapping_Seeds_Any_Direction_Match_Pct <- round(seed_any_direction_match_pct, 1)
+
+for (i in seq_along(seed_truth_summary)) {
+    cat(sprintf("- **%s**: %s\n", names(seed_truth_summary)[i], seed_truth_summary[[i]]))
+}
+
+```
+
+```{r}
+score_col <- "score"
+
+ord <- order(seed_df[[score_col]], decreasing = TRUE, na.last = NA)
+top_k <- unique(pmin(length(ord), c(100, 500, 1000, 5000, 10000, length(ord))))
+top_seed_overlap <- do.call(rbind, lapply(top_k, function(k) {
+    idx <- ord[seq_len(k)]
+    n_hit <- sum(seed_overlaps_truth[idx])
+    data.frame(
+        `Top Seeds` = k,
+        `Overlap Pct` = 100 * n_hit / k
+    )
+}))
+
+knitr::kable(
+    top_seed_overlap,
+    digits = 2,
+    caption = sprintf("Ground-truth overlap enrichment among top-scoring seeds")
+)
+```
+
+```{r cment}
+
+if (!file.exists(cment_file)) {
+    default_cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    cment_njobs <- suppressWarnings(as.integer(
+        Sys.getenv("CMENT_BENCHMARK_NJOBS", as.character(default_cment_njobs))
+    ))
+    if (!is.finite(cment_njobs) || is.na(cment_njobs) || cment_njobs < 1L) {
+        cment_njobs <- default_cment_njobs
+    }
+    cment_njobs <- max(1L, min(cment_njobs, future::availableCores()))
+    options("CMEnt.njobs" = cment_njobs)
+    options("CMEnt.verbose" = 3)
+    cat(sprintf("CMEnt benchmark jobs: %d\n", cment_njobs))
+    start_time <- Sys.time()
+
+    beta_handler <- CMEnt::getBetaHandler(
+        beta = sim_bs
+    )
+    rm(sim_bs)
+    gc(verbose = FALSE)
+    dmrs_cment <- CMEnt::findDMRsFromSeeds(
+        beta = beta_handler,
+        seeds = seeds,
+        pheno = pheno,
+        seeds_id_col = "site_id",
+        sample_group_col = "Sample_Group",
+        casecontrol_col = "casecontrol",
+        genome = "hg38",
+        array = "NULL",
+        entanglement = "weak",
+        testing_mode = testing_mode,
+        max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+        max_bridge_extension_gaps = max_bridge_extension_gaps,
+        min_seeds = min_seeds,
+        min_sites = min_sites,
+        max_pval = max_pval,
+        ext_site_delta_beta = ext_site_delta_beta,
+        max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
+        annotate_with_genes = FALSE,
+        extract_motifs = FALSE,
+        njobs = cment_njobs
+    )
+    end_time <- Sys.time()
+    time_cment <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
+    rm(beta_handler)
+    sim_bs <- readRDS(sim_bs_path)
+    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    sim_bs <- sort(sim_bs)
+    gc(verbose = FALSE)
+} else {
+    ret <- readRDS(cment_file)
+    dmrs_cment <- ret$dmrs
+    time_cment <- ret$time
+}
+
+```
+
+### DMRcate
+```{r dmrcate}
+
+run_dmrcate_bsseq <- function(
+    bs_obj,
+    design,
+    genome = "hg38",
+    max_sites_per_chunk = 500000L,
+    chunk_overlap_sites = 2000L
+) {
+    if (!requireNamespace("DMRcate", quietly = TRUE)) {
+        warning("DMRcate not installed; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+    dmrcate_design <- as.matrix(design)
+    if (nrow(dmrcate_design) != ncol(bs_obj)) {
+        warning(sprintf(
+            "DMRcate design rows (%d) do not match BSseq samples (%d); returning empty set.",
+            nrow(dmrcate_design),
+            ncol(bs_obj)
+        ))
+        return(GenomicRanges::GRanges())
+    }
+    if (ncol(dmrcate_design) < 2L) {
+        warning("DMRcate requires at least two groups in the design matrix; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    colnames(dmrcate_design) <- gsub("Sample_Group", "", colnames(dmrcate_design))
+    colnames(dmrcate_design)[1] <- "Intercept"
+    dmrcate_design <- edgeR::modelMatrixMeth(dmrcate_design)
+
+    coef_names <- colnames(dmrcate_design)
+    sample_cols <- grepl("^Sample[0-9]+$", coef_names)
+    intercept_cols <- coef_names %in% c("Intercept", "(Intercept)")
+    contrast_candidates <- coef_names[!(sample_cols | intercept_cols)]
+
+    if (length(contrast_candidates) == 0) {
+        warning(sprintf(
+            "DMRcate could not infer a contrast coefficient from methdesign columns (%s); returning empty set.",
+            paste(coef_names, collapse = ", ")
+        ))
+        return(GenomicRanges::GRanges())
+    }
+
+    preferred_coef <- c("Condition2_vs_Condition1", "Condition2", "cancer_vs_normal")
+    selected_coef_name <- preferred_coef[preferred_coef %in% contrast_candidates][1]
+    if (is.na(selected_coef_name)) {
+        selected_coef_name <- contrast_candidates[length(contrast_candidates)]
+    }
+    selected_coef <- match(selected_coef_name, coef_names)
+    cat(sprintf(
+        "DMRcate contrast coefficient: %s (column %d of methdesign)\n",
+        selected_coef_name,
+        selected_coef
+    ))
+
+    all_gr <- bsseq::granges(bs_obj)
+    all_seqnames <- as.character(GenomicRanges::seqnames(all_gr))
+    all_pos <- GenomicRanges::start(all_gr)
+    rm(all_gr)
+    gc(verbose = FALSE)
+
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
+
+    for (chr_name in chr_vec) {
+
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) == 0) {
+            next
+        }
+
+        n_chr <- length(chr_idx)
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_sites_per_chunk))
+        chr_chunk_dmrs <- vector("list", length(chunk_starts))
+
+        for (chunk_i in seq_along(chunk_starts)) {
+            core_from <- chunk_starts[chunk_i]
+            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, n_chr)
+
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_sites))
+
+            idx_ext <- chr_idx[ext_from:ext_to]
+            core_start_pos <- all_pos[chr_idx[core_from]]
+            core_end_pos <- all_pos[chr_idx[core_to]]
+
+            cat(sprintf(
+                "DMRcate: %s chunk %d/%d (%s sites core, %s sites with overlap)\n",
+                chr_name,
+                chunk_i,
+                length(chunk_starts),
+                format(core_to - core_from + 1L, big.mark = ","),
+                format(length(idx_ext), big.mark = ",")
+            ))
+
+            chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+            if (nrow(chunk_bs) < 3L) {
+                chr_chunk_dmrs[[chunk_i]] <- GenomicRanges::GRanges()
+                rm(chunk_bs)
+                gc(verbose = FALSE)
+                next
+            }
+
+            chunk_out <- tryCatch(
+                {
+                    ann <- DMRcate::sequencing.annotate(
+                        obj = chunk_bs,
+                        all.cov = TRUE,
+                        methdesign = dmrcate_design,
+                        coef = selected_coef,
+                        fdr = max_pval
+                    )
+                    dmrcate_res <- DMRcate::dmrcate(
+                        ann,
+                        lambda = 1000,
+                        C = 2,
+                        min.sites = 3
+                    )
+                    ranges_out <- DMRcate::extractRanges(dmrcate_res, genome = genome)
+                    rm(ann, dmrcate_res)
+                    gc(verbose = FALSE)
+
+                    if (length(ranges_out) > 0) {
+                        mids <- floor((GenomicRanges::start(ranges_out) + GenomicRanges::end(ranges_out)) / 2)
+                        keep <- mids >= core_start_pos & mids <= core_end_pos
+                        ranges_out <- ranges_out[keep]
+                    }
+
+                    ranges_out
+                },
+                error = function(e) {
+                    cat(sprintf(
+                        "DMRcate chunk failed (%s chunk %d/%d, fdr=0.05): %s\n",
+                        chr_name,
+                        chunk_i,
+                        length(chunk_starts),
+                        e$message
+                    ))
+                    GenomicRanges::GRanges()
+                }
+            )
+            cat(sprintf(
+                "DMRcate chunk %d/%d found %d DMRs\n",
+                chunk_i,
+                length(chunk_starts),
+                length(chunk_out)
+            ))
+            chr_chunk_dmrs[[chunk_i]] <- chunk_out
+            rm(chunk_bs, chunk_out)
+            gc(verbose = FALSE)
+        }
+
+        chr_chunk_dmrs <- Filter(function(x) !is.null(x) && length(x) > 0, chr_chunk_dmrs)
+        if (length(chr_chunk_dmrs) == 0) {
+            dmrs_by_chr[[chr_name]] <- NULL
+        } else {
+            dmrs_by_chr[[chr_name]] <- GenomicRanges::sort(do.call(c, chr_chunk_dmrs))
+        }
+
+        rm(chr_chunk_dmrs)
+        gc(verbose = FALSE)
+    }
+
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GRanges())
+    }
+
+    out <- do.call(c, unname(dmrs_by_chr))
+    out <- GenomicRanges::sort(out)
+    out
+}
+
+if (!file.exists(dmrcate_file)) {
+    start_time <- Sys.time()
+    design <- model.matrix(~ Sample_Group, data = colData(sim_bs))
+    dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design, genome = "hg38")
+    end_time <- Sys.time()
+    time_dmrcate <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
+} else {
+    ret <- readRDS(dmrcate_file)
+    dmrs_dmrcate <- ret$dmrs
+    time_dmrcate <- ret$time
+}
+```
+
+### dmrseq
+```{r dmrseq}
+
+run_dmrseq_bsseq <- function(
+    bs_obj,
+    max_sites_per_chunk = 500000L,
+    chunk_overlap_sites = 2000L,
+    max_perms = 5L
+) {
+    if (!requireNamespace("dmrseq", quietly = TRUE)) {
+        warning("dmrseq not installed; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    if (!"Sample_Group" %in% colnames(as.data.frame(colData(bs_obj)))) {
+        warning("Sample_Group not present in BSseq colData; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    all_gr <- bsseq::granges(bs_obj)
+    all_seqnames <- as.character(GenomicRanges::seqnames(all_gr))
+    all_pos <- GenomicRanges::start(all_gr)
+    rm(all_gr)
+    gc(verbose = FALSE)
+
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GRanges())
+    }
+
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
+
+    for (chr_name in chr_vec) {
+
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) == 0) {
+            next
+        }
+
+        n_chr <- length(chr_idx)
+        chunk_starts <- seq.int(1L, n_chr, by = as.integer(max_sites_per_chunk))
+        chr_chunk_dmrs <- vector("list", length(chunk_starts))
+
+        for (chunk_i in seq_along(chunk_starts)) {
+            core_from <- chunk_starts[chunk_i]
+            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, n_chr)
+
+            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+            ext_to <- min(n_chr, core_to + as.integer(chunk_overlap_sites))
+
+            idx_ext <- chr_idx[ext_from:ext_to]
+            core_start_pos <- all_pos[chr_idx[core_from]]
+            core_end_pos <- all_pos[chr_idx[core_to]]
+
+            cat(sprintf(
+                "dmrseq: %s chunk %d/%d (%s sites core, %s sites with overlap)\n",
+                chr_name,
+                chunk_i,
+                length(chunk_starts),
+                format(core_to - core_from + 1L, big.mark = ","),
+                format(length(idx_ext), big.mark = ",")
+            ))
+
+            chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+            chunk_out <- tryCatch(
+                {
+                    bp_param <- if (requireNamespace("BiocParallel", quietly = TRUE)) {
+                        BiocParallel::SerialParam(progressbar = FALSE)
+                    } else {
+                        NULL
+                    }
+
+                    if (is.null(bp_param)) {
+                        fit <- dmrseq::dmrseq(
+                            bs = chunk_bs,
+                            testCovariate = "Sample_Group",
+                            cutoff = 0.1,
+                            minNumRegion = 3,
+                            maxPerms = as.integer(max_perms),
+                            verbose = FALSE
+                        )
+                    } else {
+                        fit <- dmrseq::dmrseq(
+                            bs = chunk_bs,
+                            testCovariate = "Sample_Group",
+                            cutoff = 0.1,
+                            minNumRegion = 3,
+                            maxPerms = as.integer(max_perms),
+                            BPPARAM = bp_param,
+                            verbose = FALSE
+                        )
+                    }
+                    fit <- fit[mcols(fit)$qval < 0.05]
+
+                    if (length(fit) > 0) {
+                        mids <- floor((GenomicRanges::start(fit) + GenomicRanges::end(fit)) / 2)
+                        keep <- mids >= core_start_pos & mids <= core_end_pos
+                        fit <- fit[keep]
+                    }
+
+                    rm(bp_param)
+                    gc(verbose = FALSE)
+                    fit
+                },
+                error = function(e) {
+                    cat(sprintf(
+                        "dmrseq chunk failed (%s chunk %d/%d): %s\n",
+                        chr_name,
+                        chunk_i,
+                        length(chunk_starts),
+                        e$message
+                    ))
+                    NULL
+                }
+            )
+
+            chr_chunk_dmrs[[chunk_i]] <- chunk_out
+            rm(chunk_bs, chunk_out)
+            gc(verbose = FALSE)
+        }
+
+        chr_chunk_dmrs <- Filter(function(x) !is.null(x) && length(x) > 0, chr_chunk_dmrs)
+        if (length(chr_chunk_dmrs) == 0) {
+            dmrs_by_chr[[chr_name]] <- NULL
+        } else {
+            dmrs_by_chr[[chr_name]] <- GenomicRanges::sort(do.call(c, chr_chunk_dmrs))
+        }
+
+        rm(chr_chunk_dmrs)
+        gc(verbose = FALSE)
+    }
+
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GRanges())
+    }
+
+    out <- do.call(c, unname(dmrs_by_chr))
+    out <- GenomicRanges::sort(out)
+    out
+}
+
+if (!file.exists(dmrseq_file)) {
+    start_time <- Sys.time()
+    dmrs_dmrseq <- run_dmrseq_bsseq(sim_bs)
+    end_time <- Sys.time()
+    time_dmrseq <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_dmrseq, time = time_dmrseq), dmrseq_file)
+} else {
+    ret <- readRDS(dmrseq_file)
+    dmrs_dmrseq <- ret$dmrs
+    time_dmrseq <- ret$time
+}
+
+
+```
+
+### hummingbird
+
+```{r hummingbird}
+
+run_hummingbird_bsseq <- function(
+    bs_obj,
+    max_gap = 300L, # default
+    min_sites = 3L, # default is 10
+    min_length = 50L # default is 500
+) {
+    sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
+    if (!"Sample_Group" %in% colnames(sample_df)) {
+        warning("Sample_Group not present in BSseq colData; returning empty set.")
+        return(GenomicRanges::GPos())
+    }
+
+    ctrl_idx <- which(sample_df$Sample_Group == "Condition1")
+    case_idx <- which(sample_df$Sample_Group == "Condition2")
+    if (length(ctrl_idx) == 0 || length(case_idx) == 0) {
+        warning("Need both Condition1 and Condition2 samples for hummingbird.")
+        return(GenomicRanges::GPos())
+    }
+
+    row_gr <- bsseq::granges(bs_obj)
+    # granges to gpos for hummingbird
+    row_gr <- GPos(
+        seqnames = GenomicRanges::seqnames(row_gr),
+        pos = GenomicRanges::start(row_gr)
+    )
+
+    to_count_matrix <- function(x) {
+        x <- as.matrix(x)
+        x[!is.finite(x)] <- 0
+        x[x < 0] <- 0
+        storage.mode(x) <- "integer"
+        x
+    }
+
+    all_seqnames <- as.character(GenomicRanges::seqnames(row_gr))
+    chr_vec <- unique(all_seqnames)
+    chr_vec <- chr_vec[!is.na(chr_vec) & nzchar(chr_vec)]
+    if (length(chr_vec) == 0) {
+        warning("No chromosomes found in BSseq object; returning empty set.")
+        return(GenomicRanges::GPos())
+    }
+
+    dmrs_by_chr <- vector("list", length(chr_vec))
+    names(dmrs_by_chr) <- chr_vec
+
+    for (chr_name in chr_vec) {
+        chr_idx <- which(all_seqnames == chr_name)
+        if (length(chr_idx) < as.integer(min_sites)) {
+            next
+        }
+
+        chr_gr <- row_gr[chr_idx]
+        chr_bs <- bs_obj[chr_idx, , drop = FALSE]
+        meth_mat <- bsseq::getCoverage(chr_bs, type = "M")
+        cov_mat <- bsseq::getCoverage(chr_bs, type = "Cov")
+        unmeth_mat <- cov_mat - meth_mat
+        control_se <- SummarizedExperiment::SummarizedExperiment(
+            rowRanges = chr_gr,
+            assays = list(
+                normM = to_count_matrix(meth_mat[, ctrl_idx, drop = FALSE]),
+                normUM = to_count_matrix(unmeth_mat[, ctrl_idx, drop = FALSE])
+            )
+        )
+        case_se <- SummarizedExperiment::SummarizedExperiment(
+            rowRanges = chr_gr,
+            assays = list(
+                abnormM = to_count_matrix(meth_mat[, case_idx, drop = FALSE]),
+                abnormUM = to_count_matrix(unmeth_mat[, case_idx, drop = FALSE])
+            )
+        )
+
+        chr_out <- tryCatch(
+            {
+                hb_fit <- hummingbird::hummingbirdEM(experimentInfoControl = control_se, experimentInfoCase = case_se, binSize = 40)
+                hb_fit <- hummingbird::hummingbirdPostAdjustment(
+                    emInfo = hb_fit,
+                    experimentInfoControl = control_se,
+                    experimentInfoCase = case_se,
+                    maxGap = as.integer(max_gap),
+                    minsites = as.integer(min_sites),
+                    minLength = as.integer(min_length)
+                )
+
+                hb_fit$DMRs
+            },
+            error = function(e) {
+                cat(sprintf("hummingbird failed (%s): %s\n", chr_name, e$message))
+                NULL
+            }
+        )
+
+        dmrs_by_chr[[chr_name]] <- chr_out
+        rm(chr_bs, chr_gr, meth_mat, cov_mat, unmeth_mat, control_se, case_se, chr_out)
+        gc(verbose = FALSE)
+    }
+
+    dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0, dmrs_by_chr)
+    if (length(dmrs_by_chr) == 0) {
+        return(GenomicRanges::GPos())
+    }
+
+    out <- suppressWarnings(do.call(c, unname(dmrs_by_chr)))
+    GenomicRanges::sort(out)
+}
+
+if (!file.exists(hummingbird_file)) {
+    start_time <- Sys.time()
+    dmrs_hummingbird <- run_hummingbird_bsseq(sim_bs)
+    end_time <- Sys.time()
+    time_hummingbird <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_hummingbird, time = time_hummingbird), hummingbird_file)
+} else {
+    ret <- readRDS(hummingbird_file)
+    dmrs_hummingbird <- ret$dmrs
+    time_hummingbird <- ret$time
+}
+```
+
+```{r}
+cat(sprintf("**CMEnt**: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
+cat(sprintf("**DMRcate**: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
+cat(sprintf("**dmrseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
+cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummingbird), round(as.numeric(time_hummingbird, units = "secs"))))
+```
+
+## Comparative Analysis
+
+```{r}
+methods_list <- list(
+    CMEnt = dmrs_cment,
+    DMRcate = dmrs_dmrcate,
+    dmrseq = dmrs_dmrseq,
+    hummingbird = dmrs_hummingbird
+)
+method_order <- names(methods_list)
+
+get_dmr_stats <- function(dmrs, method) {
+    if (length(dmrs) == 0) {
+        return(data.frame(
+            Method = method,
+            `Number of DMRs` = 0,
+            `Mean DMR Width` = NA_real_,
+            `Median DMR Width` = NA_real_,
+            `Total Coverage bp` = 0,
+            `Min Width` = NA_real_,
+            `Max Width` = NA_real_
+        ))
+    }
+
+    data.frame(
+        Method = method,
+        `Number of DMRs` = length(dmrs),
+        `Mean DMR Width` = mean(width(dmrs)),
+        `Median DMR Width` = median(width(dmrs)),
+        `Total Coverage bp` = sum(width(dmrs)),
+        `Min Width` = min(width(dmrs)),
+        `Max Width` = max(width(dmrs))
+    )
+}
+
+comparison_stats <- do.call(rbind, lapply(names(methods_list), function(m) {
+    get_dmr_stats(methods_list[[m]], m)
+}))
+
+truth_stats <- get_dmr_stats(truth_dmrs, "Ground Truth")
+comparison_stats <- rbind(comparison_stats, truth_stats)
+comparison_stats$Method <- factor(
+    comparison_stats$Method,
+    levels = c(method_order, "Ground Truth")
+)
+comparison_stats <- comparison_stats[order(comparison_stats$Method), , drop = FALSE]
+comparison_stats$Method <- as.character(comparison_stats$Method)
+
+knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
+```
+
+## Ground-Truth Evaluation
+
+```{r}
+evaluate_against_truth <- function(pred, truth) {
+    n_pred <- length(pred)
+    n_truth <- length(truth)
+    pred_overlap_truth <- sum(overlapsAny(pred, truth))
+    truth_overlap_pred <- sum(overlapsAny(truth, pred))
+    fp <- n_pred - pred_overlap_truth
+    fn <- n_truth - truth_overlap_pred
+
+    precision <- ifelse(n_pred == 0, 0, pred_overlap_truth / n_pred)
+    recall <- ifelse(n_truth == 0, 0, truth_overlap_pred / n_truth)
+    f1 <- ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
+
+    pred_red <- reduce(pred)
+    truth_red <- reduce(truth)
+    inter <- GenomicRanges::intersect(pred_red, truth_red)
+
+    pred_bp <- sum(width(pred_red))
+    truth_bp <- sum(width(truth_red))
+    inter_bp <- ifelse(length(inter) == 0, 0, sum(width(inter)))
+    union_bp <- pred_bp + truth_bp - inter_bp
+
+    precision_bp <- ifelse(pred_bp == 0, 0, inter_bp / pred_bp)
+    recall_bp <- ifelse(truth_bp == 0, 0, inter_bp / truth_bp)
+    f1_bp <- ifelse(precision_bp + recall_bp == 0, 0, 2 * precision_bp * recall_bp / (precision_bp + recall_bp))
+    iou_bp <- ifelse(union_bp == 0, 0, inter_bp / union_bp)
+
+    data.frame(
+        TP_regions = truth_overlap_pred,
+        FP_regions = fp,
+        FN_regions = fn,
+        Precision_regions = precision,
+        Recall_regions = recall,
+        F1_regions = f1,
+        Predicted_bp = pred_bp,
+        Truth_bp = truth_bp,
+        Intersect_bp = inter_bp,
+        Precision_bp = precision_bp,
+        Recall_bp = recall_bp,
+        F1_bp = f1_bp,
+        IoU_bp = iou_bp
+    )
+}
+
+truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
+    out <- evaluate_against_truth(methods_list[[method]], truth_dmrs)
+    out$Method <- method
+    out
+}))
+truth_eval$Method <- factor(truth_eval$Method, levels = method_order)
+truth_eval <- truth_eval[order(truth_eval$Method), , drop = FALSE]
+truth_eval$Method <- as.character(truth_eval$Method)
+
+
+truth_eval <- truth_eval |>
+    dplyr::select(
+        Method,
+        TP_regions,
+        FP_regions, FN_regions,
+        Precision_regions, Recall_regions, F1_regions,
+        Precision_bp, Recall_bp, F1_bp, IoU_bp
+    )
+
+regions_truth_eval <- truth_eval |>
+    dplyr::select(Method, TP_regions, FP_regions, FN_regions, Precision_regions, Recall_regions, F1_regions) |>
+    dplyr::rename_with(~ sub("_regions$", "", .), ends_with("_regions"))
+
+bp_truth_eval <- truth_eval |>
+    dplyr::select(Method, Precision_bp, Recall_bp, F1_bp, IoU_bp) |>
+    dplyr::rename_with(~ sub("_bp$", "", .), ends_with("_bp"))
+```
+```{r}
+knitr::kable(regions_truth_eval, digits = 4, caption = "Macro (Region-level) Performance Against Ground Truth")
+```
+
+```{r}
+knitr::kable(bp_truth_eval, digits = 4, caption = "Micro (Base-pair-level) Performance Against Ground Truth")
+```
+
+### Overlap Matrices (Methods + Truth)
+
+```{r}
+all_sets <- c(methods_list, list(`Ground Truth` = truth_dmrs))
+
+calculate_overlap <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(list(count = 0, percentage = 0))
+    }
+    overlap_count <- sum(overlapsAny(gr1, gr2))
+    pct <- overlap_count / length(gr1) * 100
+    list(count = overlap_count, percentage = pct)
+}
+
+overlap_count_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+overlap_pct_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+rownames(overlap_count_mat) <- colnames(overlap_count_mat) <- names(all_sets)
+rownames(overlap_pct_mat) <- colnames(overlap_pct_mat) <- names(all_sets)
+
+for (i in seq_along(all_sets)) {
+    for (j in seq_along(all_sets)) {
+        if (i == j) {
+            overlap_count_mat[i, j] <- length(all_sets[[i]])
+            overlap_pct_mat[i, j] <- 100
+        } else {
+            ov <- calculate_overlap(all_sets[[i]], all_sets[[j]])
+            overlap_count_mat[i, j] <- ov$count
+            overlap_pct_mat[i, j] <- ov$percentage
+        }
+    }
+}
+
+knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row, reference=column)")
+```
+```{r}
+knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
+```
+
+### CMEnt Stage 1 Quality Assessment (Seed Linkage)
+Assessing seed-space recoverability and seed capture efficiency.
+
+Metrics explanation:
+
+- Truth_DMRs_Total: Total number of ground truth DMRs.
+- Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed site.
+- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed sites, which is the minimum for CMEnt stage 1 to potentially recover the region.
+- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed sites that also overlap CMEnt-predicted DMRs, indicating they are potentially recoverable and captured by the method.
+- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed sites are captured by CMEnt-predicted DMRs, indicating ideal stage 1 capture.
+- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed sites that overlap truth DMRs that are also captured by CMEnt-predicted DMRs.
+- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed site, the median percentage of those seed sites that are captured by CMEnt-predicted DMRs.
+- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed site that is not captured by CMEnt-predicted DMRs.
+- Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed sites.
+- Max_Missed_Run_Observed: The maximum length of consecutive missed seed sites observed across all truth DMRs.
+
+Metrics values:
+
+```{r}
+seed_gr <- sort(seed_gr)
+mcols(seed_gr)$index <- seq_along(seed_gr)
+seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+
+if (length(dmrs_cment) > 0) {
+    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE, invert = TRUE)
+} else {
+    seeds_in_dmrs <- seed_gr[0]
+    seeds_in_truth_and_dmrs <- seed_gr[0]
+    seeds_in_truth_not_dmrs <- seeds_in_truth
+}
+
+seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs, ignore.strand = TRUE)
+truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs))
+seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs, ignore.strand = TRUE)
+truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs))
+truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
+
+recoverable_truth <- truth_seed_total >= 2L
+recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
+recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
+
+stage1_quality <- data.frame(
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
+    Truth_DMRs_Stage1Recoverable_2plusSeeds = sum(recoverable_truth),
+    Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds = sum(recoverable_with2captured),
+    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
+    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
+    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
+)
+
+for (col in colnames(stage1_quality)) {
+    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
+}
+
+# Consecutive missed-seed runs are computed per truth DMR using original seed index.
+ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
+qh_by_truth <- split(queryHits(ov_truth), subjectHits(ov_truth))
+run_df <- do.call(rbind, lapply(names(qh_by_truth), function(truth_id_chr) {
+    truth_id <- as.integer(truth_id_chr)
+    qh <- qh_by_truth[[truth_id_chr]]
+    idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
+    db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
+
+    ord <- order(idx)
+    idx <- idx[ord]
+    db <- db[ord]
+
+    run_id <- cumsum(c(TRUE, diff(idx) != 1L))
+    data.frame(
+        Truth_DMR_Index = truth_id,
+        run_length = as.integer(tabulate(run_id)),
+        mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
+    )
+}))
+
+run_count <- as.data.frame(table(run_df$run_length))
+colnames(run_count) <- c("Consecutive_Seed_Length", "Count")
+run_delta <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
+colnames(run_delta) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
+run_summary <- merge(run_count, run_delta, by = "Consecutive_Seed_Length", all.x = TRUE)
+
+max_run_per_truth <- aggregate(run_length ~ Truth_DMR_Index, data = run_df, FUN = max)
+run_overview <- data.frame(
+    Truth_DMRs_With_Missed_Seeds = nrow(max_run_per_truth),
+    Median_Max_Missed_Run_Per_Truth = stats::median(max_run_per_truth$run_length),
+    Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
+)
+for (col in colnames(run_overview)) {
+    cat(sprintf("- **%s**: %s\n", col, run_overview[[col]]))
+}
+
+```
+
+### CMEnt Stage 2-4 Quality Assessment (Extension and Merging)
+Assessing truth-side recovery and prediction-side fragmentation/purity after extension and merging.
+Metrics explanation:
+
+- Pred_DMRs_Total: Total number of CMEnt DMRs.
+- Pred_DMRs_Overlapping_Truth: Number of CMEnt DMRs that overlap at least one truth DMR.
+- Pred_DMRs_BPPrecision_ge50pct: Number of CMEnt DMRs with base-pair precision >= 50% (i.e., at least 50% of the CMEnt DMR's base pairs overlap with truth DMRs).
+- Pred_DMRs_BPPrecision_ge80pct: Number of CMEnt DMRs with base-pair precision >= 80%.
+- Truth_DMRs_Total: Total number of truth DMRs.
+- Truth_DMRs_Hit: Number of truth DMRs that have at least one overlapping CMEnt DMR.
+- Truth_DMRs_BPRecall_ge50pct: Number of truth DMRs with base-pair recall >= 50% (i.e., at least 50% of the truth DMR's base pairs are covered by CMEnt DMRs).
+- Truth_DMRs_BPRecall_ge80pct: Number of truth DMRs with base-pair recall >= 80%.
+- Median_Truth_BPRecall_Pct_Hit: Median base-pair recall percentage among truth DMRs that have at least one overlapping CMEnt DMR.
+- Median_Pred_BPPrecision_Pct_Overlap: Median base-pair precision percentage among CMEnt DMRs that have at least some overlap with truth DMRs.
+- Truth_DMRs_With_Multiple_Pred: Number of truth DMRs that have 2 or more overlapping CMEnt DMRs, indicating potential fragmentation.
+- Median_Preds_Per_Hit_Truth: Median number of overlapping CMEnt DMRs among truth DMRs that have at least one overlapping CMEnt DMR.
+- Max_Preds_On_Truth: Maximum number of overlapping CMEnt DMRs observed on any single truth DMR.
+
+Metrics values:
+
+```{r}
+truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_cment, ignore.strand = TRUE)
+preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
+
+truth_overlap_bp <- numeric(length(truth_dmrs))
+if (length(truth_to_pred_hits) > 0) {
+    truth_intersections <- pintersect(
+        truth_dmrs[queryHits(truth_to_pred_hits)],
+        dmrs_cment[subjectHits(truth_to_pred_hits)]
+    )
+    truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
+    truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
+        truth_intersections_by_truth,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
+    )
+}
+truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
+
+pred_to_truth_hits <- findOverlaps(dmrs_cment, truth_dmrs, ignore.strand = TRUE)
+pred_overlap_bp <- numeric(length(dmrs_cment))
+if (length(pred_to_truth_hits) > 0) {
+    pred_intersections <- pintersect(
+        dmrs_cment[queryHits(pred_to_truth_hits)],
+        truth_dmrs[subjectHits(pred_to_truth_hits)]
+    )
+    pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
+    pred_overlap_bp[as.integer(names(pred_intersections_by_pred))] <- vapply(
+        pred_intersections_by_pred,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
+    )
+}
+pred_bp_precision <- ifelse(width(dmrs_cment) > 0, pred_overlap_bp / width(dmrs_cment), 0)
+
+stage24_quality <- data.frame(
+    Pred_DMRs_Total = length(dmrs_cment),
+    Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_cment, truth_dmrs)),
+    Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
+    Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_Hit = sum(preds_per_truth > 0),
+    Truth_DMRs_BPRecall_ge50pct = sum(truth_bp_recall >= 0.5),
+    Truth_DMRs_BPRecall_ge80pct = sum(truth_bp_recall >= 0.8),
+    Median_Truth_BPRecall_Pct_Hit = ifelse(sum(preds_per_truth > 0) == 0, 0, 100 * stats::median(truth_bp_recall[preds_per_truth > 0])),
+    Median_Pred_BPPrecision_Pct_Overlap = ifelse(sum(pred_bp_precision > 0) == 0, 0, 100 * stats::median(pred_bp_precision[pred_bp_precision > 0])),
+    Truth_DMRs_With_Multiple_Pred = sum(preds_per_truth >= 2),
+    Median_Preds_Per_Hit_Truth = ifelse(sum(preds_per_truth > 0) == 0, 0, stats::median(preds_per_truth[preds_per_truth > 0])),
+    Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
+)
+for (col in names(stage24_quality)) {
+    cat(sprintf("- **%s**: %s\n", col, stage24_quality[[col]]))
+}
+```
+
+## Visualizations
+
+### Ground-Truth Metrics
+
+```{r, fig.width=10, fig.height=5}
+plot_df <- truth_eval |>
+    dplyr::select(Method, F1_regions, F1_bp, IoU_bp) |>
+    tidyr::pivot_longer(
+        cols = c(F1_regions, F1_bp, IoU_bp),
+        names_to = "Metric",
+        values_to = "Value"
+    )
+
+plot_df$Metric <- factor(
+    plot_df$Metric,
+    levels = c("F1_regions", "F1_bp", "IoU_bp"),
+    labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
+)
+plot_df$Method <- factor(plot_df$Method, levels = method_order)
+
+ggplot(plot_df, aes(x = Method, y = Value, fill = Method)) +
+    geom_col() +
+    facet_wrap(~Metric, nrow = 1) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    ylim(0, 1) +
+    labs(
+        title = "Method Performance vs Ground Truth",
+        x = "",
+        y = "Score"
+    )
+```
+
+### Width Distributions
+
+```{r, fig.width=8, fig.height=6, dpi=300}
+width_data <- do.call(rbind, lapply(names(all_sets), function(method) {
+    x <- all_sets[[method]]
+    if (length(x) == 0) {
+        return(NULL)
+    }
+    data.frame(Method = method, Width = width(x))
+}))
+width_data$Method <- factor(width_data$Method, levels = names(all_sets))
+
+ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
+    geom_violin(alpha = 0.7) +
+    geom_boxplot(width = 0.2, alpha = 0.5, outlier.size = 0.5) +
+    scale_y_log10(labels = scales::comma) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    labs(
+        title = "DMR Width Distributions",
+        x = "",
+        y = "Width (bp, log scale)"
+    )
+```
+
+## Summary
+
+```{r}
+cat("\n## Key Findings\n\n")
+
+if (nrow(truth_eval) > 0) {
+    best_f1 <- truth_eval[which.max(truth_eval$F1_regions), ]
+    best_iou <- truth_eval[which.max(truth_eval$IoU_bp), ]
+
+    cat(sprintf(
+        "- Best region-level F1: **%s** (%.3f)\n",
+        best_f1$Method, best_f1$F1_regions
+    ))
+    cat(sprintf(
+        "- Best base-pair IoU: **%s** (%.3f)\n",
+        best_iou$Method, best_iou$IoU_bp
+    ))
+
+    if ("CMEnt" %in% truth_eval$Method) {
+        seg <- truth_eval[truth_eval$Method == "CMEnt", ]
+        cat(sprintf(
+            "- **CMEnt** region metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f\n",
+            seg$Precision_regions, seg$Recall_regions, seg$F1_regions
+        ))
+        cat(sprintf(
+            "- **CMEnt** base-pair metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f, IoU = %.3f\n",
+            seg$Precision_bp, seg$Recall_bp, seg$F1_bp, seg$IoU_bp
+        ))
+    }
+}
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
