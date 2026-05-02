@@ -42,7 +42,7 @@ findDMPsBSSeq(
 \item{njobs}{The number of parallel jobs to use for chromosome-level analysis. Default is the number of available CPU cores minus one.}
 }
 \value{
-A data frame of identified DMPs with columns for chromosome, position, CpG ID, p-value, q-value, delta beta, and DMP score.
+A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 }
 \description{
 A collection of helper functions for the CMEnt package.

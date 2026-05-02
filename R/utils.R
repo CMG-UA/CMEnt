@@ -2376,8 +2376,8 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
     sequences
 }
 
-
-#' @export
+#' @keywords internal
+#' @noRd
 getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
     pkg_name <- .getBSGenomePackage(genome)
     if (is.null(pkg_name)) {

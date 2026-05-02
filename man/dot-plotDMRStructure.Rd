@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_dmrs.R
 \name{.plotDMRStructure}
 \alias{.plotDMRStructure}
-\title{Plot DMR Structure with seeds and Extended CpGs}
+\title{Plot DMR Structure with seeds and Extended sites}
 \usage{
 .plotDMRStructure(
   dmrs,
@@ -41,7 +41,7 @@ A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a l
 \description{
 Visualizes the structure of Differentially Methylated Regions (DMRs)
 identified by findDMRsFromSeeds, showing the underlying seeds as stem plots connected
-by horizontal lines to form DMRs, with extended CpG regions shown as vertical lines.
+by horizontal lines to form DMRs, with extended site regions shown as vertical lines.
 The plot distinguishes between seeds (differentially methylated positions), supporting
-CpGs that extend the DMR, and non-supporting CpGs in the surrounding region.
+sites that extend the DMR, and non-supporting sites in the surrounding region.
 }

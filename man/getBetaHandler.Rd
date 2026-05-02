@@ -12,6 +12,7 @@ getBetaHandler(
   sorted_locs = NULL,
   chrom_col = "#chrom",
   start_col = "start",
+  output_prefix = NULL,
   njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
 )
 }
@@ -29,6 +30,8 @@ getBetaHandler(
 \item{chrom_col}{Chromosome column name in tabix file}
 
 \item{start_col}{Start position column name in tabix file}
+
+\item{output_prefix}{Prefix used for saving derived beta artifacts.}
 
 \item{njobs}{Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.}
 }

@@ -47,17 +47,21 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{min_extension_bp}{Integer. Minimum extension in base pairs (default: 50).}
 
-\item{max_sites}{Integer. Maximum number of CpGs to show in heatmap (default: 100).}
+\item{max_sites}{Integer. Maximum number of sites to show in heatmap (default: 100).}
 
 \item{max_samples_per_group}{Integer. Maximum number of samples to show per group in heatmap (default: 10).}
 
 \item{plot_motif}{Logical. Whether to plot the sequence logo motif (default: TRUE).}
 
-\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site for motif extraction (default: 5).}
+\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each site site for motif extraction (default: 5).}
 
 \item{plot_title}{Logical. Whether to display the title on the plot. If FALSE, the title is shown in the logs (default: TRUE).}
 
 \item{output_file}{Character. If provided, saves the plot to the specified file path (PDF format).}
+
+\item{width}{Numeric. Width of the output PDF in inches when \code{output_file} is provided (default: \code{8}).}
+
+\item{height}{Numeric. Height of the output PDF in inches when \code{output_file} is provided (default: \code{12}).}
 }
 \value{
 A combined plot object (gridExtra) containing the DMR structure plot, beta values heatmap (if beta is provided),
@@ -65,11 +69,11 @@ and sequence logo motif plot (if motif information is available and plot_motif i
 }
 \description{
 Creates a detailed DMR plot with an integrated heatmap showing
-beta values across samples for seeds and surrounding CpGs. The plot consists of
-two panels: the top panel shows the DMR structure with seeds and extended CpGs,
+beta values across samples for seeds and surrounding sites. The plot consists of
+two panels: the top panel shows the DMR structure with seeds and extended sites,
 and the bottom panel displays a heatmap of beta values for all samples, if beta values are provided.
 Additionally, if motif information is available or can be extracted, a sequence logo
-plot is added showing the nucleotide composition and information content around CpG sites in the DMR.
+plot is added showing the nucleotide composition and information content around site sites in the DMR.
 }
 \examples{
 # Using BetaHandler

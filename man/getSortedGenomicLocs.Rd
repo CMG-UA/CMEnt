@@ -18,7 +18,7 @@ getSortedGenomicLocs(
 \item{locations_file}{Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)}
 }
 \value{
-A data frame containing sorted genomic locations with rownames as CpG IDs and columns:
+A data frame containing sorted genomic locations with rownames as site IDs and columns:
 \itemize{
 \item chr: Chromosome
 \item start: Genomic position

@@ -32,7 +32,7 @@ Character. Path to the sorted output file
 \description{
 This helper function sorts a methylation beta values file by genomic coordinates
 (chromosome and position) as required by the findDMRsFromSeeds function. The function reads
-the beta file, sorts the CpG sites according to their genomic positions using array annotation,
+the beta file, sorts the site sites according to their genomic positions using array annotation,
 and writes the sorted data to a new file.
 }
 \details{
@@ -40,7 +40,7 @@ The function performs the following steps:
 \enumerate{
 \item Reads the beta values file
 \item Loads the appropriate array annotation (450K or EPIC)
-\item Sorts CpG sites by genomic coordinates (chr:start)
+\item Sorts site sites by genomic coordinates (chr:start)
 \item Writes the sorted data to a new file
 \item Validates that the output is properly sorted
 }

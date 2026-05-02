@@ -14,7 +14,7 @@ extractDMRMotifs(
 )
 }
 \arguments{
-\item{dmrs}{Dataframe or GRanges object containing DMR coordinates and CpG indices}
+\item{dmrs}{Dataframe or GRanges object containing DMR coordinates and site indices}
 
 \item{genome}{Character. Genome version to use for sequence extraction. Defaults to hg38.}
 
@@ -23,18 +23,20 @@ extractDMRMotifs(
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
-\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each site site (default: 5)}
+
+\item{plot_dir}{Character. Optional directory where diagnostic motif plots may be written.}
 }
 \value{
 The input Dataframe/GRanges object with an additional metadata column:
 \itemize{
-\item pwm: A matrix of base frequencies (rows: positions relative to CpG, columns: bases A, C, G, T)
+\item pwm: A matrix of base frequencies (rows: positions relative to site, columns: bases A, C, G, T)
 \item consensus_seq: A character string representing the consensus sequence derived from the PWM
 }
 }
 \description{
-Extracts motif frequencies around CpG sites within DMRs.
-For each DMR, retrieves sequences around the start and end CpG sites,
+Extracts motif frequencies around site sites within DMRs.
+For each DMR, retrieves sequences around the start and end site sites,
 calculates base frequencies at each position, and stores the results in
 the DMR metadata.
 }

@@ -30,7 +30,7 @@ computeDMRsInteraction(
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
-\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each CpG site (default: 5)}
+\item{motif_site_flank_size}{Integer. Number of base pairs to include as flanking regions around each site site (default: 5)}
 
 \item{find_components}{Logical. Whether to identify connected components of interacting DMRs (default: TRUE)}
 
@@ -67,12 +67,16 @@ dmrs <- data.frame(
     start = c(53468112, 37459206),
     end = c(53468712, 37493431),
     start_site = c("cg00000029", "cg00000108"),
-    end_site = c("cg13426503", "cg08730726")
+    start_seed = c("cg00000029", "cg00000108"),
+    end_site = c("cg13426503", "cg08730726"),
+    end_seed = c("cg13426503", "cg08730726"),
+    seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
 dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
 interactions <- computeDMRsInteraction(
     dmrs_with_motifs,
     genome = "hg38",
     array = "450K",
+    query_components_with_jaspar = FALSE
 )
 }

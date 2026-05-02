@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  render-notebooks:
+  render:
     runs-on: ubuntu-latest
 
     steps:

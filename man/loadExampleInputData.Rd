@@ -2,9 +2,12 @@
 % Please edit documentation in R/utils.R
 \name{loadExampleInputData}
 \alias{loadExampleInputData}
-\title{Load CMEnt Data Resources}
+\alias{loadExampleInputDataChr5And11}
+\title{Load CMEnt Example Resources}
 \usage{
 loadExampleInputData(resource, use_experiment_hub = TRUE)
+
+loadExampleInputDataChr5And11(resource, use_experiment_hub = TRUE)
 }
 \arguments{
 \item{resource}{Character. Name of the resource to load. Available resources:
@@ -19,29 +22,33 @@ loadExampleInputData(resource, use_experiment_hub = TRUE)
 if the resource is not found locally (default: TRUE)}
 }
 \value{
-The requested data object, or NULL if not found
+The requested example object
 }
 \description{
-Helper function to load data resources from the package data folder.
-Resources are lazy loaded when the package is loaded, so they exist in the package
-namespace. If a resource is not found in the package, it will attempt to query
-ExperimentHub. If that also fails, it provides instructions to generate the data.
+Helper function to load lightweight example resources bundled as
+package data. The shipped local example bundle is a compact chr5/chr11 subset
+intended for package examples, tests, and vignettes. If a local resource is not
+found, the function can fall back to ExperimentHub.
+
+Compatibility wrapper returning the chr5/chr11 example subset.
+The packaged local example resources already correspond to chr5/chr11, so this
+wrapper is mainly kept for backwards compatibility with earlier releases and
+still subsets ExperimentHub-backed resources when needed.
 }
 \details{
 The function follows this priority order:
 \enumerate{
-\item Check if the resource exists in the package namespace (lazy loaded)
-\item If not found, try loading directly from the data file
+\item Load the packaged example resource from the installed package \verb{data/}
 \item If use_experiment_hub is TRUE, query ExperimentHub
-\item If all fail, provide instructions for generating the data
+\item If all fail, raise an informative error
 }
 
-Available resources correspond to .rda files in the data/ folder:
+Available local resources correspond to \code{.rda} files in \verb{data/}:
 \itemize{
-\item beta.rda - Example methylation beta values
-\item pheno.rda - Example phenotype/sample information
-\item dmps.rda - Example differential methylation results
-\item array_type.rda - Array platform type
+\item \code{beta.rda} - Example methylation beta values
+\item \code{pheno.rda} - Example phenotype/sample information
+\item \code{dmps.rda} - Example differential methylation results
+\item \code{array_type.rda} - Array platform type
 }
 }
 \examples{

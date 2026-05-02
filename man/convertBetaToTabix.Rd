@@ -13,7 +13,8 @@ convertBetaToTabix(
   output_file = NULL,
   chunk_size = 50000,
   njobs = 1,
-  .bed_file = NULL
+  .bed_file = NULL,
+  output_prefix = NULL
 )
 }
 \arguments{
@@ -26,12 +27,19 @@ If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: 
 
 \item{genome}{Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")}
 
-\item{output_file}{Character. Path for the output tabix file. If NULL, uses a cache
-directory in tempdir() with hash-based naming (default: NULL)}
+\item{locations_file}{Character. Optional path to an explicit genomic locations file passed through to \code{getSortedGenomicLocs()}.}
+
+\item{output_file}{Character. Path for the output tabix file. If NULL, a temporary
+file is used unless \code{output_prefix} is supplied.}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk (default: 50000)}
 
 \item{njobs}{Integer. Number of parallel jobs for sorting (default: 1)}
+
+\item{.bed_file}{Character. Internal precomputed BED path used to skip beta-to-BED conversion.}
+
+\item{output_prefix}{Character. Optional prefix used to persist derived tabix
+artifacts next to analysis outputs.}
 }
 \value{
 Character. Path to the created tabix file, or NULL if conversion failed
@@ -39,26 +47,18 @@ Character. Path to the created tabix file, or NULL if conversion failed
 \description{
 Converts a methylation beta values file to a tabix-indexed BED format
 for faster random access during DMR analysis. The function uses a memory-efficient
-chunk-based approach to handle large files and automatically uses a cache directory
-to avoid redundant conversions of the same beta file.
+chunk-based approach to handle large files and can persist the derived tabix file
+next to analysis outputs when \code{output_prefix} is supplied.
 }
 \details{
 The function performs the following steps:
 \enumerate{
 \item Checks if tabix and bgzip tools are available in the system PATH
-\item Computes a hash of the input beta file for cache lookup
-\item Checks if a cached tabix file exists; if so, returns it immediately
 \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
 \item Converts beta values to BED format with genomic coordinates
 \item Sorts, compresses (bgzip), and indexes (tabix) the file
-\item Saves to cache directory for future reuse
+\item Persists the derived file if an explicit output path or \code{output_prefix} is provided
 }
-
-The chunk-based processing ensures that even very large beta files (millions of CpGs)
-can be converted without running out of memory. The cache directory is located at
-\code{tempdir()/CMEnt_tabix_cache/} and persists for the duration of the c session.
-Files are named based on the MD5 hash of the input beta file, ensuring that identical
-files reuse the same cached version.
 }
 \examples{
 # Convert a beta file to tabix format

@@ -60,7 +60,7 @@ rownames matching beta column names (required for beta track).}
 
 \item{max_dmrs_per_chr}{Integer. Maximum number of DMRs to use per chromosome (default: 10). The DMRs with highest absolute delta beta will be selected.}
 
-\item{max_sites_per_dmr}{Integer. Maximum number of CpGs to show per DMR in scatter/heatmap (default: 5).}
+\item{max_sites_per_dmr}{Integer. Maximum number of sites to show per DMR in scatter/heatmap (default: 5).}
 
 \item{min_component_size}{Integer. Minimum motif component size to retain (default: 2).}
 

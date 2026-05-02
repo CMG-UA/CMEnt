@@ -21,6 +21,8 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
 
 \item{\code{sorted_locs}}{Sorted genomic locations}
 
+\item{\code{output_prefix}}{Prefix used for saving derived beta artifacts}
+
 \item{\code{njobs}}{Number of parallel jobs}
 
 \item{\code{beta_chunk_size}}{Chunk size for subsetting beta values}
@@ -58,6 +60,7 @@ Create a new BetaHandler object
   sorted_locs = NULL,
   chrom_col = "#chrom",
   start_col = "start",
+  output_prefix = NULL,
   njobs = 1
 )}\if{html}{\out{</div>}}
 }
@@ -78,6 +81,8 @@ Create a new BetaHandler object
 \item{\code{chrom_col}}{Chromosome column name in tabix file}
 
 \item{\code{start_col}}{Start position column name in tabix file}
+
+\item{\code{output_prefix}}{Prefix used for saving derived beta artifacts}
 
 \item{\code{njobs}}{Number of parallel jobs}
 }
@@ -117,7 +122,7 @@ data.frame or matrix of the genomic locations
 \if{html}{\out{<a id="method-BetaHandler-getBetaRowNames"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-getBetaRowNames}{}}}
 \subsection{Method \code{getBetaRowNames()}}{
-Get row names (CpG IDs) from the beta file
+Get row names (site IDs) from the beta file
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBetaRowNames()}\if{html}{\out{</div>}}
 }
@@ -203,7 +208,7 @@ Build a compact BetaHandler view for a subset of rows/columns
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{row_names}}{Character vector of CpG IDs (or numeric row indices) to keep; NULL keeps all rows}
+\item{\code{row_names}}{Character vector of site IDs (or numeric row indices) to keep; NULL keeps all rows}
 
 \item{\code{col_names}}{Character vector of sample IDs to keep; NULL keeps all columns}
 
@@ -219,7 +224,7 @@ A BetaHandler object scoped to the requested subset
 \if{html}{\out{<a id="method-BetaHandler-getBeta"></a>}}
 \if{latex}{\out{\hypertarget{method-BetaHandler-getBeta}{}}}
 \subsection{Method \code{getBeta()}}{
-Extract beta values for specific CpG sites and samples
+Extract beta values for specific site sites and samples
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{BetaHandler$getBeta(
   row_names = NULL,
@@ -232,11 +237,11 @@ Extract beta values for specific CpG sites and samples
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{row_names}}{Character vector of CpG IDs to extract. If numeric, treated as row indices.}
+\item{\code{row_names}}{Character vector of site IDs to extract. If numeric, treated as row indices.}
 
 \item{\code{col_names}}{Character vector of sample IDs to extract (default: NULL for all)}
 
-\item{\code{allow_missing}}{Logical. If TRUE, missing CpG sites will be ignored instead of throwing an error (default: FALSE)}
+\item{\code{allow_missing}}{Logical. If TRUE, missing site sites will be ignored instead of throwing an error (default: FALSE)}
 
 \item{\code{chr}}{Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)}
 }

@@ -3,7 +3,7 @@
 \name{orderByLoc}
 \alias{orderByLoc}
 \title{Orders a vector of indices according to their corresponding genomic
-locations (chromosome and position). This function is useful for sorting CpG
+locations (chromosome and position). This function is useful for sorting site
 sites or other genomic features by their physical positions.}
 \usage{
 orderByLoc(
@@ -28,11 +28,11 @@ Integer vector of ordered indices
 }
 \description{
 Orders a vector of indices according to their corresponding genomic
-locations (chromosome and position). This function is useful for sorting CpG
+locations (chromosome and position). This function is useful for sorting site
 sites or other genomic features by their physical positions.
 }
 \examples{
-# Order CpG indices by genomic location
+# Order site indices by genomic location
 site_ids <- c("cg00000029", "cg00000108", "cg00000109")
 ordered_indices <- orderByLoc(site_ids, array = "450K")
 

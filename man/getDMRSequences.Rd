@@ -52,10 +52,11 @@ The function first attempts to use genome-appropriate BSgenome packages:
 \item mm39: BSgenome.Mmusculus.UCSC.mm39
 }
 
-If the required BSgenome package is not installed and installation fails,
-the function will automatically fall back to querying sequences from the
-UCSC Genome Browser REST API. The online method processes sequences in
-batches with optional parallel processing for improved performance with large datasets.
+If the required BSgenome package is not installed, the function raises an
+error with installation instructions. Set \code{use_online = TRUE} to query
+sequences from the UCSC Genome Browser REST API instead. The online method
+processes sequences in batches with optional parallel processing for
+improved performance with large datasets.
 
 For large numbers of DMRs (>10k), consider using parallel processing by setting
 njobs > 1 when using the online API, or install the appropriate BSgenome package

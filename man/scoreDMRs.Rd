@@ -30,6 +30,8 @@ scoreDMRs(
 
 \item{pheno}{Data frame. Phenotype data containing sample group information}
 
+\item{covariates}{Character vector of covariate columns in \code{pheno} to regress out before scoring. Default is \code{NULL}.}
+
 \item{genome}{Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"}
 
 \item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"}
@@ -55,6 +57,10 @@ Default is \code{250000}.}
 
 \item{block_gap_max_bp}{Numeric >= \code{block_gap_min_bp}. Upper clamp for adaptive
 gap threshold (bp). Default is \code{5000000}.}
+
+\item{njobs}{Integer. Number of parallel jobs used for cross-validated scoring. Default comes from \code{getOption("CMEnt.njobs")}.}
+
+\item{verbose}{Numeric. Logging verbosity level. Default comes from \code{getOption("CMEnt.verbose")}.}
 }
 \value{
 GRanges object with DMRs ordered by score and additional metadata columns:
@@ -82,9 +88,8 @@ and specified gap rules.
 The function uses stratified k-fold cross-prediction to ensure balanced representation
 of sample groups in each fold. The number of folds can be controlled using the
 option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
-SVM is trained on the beta values of CpG sites within each DMR. For
-reproducible fold assignments, call \code{set.seed()} before
-\code{scoreDMRs()}.
+SVM is trained on the beta values of site sites within each DMR. For
+reproducible fold assignments, call \code{set.seed()} before \code{scoreDMRs()}.
 
 The \code{score} combines classification correctness and margin confidence,
 making it more sensitive than plain cross-validated accuracy when many DMRs
@@ -98,7 +103,7 @@ beta <- loadExampleInputData("beta")
 pheno <- loadExampleInputData("pheno")
 
 # Load pre-computed DMRs
-dmrs <- readRDS(system.file("extdata", "example_output.rds", package = "CMEnt"))
+dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
 
 # score DMRs
 scoring_dmrs <- scoreDMRs(

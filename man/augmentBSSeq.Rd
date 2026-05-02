@@ -21,7 +21,7 @@ augmentBSSeq(
 \item{min_samples}{Minimum number of samples with coverage required per site}
 
 \item{calibrate_correlation}{Logical. If \code{TRUE}, iteratively adjusts the
-latent Gaussian length scales so adjacent-CpG correlations are matched
+latent Gaussian length scales so adjacent-site correlations are matched
 after transforming back through the observed coverage and methylation
 sampling layers.}
 
@@ -37,19 +37,18 @@ A BSseq object with original and synthetic samples
 }
 \description{
 Generate synthetic samples while preserving both per-site coverage and
-methylation marginals and the local correlation structure of neighboring CpGs.
+methylation marginals and the local correlation structure of neighboring sites.
 Coverage and methylation are first fit with per-site Poisson/Beta marginals,
 then synthetic samples are drawn through chromosome-local Gaussian copula
-fields whose dependence is estimated from adjacent CpGs in the observed data.
-For reproducible synthetic samples, call \code{set.seed()} before
-\code{augmentBSSeq()}.
+fields whose dependence is estimated from adjacent sites in the observed data.
+For reproducible synthetic samples, call \code{set.seed()} before \code{augmentBSSeq()}.
 }
 \examples{
 \donttest{
-# Load example BSseq data
-data("BSobj", package = "bsseq")
-set.seed(123)
-# Augment with 5 synthetic samples
-augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
+    # Load example BSseq data
+    data("BSobj", package = "bsseq")
+    set.seed(123)
+    # Augment with 5 synthetic samples
+    augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
 }
 }

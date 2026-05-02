@@ -46,14 +46,14 @@ samples are assigned to \code{Condition1} and the remaining samples to
 \item{case_group}{Group receiving the differential shift. Defaults to the
 second group level.}
 
-\item{max_gap}{Maximum gap, in bp, used to form candidate CpG clusters.}
+\item{max_gap}{Maximum gap, in bp, used to form candidate site clusters.}
 
 \item{min_sites}{Minimum number of sites per candidate DMR cluster.}
 
-\item{max_sites}{Maximum number of CpGs per candidate DMR cluster.}
+\item{max_sites}{Maximum number of sites per candidate DMR cluster.}
 
 \item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
-CpG to define the reported truth interval. Set to \code{0} to report the full
+site to define the reported truth interval. Set to \code{0} to report the full
 selected cluster.}
 
 \item{delta_jitter}{Width of the random effect-size jitter around

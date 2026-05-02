@@ -785,6 +785,7 @@
 #' @param dmrs Data frame or GRanges object containing DMR coordinates and metadata
 #' @param beta Character. Path to beta value file, tabix file, beta matrix, BetaHandler object, or bed file
 #' @param pheno Data frame. Phenotype data containing sample group information
+#' @param covariates Character vector of covariate columns in `pheno` to regress out before scoring. Default is `NULL`.
 #' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"
 #' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
@@ -801,6 +802,8 @@
 #' Default is `250000`.
 #' @param block_gap_max_bp Numeric >= `block_gap_min_bp`. Upper clamp for adaptive
 #' gap threshold (bp). Default is `5000000`.
+#' @param njobs Integer. Number of parallel jobs used for cross-validated scoring. Default comes from `getOption("CMEnt.njobs")`.
+#' @param verbose Numeric. Logging verbosity level. Default comes from `getOption("CMEnt.verbose")`.
 #'
 #' @return GRanges object with DMRs ordered by score and additional metadata columns:
 #' \itemize{

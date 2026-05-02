@@ -11,7 +11,8 @@ readCustomMethylationBedData(
   chrom_col = "#chrom",
   start_col = "start",
   output_dir = NULL,
-  chunk_size = 50000
+  chunk_size = 50000,
+  output_prefix = NULL
 )
 }
 \arguments{
@@ -31,16 +32,19 @@ present in both the pheno rownames and BED file header will be processed}
 (default: "start")}
 
 \item{output_dir}{Character. Directory for caching processed files. If NULL, uses
-a default cache directory at \verb{USER_CACHE_DIR/R/CMEnt/tabix_cache/} (default: NULL)}
+a temporary working directory unless \code{output_prefix} is provided (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
 efficiency (default: 50000)}
+
+\item{output_prefix}{Character. Optional prefix used to persist derived BED/tabix
+artifacts next to analysis outputs.}
 }
 \value{
 A list with two elements:
 \itemize{
 \item tabix_file: Character path to the created tabix-indexed BED file
-\item locations_file: Character path to the RDS file containing genomic location indices
+\item locations: Disk-backed genomic location registry
 }
 }
 \description{
@@ -59,14 +63,7 @@ The function performs the following workflow:
 \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
 \item Converts chromosomes to integer factors for efficient sorting
 \item Creates a tabix-indexed compressed file for fast random access
-\item Caches all processed files based on input file hash for reuse
-}
-
-The cache directory structure includes:
-\itemize{
-\item \verb{bed_beta_<hash>.bed.gz}: Tabix-indexed BED file with methylation values
-\item \verb{bed_beta_<hash>.bed.gz.tbi}: Tabix index file
-\item \verb{bed_locations_<hash>.rds}: Serialized descriptor for loading locations
+\item Persists derived artifacts under \code{output_prefix} when provided
 }
 }
 \section{Requirements}{
@@ -111,12 +108,12 @@ result <- readCustomMethylationBedData(
     bed_file = "custom_methylation.bed.gz",
     pheno = pheno,
     genome = "hg38",
-    output_dir = "/path/to/cache"
+    output_dir = "/path/to/output"
 )
 
 # Access the processed files
 tabix_file <- result$tabix_file
-locations_file <- result$locations_file
+locations <- result$locations
 
 }
 \seealso{
