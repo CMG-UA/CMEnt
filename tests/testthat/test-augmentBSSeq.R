@@ -95,7 +95,8 @@ create_sparse_bsseq <- function(n_sites = 100, n_samples = 4, zero_frac = 0.3, s
 
 test_that("augmentBSSeq returns a BSseq object", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 123)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 2)
 
     expect_s4_class(result, "BSseq")
 })
@@ -103,7 +104,8 @@ test_that("augmentBSSeq returns a BSseq object", {
 test_that("augmentBSSeq adds correct number of samples", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
     n_new <- 5
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = n_new, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = n_new, min_samples = 2)
 
     # Original samples + new synthetic samples
     # Note: some sites may be filtered, so we check sample count
@@ -112,27 +114,32 @@ test_that("augmentBSSeq adds correct number of samples", {
 
 test_that("augmentBSSeq synthetic sample names are correct", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, min_samples = 2)
 
     sample_names <- sampleNames(result)
     expect_true(all(paste0("synthetic_", 1:3) %in% sample_names))
 })
 
-test_that("augmentBSSeq is reproducible with seed", {
+test_that("augmentBSSeq is reproducible with external seed", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
 
-    result1 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 42, min_samples = 2)
-    result2 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 42, min_samples = 2)
+    set.seed(42)
+    result1 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
+    set.seed(42)
+    result2 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
 
     # Coverage should be identical
     expect_equal(getCoverage(result1), getCoverage(result2))
 })
 
-test_that("augmentBSSeq produces different results with different seeds", {
+test_that("augmentBSSeq produces different results with different external seeds", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
 
-    result1 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 42, min_samples = 2)
-    result2 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 99, min_samples = 2)
+    set.seed(42)
+    result1 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
+    set.seed(99)
+    result2 <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
 
     # Coverage matrices should differ
     expect_false(identical(getCoverage(result1), getCoverage(result2)))
@@ -145,14 +152,16 @@ test_that("augmentBSSeq filters sites based on min_samples", {
     cov <- getCoverage(bsseq_obj)
     expected_sites <- sum(rowSums(cov > 0) >= 3)
 
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 1, seed = 123, min_samples = 3)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 1, min_samples = 3)
 
     expect_equal(nrow(result), expected_sites)
 })
 
 test_that("augmentBSSeq coverage values are positive", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, min_samples = 2)
 
     cov <- getCoverage(result)
     # All coverage should be >= 1
@@ -161,7 +170,8 @@ test_that("augmentBSSeq coverage values are positive", {
 
 test_that("augmentBSSeq methylation counts do not exceed coverage", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, min_samples = 2)
 
     cov <- getCoverage(result)
     M <- getCoverage(result, type = "M")
@@ -172,7 +182,8 @@ test_that("augmentBSSeq methylation counts do not exceed coverage", {
 
 test_that("augmentBSSeq methylation counts are non-negative", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 3, min_samples = 2)
 
     M <- getCoverage(result, type = "M")
     expect_true(all(M >= 0))
@@ -180,7 +191,8 @@ test_that("augmentBSSeq methylation counts are non-negative", {
 
 test_that("augmentBSSeq preserves original samples", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3, seed = 42)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
 
     # Check original sample names are preserved
     orig_names <- sampleNames(bsseq_obj)
@@ -191,7 +203,8 @@ test_that("augmentBSSeq preserves original samples", {
 
 test_that("augmentBSSeq handles single new sample", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 1, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 1, min_samples = 2)
 
     expect_s4_class(result, "BSseq")
     expect_true("synthetic_1" %in% sampleNames(result))
@@ -199,18 +212,19 @@ test_that("augmentBSSeq handles single new sample", {
 
 test_that("augmentBSSeq handles many new samples", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 20, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 20, min_samples = 2)
 
     expect_s4_class(result, "BSseq")
     expect_equal(ncol(result), 3 + 20)
 })
 
-test_that("augmentBSSeq works without seed (NULL)", {
+test_that("augmentBSSeq works without an explicit seed argument", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
 
     # Should not error
     expect_no_error({
-        result <- augmentBSSeq(bsseq_obj, n_new_samples = 2, seed = NULL, min_samples = 2)
+        result <- augmentBSSeq(bsseq_obj, n_new_samples = 2, min_samples = 2)
     })
 })
 
@@ -232,7 +246,8 @@ test_that("augmentBSSeq avoids over-dispersion with low-input boundary methylati
         sampleNames = paste0("sample_", seq_len(n_samples))
     )
 
-    result <- augmentBSSeq(bsseq_obj, n_new_samples = 100, seed = 123, min_samples = 2)
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 100, min_samples = 2)
     synthetic_idx <- grepl("^synthetic_", sampleNames(result))
     synthetic_meth <- bsseq::getMeth(result, type = "raw")[, synthetic_idx, drop = FALSE]
 
@@ -323,7 +338,8 @@ make_correlated_bsseq <- function(seed = 1) {
 test_that("augmentBSSeq preserves neighboring site correlation", {
     bs <- make_correlated_bsseq(seed = 42)
 
-    aug <- augmentBSSeq(bs, n_new_samples = 30, seed = 99)
+    set.seed(99)
+    aug <- augmentBSSeq(bs, n_new_samples = 30)
 
     orig_idx <- seq_len(ncol(bs))
     syn_idx <- (ncol(bs) + 1):ncol(aug)
@@ -340,7 +356,8 @@ test_that("augmentBSSeq preserves neighboring site correlation", {
 test_that("augmentBSSeq preserves correlation decay with lag", {
     bs <- make_correlated_bsseq(seed = 42)
 
-    aug <- augmentBSSeq(bs, n_new_samples = 30, seed = 99)
+    set.seed(99)
+    aug <- augmentBSSeq(bs, n_new_samples = 30)
 
     orig_idx <- seq_len(ncol(bs))
     syn_idx <- (ncol(bs) + 1):ncol(aug)

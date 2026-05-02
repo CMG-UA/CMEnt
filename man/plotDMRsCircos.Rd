@@ -98,7 +98,7 @@ ideogram track with chromosome bands, DMR arcs colored by delta beta,
 beta value heatmaps for each sample, and motif-based interaction links between DMRs.
 }
 \examples{
-\dontrun{
+\donttest{
 dmrs <- readRDS("dmrs.rds")
 plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")

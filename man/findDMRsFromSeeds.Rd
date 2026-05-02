@@ -17,7 +17,7 @@ findDMRsFromSeeds(
   genome = NULL,
   max_pval = 0.05,
   entanglement = c("strong", "weak"),
-  pval_mode = c("auto", "parametric", "empirical"),
+  testing_mode = c("auto", "parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
   mid_p = FALSE,
@@ -68,11 +68,11 @@ findDMRsFromSeeds(
 
 \item{entanglement}{Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.}
 
-\item{pval_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.}
+\item{testing_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.}
 
-\item{empirical_strategy}{Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
+\item{empirical_strategy}{Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
 
-\item{ntries}{Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).}
+\item{ntries}{Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).}
 
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).}
 
@@ -121,7 +121,7 @@ Data frame of identified DMRs.
 This function identifies DMRs from a given set of seeds and a beta value file.
 }
 \examples{
-\dontrun{
+\donttest{
 beta <- loadExampleInputDataChr5And11("beta")
 dmps <- loadExampleInputDataChr5And11("dmps")
 pheno <- loadExampleInputDataChr5And11("pheno")

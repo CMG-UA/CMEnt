@@ -60,7 +60,7 @@ Creates a Manhattan-style genome-wide scatter plot of DMR scores.
 DMRs are colored by their dominant genomic region class inferred from DMR annotations.
 }
 \examples{
-\dontrun{
+\donttest{
 dmrs <- readRDS("dmrs.rds")
 p <- plotDMRsManhattan(dmrs)
 print(p)

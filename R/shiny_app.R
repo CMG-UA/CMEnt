@@ -34,7 +34,7 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # After running findDMRsFromSeeds with output_prefix = "my_analysis"
 #' launchCMEntViewer(
 #'   output_prefix = "results/my_analysis"
@@ -574,8 +574,6 @@ launchCMEntViewer <- function(
                     helpers = FALSE,
                     attach_testthat = FALSE
                 )
-            } else {
-                base::suppressPackageStartupMessages(base::library(CMEnt))
             }
 
             CMEnt:::.viewerRunBackgroundTask(
@@ -616,8 +614,6 @@ launchCMEntViewer <- function(
                             helpers = FALSE,
                             attach_testthat = FALSE
                         )
-                    } else {
-                        base::suppressPackageStartupMessages(base::library(CMEnt))
                     }
 
                     assign(

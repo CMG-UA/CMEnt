@@ -31,9 +31,9 @@
 #' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using mm10 genome.
 #' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
-#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
-#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
-#' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param testing_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
+#' @param empirical_strategy Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
+#' @param ntries Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
@@ -434,7 +434,7 @@
 }
 
 
-.chooseTestingOptions <- function(group, mat, mask, pval_mode, empirical_strategy) {
+.chooseTestingOptions <- function(group, mat, mask, testing_mode, empirical_strategy) {
     n_sites <- nrow(mat)
     x_mat_full <- mat[1:(n_sites - 1), , drop = FALSE] # Sites i
     y_mat_full <- mat[2:n_sites, , drop = FALSE] # Sites i+1
@@ -443,15 +443,15 @@
     valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
     n_valid <- rowSums(valid_pairs)
 
-    if (pval_mode == "auto") {
+    if (testing_mode == "auto") {
         auto_diag <- .summarizeCorrelationAssumptions(
             x_mat = x_mat,
             y_mat = y_mat,
             n_valid = n_valid
         )
-        pval_mode <- if (auto_diag$use_parametric) "parametric" else "empirical"
+        testing_mode <- if (auto_diag$use_parametric) "parametric" else "empirical"
         .log_info(
-            "Auto-selected pval_mode='", pval_mode, "' for group '", group,
+            "Auto-selected testing_mode='", testing_mode, "' for group '", group,
             "' (q10_n_valid=", signif(auto_diag$q10_n_valid, 3),
             ", median|pearson-spearman|=", signif(auto_diag$median_abs_delta_spearman, 3),
             ", median|pearson-winsorized|=", signif(auto_diag$median_abs_delta_winsorized, 3),
@@ -462,7 +462,7 @@
             level = 2
         )
     }
-    if (pval_mode == "empirical" && empirical_strategy == "auto") {
+    if (testing_mode == "empirical" && empirical_strategy == "auto") {
         if (ncol(x_mat) >= 6) {
             .log_info(
                 "Group '", group, "' has ", ncol(x_mat), " samples. Using 'montecarlo' empirical strategy for faster computation with sufficient sample size.",
@@ -477,7 +477,7 @@
             empirical_strategy <- "permutations"
         }
     }
-    list(pval_mode = pval_mode, empirical_strategy = empirical_strategy)
+    list(testing_mode = testing_mode, empirical_strategy = empirical_strategy)
 }
 
 .permutationIndexMatrix <- local({
@@ -522,7 +522,7 @@
     beta_start_vec,
     group_inds,
     pheno,
-    pval_mode_per_group,
+    testing_mode_per_group,
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
@@ -583,7 +583,7 @@
         site_starts = site_starts,
         entanglement = entanglement,
         aggfun = aggfun,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         ntries = ntries,
         mid_p = mid_p,
@@ -607,7 +607,7 @@
     beta_locs = NULL,
     pheno,
     group_inds,
-    pval_mode_per_group,
+    testing_mode_per_group,
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
@@ -655,7 +655,7 @@
         if (.forceConnectDeltaBetaEnabled(force_connect_delta_beta)) {
             ret$delta_beta <- rep(NA_real_, n_sites)
         }
-        return(list(connectivity_array = ret, splits = NULL, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
+        return(list(connectivity_array = ret, splits = NULL, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
     }
     chromosomes <- as.character(beta_locs[, "chr"])
     chromosome_levels <- unique(chromosomes)
@@ -868,7 +868,7 @@
                 list(
                     connectivity_array = connectivity_array,
                     splits = NULL,
-                    pval_mode_per_group = pval_mode_per_group,
+                    testing_mode_per_group = testing_mode_per_group,
                     empirical_strategy_per_group = empirical_strategy_per_group
                 )
             )
@@ -924,7 +924,7 @@
         }
         if (!any(run_mask)) {
             # No runs to bridge, return the existing connectivity array and splits
-            return(list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group, recheck = integer(0)))
+            return(list(connectivity_array = connectivity_array, splits = splits, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group, recheck = integer(0)))
         }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
@@ -983,7 +983,7 @@
         anyNA(beta_row_ids_full) ||
         any(!nzchar(beta_row_ids_full))
     beta_row_ids <- if (use_numeric_row_index) NULL else beta_row_ids_full
-    if (any(pval_mode_per_group == "auto") || any(empirical_strategy_per_group[pval_mode_per_group == "empirical"] == "auto")) {
+    if (any(testing_mode_per_group == "auto") || any(empirical_strategy_per_group[testing_mode_per_group == "empirical"] == "auto")) {
         .log_info(
             "Selecting p-value computation mode for each group using the first chunk as a pilot.",
             level = 2
@@ -1015,15 +1015,15 @@
                     group = x,
                     mat = chunk_m,
                     mask = nexdist_mask,
-                    pval_mode = pval_mode_per_group[[x]],
+                    testing_mode = testing_mode_per_group[[x]],
                     empirical_strategy = empirical_strategy_per_group[[x]]
                 )
             }
         )
         empirical_strategy_per_group <- sapply(groups_options, function(opt) opt$empirical_strategy)
         names(empirical_strategy_per_group) <- names(group_inds)
-        pval_mode_per_group <- sapply(groups_options, function(opt) opt$pval_mode)
-        names(pval_mode_per_group) <- names(group_inds)
+        testing_mode_per_group <- sapply(groups_options, function(opt) opt$testing_mode)
+        names(testing_mode_per_group) <- names(group_inds)
         rm(first_chunk, site_starts, exceeded_dist, nexdist_mask, groups_options)
         gc()
     }
@@ -1042,7 +1042,7 @@
             beta_start_vec = beta_start_vec,
             group_inds = group_inds,
             pheno = pheno,
-            pval_mode_per_group = pval_mode_per_group,
+            testing_mode_per_group = testing_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = col_names,
             max_pval = max_pval,
@@ -1134,7 +1134,7 @@
             beta_start_vec = beta_start_vec,
             group_inds = group_inds,
             pheno = pheno,
-            pval_mode_per_group = pval_mode_per_group,
+            testing_mode_per_group = testing_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = col_names,
             max_pval = max_pval,
@@ -1216,7 +1216,7 @@
     list(
         connectivity_array = connectivity_array,
         splits = splits,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         recheck = recheck
     )
@@ -1227,7 +1227,7 @@
     beta_locs = NULL,
     pheno,
     group_inds,
-    pval_mode_per_group,
+    testing_mode_per_group,
     empirical_strategy_per_group,
     col_names = NULL,
     max_pval = 0.05,
@@ -1264,7 +1264,7 @@
             force_connect_delta_beta = force_connect_delta_beta,
             entanglement = entanglement,
             aggfun = aggfun,
-            pval_mode_per_group = pval_mode_per_group,
+            testing_mode_per_group = testing_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             ntries = ntries,
             mid_p = mid_p,
@@ -1288,7 +1288,7 @@
                 recheck = sort(unique(c(urecheck, drecheck))),
                 connectivity_array = build_ret$connectivity_array,
                 splits = build_ret$splits,
-                pval_mode_per_group = build_ret$pval_mode_per_group,
+                testing_mode_per_group = build_ret$testing_mode_per_group,
                 empirical_strategy_per_group = build_ret$empirical_strategy_per_group
             )
         }
@@ -1312,7 +1312,7 @@
                     )
                     build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, bridge_gap)
                     build_args$connectivity_array <- build_ret$connectivity_array
-                    build_args$pval_mode_per_group <- build_ret$pval_mode_per_group
+                    build_args$testing_mode_per_group <- build_ret$testing_mode_per_group
                     build_args$empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
                     cycle_recheck <- sort(unique(c(cycle_recheck, build_ret$recheck)))
                 }
@@ -1332,11 +1332,11 @@
         }
 
         splits <- build_ret$splits
-        pval_mode_per_group <- build_ret$pval_mode_per_group
+        testing_mode_per_group <- build_ret$testing_mode_per_group
         empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
         .log_info("Connectivity array built with gap allowance of ", gap, " (", sum(connectivity_array$connected), " connected sites).", level = 2)
     }
-    list(connectivity_array = connectivity_array, splits = splits, pval_mode_per_group = pval_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group)
+    list(connectivity_array = connectivity_array, splits = splits, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group)
 }
 
 
@@ -1586,7 +1586,7 @@
 #' @keywords internal
 #' @noRd
 .testConnectivityBatch <- function(sites_beta, group_inds, pheno,
-                                   pval_mode_per_group,
+                                   testing_mode_per_group,
                                    empirical_strategy_per_group,
                                    max_pval, covariates = NULL,
                                    force_connect_delta_beta = NA_real_,
@@ -1732,10 +1732,10 @@
         g_mask[na_r] <- FALSE
 
         ps <- rep(NA_real_, sn_pairs)
-        effective_pval_mode <- pval_mode_per_group[g]
+        effective_testing_mode <- testing_mode_per_group[g]
 
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
-        if (effective_pval_mode == "parametric") {
+        if (effective_testing_mode == "parametric") {
             tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
             # Compute t-statistics (vectorized)
             na_tstat <- is.na(tstats) & g_mask
@@ -1747,7 +1747,6 @@
             # Only compute for rows that are still connected and have finite cors
             mask <- is.finite(cors) & g_mask
             if (any(mask)) {
-                set.seed(getOption("CMEnt.random_seed", 42))
                 counts_ge <- integer(sn_pairs)
                 counts_eq <- integer(sn_pairs)
                 # Number of samples in this group
@@ -2036,7 +2035,7 @@
     seed_beta_index,
     pheno_detection,
     group_inds,
-    pval_mode_per_group,
+    testing_mode_per_group,
     empirical_strategy_per_group,
     beta_col_names_detection,
     ext_site_delta_beta,
@@ -2183,7 +2182,7 @@
             beta_locs = seeds_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
-            pval_mode_per_group = pval_mode_per_group,
+            testing_mode_per_group = testing_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = beta_col_names_detection,
             max_pval = max_pval,
@@ -2202,7 +2201,7 @@
         rm(seeds_beta_handler)
         gc(verbose = FALSE)
         seeds_connectivity_array <- ret$connectivity_array
-        pval_mode_per_group <- ret$pval_mode_per_group
+        testing_mode_per_group <- ret$testing_mode_per_group
         empirical_strategy_per_group <- ret$empirical_strategy_per_group
         .log_success("Seed connectivity array built.", level = 3)
         # connected_seeds[i] encodes edge i -> i+1
@@ -2347,7 +2346,7 @@
             beta_locs = stage2_beta_locs,
             pheno = pheno_detection,
             group_inds = group_inds,
-            pval_mode_per_group = pval_mode_per_group,
+            testing_mode_per_group = testing_mode_per_group,
             empirical_strategy_per_group = empirical_strategy_per_group,
             col_names = beta_col_names_detection,
             max_pval = max_pval,
@@ -2787,9 +2786,9 @@
 #' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.
-#' @param pval_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
-#' @param empirical_strategy Character. When pval_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
-#' @param ntries Integer. Number of permutations when pval_mode = "empirical". Default is 0 (disabled).
+#' @param testing_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.
+#' @param empirical_strategy Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.
+#' @param ntries Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
@@ -2814,7 +2813,7 @@
 #' @return Data frame of identified DMRs.
 #' 
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' beta <- loadExampleInputDataChr5And11("beta")
 #' dmps <- loadExampleInputDataChr5And11("dmps")
 #' pheno <- loadExampleInputDataChr5And11("pheno")
@@ -2841,7 +2840,7 @@ findDMRsFromSeeds <- function(
     genome = NULL,
     max_pval = 0.05,
     entanglement = c("strong", "weak"),
-    pval_mode = c("auto", "parametric", "empirical"),
+    testing_mode = c("auto", "parametric", "empirical"),
     empirical_strategy = c("auto", "montecarlo", "permutations"),
     ntries = 200L,
     mid_p = FALSE,
@@ -2911,7 +2910,7 @@ findDMRsFromSeeds <- function(
         }
         list(data = seeds_tsv, id_col = seeds_id_col)
     }
-    pval_mode <- strex::match_arg(pval_mode, ignore_case = TRUE)
+    testing_mode <- strex::match_arg(testing_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     entanglement <- strex::match_arg(entanglement, ignore_case = TRUE)
     options(CMEnt.verbose = verbose, future.globals.maxSize = Inf, "CMEnt.njobs" = njobs)
@@ -2957,6 +2956,12 @@ findDMRsFromSeeds <- function(
     if (is.null(requested_genome)) {
         .log_info("No genome provided. Using inferred genome: ", genome, ".", level = 2)
     }
+    output_prefix_base <- output_prefix
+    output_prefix_dot <- NULL
+    if (!is.null(output_prefix_base)) {
+        dir.create(dirname(output_prefix_base), showWarnings = FALSE, recursive = TRUE)
+        output_prefix_dot <- paste0(output_prefix_base, ".")
+    }
     beta_locs <- NULL
     if (!inherits(beta, "BetaHandler") && is.character(beta) && length(beta) == 1 && file.exists(beta)) {
         beta_file_ext <- tools::file_ext(beta)
@@ -2968,7 +2973,8 @@ findDMRsFromSeeds <- function(
             }
             ret <- readCustomMethylationBedData(
                 bed_file = beta, pheno = pheno, genome = genome,
-                chrom_col = bed_chrom_col, start_col = bed_start_col
+                chrom_col = bed_chrom_col, start_col = bed_start_col,
+                output_prefix = output_prefix_base
             )
             beta <- ret$tabix_file
             beta_locs <- ret$locations
@@ -2981,7 +2987,8 @@ findDMRsFromSeeds <- function(
         njobs = njobs,
         sorted_locs = beta_locs,
         array = array,
-        genome = genome
+        genome = genome,
+        output_prefix = output_prefix_base
     )
     beta <- NULL
     array_based <- beta_handler$isArrayBased()
@@ -3064,16 +3071,12 @@ findDMRsFromSeeds <- function(
     pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
     sample_groups <- factor(pheno_detection[, sample_group_col])
     group_inds <- split(seq_along(sample_groups), sample_groups)
-    pval_mode_per_group <- rep(pval_mode, length.out = length(unique(pheno_detection[[sample_group_col]])))
-    names(pval_mode_per_group) <- unique(pheno_detection[[sample_group_col]])
+    testing_mode_per_group <- rep(testing_mode, length.out = length(unique(pheno_detection[[sample_group_col]])))
+    names(testing_mode_per_group) <- unique(pheno_detection[[sample_group_col]])
     empirical_strategy_per_group <- rep(empirical_strategy, length.out = length(unique(pheno_detection[[sample_group_col]])))
     names(empirical_strategy_per_group) <- unique(pheno_detection[[sample_group_col]])
 
-    output_prefix_base <- output_prefix
-    output_prefix_dot <- NULL
     if (!is.null(output_prefix_base)) {
-        dir.create(dirname(output_prefix_base), showWarnings = FALSE, recursive = TRUE)
-        output_prefix_dot <- paste0(output_prefix_base, ".")
         saveRDS(
             list(pheno = pheno_detection, genome = genome, array = array, sample_group_col = sample_group_col),
             file = paste0(output_prefix_base, ".meta.rds")
@@ -3182,7 +3185,7 @@ findDMRsFromSeeds <- function(
                 seed_beta_index = chr_seed_beta_index,
                 pheno_detection = pheno_detection,
                 group_inds = group_inds,
-                pval_mode_per_group = pval_mode_per_group,
+                testing_mode_per_group = testing_mode_per_group,
                 empirical_strategy_per_group = empirical_strategy_per_group,
                 beta_col_names_detection = beta_col_names_detection,
                 ext_site_delta_beta = ext_site_delta_beta,

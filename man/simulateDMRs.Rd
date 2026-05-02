@@ -18,7 +18,6 @@ simulateDMRs(
   profile = c("triweight", "flat"),
   profile_degree = 4L,
   flank_fraction = 0.2,
-  seed = NULL,
   rename_samples = TRUE,
   resample_counts = TRUE,
   array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -68,8 +67,6 @@ selected cluster.}
 \item{flank_fraction}{Fraction of the selected cluster width added on both
 sides before evaluating the triweight profile.}
 
-\item{seed}{Optional random seed.}
-
 \item{rename_samples}{If \code{TRUE}, samples are reordered and renamed using the
 \code{dmrseq::simDMRs()} convention: controls first as \code{Condition1_Rep1},
 \code{Condition1_Rep2}, etc., followed by cases as \code{Condition2_Rep1},
@@ -101,7 +98,8 @@ non-BSseq file inputs.}
 A list with simulated output (\code{simulated}), optional genomic
 locations for non-BSseq inputs (\code{beta_locs}), and dmrseq-like metadata:
 \code{gr.dmrs}, \code{dmr.mncov}, \code{dmr.L}, \code{delta}, \code{truth}, \code{selected_regions},
-\code{groups}, and \code{case_group}.
+\code{groups}, and \code{case_group}. For reproducible simulations, call
+\code{set.seed()} before \code{simulateDMRs()}.
 }
 \description{
 This simulator is inspired by \code{dmrseq::simDMRs()}, but adds differential

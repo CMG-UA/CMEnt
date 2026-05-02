@@ -18,7 +18,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
         min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
-        pval_mode = "parametric"
+        testing_mode = "parametric"
     )
 
 
@@ -34,7 +34,7 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
         min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
-        pval_mode = "parametric",
+        testing_mode = "parametric",
     )
 
     expect_true(is.null(dmrs_relaxed) || inherits(dmrs_relaxed, "GRanges"))
@@ -62,7 +62,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "strong",
-        pval_mode = "parametric"
+        testing_mode = "parametric"
     )
 
     dmrs_relaxed <- findDMRsFromSeeds(
@@ -77,7 +77,7 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
         min_sites = 3,
         max_lookup_dist = 1000,
         entanglement = "weak",
-        pval_mode = "parametric"
+        testing_mode = "parametric"
     )
 
     strict_count <- if (is.null(dmrs_strict)) 0 else length(dmrs_strict)

@@ -82,7 +82,9 @@ and specified gap rules.
 The function uses stratified k-fold cross-prediction to ensure balanced representation
 of sample groups in each fold. The number of folds can be controlled using the
 option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
-SVM is trained on the beta values of CpG sites within each DMR.
+SVM is trained on the beta values of CpG sites within each DMR. For
+reproducible fold assignments, call \code{set.seed()} before
+\code{scoreDMRs()}.
 
 The \code{score} combines classification correctness and margin confidence,
 making it more sensitive than plain cross-validated accuracy when many DMRs

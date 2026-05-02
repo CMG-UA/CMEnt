@@ -12,10 +12,9 @@ options("CMEnt.verbose" = 1)
 options("CMEnt.njobs" = 8)
 for (case in names(files_to_make)) {
     cment_file <- files_to_make[[case]]
-    fun <- loadExampleInputDataChr5And11
-    beta <- fun("beta")
-    dmps <- fun("dmps")
-    pheno <- fun("pheno")
+    beta <- loadExampleInputDataChr5And11("beta")
+    dmps <- loadExampleInputDataChr5And11("dmps")
+    pheno <- loadExampleInputDataChr5And11("pheno")
     pheno[, "casecontrol"] <- pheno$Sample_Group == "cancer"
     dmrs_cment <- CMEnt::findDMRsFromSeeds(
         beta = beta,
@@ -32,7 +31,7 @@ for (case in names(files_to_make)) {
         min_sites = 3,
         max_lookup_dist = 1000,
         max_pval = 0.05,
-        pval_mode = "parametric",
+        testing_mode = "parametric",
         entanglement = "weak",
         output_prefix = paste0("inst/extdata/", case),
         .score_dmrs = TRUE

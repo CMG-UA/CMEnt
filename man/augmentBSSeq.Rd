@@ -7,7 +7,6 @@
 augmentBSSeq(
   bs,
   n_new_samples,
-  seed = NULL,
   min_samples = 2,
   calibrate_correlation = TRUE,
   calibration_iterations = 8,
@@ -18,8 +17,6 @@ augmentBSSeq(
 \item{bs}{A BSseq object}
 
 \item{n_new_samples}{Number of new synthetic samples to generate}
-
-\item{seed}{Random seed for reproducibility}
 
 \item{min_samples}{Minimum number of samples with coverage required per site}
 
@@ -44,12 +41,15 @@ methylation marginals and the local correlation structure of neighboring CpGs.
 Coverage and methylation are first fit with per-site Poisson/Beta marginals,
 then synthetic samples are drawn through chromosome-local Gaussian copula
 fields whose dependence is estimated from adjacent CpGs in the observed data.
+For reproducible synthetic samples, call \code{set.seed()} before
+\code{augmentBSSeq()}.
 }
 \examples{
-\dontrun{
+\donttest{
 # Load example BSseq data
 data("BSobj", package = "bsseq")
+set.seed(123)
 # Augment with 5 synthetic samples
-augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5, seed = 123)
+augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
 }
 }

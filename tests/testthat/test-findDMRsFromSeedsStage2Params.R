@@ -114,21 +114,21 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
     )
     pheno[, "__casecontrol__"] <- pheno$casecontrol
     group_inds <- split(seq_len(nrow(pheno)), pheno$Sample_Group)
-    pval_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
+    testing_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
     no_force_connect <- CMEnt:::.testConnectivityBatch(
         sites_beta = sites_beta,
         group_inds = group_inds,
         pheno = pheno,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         max_pval = 0.05,
         force_connect_delta_beta = NA_real_,
         max_lookup_dist = 1000,
         site_starts = c(100L, 200L),
         entanglement = "strong",
-        aggfun = stats::mean,
+        aggfun = mean,
         ntries = 10,
         mid_p = TRUE
     )
@@ -137,14 +137,14 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
         sites_beta = sites_beta,
         group_inds = group_inds,
         pheno = pheno,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         max_pval = 0.05,
         force_connect_delta_beta = 0,
         max_lookup_dist = 1000,
         site_starts = c(100L, 200L),
         entanglement = "strong",
-        aggfun = stats::mean,
+        aggfun = mean,
         ntries = 10,
         mid_p = TRUE
     )
@@ -158,6 +158,8 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
 })
 
 test_that("findDMRsFromSeeds handles adjusted seeds filtering for array data", {
+    skip_if_missing_bsgenome(genome = "hg19")
+
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
@@ -238,7 +240,7 @@ test_that("findDMRsFromSeeds does not bridge across chromosome boundaries", {
         ext_site_delta_beta = NA_real_,
         max_lookup_dist = 1000,
         max_pval = 0.05,
-        pval_mode = "parametric",
+        testing_mode = "parametric",
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
         njobs = 1
@@ -297,7 +299,7 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
         ext_site_delta_beta = NA_real_,
         max_lookup_dist = 1000,
         max_pval = 0.05,
-        pval_mode = "parametric",
+        testing_mode = "parametric",
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
         njobs = 1

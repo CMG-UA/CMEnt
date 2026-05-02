@@ -51,7 +51,7 @@ Find DMPs using DSS on BSseq objects
 This helper function identifies differentially methylated positions (DMPs) from a BSseq object using the DSS package. It allows for flexible specification of sample groups, covariates, and chromosome filtering.
 }
 \examples{
-\dontrun{
+\donttest{
 # Load example BSseq data
 data("BSobj", package = "bsseq")
 # Create a sample metadata data frame

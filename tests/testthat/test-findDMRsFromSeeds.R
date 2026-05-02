@@ -28,6 +28,8 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     if (!suppressPackageStartupMessages(requireNamespace("minfi", quietly = TRUE))) {
         skip("Package 'minfi' not installed")
     }
+    skip_if_missing_array_annotation(array = "450K", genome = "hg19")
+
     suppressPackageStartupMessages({
         beta <- loadExampleInputDataChr5And11("beta")
         pheno <- loadExampleInputDataChr5And11("pheno")
@@ -70,7 +72,7 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
             expansion_window = 0,
             max_bridge_seeds_gaps = 0,
             max_pval = 0.05,
-            pval_mode = "parametric",
+            testing_mode = "parametric",
             njobs = 1
         )
 
@@ -254,7 +256,7 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
         min_sites = 3,
         max_lookup_dist = 1000,
         max_pval = 0.05,
-        pval_mode = "parametric",
+        testing_mode = "parametric",
         entanglement = "weak",
         .score_dmrs = FALSE,
         extract_motifs = FALSE,

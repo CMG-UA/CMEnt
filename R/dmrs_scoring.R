@@ -5,7 +5,6 @@
     if (nlevels(groups) < 2) {
         stop("scoring requires at least two classes in '__casecontrol__'.")
     }
-    set.seed(getOption("CMEnt.random_seed", 42))
     group_folds <- split(seq_along(groups), groups)
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
@@ -817,7 +816,8 @@
 #' The function uses stratified k-fold cross-prediction to ensure balanced representation
 #' of sample groups in each fold. The number of folds can be controlled using the
 #' option "CMEnt.scoring_nfold" (default is 5). An RBF (Radial Basis Function) kernel
-#' SVM is trained on the beta values of site sites within each DMR.
+#' SVM is trained on the beta values of site sites within each DMR. For
+#' reproducible fold assignments, call `set.seed()` before `scoreDMRs()`.
 #'
 #' The `score` combines classification correctness and margin confidence,
 #' making it more sensitive than plain cross-validated accuracy when many DMRs

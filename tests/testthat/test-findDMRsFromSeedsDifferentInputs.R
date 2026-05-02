@@ -114,7 +114,6 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
     sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
-    options("CMEnt.use_tabix_cache" = FALSE)
     options("CMEnt.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- findDMRsFromSeeds(
@@ -157,7 +156,6 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     withr::defer(unlink(sorted_beta_file))
 
     withr::local_options(list(
-        CMEnt.use_tabix_cache = FALSE,
         CMEnt.beta_in_mem_threshold_mb = 1
     ))
     tabix_handler <- getBetaHandler(sorted_beta_file, array = "450K", genome = "hg19", njobs = 1)
@@ -165,7 +163,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     pheno_detection <- pheno[rownames(pheno), , drop = FALSE]
     sample_groups <- factor(pheno_detection[, "Sample_Group"])
     group_inds <- split(seq_along(sample_groups), sample_groups)
-    pval_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
+    testing_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
     mem_connectivity <- .buildConnectivityArraySinglePass(
@@ -173,7 +171,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
         beta_locs = seeds_locs,
         pheno = pheno_detection,
         group_inds = group_inds,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         col_names = rownames(pheno),
         max_pval = 0.05,
@@ -191,7 +189,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
         beta_locs = seeds_locs,
         pheno = pheno_detection,
         group_inds = group_inds,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         col_names = rownames(pheno),
         max_pval = 0.05,
@@ -262,7 +260,7 @@ test_that("parallel connectivity matches sequential connectivity", {
     pheno_detection <- pheno[rownames(pheno), , drop = FALSE]
     sample_groups <- factor(pheno_detection[, "Sample_Group"])
     group_inds <- split(seq_along(sample_groups), sample_groups)
-    pval_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
+    testing_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
     connectivity_seq <- .buildConnectivityArraySinglePass(
@@ -270,7 +268,7 @@ test_that("parallel connectivity matches sequential connectivity", {
         beta_locs = seeds_locs,
         pheno = pheno_detection,
         group_inds = group_inds,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         col_names = rownames(pheno),
         max_pval = 0.05,
@@ -289,7 +287,7 @@ test_that("parallel connectivity matches sequential connectivity", {
         beta_locs = seeds_locs,
         pheno = pheno_detection,
         group_inds = group_inds,
-        pval_mode_per_group = pval_mode_per_group,
+        testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         col_names = rownames(pheno),
         max_pval = 0.05,
@@ -367,7 +365,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
     mock_convertBetaToTabix <- mock(NULL) # nolint
 
     stub(findDMRsFromSeeds, "convertBetaToTabix", mock_convertBetaToTabix)
-    options("CMEnt.use_tabix_cache" = FALSE)
     options("CMEnt.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,

@@ -7,10 +7,10 @@
 #' Coverage and methylation are first fit with per-site Poisson/Beta marginals,
 #' then synthetic samples are drawn through chromosome-local Gaussian copula
 #' fields whose dependence is estimated from adjacent sites in the observed data.
+#' For reproducible synthetic samples, call `set.seed()` before `augmentBSSeq()`.
 #'
 #' @param bs A BSseq object
 #' @param n_new_samples Number of new synthetic samples to generate
-#' @param seed Random seed for reproducibility
 #' @param min_samples Minimum number of samples with coverage required per site
 #' @param calibrate_correlation Logical. If `TRUE`, iteratively adjusts the
 #'   latent Gaussian length scales so adjacent-site correlations are matched
@@ -23,19 +23,19 @@
 #'   chosen from the input and requested output sample sizes.
 #' @importFrom SummarizedExperiment assays
 #' @return A BSseq object with original and synthetic samples
-#' @export
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Load example BSseq data
 #' data("BSobj", package = "bsseq")
+#' set.seed(123)
 #' # Augment with 5 synthetic samples
-#' augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5, seed = 123)
+#' augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
 #' }
-augmentBSSeq <- function(bs, n_new_samples, seed = NULL, min_samples = 2,
+#' @export
+augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,
                          calibrate_correlation = TRUE,
                          calibration_iterations = 8,
                          calibration_samples = NULL) {
-    if (!is.null(seed)) set.seed(seed)
     n_new_samples <- as.integer(n_new_samples)
     min_samples <- as.integer(min_samples)
     calibrate_correlation <- as.logical(calibrate_correlation)

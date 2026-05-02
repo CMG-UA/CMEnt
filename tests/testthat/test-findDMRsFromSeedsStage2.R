@@ -20,7 +20,7 @@ test_that("findDMRsFromSeeds Stage 2 single pass connectivity array outputs with
     expect_no_error(
         CMEnt:::.buildConnectivityArraySinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno, group_inds = gi,
-            pval_mode_per_group = c(A = "parametric", B = "parametric"),
+            testing_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
             max_lookup_dist = 1000, connectivity_array = conn, ugap = 1L, dgap = 0L,
             splits = splits, njobs = 1
@@ -62,7 +62,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
 
     ret1 <- CMEnt:::.buildConnectivityArraySinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
-        group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
+        group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
         max_lookup_dist = 1000, connectivity_array = conn, ugap = 0L, dgap = 1L,
         splits = splits, njobs = 1
@@ -72,7 +72,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
 
     ret2 <- CMEnt:::.buildConnectivityArraySinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
-        group_inds = gi, pval_mode_per_group = c(A = "parametric", B = "parametric"),
+        group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
         max_lookup_dist = 1000, connectivity_array = ret1$connectivity_array,
         recheck = ret1$recheck, ugap = 0L, dgap = 1L,

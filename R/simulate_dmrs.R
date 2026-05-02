@@ -32,7 +32,6 @@
 #' @param profile_degree Degree used by the triweight profile.
 #' @param flank_fraction Fraction of the selected cluster width added on both
 #'   sides before evaluating the triweight profile.
-#' @param seed Optional random seed.
 #' @param rename_samples If `TRUE`, samples are reordered and renamed using the
 #'   `dmrseq::simDMRs()` convention: controls first as `Condition1_Rep1`,
 #'   `Condition1_Rep2`, etc., followed by cases as `Condition2_Rep1`,
@@ -55,7 +54,8 @@
 #' @return A list with simulated output (`simulated`), optional genomic
 #'   locations for non-BSseq inputs (`beta_locs`), and dmrseq-like metadata:
 #'   `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`, `selected_regions`,
-#'   `groups`, and `case_group`.
+#'   `groups`, and `case_group`. For reproducible simulations, call
+#'   `set.seed()` before `simulateDMRs()`.
 #' @importFrom stats qlogis plogis
 #' @export
 simulateDMRs <- function(
@@ -72,7 +72,6 @@ simulateDMRs <- function(
     profile = c("triweight", "flat"),
     profile_degree = 4L,
     flank_fraction = 0.2,
-    seed = NULL,
     rename_samples = TRUE,
     resample_counts = TRUE,
     array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -83,10 +82,6 @@ simulateDMRs <- function(
     start_col = "start",
     njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
 ) {
-    if (!is.null(seed)) {
-        set.seed(seed)
-    }
-
     profile <- match.arg(profile)
     num_dmrs <- as.integer(num_dmrs)
     max_gap <- as.integer(max_gap)

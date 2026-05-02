@@ -291,7 +291,8 @@
     paste(strwrap(prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""), width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg), collapse = "\n")
 }
 
-#' Internal logging helpers using cli
+#' @keywords internal
+#' @noRd
 .log_error <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$cross, "red")
@@ -456,20 +457,7 @@
 
 
 .getTabixCacheDir <- function(output_dir) {
-    if (is.null(output_dir)) {
-        use_cache <- getOption("CMEnt.bed_cache_dir", NULL)
-        if (!is.null(use_cache) && !isFALSE(use_cache)) {
-            if (is.character(use_cache)) {
-                cache_dir <- use_cache
-            } else {
-                cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
-            }
-        } else {
-            cache_dir <- tempdir()
-        }
-    } else {
-        cache_dir <- output_dir
-    }
+    cache_dir <- if (is.null(output_dir)) tempdir() else output_dir
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -586,27 +574,24 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
     df
 }
 
-getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL, chunk_size = 100000) {
+getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL,
+                        chunk_size = 100000, output_h5file = NULL) {
     if (is.data.frame(obj)) {
         return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
     }
-    cache_dir <- getOption("CMEnt.h5_cache_dir", .getOSCacheDir(file.path("R", "CMEnt", "h5_cache")))
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    if (is.null(output_h5file)) {
+        output_h5file <- tempfile(fileext = ".h5")
     }
-    h5_file <- file.path(cache_dir, paste0(.getFileHash(obj), ".h5"))
-    if (!file.exists(h5_file)) {
-        createH5file(
-            input_file = obj,
-            output_h5file = h5_file,
-            dataset_name = "data",
-            select = select,
-            chunk_size = chunk_size
-        )
-    }
-    da <- HDF5Array::HDF5Array(h5_file, "data")
+    createH5file(
+        input_file = obj,
+        output_h5file = output_h5file,
+        dataset_name = "data",
+        select = select,
+        chunk_size = chunk_size
+    )
+    da <- HDF5Array::HDF5Array(output_h5file, "data")
     x <- DelayedDataFrame::DelayedDataFrame(da)
-    colnames(x) <- rhdf5::h5read(h5_file, "data_colnames")
+    colnames(x) <- rhdf5::h5read(output_h5file, "data_colnames")
     .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
 }
 
@@ -615,25 +600,26 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #'
 #' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses a default cache directory at `USER_CACHE_DIR/R/CMEnt/tabix_cache/` (default: NULL)
+#' @param output_dir Character. Directory used for temporary or explicit derived files.
 #' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
-#' @param hash Character. Hash string for caching. If NULL, the function will compute it from the input file (default: NULL)
+#' @param hash Character. Hash string used for deterministic temporary file names.
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
 #' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL, chunk_size = 50000, use_id_as_rownames = FALSE, chrom_col = "#chrom", start_col = "start") { # nolint
-    cache_dir <- .getTabixCacheDir(output_dir)
-    if (is.null(hash)) {
-        hash <- .getFileHash(input_tabix)
-    }
-    cache_file <- file.path(cache_dir, paste0("bed_locations_", hash, ".rds"))
-
-    if (file.exists(cache_file) && getOption("CMEnt.use_tabix_cache", FALSE)) {
-        return(readRDS(cache_file))
-    }
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL,
+                                 chunk_size = 50000, use_id_as_rownames = FALSE,
+                                 chrom_col = "#chrom", start_col = "start",
+                                 output_h5file = NULL) { # nolint
     renaming <- c("chr", "start")
     names(renaming) <- c(chrom_col, start_col)
+    if (is.null(output_h5file)) {
+        output_dir <- .getTabixCacheDir(output_dir)
+        if (is.null(hash)) {
+            hash <- .getFileHash(input_tabix)
+        }
+        output_h5file <- file.path(output_dir, paste0("bed_locations_", hash, ".h5"))
+    }
     if (!use_id_as_rownames) {
         sorted_locs <- getRegistry(
             input_tabix,
@@ -646,7 +632,8 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
                 )
             ),
             indices = "index",
-            chunk_size = chunk_size
+            chunk_size = chunk_size,
+            output_h5file = output_h5file
         )
     } else {
         sorted_locs <- getRegistry(
@@ -654,11 +641,9 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             select = c(chrom_col, start_col, "end", "id"),
             rename = renaming,
             indices = "id",
-            chunk_size = chunk_size
+            chunk_size = chunk_size,
+            output_h5file = output_h5file
         )
-    }
-    if (getOption("CMEnt.use_tabix_cache", FALSE)) {
-        saveRDS(sorted_locs, file = cache_file)
     }
     sorted_locs
 }
@@ -683,14 +668,16 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' @param start_col Character. Name of the start position column in the BED file
 #'   (default: "start")
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a default cache directory at `USER_CACHE_DIR/R/CMEnt/tabix_cache/` (default: NULL)
+#'   a temporary working directory unless `output_prefix` is provided (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
 #'   efficiency (default: 50000)
+#' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
+#'   artifacts next to analysis outputs.
 #'
 #' @return A list with two elements:
 #' \itemize{
 #'   \item tabix_file: Character path to the created tabix-indexed BED file
-#'   \item locations_file: Character path to the RDS file containing genomic location indices
+#'   \item locations: Disk-backed genomic location registry
 #' }
 #'
 #' @details
@@ -702,14 +689,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'   \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
 #'   \item Converts chromosomes to integer factors for efficient sorting
 #'   \item Creates a tabix-indexed compressed file for fast random access
-#'   \item Caches all processed files based on input file hash for reuse
-#' }
-#'
-#' The cache directory structure includes:
-#' \itemize{
-#'   \item `bed_beta_<hash>.bed.gz`: Tabix-indexed BED file with methylation values
-#'   \item `bed_beta_<hash>.bed.gz.tbi`: Tabix index file
-#'   \item `bed_locations_<hash>.rds`: Serialized descriptor for loading locations
+#'   \item Persists derived artifacts under `output_prefix` when provided
 #' }
 #'
 #' @section Requirements:
@@ -750,12 +730,12 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'     bed_file = "custom_methylation.bed.gz",
 #'     pheno = pheno,
 #'     genome = "hg38",
-#'     output_dir = "/path/to/cache"
+#'     output_dir = "/path/to/output"
 #' )
 #'
 #' # Access the processed files
 #' tabix_file <- result$tabix_file
-#' locations_file <- result$locations_file
+#' locations <- result$locations
 #'
 #' @seealso
 #' \code{\link{convertBetaToTabix}} for converting standard beta files to tabix format
@@ -763,7 +743,8 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #'
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000) {
+                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
+                                         output_prefix = NULL) {
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -848,20 +829,26 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     close(con)
 
     hash <- .getFileHash(bed_file)
-    tabix_file_path <- file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz"))
+    tabix_file_path <- .getDerivedOutputPath(output_prefix, ".input_beta.tabix.bed.gz")
+    if (is.null(tabix_file_path)) {
+        tabix_file_path <- file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz"))
+    }
     # Convert to tabix
     convertBetaToTabix(
         .bed_file = normalized_bed_file,
         output_file = tabix_file_path,
         chunk_size = chunk_size,
-        njobs = 1
+        njobs = 1,
+        output_prefix = output_prefix
     )
+    locations_h5_file <- .getDerivedOutputPath(output_prefix, ".input_beta.locations.h5")
     locations <- genomicLocsFromTabix(
         tabix_file_path,
         num_rows = num_rows,
         hash = hash,
         output_dir = cache_dir,
-        chunk_size = chunk_size
+        chunk_size = chunk_size,
+        output_h5file = locations_h5_file
     )
 
 
@@ -876,18 +863,20 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #'
 #' @description Converts a methylation beta values file to a tabix-indexed BED format
 #' for faster random access during DMR analysis. The function uses a memory-efficient
-#' chunk-based approach to handle large files and automatically uses a cache directory
-#' to avoid redundant conversions of the same beta file.
+#' chunk-based approach to handle large files and can persist the derived tabix file
+#' next to analysis outputs when `output_prefix` is supplied.
 #'
 #' @param beta_file Character. Path to the input beta values file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
 #' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
-#' @param output_file Character. Path for the output tabix file. If NULL, uses a cache
-#'   directory in tempdir() with hash-based naming (default: NULL)
+#' @param output_file Character. Path for the output tabix file. If NULL, a temporary
+#'   file is used unless `output_prefix` is supplied.
 #' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
 #' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
+#' @param output_prefix Character. Optional prefix used to persist derived tabix
+#'   artifacts next to analysis outputs.
 #'
 #' @return Character. Path to the created tabix file, or NULL if conversion failed
 #'
@@ -895,19 +884,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #' The function performs the following steps:
 #' \enumerate{
 #'   \item Checks if tabix and bgzip tools are available in the system PATH
-#'   \item Computes a hash of the input beta file for cache lookup
-#'   \item Checks if a cached tabix file exists; if so, returns it immediately
 #'   \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
 #'   \item Converts beta values to BED format with genomic coordinates
 #'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
-#'   \item Saves to cache directory for future reuse
+#'   \item Persists the derived file if an explicit output path or `output_prefix` is provided
 #' }
-#'
-#' The chunk-based processing ensures that even very large beta files (millions of sites)
-#' can be converted without running out of memory. The cache directory is located at
-#' \code{tempdir()/CMEnt_tabix_cache/} and persists for the duration of the c session.
-#' Files are named based on the MD5 hash of the input beta file, ensuring that identical
-#' files reuse the same cached version.
 #'
 #' @examples
 #' # Convert a beta file to tabix format
@@ -932,7 +913,8 @@ convertBetaToTabix <- function(beta_file,
                                output_file = NULL,
                                chunk_size = 50000,
                                njobs = 1,
-                               .bed_file = NULL) {
+                               .bed_file = NULL,
+                               output_prefix = NULL) {
     # Check if tabix/bgzip are available
     tabix_available <- tryCatch(
         {
@@ -949,32 +931,14 @@ convertBetaToTabix <- function(beta_file,
         return(NULL)
     }
 
-    # Set default output file name - use cache directory
     if (is.null(output_file)) {
-        # Create cache directory in temp folder
-        cache_dir <- getOption(
-            "CMEnt.tabix_cache_dir",
-            .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
-        )
-        if (!dir.exists(cache_dir)) {
-            dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-        }
-        # Compute hash of beta file
-        beta_hash <- .getFileHash(beta_file)
-
-        # Create cache filename based on hash
-        output_file <- file.path(cache_dir, paste0("beta_", beta_hash, ".bed.gz"))
-
-        # Check if tabix file already exists in cache
-        if (getOption("CMEnt.use_tabix_cache", TRUE) && file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-            .log_info("Using cached tabix file: ", basename(output_file), level = 2)
-            return(output_file)
-        }
-        if (!getOption("CMEnt.use_tabix_cache", TRUE)) {
+        output_file <- .getDerivedOutputPath(output_prefix, ".input_beta.tabix.bed.gz")
+        if (is.null(output_file)) {
+            beta_hash <- .getFileHash(beta_file)
             output_file <- file.path(tempdir(), paste0("beta_", beta_hash, ".bed.gz"))
-            .log_info("Tabix caching disabled; will create new tabix file at a temporary location: ", basename(output_file), level = 2)
         }
     }
+    dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
 
     .log_step("Converting beta file to tabix format...", level = 1)
 
@@ -1457,22 +1421,32 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("CMEnt", "annotation_cache"))
+        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    }
+    bfc <- .getBiocFileCache(cache_dir)
     chain_name <- paste0(from_genome, "To", stringr::str_to_title(to_genome), ".over.chain")
-    chain_file <- file.path(cache_dir, chain_name)
+    chain_file <- .getBiocFileCachePath(
+        bfc,
+        rname = paste0("liftOver_", chain_name),
+        ext = ".over.chain"
+    )
     if (!file.exists(chain_file)) {
-        utils::download.file(
-            url = paste0(
+        temp_gz <- tempfile(fileext = ".over.chain.gz")
+        on.exit(unlink(temp_gz), add = TRUE)
+        .downloadFirstAvailable(
+            urls = paste0(
                 "https://hgdownload.soe.ucsc.edu/goldenPath/",
                 from_genome, "/liftOver/", chain_name, ".gz"
             ),
-            destfile = paste0(chain_file, ".gz"), mode = "wb"
+            destfile = temp_gz,
+            mode = "wb"
         )
-        R.utils::gunzip(paste0(chain_file, ".gz"), overwrite = TRUE)
+        R.utils::gunzip(
+            filename = temp_gz,
+            destname = chain_file,
+            overwrite = TRUE,
+            remove = FALSE
+        )
     }
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
@@ -1854,8 +1828,8 @@ sortBetaFileByCoordinates <- function(beta_file,
         "CMEnt.jaspar_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
     )
-    pwms_file <- file.path(cache_dir, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
-    if (file.exists(pwms_file)) {
+    cache_key <- paste0("jaspar", jaspar_version, "_", tax_group, "_pwms")
+    if (.hasBiocFileCacheRDS(cache_dir, cache_key)) {
         return(data.frame(pkg_name = character(0), reason = character(0), stringsAsFactors = FALSE))
     }
     .makeDependencyRequirements(
@@ -2007,19 +1981,20 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    }
 
     array <- tolower(array)
     genome <- tolower(genome)
-    cache_file <- file.path(cache_dir, paste0(
+    cache_key <- paste0(
         array, "_", genome,
-        "_locations.rds"
-    ))
-    if (getOption("CMEnt.use_annotation_cache", TRUE) && file.exists(cache_file)) {
-        .log_info("Using cached annotation file: ", basename(cache_file), level = 3)
-        locs <- readRDS(cache_file)
+        "_locations"
+    )
+    locs <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
+        .readBiocFileCacheRDS(cache_dir, cache_key)
+    } else {
+        NULL
+    }
+    if (!is.null(locs)) {
+        .log_info("Using cached annotation file: ", cache_key, level = 3)
         return(locs)
     }
     pkg_name <- .assertArrayAnnotationPackageInstalled(
@@ -2064,17 +2039,17 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     locs <- getRegistry(locs, "name")
     tryCatch(
         {
-            saveRDS(locs, cache_file)
+            .saveBiocFileCacheRDS(locs, cache_dir, cache_key)
         },
         warning = function(w) {
             .log_warn(
-                "Could not write annotation cache file '", cache_file,
+                "Could not write annotation cache entry '", cache_key,
                 "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
             )
         },
         error = function(e) {
             .log_warn(
-                "Could not write annotation cache file '", cache_file,
+                "Could not write annotation cache entry '", cache_key,
                 "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
             )
         }
@@ -2190,6 +2165,93 @@ orderByLoc <- function(x,
     x <- normalizePath(tools::R_user_dir(prefix, which = "cache"), mustWork = FALSE)
     try(dir.create(x, recursive = TRUE, showWarnings = FALSE))
     x
+}
+
+.getBiocFileCache <- function(cache_dir) {
+    if (!dir.exists(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    BiocFileCache::BiocFileCache(cache_dir, ask = FALSE)
+}
+
+.getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE) {
+    cache_records <- BiocFileCache::bfcquery(
+        bfc,
+        query = rname,
+        field = "rname",
+        exact = TRUE
+    )
+    if (nrow(cache_records) > 0) {
+        existing_paths <- cache_records$rpath[file.exists(cache_records$rpath)]
+        if (length(existing_paths) > 0) {
+            return(existing_paths[[1]])
+        }
+        if (!is.na(cache_records$rpath[[1]]) && nzchar(cache_records$rpath[[1]])) {
+            return(cache_records$rpath[[1]])
+        }
+    }
+
+    if (!isTRUE(create)) {
+        return(NULL)
+    }
+
+    unname(BiocFileCache::bfcnew(bfc, rname = rname, ext = ext))
+}
+
+.readBiocFileCacheRDS <- function(cache_dir, rname) {
+    bfc <- .getBiocFileCache(cache_dir)
+    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
+    if (is.null(cache_file) || !file.exists(cache_file)) {
+        return(NULL)
+    }
+    readRDS(cache_file)
+}
+
+.hasBiocFileCacheRDS <- function(cache_dir, rname) {
+    bfc <- .getBiocFileCache(cache_dir)
+    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
+    !is.null(cache_file) && file.exists(cache_file)
+}
+
+.saveBiocFileCacheRDS <- function(object, cache_dir, rname) {
+    bfc <- .getBiocFileCache(cache_dir)
+    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds")
+    saveRDS(object, cache_file)
+    invisible(cache_file)
+}
+
+.getDerivedOutputPath <- function(output_prefix, suffix) {
+    if (is.null(output_prefix) || !nzchar(output_prefix)) {
+        return(NULL)
+    }
+    paste0(output_prefix, suffix)
+}
+
+.downloadFirstAvailable <- function(urls, destfile, mode = "wb", quiet = TRUE) {
+    attempts <- character(length(urls))
+
+    for (i in seq_along(urls)) {
+        error_message <- tryCatch(
+            {
+                utils::download.file(urls[[i]], destfile, quiet = quiet, mode = mode)
+                NULL
+            },
+            error = function(e) {
+                conditionMessage(e)
+            }
+        )
+
+        if (is.null(error_message)) {
+            return(urls[[i]])
+        }
+
+        attempts[[i]] <- paste0(urls[[i]], " (", error_message, ")")
+    }
+
+    stop(
+        "Failed to download resource from all candidate URLs: ",
+        paste(attempts, collapse = "; ")
+    )
 }
 
 #' Extract DNA Sequences for DMRs
@@ -2312,19 +2374,14 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    site_positions_file <- file.path(cache_dir, paste0(
-        pkg_name, "_site_positions.rds"
-    ))
+    cache_key <- paste0(pkg_name, "_site_positions")
     if (canonical_chr) {
-        site_positions_file <- file.path(cache_dir, paste0(
-            pkg_name, "_canonical_chr_site_positions.rds"
-        ))
+        cache_key <- paste0(pkg_name, "_canonical_chr_site_positions")
     }
-    if (file.exists(site_positions_file)) {
-        sites <- readRDS(site_positions_file)
+    sites <- .readBiocFileCacheRDS(cache_dir, cache_key)
+    if (!is.null(sites)) {
+        sites <- data.table::as.data.table(sites)
+        data.table::setkey(sites, chr, start, end)
     } else {
         .log_info("Missing site positions cache. Generating site positions from BSgenome package...", level = 2)
         if (!isNamespaceLoaded(pkg_name)) {
@@ -2354,7 +2411,7 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
         colnames(sites) <- c("chr", "start")
         sites[, "end"] <- sites[, "start"]
         data.table::setkey(sites, chr, start, end)
-        saveRDS(sites, site_positions_file)
+        .saveBiocFileCacheRDS(sites, cache_dir, cache_key)
     }
     regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, 1:3]
     regions <- data.table::as.data.table(regions)
@@ -2604,10 +2661,14 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     # Get genes and promoters
     # Load them from cache if available
     suppressMessages({
-        genes_file <- file.path(cache_dir, paste0("genes_", genome, ".rds"))
-        if (file.exists(genes_file) && getOption("CMEnt.use_annotation_cache", TRUE)) {
-            .log_info("Loading cached genes from ", genes_file, level = 2)
-            genes <- readRDS(genes_file)
+        genes_key <- paste0("genes_", genome)
+        genes <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
+            .readBiocFileCacheRDS(cache_dir, genes_key)
+        } else {
+            NULL
+        }
+        if (!is.null(genes)) {
+            .log_info("Loading cached genes from ", genes_key, level = 2)
         } else {
             genes <- GenomicFeatures::genes(txdb)
             # get genes only within standard chromosomes
@@ -2620,26 +2681,30 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             }
             tryCatch(
                 {
-                    saveRDS(genes, genes_file)
+                    .saveBiocFileCacheRDS(genes, cache_dir, genes_key)
                 },
                 warning = function(w) {
                     .log_warn(
-                        "Could not write annotation cache file '", genes_file,
+                        "Could not write annotation cache entry '", genes_key,
                         "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
                     )
                 },
                 error = function(e) {
                     .log_warn(
-                        "Could not write annotation cache file '", genes_file,
+                        "Could not write annotation cache entry '", genes_key,
                         "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
                     )
                 }
             )
         }
-        promoters_file <- file.path(cache_dir, paste0("promoters_", genome, ".rds"))
-        if (file.exists(promoters_file) && getOption("CMEnt.use_annotation_cache", TRUE)) {
-            .log_info("Loading cached promoters from ", promoters_file, level = 2)
-            promoters <- readRDS(promoters_file)
+        promoters_key <- paste0("promoters_", genome)
+        promoters <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
+            .readBiocFileCacheRDS(cache_dir, promoters_key)
+        } else {
+            NULL
+        }
+        if (!is.null(promoters)) {
+            .log_info("Loading cached promoters from ", promoters_key, level = 2)
         } else {
             transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
@@ -2652,17 +2717,17 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             }
             tryCatch(
                 {
-                    saveRDS(promoters, promoters_file)
+                    .saveBiocFileCacheRDS(promoters, cache_dir, promoters_key)
                 },
                 warning = function(w) {
                     .log_warn(
-                        "Could not write annotation cache file '", promoters_file,
+                        "Could not write annotation cache entry '", promoters_key,
                         "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
                     )
                 },
                 error = function(e) {
                     .log_warn(
-                        "Could not write annotation cache file '", promoters_file,
+                        "Could not write annotation cache entry '", promoters_key,
                         "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
                     )
                 }

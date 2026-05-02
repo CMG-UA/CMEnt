@@ -67,7 +67,7 @@ layering raw scores, smoothed scores, piecewise-linear segments, slope-based
 candidate blocks, distance-based split boundaries, and final accepted blocks.
 }
 \examples{
-\dontrun{
+\donttest{
 dmrs <- readRDS("dmrs.rds")
 p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
 print(p)

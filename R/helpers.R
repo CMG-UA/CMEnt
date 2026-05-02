@@ -21,7 +21,7 @@
 #' @return A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 #' 
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Load example BSseq data
 #' data("BSobj", package = "bsseq")
 #' # Create a sample metadata data frame

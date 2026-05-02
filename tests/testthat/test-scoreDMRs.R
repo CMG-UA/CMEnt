@@ -53,6 +53,8 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
 })
 
 test_that("scoreDMRs accepts a BetaHandler input", {
+    skip_if_missing_array_annotation(array = "450K", genome = "hg19")
+
     beta <- loadExampleInputDataChr5And11("beta")
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))

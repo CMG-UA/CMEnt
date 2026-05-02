@@ -79,13 +79,16 @@ test_that("computeDMRsInteraction handles GRanges input", {
 })
 
 test_that("computeDMRsInteraction works with not precomputed motifs", {
+    skip_if_missing_motif_extraction_deps(array = "450K", genome = "hg19")
+
     dmrs <- readRDS(system.file("extdata/example_output.rds", package = "CMEnt", mustWork = FALSE))
     dmrs <- .reduceAndClearMotifs(dmrs)
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_similarity = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result, "list")
@@ -102,13 +105,15 @@ test_that("computeDMRsInteraction handles different similarity thresholds", {
         genome = "hg19",
         array = "450K",
         min_similarity = 0.9,
+        query_components_with_jaspar = FALSE
     ))
 
     result_low <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_similarity = 0.5
+        min_similarity = 0.5,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result_high, "list")
@@ -130,7 +135,8 @@ test_that("computeDMRsInteraction returns NULL when no interactions found", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_similarity = 0.99
+        min_similarity = 0.99,
+        query_components_with_jaspar = FALSE
     ))
 
     if (is.null(result$interactions)) {
@@ -148,14 +154,16 @@ test_that("computeDMRsInteraction handles custom motif_site_flank_size", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        motif_site_flank_size = 5
+        motif_site_flank_size = 5,
+        query_components_with_jaspar = FALSE
     ))
 
     result_custom <- suppressWarnings(computeDMRsInteraction(
         dmrs,
         genome = "hg19",
         array = "450K",
-        motif_site_flank_size = 10
+        motif_site_flank_size = 10,
+        query_components_with_jaspar = FALSE
     ))
 
     expect_type(result_default, "list")
@@ -188,7 +196,8 @@ test_that("computeDMRsInteraction validates similarity values", {
         dmrs,
         genome = "hg19",
         array = "450K",
-        min_similarity = 0.7
+        min_similarity = 0.7,
+        query_components_with_jaspar = FALSE
     ))
 
     if (!is.null(result$interactions) && nrow(result$interactions) > 0) {
@@ -337,6 +346,8 @@ test_that("computeDMRsInteraction avg_pwm has correct dimensions", {
 })
 
 test_that("extractDMRMotifs keeps seeds grouped per DMR", {
+    skip_if_missing_motif_extraction_deps(array = "450K", genome = "hg38")
+
     locs <- getSortedGenomicLocs(array = "450K", genome = "hg38")
     chr1_inds <- which(locs$chr == "chr1")
     skip_if(length(chr1_inds) < 6, "Not enough chr1 sites in annotation")
@@ -486,6 +497,8 @@ test_that("motif similarity tolerates DMRs without valid PWMs", {
 })
 
 test_that("getBackgroundArrayMotif uses start-anchored site windows for array probes", {
+    skip_if_missing_motif_extraction_deps(array = "450K", genome = "hg19")
+
     cache_dir <- tempfile("cment-bg-cache-")
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     withr::local_options(list(CMEnt.annotation_cache_dir = cache_dir))

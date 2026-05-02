@@ -63,13 +63,13 @@ create_simulation_microarray <- function(n_sites = 90, n_samples = 6, seed = 17)
 
 test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     bs <- create_simulation_bsseq()
+    set.seed(123)
     sim <- simulateDMRs(
         beta = bs,
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20,
-        seed = 123
+        max_sites = 20
     )
 
     expect_equal(sim$assay, "BSseq")
@@ -86,10 +86,12 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
-test_that("simulateDMRs is reproducible with seed for BSseq input", {
+test_that("simulateDMRs is reproducible with external seed for BSseq input", {
     bs <- create_simulation_bsseq()
-    sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20)
-    sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20)
+    set.seed(42)
+    sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, min_sites = 5, max_sites = 20)
+    set.seed(42)
+    sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, min_sites = 5, max_sites = 20)
 
     expect_equal(bsseq::getCoverage(sim1$simulated, type = "M"), bsseq::getCoverage(sim2$simulated, type = "M"))
     expect_equal(sim1$truth, sim2$truth)
@@ -100,7 +102,10 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
     bs_dup <- bs[c(1L, seq_len(nrow(bs))), ]
 
     expect_warning(
-        sim <- simulateDMRs(beta = bs_dup, num_dmrs = 3, seed = 42, min_sites = 5, max_sites = 20),
+        {
+            set.seed(42)
+            sim <- simulateDMRs(beta = bs_dup, num_dmrs = 3, min_sites = 5, max_sites = 20)
+        },
         NA
     )
 
@@ -112,12 +117,12 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
 test_that("simulateDMRs uses simDMRs sample names for custom groups", {
     bs <- create_simulation_bsseq()
     groups <- c("untreated", "treated", "untreated", "treated", "untreated", "treated")
+    set.seed(42)
     sim <- simulateDMRs(
         beta = bs,
         groups = groups,
         case_group = "treated",
         num_dmrs = 3,
-        seed = 42,
         min_sites = 5,
         max_sites = 20
     )
@@ -134,6 +139,7 @@ test_that("simulateDMRs uses simDMRs sample names for custom groups", {
 
 test_that("simulateDMRs supports microarray beta input", {
     array_input <- create_simulation_microarray()
+    set.seed(321)
     sim <- simulateDMRs(
         beta = array_input$beta,
         sorted_locs = array_input$sorted_locs,
@@ -141,8 +147,7 @@ test_that("simulateDMRs supports microarray beta input", {
         delta_max0 = 0.25,
         min_sites = 4,
         max_sites = 20,
-        max_gap = 500L,
-        seed = 321
+        max_gap = 500L
     )
 
     expect_equal(sim$assay, "microarray")
@@ -160,13 +165,13 @@ test_that("simulateDMRs supports BSseq input provided as an rds path", {
     saveRDS(bs, bs_rds)
     on.exit(unlink(bs_rds), add = TRUE)
 
+    set.seed(777)
     sim <- simulateDMRs(
         beta = bs_rds,
         num_dmrs = 3,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20,
-        seed = 777
+        max_sites = 20
     )
 
     expect_equal(sim$assay, "BSseq")

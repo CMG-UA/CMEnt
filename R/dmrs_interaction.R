@@ -125,24 +125,23 @@ comparePWMToJaspar <- function(pwm_queries) {
     tax_group <- getOption("CMEnt.jaspar_tax_group", "vertebrates")
     jaspar_version <- getOption("CMEnt.jaspar_version", 2024)
     corr_threshold <- getOption("CMEnt.jaspar_corr_threshold", 0.9)
-    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-    pwms_file <- file.path(cache, paste0("jaspar", jaspar_version, "_", tax_group, "_pwms.rds"))
-    if (file.exists(pwms_file)) {
+    cache_key <- paste0("jaspar", jaspar_version, "_", tax_group, "_pwms")
+    jaspar_pwms <- .readBiocFileCacheRDS(cache, cache_key)
+    if (!is.null(jaspar_pwms)) {
         .log_info("Loading JASPAR PWMs from cache...", level = 3)
-        jaspar_pwms <- readRDS(pwms_file)
     } else {
-        .log_info("Downloading JASPAR PWMs...", level = 2)
         .assertDependencyRequirements(
             requirements = .jasparDependencyRequirements(),
             context = "comparePWMToJaspar()"
         )
+        .log_info("Downloading JASPAR PWMs...", level = 2)
         jaspar_pkg <- paste0("JASPAR", jaspar_version)
         db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
         opts <- list()
         opts[["tax_group"]] <- tax_group
         vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
         vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
-        saveRDS(vertebrate_pwms, pwms_file)
+        .saveBiocFileCacheRDS(vertebrate_pwms, cache, cache_key)
         jaspar_pwms <- vertebrate_pwms
     }
     jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
@@ -207,9 +206,9 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
     cache_dir <- getOption("CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
-    dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-    cache_file <- file.path(cache_dir, paste0("bgpwm_", genome, "_", array, "_", motif_site_flank_size, ".rds"))
-    if (!file.exists(cache_file)) {
+    cache_key <- paste0("bgpwm_", genome, "_", array, "_", motif_site_flank_size)
+    bg_pwm <- .readBiocFileCacheRDS(cache_dir, cache_key)
+    if (is.null(bg_pwm)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
         if (is.null(.sorted_locs)) {
             sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
@@ -242,13 +241,11 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         bg_frequencies <- as.matrix(apply(site_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
         tryCatch(
-            saveRDS(bg_pwm, cache_file),
+            .saveBiocFileCacheRDS(bg_pwm, cache_dir, cache_key),
             error = function(e) {
                 .log_info("Could not cache background motif PWM: ", e$message, level = 3)
             }
         )
-    } else {
-        bg_pwm <- readRDS(cache_file)
     }
     bg_pwm
 }

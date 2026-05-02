@@ -11,24 +11,13 @@
 
 
 update_package_option <- future:::update_package_option
-update_package_option("CMEnt.random_seed", mode = "numeric", default = 42)
 update_package_option("CMEnt.njobs", mode = "numeric", default = min(8, future::availableCores() - 1))
 update_package_option("CMEnt.beta_in_mem_threshold_mb", mode = "numeric", default = 500)
 update_package_option("CMEnt.verbose", mode = "numeric", default = 1)
-update_package_option("CMEnt.use_bed_cache", mode = "logical", default = FALSE)
-update_package_option("CMEnt.bed_cache_dir", mode = "character",
-    default =  .getOSCacheDir(file.path("R", "CMEnt", "bed_cache"))
-)
-update_package_option("CMEnt.use_tabix_cache", mode = "logical", default = TRUE)
-update_package_option("CMEnt.tabix_cache_dir", mode = "character",
-    default =  .getOSCacheDir(file.path("R", "CMEnt", "tabix_cache"))
-)
+
 update_package_option("CMEnt.use_annotation_cache", mode = "logical", default = TRUE)
 update_package_option("CMEnt.annotation_cache_dir", mode = "character",
     default = .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
-)
-update_package_option("CMEnt.h5_cache_dir", mode = "character",
-    default = .getOSCacheDir(file.path("R", "CMEnt", "h5_cache"))
 )
 update_package_option(
     "CMEnt.jaspar_cache_dir", mode = "character",

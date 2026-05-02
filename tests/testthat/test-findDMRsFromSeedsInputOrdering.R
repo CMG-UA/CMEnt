@@ -56,7 +56,7 @@ test_that("findDMRsFromSeeds validates start ordering within chromosome", {
             ext_site_delta_beta = NA_real_,
             max_lookup_dist = 1000,
             max_pval = 0.05,
-            pval_mode = "parametric",
+            testing_mode = "parametric",
             njobs = 1
         ),
         regexp = "Beta locations are not sorted within chromosome chr1"
@@ -88,7 +88,7 @@ test_that("findDMRsFromSeeds validates chromosome block contiguity", {
             ext_site_delta_beta = NA_real_,
             max_lookup_dist = 1000,
             max_pval = 0.05,
-            pval_mode = "parametric",
+            testing_mode = "parametric",
             njobs = 1
         ),
         regexp = "Beta locations are not grouped by chromosome: chr1 appears in multiple blocks"

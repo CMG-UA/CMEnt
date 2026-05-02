@@ -600,7 +600,6 @@
         group_counts <- table(pheno[[sample_group_col]])
         if (any(group_counts > max_samples_per_group)) {
             .log_info("Limiting to ", max_samples_per_group, " samples per group for plotting. Original group counts:\n", paste(names(group_counts), group_counts, sep = ": ", collapse = "\n"))
-            set.seed(123) # for reproducibility
             selected_samples <- unlist(
                 lapply(
                     names(group_counts),
@@ -620,7 +619,6 @@
         # if no sample grouping information is provided, limit to max_samples_per_group samples total for plotting
         if (ncol(beta_data) - 1 > max_samples_per_group) {
             .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
-            set.seed(123) # for reproducibility
             sample_cols <- setdiff(colnames(beta_data), "site")
             selected_samples <- sample(sample_cols, max_samples_per_group)
         }
@@ -1614,7 +1612,7 @@ plotDMR <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' dmrs <- readRDS("dmrs.rds")
 #' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
 #' print(p)
@@ -1906,7 +1904,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' dmrs <- readRDS("dmrs.rds")
 #' p <- plotDMRsManhattan(dmrs)
 #' print(p)

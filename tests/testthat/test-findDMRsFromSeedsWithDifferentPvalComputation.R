@@ -18,7 +18,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "parametric"
+        testing_mode = "parametric"
     )
 
     # Test empirical mode with auto strategy
@@ -33,7 +33,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "auto",
         ntries = 100
     ))
@@ -50,7 +50,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "auto",
+        testing_mode = "auto",
         empirical_strategy = "auto",
         ntries = 100
     )
@@ -67,7 +67,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 100
     ))
@@ -84,7 +84,7 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "permutations",
         ntries = 100
     )
@@ -110,14 +110,14 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
     }
 })
 
-test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibility", {
+test_that("findDMRsFromSeeds empirical mode respects external random seeds for reproducibility", {
     skip_on_ci()
     beta <- loadExampleInputDataChr5And11("beta")
     dmps <- loadExampleInputDataChr5And11("dmps")
     pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run with same seed twice
-    options("CMEnt.random_seed" = 42)
+    set.seed(42)
     dmrs_seed1_run1 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -129,10 +129,11 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
     ))
+    set.seed(42)
     dmrs_seed1_run2 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -144,12 +145,12 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
     ))
     # Run with different seed
-    options("CMEnt.random_seed" = 123)
+    set.seed(123)
     dmrs_seed2 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -161,7 +162,7 @@ test_that("findDMRsFromSeeds empirical mode respects random seed for reproducibi
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         empirical_strategy = "montecarlo",
         ntries = 50
     ))
@@ -195,7 +196,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         ntries = 0
     ))
 
@@ -211,7 +212,7 @@ test_that("findDMRsFromSeeds handles different ntries values correctly", {
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
-        pval_mode = "empirical",
+        testing_mode = "empirical",
         ntries = 50
     ))
 
@@ -239,7 +240,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
             max_pval = 1e-5,
             entanglement = "strong",
             aggfun = median,
-            pval_mode = c(g1 = "empirical", g2 = "empirical"),
+            testing_mode = c(g1 = "empirical", g2 = "empirical"),
             empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
             ntries = 50,
             mid_p = FALSE
@@ -256,7 +257,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
         max_pval = 1e-5,
         entanglement = "weak",
         aggfun = median,
-        pval_mode = c(g1 = "empirical", g2 = "empirical"),
+        testing_mode = c(g1 = "empirical", g2 = "empirical"),
         empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
         ntries = 50,
         mid_p = FALSE

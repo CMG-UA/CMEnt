@@ -1555,7 +1555,7 @@
 #' @return `NULL` invisibly after drawing the plot.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' dmrs <- readRDS("dmrs.rds")
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
@@ -2210,7 +2210,7 @@ plotDMRsCircos <- function(dmrs,
 #'   `start`, and `end`.
 #'
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
@@ -2306,12 +2306,13 @@ plotAutoDMRsCircos <- function(dmrs,
 }
 
 .getCytobandData <- function(genome) {
-    cache_dir <- tools::R_user_dir("CMEnt", which = "cache")
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE)
-    }
-
-    cache_file <- file.path(cache_dir, paste0("cytoband_", genome, ".rds"))
+    cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "cytoband_cache"))
+    bfc <- .getBiocFileCache(cache_dir)
+    cache_file <- .getBiocFileCachePath(
+        bfc,
+        rname = paste0("cytoband_", genome),
+        ext = ".rds"
+    )
     if (file.exists(cache_file)) {
         .log_info("Loading cached cytoband data for ", genome, level = 3)
         return(readRDS(cache_file))
@@ -2320,21 +2321,28 @@ plotAutoDMRsCircos <- function(dmrs,
     .log_step("Downloading cytoband data from UCSC for ", genome, "...", level = 3)
     tryCatch(
         {
-            url <- paste0("https://hgdownload.cse.ucsc.edu/goldenpath/", genome, "/database/cytoBandIdeo.txt.gz")
             temp_file <- tempfile(fileext = ".txt.gz")
-            result <- tryCatch(
-                {
-                    utils::download.file(url, temp_file, quiet = TRUE, mode = "wb")
-                    TRUE
-                },
-                error = function(e) {
-                    .log_warn("cytoBandIdeo not found, trying cytoBand table...")
-                    FALSE
-                }
+            on.exit(unlink(temp_file), add = TRUE)
+            urls <- c(
+                paste0(
+                    "https://hgdownload.cse.ucsc.edu/goldenpath/",
+                    genome,
+                    "/database/cytoBandIdeo.txt.gz"
+                ),
+                paste0(
+                    "https://hgdownload.cse.ucsc.edu/goldenpath/",
+                    genome,
+                    "/database/cytoBand.txt.gz"
+                )
             )
-            if (!result) {
-                url <- paste0("https://hgdownload.cse.ucsc.edu/goldenpath/", genome, "/database/cytoBand.txt.gz")
-                utils::download.file(url, temp_file, quiet = TRUE, mode = "wb")
+            downloaded_url <- .downloadFirstAvailable(
+                urls = urls,
+                destfile = temp_file,
+                mode = "wb",
+                quiet = TRUE
+            )
+            if (identical(downloaded_url, urls[[2]])) {
+                .log_warn("cytoBandIdeo not found, using cytoBand table instead...")
             }
             cytoband <- read.table(temp_file, sep = "\t", stringsAsFactors = FALSE, header = FALSE)
             if (ncol(cytoband) >= 5) {
@@ -2345,7 +2353,6 @@ plotAutoDMRsCircos <- function(dmrs,
             } else {
                 stop("Unexpected cytoband format")
             }
-            unlink(temp_file)
             saveRDS(cytoband, cache_file)
             .log_success("Cytoband data downloaded and cached", level = 3)
             cytoband
@@ -2442,7 +2449,6 @@ plotAutoDMRsCircos <- function(dmrs,
                 group_beta <- group_beta[, non_zero_cols, drop = FALSE]
                 group_beta <- t(group_beta)
                 pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
-                set.seed(getOption("CMEnt.random_seed", 42))
                 kmeans <- stats::kmeans(
                     pcs,
                     centers = max_num_samples_per_group,
