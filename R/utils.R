@@ -1712,10 +1712,20 @@ sortBetaFileByCoordinates <- function(beta_file,
 supportedOrganisms <- function() {
     filename <- system.file(
         "extdata",
-        "supportedOrganisms.csv"
+        "supportedOrganisms.csv",
+        package = "CMEnt",
+        mustWork = FALSE
     )
-    csv <- read.csv(filename, header = TRUE, stringsAsFactors = FALSE)
-    tibble::as_tibble(csv)
+    if (!nzchar(filename)) {
+        filename <- file.path("inst", "extdata", "supportedOrganisms.csv")
+    }
+    if (!file.exists(filename)) {
+        stop(
+            "Could not locate 'supportedOrganisms.csv' in the installed package or source tree.",
+            call. = FALSE
+        )
+    }
+    read.csv(filename, header = TRUE, stringsAsFactors = FALSE)
 }
 
 .getGeneAnnotationPackages <- function(genome) {

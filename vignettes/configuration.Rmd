@@ -10,9 +10,8 @@ vignette: >
 ---
 
 ```{r setup, include=FALSE}
-try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(CMEnt), silent = TRUE)
+    library(CMEnt)
 })
 knitr::opts_chunk$set(
     echo = TRUE,
@@ -60,6 +59,7 @@ beta <- loadExampleInputDataChr5And11("beta")
 **Example:**
 ```{r}
 dmps <- loadExampleInputDataChr5And11("dmps")
+seeds <- dmps
 ```
 
 ### `pheno`
@@ -201,7 +201,7 @@ Set to `<= 0` to compute connectivity genome-wide.
 **Recommendation:** Use `"strong"` (default) for most cases to ensure robust, reproducible DMRs. Use `"weak"` when you want to capture group-specific methylation patterns or when working with heterogeneous sample groups.
 
 **Example:**
-```{r}
+```{r, eval=FALSE}
 dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
@@ -468,7 +468,7 @@ options("CMEnt.scoring_nfold" = 3)
 
 ## Example 1: High-Confidence DMRs with Strict Filtering
 
-```{r}
+```{r, eval=FALSE}
 dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,
@@ -487,7 +487,7 @@ dmrs <- findDMRsFromSeeds(
 
 ## Example 2: Broad Region Detection with Relaxed Parameters
 
-```{r}
+```{r, eval=FALSE}
 dmrs <- findDMRsFromSeeds(
     beta = beta,
     seeds = seeds,

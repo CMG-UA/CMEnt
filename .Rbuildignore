@@ -24,3 +24,4 @@
 ^inst/extdata/example_output\.seeds_beta\.tsv\.gz$
 ^inst/extdata/example_output\.meta\.rds$
 ^notebooks($|/)
+^docs($|/)

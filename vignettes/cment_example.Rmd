@@ -44,11 +44,9 @@ This notebook showcases all CMEnt capabilities, including DMR scoring, motif ext
 ## Setup
 
 ```{r setup}
-try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(CMEnt), silent = TRUE)
+    library(CMEnt)
     library(GenomicRanges)
-    library(dplyr)
     library(ggplot2)
 })
 
@@ -82,26 +80,10 @@ beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
 ```
 
 ## DMR Calling from Seeds
-The `findDMRsFromSeeds` function is used to call DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
+The `findDMRsFromSeeds` function is used to call DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. To keep the vignette fast and reproducible during package checks, we load a bundled example result generated with this workflow. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
 ```{r find_dmrs}
 pheno[, "case_control"] <- pheno$Sample_Group == "cancer"
-# Find DMRs using parallel processing with 4 cores, producing a GRanges object with the called DMRs and their metadata.
-dmrs <- findDMRsFromSeeds(
-    beta = beta_handler, # The beta can be an array-like object, tabix file path, or a BED file path. Here we use the beta handler, which is a wrapper around the beta matrix that allows for efficient retrieval of beta values for the DMRs and their seeds.
-    seeds = dmps, # The seeds are the DMPs, which are pre-computed and provided as example data.
-    seeds_id_col = NULL, # The column in the seeds data that contains the unique identifier for each seed, which will be used to link the seeds to the DMRs. If not provided, like here, the rownames of the seeds data will be used as identifiers. In case of a NGS experiment (of a BED, tabix or bsseq input), the names should be in the format "chr:position" to allow for correct linking to the genomic coordinates.
-    pheno = pheno, # The phenotype data, which contains the sample information and covariates. It should have a column with the sample group labels, which will be used for the SVM-based scoring of the DMRs. It can be provided as a TSV file.
-    min_sites = 3, # The Minimum number of sites that a DMR should have to be considered valid. This is used to filter out small regions that may not be biologically relevant.
-    max_bridge_seeds_gaps = 1, # The maximum number of non-significant seeds that can be bridged when expanding the DMRs. This allows for some flexibility in the region expansion, while still maintaining a focus on significant seeds.
-    max_bridge_extension_gaps = 1, # The maximum number of non-significant sites that can be bridged when extending the DMRs beyond the seeds. This allows for some flexibility in the region extension, while still maintaining a focus on significant sites.
-    casecontrol_col = "case_control", # The column in the phenotype data that contains the binary case-control labels for the samples, which will be used for the SVM-based scoring of the DMRs. It should be a logical or factor column with two levels, where one level is considered as "case" and the other as "control". If not provided, the first level of the sample group column will be considered as "control" and the second level as "case".
-    sample_group_col = "Sample_Group", # The column in the phenotype data that contains the sample group labels for the SVM-based scoring.
-    covariates = c("Age", "Gender"), # Optional covariates to include in the model, if available in the phenotype data.
-    entanglement = "weak", # The entanglement strategy to use, either demand at least a  single group seeds to be correlated ("weak", slower), or demand that all groups  seeds are correlated ("strong", the default, quicker).
-    genome = genome, # The genome assembly to use for the genomic coordinates of the DMRs. It will be guessed if not provided, based on the array type or the input data. It is used for the genomic operations and annotations of the DMRs.
-    array = array_type, # The array platform to use, available are 450K, EPIC, EPICv2.
-    output_prefix = "tmp/CMEnt_example" # The prefix for the output files. It is required to provide this if you want to use the CMEntViewer Shiny app, as it will look for the output files with this prefix. The output files include the DMRs in a GRanges object saved as an RDS file, and a summary table of the DMRs saved as a TSV file.
-)
+dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
 cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))
 cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", start(dmrs)[1], "-", end(dmrs)[1])))
@@ -144,6 +126,7 @@ applies a minimum similarity threshold of 0.8, and identifies connected componen
 The resulting components are annotated with JASPAR motifs if available.
 The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
 ```{r}
+query_with_jaspar <- requireNamespace("JASPAR2024", quietly = TRUE)
 interaction_results <- computeDMRsInteraction(
     dmrs = dmrs,
     genome = genome,
@@ -151,7 +134,7 @@ interaction_results <- computeDMRsInteraction(
     min_similarity = 0.8,
     motif_site_flank_size = 5,
     min_component_size = 2,
-    query_components_with_jaspar = TRUE
+    query_components_with_jaspar = query_with_jaspar
 )
 
 interaction_tbl <- interaction_results$interactions
@@ -181,9 +164,8 @@ if (nrow(interaction_tbl) > 5) {
 }
 
 if (annotated_components > 0) {
-    components_tbl <- component_tbl[annotated_components_m, ] |>
-        dplyr::select(component_id, size, consensus_seq, jaspar_names) |>
-        dplyr::arrange(dplyr::desc(size))
+    components_tbl <- component_tbl[annotated_components_m, c("component_id", "size", "consensus_seq", "jaspar_names")]
+    components_tbl <- components_tbl[order(components_tbl$size, decreasing = TRUE), , drop = FALSE]
     if (nrow(components_tbl) > 0) {
         knitr::kable(
             components_tbl,
