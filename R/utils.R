@@ -3309,6 +3309,12 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
 
     # Fall back to ExperimentHub when local example files are unavailable.
     if (use_experiment_hub) {
+        resource_mapping <- c(
+            beta = "EH10275",
+            pheno = "EH10276",
+            dmps = "EH10277",
+            array_type = "EH10278"
+        )
         if (verbose_setting >= 2) {
             .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
         }
@@ -3324,7 +3330,7 @@ loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
                 dir.create(cache, showWarnings = FALSE, recursive = TRUE)
                 eh <- ExperimentHub::ExperimentHub()
                 cment_resources <- AnnotationHub::query(eh, "DMRsegaldata")
-                resource_match <- cment_resources[grepl(resource, cment_resources$title, ignore.case = TRUE)]
+                resource_match <- cment_resources[resource_mapping[resource]]
                 if (length(resource_match) > 0) {
                     if (verbose_setting >= 2) {
                         .log_success("Found resource in ExperimentHub", level = 2)

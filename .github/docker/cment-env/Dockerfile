@@ -1,5 +1,16 @@
-FROM bioconductor/bioconductor_docker:devel
-ENV DEBIAN_FRONTEND=noninteractive
+FROM rocker/r2u:24.04
+LABEL maintainer="vaslem"
+ENV BIOCONDUCTOR_VERSION=3.23 \
+    DEBIAN_FRONTEND="noninteractive" \
+    TZ="Europe/Brussels" \
+    HOME=/home/root \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    PATH="/usr/lib/google-cloud-sdk/bin:${PATH}"
+WORKDIR /home/root
+# Setting bash as the default shell
+SHELL ["/bin/bash", "-c"]
+
 ENV R_COMPILE_AND_INSTALL_PACKAGES=never
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,12 +31,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pandoc \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /requirements
+COPY .github/docker/cment-env/.Rprofile .Rprofile
+ENV R_PROFILE_USER=/home/root/.Rprofile
+RUN mkdir -p "$HOME/.cache/R/ExperimentHub" && \
+    Rscript -e "install.packages('BiocManager'); BiocManager::install(version='${BIOCONDUCTOR_VERSION}', ask=FALSE)" && \
+    rm -rf /tmp/downloaded_packages
 
 COPY .github/docker/cment-env/cran-requirements.txt cran-requirements.txt
 COPY .github/docker/cment-env/bioc-requirements.txt bioc-requirements.txt
 COPY .github/docker/cment-env/install-requirements.R install-requirements.R
 
 RUN Rscript install-requirements.R
-RUN Rscript -e "install.packages(c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), repos = 'https://cloud.r-project.org')"
-RUN Rscript -e "BiocManager::install(c('IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'), ask = FALSE, update = FALSE)"
+# Install additional packages that are not in the requirements files but are needed for testing and development
+RUN Rscript -e "install_deps(packages=c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), bioc_packages=c('IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'))"

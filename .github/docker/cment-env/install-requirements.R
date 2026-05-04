@@ -13,21 +13,4 @@ read_pkgs <- function(path) {
 cran <- read_pkgs("cran-requirements.txt")
 bioc <- read_pkgs("bioc-requirements.txt")
 
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager", repos = "https://cloud.r-project.org")
-}
-
-if (length(cran) > 0L) {
-  install.packages(
-    cran,
-    repos = "https://cloud.r-project.org"
-  )
-}
-
-if (length(bioc) > 0L) {
-  BiocManager::install(
-    bioc,
-    ask = FALSE,
-    update = FALSE
-  )
-}
+install_deps(packages = cran, bioc_packages = bioc)

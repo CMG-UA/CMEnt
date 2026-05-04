@@ -50,6 +50,7 @@ Imports:
     data.table,
     DelayedArray,
     DelayedDataFrame,
+    DMRsegaldata,
     DT,
     e1071,
     FNN,
