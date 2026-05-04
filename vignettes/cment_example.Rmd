@@ -91,7 +91,7 @@ cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", s
 
 ## DMR Summary
 The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and sites, delta-beta, score, CV accuracy, score, and block ID of each DMR.
-```{r}
+```{r dmr_summary}
 summary_tbl <- data.frame(
     chr = as.character(seqnames(dmrs)),
     start = start(dmrs),
@@ -110,7 +110,7 @@ knitr::kable(head(summary_tbl, 5), caption = "Top 5 scoring DMRs (margin-sensiti
 
 ## Motif Discovery
 Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function (called by default when `findDMRsFromSeeds` is used). The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
-```{r}
+```{r motif_discovery}
 n_motif_consensus <- sum(!is.na(mcols(dmrs)$consensus_seq))
 n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(dmrs)$consensus_seq)))
 cat(sprintf("Motifs extracted for %d/%d DMRs.\n", n_motif_consensus, length(dmrs)))
@@ -125,7 +125,7 @@ excluding the center site positions, corrects for microarray design biases,
 applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
 The resulting components are annotated with JASPAR motifs if available.
 The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
-```{r}
+```{r motif_interactions}
 query_with_jaspar <- requireNamespace("JASPAR2024", quietly = TRUE)
 interaction_results <- computeDMRsInteraction(
     dmrs = dmrs,

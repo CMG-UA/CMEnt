@@ -40,7 +40,7 @@ This vignette provides a comprehensive guide to the configuration available in C
 - A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by sample columns, existing as row names in the provided pheno data
 
 **Example:**
-```{r}
+```{r beta_example}
 beta <- loadExampleInputDataChr5And11("beta")
 ```
 
@@ -57,7 +57,7 @@ beta <- loadExampleInputDataChr5And11("beta")
 - The site IDs must match those in the beta data, either as Illumina IDs or genomic coordinates (chr:start). The latter is required when using BED files for beta.
 
 **Example:**
-```{r}
+```{r seeds_example}
 dmps <- loadExampleInputDataChr5And11("dmps")
 seeds <- dmps
 ```
@@ -73,7 +73,7 @@ seeds <- dmps
 - May contain case/control status column (specified by `casecontrol_col`)
 
 **Example:**
-```{r}
+```{r pheno_example}
 pheno <- loadExampleInputDataChr5And11("pheno")
 ```
 
@@ -351,7 +351,7 @@ CMEnt uses several global options that can be set using the `options()` function
 **Default:** `min(8, future::availableCores() - 1)`  
 **Description:** Number of parallel jobs (defaults to the minimum of 8 and one less than the number of available CPU cores).
 
-```{r}
+```{r njobs_option}
 options("CMEnt.njobs" = 4)
 ```
 
@@ -362,7 +362,7 @@ options("CMEnt.njobs" = 4)
 **Default:** `1`  
 **Description:** Default verbosity level.
 
-```{r}
+```{r verbose_option}
 options("CMEnt.verbose" = 2)
 ```
 
@@ -373,7 +373,7 @@ options("CMEnt.verbose" = 2)
 **Default:** `500`  
 **Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
 
-```{r}
+```{r beta_in_memory_option}
 options("CMEnt.beta_in_mem_threshold_mb" = 200)
 ```
 
@@ -384,7 +384,7 @@ options("CMEnt.beta_in_mem_threshold_mb" = 200)
 **Default:** `TRUE`  
 **Description:** Enable caching of gene annotations.
 
-```{r}
+```{r annotation_cache_option}
 options("CMEnt.use_annotation_cache" = TRUE)
 ```
 
@@ -393,7 +393,7 @@ options("CMEnt.use_annotation_cache" = TRUE)
 **Default:** `USER_CACHE_DIR/R/CMEnt/annotation_cache`  
 **Description:** Directory for annotation cache.
 
-```{r}
+```{r annotation_cache_dir_option}
 options("CMEnt.annotation_cache_dir" = "/path/to/cache")
 ```
 
@@ -402,7 +402,7 @@ options("CMEnt.annotation_cache_dir" = "/path/to/cache")
 **Default:** `USER_CACHE_DIR/R/CMEnt/jaspar_cache`  
 **Description:** Directory for JASPAR motif database cache.
 
-```{r}
+```{r jaspar_cache_dir_option}
 options("CMEnt.jaspar_cache_dir" = "/path/to/cache")
 ```
 
@@ -413,7 +413,7 @@ options("CMEnt.jaspar_cache_dir" = "/path/to/cache")
 **Default:** `2024`  
 **Description:** JASPAR database version to use for motif analysis.
 
-```{r}
+```{r jaspar_version_option}
 options("CMEnt.jaspar_version" = 2024)
 ```
 
@@ -422,7 +422,7 @@ options("CMEnt.jaspar_version" = 2024)
 **Default:** `"vertebrates"`  
 **Description:** Taxonomic group for JASPAR motif filtering.
 
-```{r}
+```{r min_motif_similarity_option}
 options("CMEnt.min_motif_similarity" = 0.75)
 ```
 
@@ -431,7 +431,7 @@ options("CMEnt.min_motif_similarity" = 0.75)
 **Default:** `0.8`  
 **Description:** Minimum motif similarity threshold for DMR interaction analysis.
 
-```{r}
+```{r jaspar_tax_group_option}
 options("CMEnt.jaspar_tax_group" = "vertebrates")
 ```
 
@@ -440,7 +440,7 @@ options("CMEnt.jaspar_tax_group" = "vertebrates")
 **Default:** `0.9`  
 **Description:** Correlation threshold for JASPAR motif similarity.
 
-```{r}
+```{r jaspar_corr_threshold_option}
 options("CMEnt.jaspar_corr_threshold" = 0.85)
 ```
 
@@ -449,7 +449,7 @@ options("CMEnt.jaspar_corr_threshold" = 0.85)
 **Default:** `FALSE`  
 **Description:** Create debug directory for troubleshooting.
 
-```{r}
+```{r make_debug_dir_option}
 options("CMEnt.make_debug_dir" = TRUE)
 ```
 
@@ -460,7 +460,7 @@ options("CMEnt.make_debug_dir" = TRUE)
 **Default:** `5`  
 **Description:** Number of folds for cross-validation when scoring DMRs.
 
-```{r}
+```{r scoring_nfold_option}
 options("CMEnt.scoring_nfold" = 3)
 ```
 

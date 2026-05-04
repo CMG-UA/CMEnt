@@ -1,0 +1,9 @@
+CHANGES IN VERSION 0.99.0
+
+NEW FEATURES
+o Initial Bioconductor submission candidate for CMEnt.
+
+BUG FIXES
+o Stabilized vignette and example execution for package checks.
+o Restored bundled example data to the built package.
+o Cleaned package documentation and namespace metadata for submission checks.

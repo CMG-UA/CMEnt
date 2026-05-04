@@ -1,5 +1,4 @@
-FROM bioconductor/bioconductor_docker:RELEASE_3_21
-
+FROM bioconductor/bioconductor_docker:devel
 ENV DEBIAN_FRONTEND=noninteractive
 ENV R_COMPILE_AND_INSTALL_PACKAGES=never
 

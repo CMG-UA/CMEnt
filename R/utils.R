@@ -2207,13 +2207,15 @@ orderByLoc <- function(x,
         field = "rname",
         exact = TRUE
     )
-    if (nrow(cache_records) > 0) {
-        existing_paths <- cache_records$rpath[file.exists(cache_records$rpath)]
+    if (nrow(cache_records) > 0L) {
+        resolved_paths <- unname(BiocFileCache::bfcpath(bfc, rids = cache_records$rid))
+        existing_paths <- resolved_paths[file.exists(resolved_paths)]
         if (length(existing_paths) > 0) {
             return(existing_paths[[1]])
         }
-        if (!is.na(cache_records$rpath[[1]]) && nzchar(cache_records$rpath[[1]])) {
-            return(cache_records$rpath[[1]])
+        valid_paths <- resolved_paths[!is.na(resolved_paths) & nzchar(resolved_paths)]
+        if (length(valid_paths) > 0L) {
+            return(valid_paths[[1]])
         }
     }
 
