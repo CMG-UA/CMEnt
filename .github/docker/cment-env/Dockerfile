@@ -26,15 +26,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libtiff5-dev \
     libxml2-dev \
-    nodejs \
-    npm \
     pandoc \
     && rm -rf /var/lib/apt/lists/*
 
 COPY .github/docker/cment-env/.Rprofile .Rprofile
 ENV R_PROFILE_USER=/home/root/.Rprofile
 RUN mkdir -p "$HOME/.cache/R/ExperimentHub" && \
-    Rscript -e "install.packages('BiocManager'); BiocManager::install(version='${BIOCONDUCTOR_VERSION}', ask=FALSE)" && \
+    for i in {1..5}; do \
+        Rscript -e "install.packages('BiocManager'); BiocManager::install(version='${BIOCONDUCTOR_VERSION}', ask=FALSE)" && \
+        break || sleep 30; \
+    done && \
     rm -rf /tmp/downloaded_packages
 
 COPY .github/docker/cment-env/cran-requirements.txt cran-requirements.txt
