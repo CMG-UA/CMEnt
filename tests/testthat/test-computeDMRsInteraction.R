@@ -406,6 +406,7 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
     sequence <- paste(seq_chars, collapse = "")
 
     testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
         getDMRSequences = function(...) sequence,
         .package = "CMEnt"
     )
@@ -451,6 +452,7 @@ test_that("extractDMRMotifs ignores seed windows not centered on C", {
     sequence <- paste(seq_chars, collapse = "")
 
     testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
         getDMRSequences = function(...) sequence,
         .package = "CMEnt"
     )

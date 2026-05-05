@@ -36,9 +36,11 @@
     if (is_tabix) {
         file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
     }
+    sample_col_start <- if (is_tabix) 1L else 2L
+    file_sample_col_names <- file_beta_col_names[seq.int(sample_col_start, length(file_beta_col_names))]
     if (is.null(beta_col_names)) {
-        beta_col_names <- file_beta_col_names[-1]
-        cols_inds <- seq(2, length(beta_col_names))
+        beta_col_names <- file_sample_col_names
+        cols_inds <- seq.int(sample_col_start, length(file_beta_col_names))
     } else {
         cols_inds <- match(beta_col_names, file_beta_col_names)
         cols_inds <- cols_inds[!is.na(cols_inds), drop = FALSE]
@@ -53,7 +55,7 @@
     }
     ret <- list(
         beta_col_names = beta_col_names, beta_col_inds = cols_inds,
-        file_beta_col_names = file_beta_col_names[-1]
+        file_beta_col_names = file_sample_col_names
     )
     invisible(ret)
 }
@@ -473,62 +475,86 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
     dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
     rhdf5::h5createFile(output_h5file)
 
-    row_offset <- 0L
-    initialized <- FALSE
-    p <- NULL
+    con <- if (endsWith(input_file, ".gz")) gzfile(input_file, "r") else file(input_file, "r")
+    on.exit(close(con), add = TRUE)
 
-    cb <- readr::DataFrameCallback$new(function(df, pos) {
+    header_line <- readLines(con, n = 1L)
+    if (length(header_line) == 0L) {
+        stop("Input file is empty.")
+    }
+    header_names <- strsplit(header_line, split = sep, fixed = TRUE)[[1]]
+    selected_header_names <- if (is.null(select)) {
+        header_names
+    } else if (is.numeric(select)) {
+        header_names[select]
+    } else {
+        as.character(select)
+    }
+    p <- length(selected_header_names)
+    if (p == 0L) {
+        stop("No columns available to store in HDF5 dataset.")
+    }
+    rhdf5::h5createDataset(
+        file = output_h5file,
+        dataset = dataset_name,
+        dims = c(1L, p),
+        maxdims = c(rhdf5::H5Sunlimited(), p),
+        chunk = c(1L, p),
+        storage.mode = "character",
+        level = 7
+    )
+    rhdf5::h5write(
+        matrix("", nrow = 1L, ncol = p),
+        file = output_h5file,
+        name = dataset_name,
+        index = list(1L, seq_len(p))
+    )
+    rhdf5::h5write(selected_header_names, output_h5file, paste0(dataset_name, "_colnames"))
+
+    row_offset <- 0L
+
+    repeat {
+        chunk_lines <- readLines(con, n = chunk_size)
+        if (length(chunk_lines) == 0L) {
+            break
+        }
+        chunk_lines <- chunk_lines[nzchar(chunk_lines)]
+        if (length(chunk_lines) == 0L) {
+            next
+        }
+        df <- data.table::fread(
+            text = paste(chunk_lines, collapse = "\n"),
+            sep = sep,
+            header = FALSE,
+            data.table = FALSE,
+            col.names = header_names,
+            check.names = FALSE
+        )
         if (!is.null(select)) {
             df <- df[, select, drop = FALSE]
-        }
-        if (!initialized) {
-            p <<- ncol(df)
-            rhdf5::h5createDataset(
-                file = output_h5file,
-                dataset = dataset_name,
-                dims = c(0, p),
-                maxdims = c(rhdf5::H5Sunlimited(), p),
-                chunk = c(min(chunk_size, max(1L, nrow(df))), p),
-                storage.mode = "character",
-                level = 7
-            )
-            rhdf5::h5write(names(df), output_h5file, paste0(dataset_name, "_colnames"))
-            initialized <<- TRUE
         }
 
         n_new <- nrow(df)
         if (n_new == 0L) {
-            return(invisible(NULL))
+            next
         }
 
-        # Convert whole chunk to character matrix
-        # (keeps NA as NA_character_)
         mat <- as.matrix(data.frame(lapply(df, as.character), check.names = FALSE))
-
         new_total <- row_offset + n_new
-
-        # Extend then write
-        rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+        if (new_total > 1L) {
+            rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+        }
 
         idx_rows <- (row_offset + 1L):new_total
         rhdf5::h5write(
             mat,
             file = output_h5file,
             name = dataset_name,
-            index = list(idx_rows, 1:p)
+            index = list(idx_rows, seq_len(p))
         )
 
-        row_offset <<- new_total
-        invisible(NULL)
-    })
-
-    readr::read_tsv_chunked(
-        file = input_file,
-        callback = cb,
-        chunk_size = chunk_size,
-        show_col_types = FALSE,
-        progress = FALSE
-    )
+        row_offset <- new_total
+    }
 
     rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
     invisible(output_h5file)
@@ -590,6 +616,8 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
         chunk_size = chunk_size
     )
     da <- HDF5Array::HDF5Array(output_h5file, "data")
+    n_rows <- as.integer(rhdf5::h5read(output_h5file, "data_nrows"))
+    da <- da[seq_len(n_rows), , drop = FALSE]
     x <- DelayedDataFrame::DelayedDataFrame(da)
     colnames(x) <- rhdf5::h5read(output_h5file, "data_colnames")
     .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)

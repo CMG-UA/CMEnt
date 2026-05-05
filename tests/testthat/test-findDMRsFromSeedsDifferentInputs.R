@@ -27,6 +27,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            extract_motifs = FALSE,
             beta = beta,
             seeds = NULL, # Missing
             pheno = pheno
@@ -37,6 +38,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            extract_motifs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = NULL # Missing
@@ -51,6 +53,7 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,
+            extract_motifs = FALSE,
             beta = beta,
             seeds = dmps,
             pheno = pheno_wrong,
@@ -347,6 +350,7 @@ test_that("findDMRsFromSeeds works with BSseq input", {
             min_sites = 5,
             max_lookup_dist = 200,
             njobs = 1,
+            extract_motifs = FALSE,
             annotate_with_genes = FALSE
         ),
         "No DMRs remain after filtering based on min_seeds."
