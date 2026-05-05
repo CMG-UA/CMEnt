@@ -37,6 +37,7 @@ permissions:
 jobs:
   generate-requirements:
     runs-on: ubuntu-latest
+    container: rocker/r2u:24.04
 
     outputs:
       image_name: ${{ steps.meta.outputs.image_name }}
@@ -54,15 +55,10 @@ jobs:
           IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}/${{ inputs.image_suffix }}"
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: true
-
       - name: Install BiocManager
         shell: Rscript {0}
         run: |
-          install.packages("BiocManager", repos = "https://cloud.r-project.org")
+          install.packages("BiocManager")
 
       - name: Generate requirements from DESCRIPTION
         shell: Rscript {0}
