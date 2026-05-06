@@ -1,9 +1,8 @@
 options("CMEnt.verbose" = 0)
-loadExampleInputDataChr5And11("beta", "dmps", "pheno")
+loadExampleInputDataChr21And22("beta", "dmps", "pheno")
 
 test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
     skip_on_ci()
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test parametric mode (baseline)
     dmrs_parametric <- findDMRsFromSeeds(
@@ -111,7 +110,6 @@ test_that("findDMRsFromSeeds works with empirical p-value mode and different str
 
 test_that("findDMRsFromSeeds empirical mode respects external random seeds for reproducibility", {
     skip_on_ci()
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run with same seed twice
     set.seed(42)
     dmrs_seed1_run1 <- suppressWarnings(findDMRsFromSeeds(
@@ -176,7 +174,6 @@ test_that("findDMRsFromSeeds empirical mode respects external random seeds for r
 
 test_that("findDMRsFromSeeds handles different ntries values correctly", {
     skip_on_ci()
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps, target_n = 50L)
     # Test with ntries = 0 (should use default)
     dmrs_ntries_0 <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,

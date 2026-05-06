@@ -3365,12 +3365,25 @@ loadExampleInputData <- function(...) {
 
     cache <- ExperimentHub::getExperimentHubOption("CACHE")
     dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-    eh <- ExperimentHub::ExperimentHub()
+    eh <- suppressPackageStartupMessages(suppressMessages(
+        ExperimentHub::ExperimentHub()
+    ))
 
     values <- lapply(resources, function(resource) {
         eh_id <- unname(resource_mapping[[resource]])
         tryCatch(
-            eh[[eh_id]],
+            withCallingHandlers(
+                suppressPackageStartupMessages(suppressMessages(
+                    eh[[eh_id]]
+                )),
+                warning = function(w) {
+                    warning_message <- conditionMessage(w)
+                    if (grepl("HEAD request", warning_message, fixed = TRUE) ||
+                        grepl("cache information", warning_message, fixed = TRUE)) {
+                        invokeRestart("muffleWarning")
+                    }
+                }
+            ),
             error = function(e) {
                 stop(
                     "Failed to load example resource '", resource,

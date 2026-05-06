@@ -101,9 +101,6 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
     dmps <- .dmps_chr21_and_22
     pheno <- .pheno_chr21_and_22
 
-    # Make the dataset smaller for faster testing
-    dmps <- subsetDenseExampleDmpsChr21And22(dmps)
-
     # Test with strict min_seeds
     expect_warning(
     dmrs_strict <- findDMRsFromSeeds(
@@ -165,7 +162,6 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
     beta <- .beta_chr21_and_22
     dmps <- .dmps_chr21_and_22
     pheno <- .pheno_chr21_and_22
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with median aggregation
     dmrs_median <- findDMRsFromSeeds(

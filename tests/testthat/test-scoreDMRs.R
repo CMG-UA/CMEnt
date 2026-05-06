@@ -1,6 +1,6 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr5And11("beta", "dmps", "pheno")
+loadExampleInputDataChr21And22()
 
 test_that("scoreDMRs adds score column to DMRs", {
 
@@ -29,7 +29,6 @@ test_that("scoreDMRs adds score column to DMRs", {
 })
 
 test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=TRUE", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,
@@ -67,7 +66,6 @@ test_that("scoreDMRs accepts a BetaHandler input", {
 })
 
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
         .score_dmrs = TRUE,

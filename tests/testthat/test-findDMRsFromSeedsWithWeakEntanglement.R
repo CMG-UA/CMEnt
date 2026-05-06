@@ -1,10 +1,8 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr5And11("beta", "dmps", "pheno")
+loadExampleInputDataChr21And22("beta", "dmps", "pheno")
 
 test_that("findDMRsFromSeeds works with weak entanglement", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
-
      dmrs_relaxed <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -43,7 +41,6 @@ test_that("findDMRsFromSeeds works with weak entanglement", {
 })
 
 test_that("weak entanglement produces more or equal DMRs than strong entanglement", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
 
     dmrs_strict <- findDMRsFromSeeds(
@@ -83,8 +80,6 @@ test_that("weak entanglement produces more or equal DMRs than strong entanglemen
 })
 
 test_that("entanglement parameter validates correctly", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
-
     expect_error(
         findDMRsFromSeeds(
             .score_dmrs = FALSE,

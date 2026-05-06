@@ -4,7 +4,7 @@ suppressPackageStartupMessages({
 })
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr5And11()
+loadExampleInputDataChr21And22()
 
 
 create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
@@ -20,7 +20,6 @@ create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
 }
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test missing required parameters
     expect_error(
@@ -64,7 +63,6 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("CMEnt.beta_in_mem_threshold_mb" = 500)
     suppressWarnings(
@@ -89,7 +87,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     
     expected_dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -347,7 +344,6 @@ test_that("findDMRsFromSeeds works with BSseq input", {
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
     skip_if_not_installed("mockery")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     library(mockery)
 
     mock_convertBetaToTabix <- mock(NULL) # nolint
@@ -378,7 +374,6 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
 test_that("findDMRsFromSeeds works with minimal bed file", {
     skip_on_ci()
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
