@@ -56,13 +56,13 @@ genome <- "hg19"
 ## Load Example Inputs and Benchmark DMRs
 
 ```{r load_inputs}
-# loadExampleInputData is a helper function to load lightweight example data
-# included in the package.
-beta <- loadExampleInputDataChr5And11("beta")
-pheno <- loadExampleInputDataChr5And11("pheno")
-array_type <- loadExampleInputDataChr5And11("array_type")
+# loadExampleInputData fetches example resources from DMRsegaldata via
+# ExperimentHub and assigns them into the current environment.
+loadExampleInputDataChr5And11("beta")
+loadExampleInputDataChr5And11("pheno")
+loadExampleInputDataChr5And11("array_type")
 # DMPs are produced from minfi, and have the form of a dataframe
-dmps <- loadExampleInputDataChr5And11("dmps")
+loadExampleInputDataChr5And11("dmps")
 cat(sprintf("Beta matrix dimensions: %d sites x %d samples\n", nrow(beta), ncol(beta)))
 cat(sprintf("Phenotype data dimensions: %d samples x %d columns\n", nrow(pheno), ncol(pheno)))
 cat(sprintf("Array type: %s\n", array_type))

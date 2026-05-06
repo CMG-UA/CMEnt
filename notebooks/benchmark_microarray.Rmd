@@ -112,9 +112,9 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 ## Load Example Data
 
 ```{r}
-beta <- loadExampleInputData("beta")
-pheno <- loadExampleInputData("pheno")
-array_type <- loadExampleInputData("array_type")
+loadExampleInputData("beta")
+loadExampleInputData("pheno")
+loadExampleInputData("array_type")
 genome <- "hg19"
 
 beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)

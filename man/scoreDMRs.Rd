@@ -99,8 +99,7 @@ split at large midpoint gaps using the selected \code{block_gap_mode}.
 }
 \examples{
 # Load example data
-beta <- loadExampleInputData("beta")
-pheno <- loadExampleInputData("pheno")
+loadExampleInputData("beta", "pheno")
 
 # Load pre-computed DMRs
 dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))

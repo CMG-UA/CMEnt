@@ -4,6 +4,8 @@ suppressPackageStartupMessages({
 })
 options("CMEnt.verbose" = 0)
 
+loadExampleInputDataChr5And11()
+
 
 create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
     seed_row_names <- rownames(seeds)
@@ -18,9 +20,6 @@ create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
 }
 
 test_that("findDMRsFromSeeds validates input parameters correctly", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test missing required parameters
@@ -65,9 +64,6 @@ test_that("findDMRsFromSeeds validates input parameters correctly", {
 
 
 test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     # Run findDMRsFromSeeds with beta_in_mem_threshold_mb=500 (small file loaded in memory)
     options("CMEnt.beta_in_mem_threshold_mb" = 500)
@@ -93,9 +89,6 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     
     expected_dmrs <- findDMRsFromSeeds(
@@ -141,9 +134,6 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 })
 
 test_that("subset connectivity matches between in-memory and tabix beta handlers", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- dmps[seq_len(20), , drop = FALSE]
 
     mem_handler <- getBetaHandler(beta, array = "450K", genome = "hg19", njobs = 1)
@@ -249,9 +239,6 @@ test_that("convertBetaToTabix writes integer BED coordinates for tabix", {
 })
 
 test_that("parallel connectivity matches sequential connectivity", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- dmps[seq_len(30), , drop = FALSE]
 
     mem_handler <- getBetaHandler(beta, array = "450K", genome = "hg19", njobs = 1)
@@ -360,9 +347,6 @@ test_that("findDMRsFromSeeds works with BSseq input", {
 
 test_that("findDMRsFromSeeds works when tabix is not available", {
     skip_if_not_installed("mockery")
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
     library(mockery)
 
@@ -394,11 +378,7 @@ test_that("findDMRsFromSeeds works when tabix is not available", {
 
 test_that("findDMRsFromSeeds works with minimal bed file", {
     skip_on_ci()
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
-    array_type <- loadExampleInputDataChr5And11("array_type")
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()

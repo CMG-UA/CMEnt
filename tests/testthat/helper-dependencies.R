@@ -55,17 +55,43 @@ skip_if_missing_jaspar <- function(version = getOption("CMEnt.jaspar_version", 2
 }
 
 
-loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
-    if (identical(resource, "dmps")) {
+loadExampleInputDataChr5And11 <- function(...) {
+    resources <- unlist(list(...), use.names = FALSE)
+    if ("dmps" %in% resources) {
         skip_if_missing_array_annotation(array = "450K", genome = "hg19")
     }
-    CMEnt::loadExampleInputDataChr5And11(resource, use_experiment_hub = use_experiment_hub)
+    values <- CMEnt::loadExampleInputDataChr5And11(...)
+    if (length(resources) == 1L) {
+        values <- stats::setNames(list(values), resources)
+    }
+    list2env(values, envir = parent.frame())
+    invisible(if (length(values) == 1L) values[[1L]] else values)
 }
 
 
-loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
-    if (identical(resource, "dmps")) {
+loadExampleInputDataChr21And22 <- function(...) {
+    resources <- unlist(list(...), use.names = FALSE)
+    if ("dmps" %in% resources) {
         skip_if_missing_array_annotation(array = "450K", genome = "hg19")
     }
-    CMEnt::loadExampleInputData(resource, use_experiment_hub = use_experiment_hub)
+    values <- CMEnt::loadExampleInputDataChr21And22(...)
+    if (length(resources) == 1L) {
+        values <- stats::setNames(list(values), resources)
+    }
+    list2env(values, envir = parent.frame())
+    invisible(if (length(values) == 1L) values[[1L]] else values)
+}
+
+
+loadExampleInputData <- function(...) {
+    resources <- unlist(list(...), use.names = FALSE)
+    if ("dmps" %in% resources) {
+        skip_if_missing_array_annotation(array = "450K", genome = "hg19")
+    }
+    values <- CMEnt::loadExampleInputData(...)
+    if (length(resources) == 1L) {
+        values <- stats::setNames(list(values), resources)
+    }
+    list2env(values, envir = parent.frame())
+    invisible(if (length(values) == 1L) values[[1L]] else values)
 }

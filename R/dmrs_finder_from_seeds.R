@@ -82,9 +82,7 @@
 #'
 #' @examples
 #' # Load example data
-#' beta <- loadExampleInputData("beta")
-#' dmps <- loadExampleInputData("dmps")
-#' pheno <- loadExampleInputData("pheno")
+#' loadExampleInputData("beta", "dmps", "pheno")
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
@@ -2815,10 +2813,7 @@
 #' 
 #' @examples
 #' \donttest{
-#' beta <- loadExampleInputDataChr5And11("beta")
-#' dmps <- loadExampleInputDataChr5And11("dmps")
-#' pheno <- loadExampleInputDataChr5And11("pheno")
-#' array_type <- loadExampleInputDataChr5And11("array_type")
+#' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 #' dmrs <- findDMRsFromSeeds(
 #'   beta = beta,
 #'   seeds = dmps,

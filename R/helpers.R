@@ -23,16 +23,16 @@
 #' @examples
 #' \donttest{
 #' # Load example BSseq data
-#' data("BSobj", package = "bsseq")
+#' data(BS.cancer.ex)
 #' # Create a sample metadata data frame
 #' samplesheet <- data.frame(
-#'    Sample_ID = colnames(BSobj),
+#'    Sample_ID = colnames(BS.cancer.ex),
 #'   Sample_Group = c(rep("Condition1", 3), rep("Condition2", 3)),
 #'   Age = c(30, 32, 31, 28, 29, 27)
 #' )
 #' # Find DMPs with DSS
 #' dmps <- findDMPsBSSeq(
-#'    bsseq = BSobj,
+#'    bsseq = BS.cancer.ex,
 #'    samplesheet = samplesheet,
 #'    group_col = "Sample_Group",
 #'    id_col = "Sample_ID",

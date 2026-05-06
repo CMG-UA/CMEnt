@@ -1902,11 +1902,11 @@ supportedOrganisms <- function() {
 
 .experimentHubDependencyRequirements <- function(resource, reason = NULL) {
     .makeDependencyRequirements(
-        pkg_names = c("ExperimentHub", "AnnotationHub"),
+        pkg_names = "ExperimentHub",
         reason = if (is.null(reason)) {
             paste0(
-                "The bundled example resource '", resource,
-                "' was not found locally, so CMEnt needs ExperimentHub support to fetch it."
+                "CMEnt needs ExperimentHub support to fetch example resource(s): ",
+                resource, "."
             )
         } else {
             reason
@@ -3264,145 +3264,150 @@ convertToDataFrame <- function(gr) {
 
 #' Load CMEnt Example Resources
 #'
-#' @description Helper function to load lightweight example resources bundled as
-#' package data. The shipped local example bundle is a compact chr5/chr11 subset
-#' intended for package examples, tests, and vignettes. If a local resource is not
-#' found, the function can fall back to ExperimentHub.
+#' @description Load one or more example resources from the
+#' \pkg{DMRsegaldata} ExperimentHub package and assign them into the caller's
+#' environment using their resource names.
 #'
-#' @param resource Character. Name of the resource to load. Available resources:
+#' @param ... Names of the resources to load, or none to load all available
+#' resources. Available resources:
 #' \itemize{
 #'   \item "beta": Example beta values matrix
 #'   \item "pheno": Example phenotype data
 #'   \item "dmps": Example differentially methylated positions
 #'   \item "array_type": Example array type annotation
 #' }
-#' @param use_experiment_hub Logical. Whether to attempt loading from ExperimentHub
-#'   if the resource is not found locally (default: TRUE)
 #'
-#' @return The requested example object
-#'
-#' @details
-#' The function follows this priority order:
-#' \enumerate{
-#'   \item Load the packaged example resource from the installed package `data/`
-#'   \item If use_experiment_hub is TRUE, query ExperimentHub
-#'   \item If all fail, raise an informative error
-#' }
-#'
-#' Available local resources correspond to `.rda` files in `data/`:
-#' \itemize{
-#'   \item `beta.rda` - Example methylation beta values
-#'   \item `pheno.rda` - Example phenotype/sample information
-#'   \item `dmps.rda` - Example differential methylation results
-#'   \item `array_type.rda` - Array platform type
-#' }
+#' @return Invisibly returns the loaded object when a single resource is
+#' requested, or a named list of loaded objects when multiple resources are
+#' requested.
 #'
 #' @examples
-#' # Load beta values
-#' beta <- loadExampleInputData("beta")
 #'
-#' # Load phenotype data
-#' pheno <- loadExampleInputData("pheno")
+#' # Load phenotype data into the current environment
+#' loadExampleInputData("pheno")
+#' head(pheno)
+#'
+#' # Load multiple resources at once
+#' loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
+#' dim(beta)
 #'
 #' @export
-loadExampleInputData <- function(resource, use_experiment_hub = TRUE) {
+loadExampleInputData <- function(...) {
+    .assignExampleInputData(
+        resources = .normalizeExampleInputResources(list(...)),
+        envir = parent.frame()
+    )
+}
+
+.loadExampleInputDataSubset <- function(..., subset, envir) {
+    resources <- .normalizeExampleInputResources(list(...))
+    values <- .fetchExampleInputData(resources)
+
+    if ("beta" %in% resources) {
+        values[["beta"]] <- getBetaHandler(values[["beta"]], array = "450k")$getBeta(chr = subset)
+    }
+    if ("dmps" %in% resources) {
+        locs <- getSortedGenomicLocs(array = "450k")
+        locs <- locs[locs$chr %in% subset, , drop = FALSE]
+        keep <- rownames(locs)[rownames(locs) %in% rownames(values[["dmps"]])]
+        values[["dmps"]] <- values[["dmps"]][keep, , drop = FALSE]
+    }
+
+    list2env(values, envir = envir)
+    invisible(if (length(values) == 1L) values[[1L]] else values)
+}
+
+.normalizeExampleInputResources <- function(args) {
     available_resources <- c("beta", "pheno", "dmps", "array_type")
-    if (!resource %in% available_resources) {
+    if (length(args) == 0L) {
+        return(available_resources)
+    }
+    if (!all(vapply(args, is.character, logical(1)))) {
         stop(
-            "Unknown resource: ", resource, "\n",
+            "Example resources must be provided as character strings. ",
             "Available resources: ", paste(available_resources, collapse = ", ")
         )
     }
 
-    verbose_setting <- getOption("CMEnt.verbose", 1)
-    resource_files <- c(
-        beta = "beta.rda",
-        pheno = "pheno.rda",
-        dmps = "dmps.rda",
-        array_type = "array_type.rda"
-    )
-    resource_file <- unname(resource_files[[resource]])
-    local_candidates <- c(
-        system.file("data", resource_file, package = "CMEnt", mustWork = FALSE),
-        file.path("data", resource_file)
-    )
-    local_path <- local_candidates[file.exists(local_candidates)][1]
-    if (!is.na(local_path)) {
-        if (verbose_setting >= 2) {
-            .log_info("Loading ", resource, " from existing local path", level = 2)
-        }
-        load(local_path)
-        return(get(resource))
+    resources <- unlist(args, use.names = FALSE)
+    if (length(resources) == 0L || anyNA(resources) || any(!nzchar(resources))) {
+        stop(
+            "Example resources must be non-empty character strings. ",
+            "Available resources: ", paste(available_resources, collapse = ", ")
+        )
     }
 
-    # Fall back to ExperimentHub when local example files are unavailable.
-    if (use_experiment_hub) {
-        resource_mapping <- c(
-            beta = "EH10275",
-            pheno = "EH10276",
-            dmps = "EH10277",
-            array_type = "EH10278"
+    unknown_resources <- setdiff(resources, available_resources)
+    if (length(unknown_resources) > 0L) {
+        stop(
+            "Unknown resource(s): ", paste(unknown_resources, collapse = ", "), "\n",
+            "Available resources: ", paste(available_resources, collapse = ", ")
         )
-        if (verbose_setting >= 2) {
-            .log_info("Resource not found locally, attempting to load from ExperimentHub...", level = 2)
-        }
+    }
 
-        .assertDependencyRequirements(
-            requirements = .experimentHubDependencyRequirements(resource = resource),
-            context = "loadExampleInputData()"
-        )
+    resources[!duplicated(resources)]
+}
 
+.fetchExampleInputData <- function(resources) {
+    resource_mapping <- c(
+        beta = "EH10275",
+        pheno = "EH10276",
+        dmps = "EH10277",
+        array_type = "EH10278"
+    )
+
+    .assertDependencyRequirements(
+        requirements = .experimentHubDependencyRequirements(
+            resource = paste(resources, collapse = ", ")
+        ),
+        context = "loadExampleInputData()"
+    )
+
+    cache <- ExperimentHub::getExperimentHubOption("CACHE")
+    dir.create(cache, showWarnings = FALSE, recursive = TRUE)
+    eh <- ExperimentHub::ExperimentHub()
+
+    values <- lapply(resources, function(resource) {
+        eh_id <- unname(resource_mapping[[resource]])
         tryCatch(
-            {
-                cache <- ExperimentHub::getExperimentHubOption("CACHE")
-                dir.create(cache, showWarnings = FALSE, recursive = TRUE)
-                eh <- ExperimentHub::ExperimentHub()
-                cment_resources <- AnnotationHub::query(eh, "DMRsegaldata")
-                resource_match <- cment_resources[resource_mapping[resource]]
-                if (length(resource_match) > 0) {
-                    if (verbose_setting >= 2) {
-                        .log_success("Found resource in ExperimentHub", level = 2)
-                    }
-                    return(resource_match[[1]])
-                }
-                if (verbose_setting >= 2) {
-                    .log_warn("Resource '", resource, "' not found in ExperimentHub")
-                }
-            },
+            eh[[eh_id]],
             error = function(e) {
-                if (verbose_setting >= 2) {
-                    .log_warn("Failed to query ExperimentHub: ", e$message)
-                }
+                stop(
+                    "Failed to load example resource '", resource,
+                    "' from ExperimentHub (", eh_id, "). ", conditionMessage(e),
+                    call. = FALSE
+                )
             }
         )
-    }
+    })
+    names(values) <- resources
+    values
+}
 
-    stop(
-        "Resource '", resource, "' was not found locally",
-        if (isTRUE(use_experiment_hub)) " or in ExperimentHub" else "",
-        ".\nAvailable resources: ", paste(available_resources, collapse = ", "),
-        call. = FALSE
-    )
+.assignExampleInputData <- function(resources, envir) {
+    values <- .fetchExampleInputData(resources)
+    list2env(values, envir = envir)
+    invisible(if (length(values) == 1L) values[[1L]] else values)
 }
 
 #' @rdname loadExampleInputData
 #' @description Compatibility wrapper returning the chr5/chr11 example subset.
-#' The packaged local example resources already correspond to chr5/chr11, so this
-#' wrapper is mainly kept for backwards compatibility with earlier releases and
-#' still subsets ExperimentHub-backed resources when needed.
 #' @export
-loadExampleInputDataChr5And11 <- function(resource, use_experiment_hub = TRUE) {
-    ret <- loadExampleInputData(resource, use_experiment_hub = use_experiment_hub)
-    if (resource == "beta") {
-        getBetaHandler(ret, array = "450k")$getBeta(chr = c("chr5", "chr11"))
-    } else if (resource == "pheno") {
-        ret
-    } else if (resource == "dmps") {
-        locs <- getSortedGenomicLocs(array = "450k")
-        locs <- locs[locs$chr %in% c("chr5", "chr11"), ]
-        locs <- locs[rownames(locs) %in% rownames(ret), , drop = FALSE]
-        ret[rownames(locs), , drop = FALSE]
-    } else if (resource == "array_type") {
-        ret
-    }
+loadExampleInputDataChr5And11 <- function(...) {
+    .loadExampleInputDataSubset(
+        ...,
+        subset = c("chr5", "chr11"),
+        envir = parent.frame()
+    )
+}
+
+#' @rdname loadExampleInputData
+#' @description Compatibility wrapper returning the chr21/chr22 example subset.
+#' @export
+loadExampleInputDataChr21And22 <- function(...) {
+    .loadExampleInputDataSubset(
+        ...,
+        subset = c("chr21", "chr22"),
+        envir = parent.frame()
+    )
 }

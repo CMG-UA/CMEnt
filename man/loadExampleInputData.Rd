@@ -3,59 +3,47 @@
 \name{loadExampleInputData}
 \alias{loadExampleInputData}
 \alias{loadExampleInputDataChr5And11}
+\alias{loadExampleInputDataChr21And22}
 \title{Load CMEnt Example Resources}
 \usage{
-loadExampleInputData(resource, use_experiment_hub = TRUE)
+loadExampleInputData(...)
 
-loadExampleInputDataChr5And11(resource, use_experiment_hub = TRUE)
+loadExampleInputDataChr5And11(...)
+
+loadExampleInputDataChr21And22(...)
 }
 \arguments{
-\item{resource}{Character. Name of the resource to load. Available resources:
+\item{...}{Names of the resources to load, or none to load all available
+resources. Available resources:
 \itemize{
 \item "beta": Example beta values matrix
 \item "pheno": Example phenotype data
 \item "dmps": Example differentially methylated positions
 \item "array_type": Example array type annotation
 }}
-
-\item{use_experiment_hub}{Logical. Whether to attempt loading from ExperimentHub
-if the resource is not found locally (default: TRUE)}
 }
 \value{
-The requested example object
+Invisibly returns the loaded object when a single resource is
+requested, or a named list of loaded objects when multiple resources are
+requested.
 }
 \description{
-Helper function to load lightweight example resources bundled as
-package data. The shipped local example bundle is a compact chr5/chr11 subset
-intended for package examples, tests, and vignettes. If a local resource is not
-found, the function can fall back to ExperimentHub.
+Load one or more example resources from the
+\pkg{DMRsegaldata} ExperimentHub package and assign them into the caller's
+environment using their resource names.
 
 Compatibility wrapper returning the chr5/chr11 example subset.
-The packaged local example resources already correspond to chr5/chr11, so this
-wrapper is mainly kept for backwards compatibility with earlier releases and
-still subsets ExperimentHub-backed resources when needed.
-}
-\details{
-The function follows this priority order:
-\enumerate{
-\item Load the packaged example resource from the installed package \verb{data/}
-\item If use_experiment_hub is TRUE, query ExperimentHub
-\item If all fail, raise an informative error
-}
 
-Available local resources correspond to \code{.rda} files in \verb{data/}:
-\itemize{
-\item \code{beta.rda} - Example methylation beta values
-\item \code{pheno.rda} - Example phenotype/sample information
-\item \code{dmps.rda} - Example differential methylation results
-\item \code{array_type.rda} - Array platform type
-}
+Compatibility wrapper returning the chr21/chr22 example subset.
 }
 \examples{
-# Load beta values
-beta <- loadExampleInputData("beta")
 
-# Load phenotype data
-pheno <- loadExampleInputData("pheno")
+# Load phenotype data into the current environment
+loadExampleInputData("pheno")
+head(pheno)
+
+# Load multiple resources at once
+loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
+dim(beta)
 
 }

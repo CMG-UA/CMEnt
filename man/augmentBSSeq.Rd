@@ -46,9 +46,9 @@ For reproducible synthetic samples, call \code{set.seed()} before \code{augmentB
 \examples{
 \donttest{
     # Load example BSseq data
-    data("BSobj", package = "bsseq")
+    data(BS.cancer.ex)
     set.seed(123)
     # Augment with 5 synthetic samples
-    augmented_bs <- augmentBSSeq(BSobj, n_new_samples = 5)
+    augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 5)
 }
 }

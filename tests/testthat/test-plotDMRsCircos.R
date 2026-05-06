@@ -1,9 +1,8 @@
 options("CMEnt.verbose" = 0)
 
+loadExampleInputDataChr5And11()
+
 test_that("plotDMRsCircos creates a circos plot", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -26,9 +25,6 @@ test_that("plotDMRsCircos creates a circos plot", {
 })
 
 test_that("plotDMRsCircos works with interactions", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -52,9 +48,6 @@ test_that("plotDMRsCircos works with interactions", {
 })
 
 test_that("plotDMRsCircos handles BetaHandler input", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -79,9 +72,6 @@ test_that("plotDMRsCircos handles BetaHandler input", {
 })
 
 test_that("plotDMRsCircos handles data frame DMRs input", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
@@ -104,8 +94,6 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
 })
 
 test_that("plotDMRsCircos validates inputs", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -141,9 +129,6 @@ test_that("plotDMRsCircos validates inputs", {
 })
 
 test_that("plotDMRsCircos supports chromosome and region filters", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
@@ -534,9 +519,6 @@ test_that(".selectCircosRegions accepts serialized component index strings", {
 })
 
 test_that("plotAutoDMRsCircos returns selected regions invisibly", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
@@ -566,9 +548,6 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
 })
 
 test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
@@ -609,9 +588,6 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
 })
 
 test_that("plotAutoDMRsCircos supports components and hybrid selection", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {

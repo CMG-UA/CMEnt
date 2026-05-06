@@ -43,7 +43,8 @@ Create a new BetaHandler object that manages methylation beta values
 from various input formats (files, matrices, tabix, BSseq objects) with memory-efficient access patterns.
 }
 \examples{
-beta_matrix <- loadExampleInputData("beta")
+loadExampleInputData("beta")
+beta_matrix <- beta
 
 beta_handler <- getBetaHandler(
     beta = beta_matrix,

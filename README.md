@@ -105,10 +105,7 @@ docker run --rm -p 3838:3838 \
 Here’s a basic example of how to use CMEnt:
 
     suppressPackageStartupMessages(library(CMEnt))
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
+    loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
     # Find DMRs using parallel processing
     dmrs <- findDMRsFromSeeds(
         beta = beta,

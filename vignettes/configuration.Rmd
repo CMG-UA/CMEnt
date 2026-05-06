@@ -41,7 +41,7 @@ This vignette provides a comprehensive guide to the configuration available in C
 
 **Example:**
 ```{r beta_example}
-beta <- loadExampleInputDataChr5And11("beta")
+loadExampleInputDataChr5And11("beta")
 ```
 
 ### `seeds`
@@ -58,7 +58,7 @@ beta <- loadExampleInputDataChr5And11("beta")
 
 **Example:**
 ```{r seeds_example}
-dmps <- loadExampleInputDataChr5And11("dmps")
+loadExampleInputDataChr5And11("dmps")
 seeds <- dmps
 ```
 
@@ -74,7 +74,7 @@ seeds <- dmps
 
 **Example:**
 ```{r pheno_example}
-pheno <- loadExampleInputDataChr5And11("pheno")
+loadExampleInputDataChr5And11("pheno")
 ```
 
 ## Sample Grouping Parameters

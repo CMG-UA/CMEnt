@@ -1,11 +1,20 @@
 options("CMEnt.verbose" = 0)
 
+loadExampleInputDataChr21And22()
+.beta_chr21_and_22 <- beta
+.dmps_chr21_and_22 <- dmps
+.pheno_chr21_and_22 <- pheno
+
+loadExampleInputDataChr5And11()
+.beta_chr5_and_11 <- beta
+.pheno_chr5_and_11 <- pheno
+.array_type_chr5_and_11 <- array_type
+
 
 test_that("findDMRsFromSeeds work with covariates adjustment", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+    beta <- .beta_chr21_and_22
+    dmps <- .dmps_chr21_and_22
+    pheno <- .pheno_chr21_and_22
     withr::local_options(list(error = traceback))
     dmrs <- suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -31,9 +40,9 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
     skip_if_missing_array_annotation(array = "450K", genome = "hg19")
 
     suppressPackageStartupMessages({
-        beta <- loadExampleInputDataChr5And11("beta")
-        pheno <- loadExampleInputDataChr5And11("pheno")
-        array_type <- loadExampleInputDataChr5And11("array_type")
+        beta <- .beta_chr5_and_11
+        pheno <- .pheno_chr5_and_11
+        array_type <- .array_type_chr5_and_11
         genome <- "hg19"
 
 
@@ -88,12 +97,12 @@ test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
 })
 
 test_that("findDMRsFromSeeds parameter variations work correctly", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
+    beta <- .beta_chr21_and_22
+    dmps <- .dmps_chr21_and_22
+    pheno <- .pheno_chr21_and_22
 
     # Make the dataset smaller for faster testing
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+    dmps <- subsetDenseExampleDmpsChr21And22(dmps)
 
     # Test with strict min_seeds
     expect_warning(
@@ -153,9 +162,9 @@ test_that("findDMRsFromSeeds parameter variations work correctly", {
 })
 
 test_that("findDMRsFromSeeds handles different aggregation functions", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
+    beta <- .beta_chr21_and_22
+    dmps <- .dmps_chr21_and_22
+    pheno <- .pheno_chr21_and_22
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with median aggregation
@@ -208,10 +217,9 @@ test_that("findDMRsFromSeeds handles different aggregation functions", {
 })
 
 test_that("findDMRsFromSeeds works with different genome builds", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+    beta <- .beta_chr21_and_22
+    dmps <- .dmps_chr21_and_22
+    pheno <- .pheno_chr21_and_22
 
     # Test with hg38
     dmrs_hg38 <- findDMRsFromSeeds(
@@ -235,10 +243,9 @@ test_that("findDMRsFromSeeds works with different genome builds", {
 
 
 test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+    beta <- .beta_chr21_and_22
+    dmps <- .dmps_chr21_and_22
+    pheno <- .pheno_chr21_and_22
     pheno$casecontrol <- pheno$Sample_Group == "cancer"
 
     output_prefix <- file.path(tempdir(), paste0("cment-test-", as.integer(Sys.time())))

@@ -1,10 +1,8 @@
 options("CMEnt.verbose" = 0)
 
+loadExampleInputDataChr21And22("beta", "dmps", "pheno")
+
 test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps parameters", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     # Test with expansion_window and max_bridge_seeds_gaps
     dmrs_expanded <- findDMRsFromSeeds(
@@ -52,10 +50,6 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
 })
 
 test_that("findDMRsFromSeeds handles ext_site_delta_beta filtering", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     # Test with no delta beta filtering
     dmrs_no_filter <- findDMRsFromSeeds(
@@ -160,10 +154,7 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
 test_that("findDMRsFromSeeds handles adjusted seeds filtering for array data", {
     skip_if_missing_bsgenome(genome = "hg19")
 
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
+
 
     dmrs_adj <- expect_no_error(suppressWarnings(findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -317,10 +308,6 @@ test_that("findDMRsFromSeeds stores all seed IDs including the terminal seed", {
 })
 
 test_that("findDMRsFromSeeds Stage 2 expansion matches between sequential and chunked parallel execution", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     args <- list(
         .score_dmrs = FALSE,

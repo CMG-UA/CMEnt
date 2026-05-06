@@ -1,4 +1,6 @@
 options("CMEnt.verbose" = 0)
+loadExampleInputData("beta", "pheno")
+
 .example_dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt", mustWork = FALSE)
 test_that("plotDMR creates a gtable object", {
     skip_if_not_installed("ggplot2")
@@ -250,8 +252,6 @@ test_that("plotDMR with beta and pheno includes PWM plot", {
     if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
         skip("Benchmark DMRs not available")
     }
-    pheno <- loadExampleInputData("pheno")
-    beta <- loadExampleInputData("beta")
 
     if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
         pheno_env <- new.env(parent = emptyenv())

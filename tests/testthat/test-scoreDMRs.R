@@ -1,8 +1,8 @@
 options("CMEnt.verbose" = 0)
 
+loadExampleInputDataChr5And11("beta", "dmps", "pheno")
+
 test_that("scoreDMRs adds score column to DMRs", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
@@ -29,9 +29,6 @@ test_that("scoreDMRs adds score column to DMRs", {
 })
 
 test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=TRUE", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
@@ -54,9 +51,6 @@ test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=T
 
 test_that("scoreDMRs accepts a BetaHandler input", {
     skip_if_missing_array_annotation(array = "450K", genome = "hg19")
-
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
     beta_handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
 
@@ -73,9 +67,6 @@ test_that("scoreDMRs accepts a BetaHandler input", {
 })
 
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    dmps <- loadExampleInputDataChr5And11("dmps")
-    pheno <- loadExampleInputDataChr5And11("pheno")
     dmps <- subsetDenseExampleDmpsChr5And11(dmps)
 
     dmrs <- findDMRsFromSeeds(
@@ -99,8 +90,6 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
 })
 
 test_that("scoreDMRs score values are meaningful", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
@@ -119,8 +108,6 @@ test_that("scoreDMRs score values are meaningful", {
 })
 
 test_that("scoreDMRs works with different nfold values", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
@@ -150,8 +137,6 @@ test_that("scoreDMRs works with different nfold values", {
 })
 
 test_that("scoreDMRs returns DMRs ordered by p-value", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)

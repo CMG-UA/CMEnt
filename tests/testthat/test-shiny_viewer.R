@@ -1,4 +1,6 @@
 options("CMEnt.verbose" = 0)
+loadExampleInputDataChr5And11("beta", "pheno", "array_type")
+
 test_that("validateOutputPrefix detects missing files", {
     temp_dir <- tempdir()
     fake_prefix <- file.path(temp_dir, "nonexistent_analysis")
@@ -430,9 +432,6 @@ test_that("Circos heatmap prep skips DMR sites missing from viewer beta values",
 })
 
 test_that("plotDMR restores showtext auto hooks after drawing", {
-    beta <- loadExampleInputDataChr5And11("beta")
-    pheno <- loadExampleInputDataChr5And11("pheno")
-    array_type <- loadExampleInputDataChr5And11("array_type")
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
     if (is.null(dmrs) || length(dmrs) == 0) {
