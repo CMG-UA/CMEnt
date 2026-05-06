@@ -1,5 +1,5 @@
 ---
-title: "Benchmarking CMEnt on True Microarray Data"
+title: "Benchmarking CMEnt on Simulated Microarray Data"
 subtitle: "CMEnt vs comb-p, probeLasso, DMRcate, and Bumphunter"
 author: "CMEnt Package"
 date: "`r Sys.Date()`"
@@ -36,8 +36,7 @@ We evaluate these methods on:
 - Overlap and concordance between methods
 - Biological relevance of detected regions
 
-The dataset used is CMEntdata, which contains methylation profiles for 5 cancer vs 5 normal samples.
-
+The dataset used is a simulated dataset, produced by running `simulateDMRs` on ch21 and ch22 subset of preprocessed beta values from 656 450K illumina microarray healthy blood samples found in GEO with identifier GSE40279, with 500 simulated DMRs of varying widths and effect sizes. The simulated dataset is available for download from Zenodo (see code below).
 ## Setup and Dependencies
 
 ```{r, message=FALSE}
@@ -53,7 +52,7 @@ suppressPackageStartupMessages({
 
 get_benchmark_file <- function(filename) {
     benchmark_file <- ""
-    folder <- "microarray"
+    folder <- "simulated_microarray"
     if (getwd() == "notebooks") {
         benchmark_file <- file.path("benchmarks", folder, filename)
     } else if ("NAMESPACE" %in% dir()) {
@@ -109,13 +108,30 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 }
 ```
 
-## Load Example Data
+## Load Data
 
 ```{r}
-loadExampleInputData()
+sim_beta_path <- get_benchmark_file("sim_beta_1000.tsv")
+sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
+if (!file.exists(sim_beta_path)) {
+    curl::curl_download(
+        url = "https://zenodo.org/records/19663986/files/microarray_sim_beta_1000.tsv?download=1",
+        destfile = sim_beta_path
+    )
+}
+if (!file.exists(sim_truth_path)) {
+    curl::curl_download(
+        url = "https://zenodo.org/records/19663986/files/microarray_sim_dmrs_1000.tsv?download=1",
+        destfile = sim_truth_path
+    )
+}
+
 genome <- "hg19"
 
 beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
+
+pheno <- colnames(beta_handler)
+
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
 logit2 <- function(x) log2(x) - log2(1 - x)
@@ -1358,163 +1374,387 @@ if (exists("region_significance_long") && nrow(region_significance_long) > 0) {
 }
 ```
 
-## CMEnt Score vs Overlapping Region Significance
+## Ground-Truth Evaluation
 
 ```{r}
-match_cment_to_method_significance <- function(cment_dmrs, method_dmrs, method, metric_label, value_col) {
-    if (length(cment_dmrs) == 0 || length(method_dmrs) == 0 || !value_col %in% names(mcols(method_dmrs))) {
-        return(NULL)
-    }
+evaluate_against_truth <- function(pred, truth) {
+    n_pred <- length(pred)
+    n_truth <- length(truth)
+    pred_overlap_truth <- sum(overlapsAny(pred, truth))
+    truth_overlap_pred <- sum(overlapsAny(truth, pred))
+    fp <- n_pred - pred_overlap_truth
+    fn <- n_truth - truth_overlap_pred
 
-    method_values <- suppressWarnings(as.numeric(mcols(method_dmrs)[[value_col]]))
-    keep_subjects <- is.finite(method_values)
-    if (!any(keep_subjects)) {
-        return(NULL)
-    }
-    method_dmrs <- method_dmrs[keep_subjects]
-    method_values <- pmax(method_values[keep_subjects], .Machine$double.xmin)
+    precision <- ifelse(n_pred == 0, 0, pred_overlap_truth / n_pred)
+    recall <- ifelse(n_truth == 0, 0, truth_overlap_pred / n_truth)
+    f1 <- ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall))
 
-    hits <- findOverlaps(cment_dmrs, method_dmrs, ignore.strand = TRUE)
-    if (length(hits) == 0) {
-        return(NULL)
-    }
+    pred_red <- reduce(pred)
+    truth_red <- reduce(truth)
+    inter <- GenomicRanges::intersect(pred_red, truth_red)
 
-    query_idx <- queryHits(hits)
-    subject_idx <- subjectHits(hits)
-    intersection_start <- pmax(start(cment_dmrs)[query_idx], start(method_dmrs)[subject_idx])
-    intersection_end <- pmin(end(cment_dmrs)[query_idx], end(method_dmrs)[subject_idx])
-    intersection_width <- pmax(0L, intersection_end - intersection_start + 1L)
-    union_width <- width(cment_dmrs)[query_idx] + width(method_dmrs)[subject_idx] - intersection_width
-    jaccard <- intersection_width / union_width
+    pred_bp <- sum(width(pred_red))
+    truth_bp <- sum(width(truth_red))
+    inter_bp <- ifelse(length(inter) == 0, 0, sum(width(inter)))
+    union_bp <- pred_bp + truth_bp - inter_bp
 
-    overlap_tbl <- data.frame(
-        Query_Index = query_idx,
-        Subject_Index = subject_idx,
-        Jaccard = jaccard,
-        Reported_Error_Value = method_values[subject_idx]
-    ) |>
-        arrange(Query_Index, desc(Jaccard), Reported_Error_Value, Subject_Index) |>
-        distinct(Query_Index, .keep_all = TRUE)
+    precision_bp <- ifelse(pred_bp == 0, 0, inter_bp / pred_bp)
+    recall_bp <- ifelse(truth_bp == 0, 0, inter_bp / truth_bp)
+    f1_bp <- ifelse(precision_bp + recall_bp == 0, 0, 2 * precision_bp * recall_bp / (precision_bp + recall_bp))
+    iou_bp <- ifelse(union_bp == 0, 0, inter_bp / union_bp)
 
     data.frame(
-        Method = method,
-        Metric = metric_label,
-        Query_Index = overlap_tbl$Query_Index,
-        CMEnt_Score = as.numeric(mcols(cment_dmrs)$score[overlap_tbl$Query_Index]),
-        Reported_Error_Value = overlap_tbl$Reported_Error_Value,
-        NegLog10_Reported_Error = -log10(overlap_tbl$Reported_Error_Value),
-        Best_Jaccard = overlap_tbl$Jaccard
+        TP_regions = truth_overlap_pred,
+        FP_regions = fp,
+        FN_regions = fn,
+        Precision_regions = precision,
+        Recall_regions = recall,
+        F1_regions = f1,
+        Predicted_bp = pred_bp,
+        Truth_bp = truth_bp,
+        Intersect_bp = inter_bp,
+        Precision_bp = precision_bp,
+        Recall_bp = recall_bp,
+        F1_bp = f1_bp,
+        IoU_bp = iou_bp
     )
 }
 
-cment_significance_correlation_long <- do.call(rbind, Filter(Negate(is.null), lapply(seq_len(nrow(significance_method_specs)), function(i) {
-    spec <- significance_method_specs[i, ]
-    if (spec$Method == "CMEnt" || is.na(spec$Column)) {
+truth_eval <- do.call(rbind, lapply(names(methods_list), function(method) {
+    out <- evaluate_against_truth(methods_list[[method]], truth_dmrs)
+    out$Method <- method
+    out
+}))
+truth_eval$Method <- factor(truth_eval$Method, levels = method_order)
+truth_eval <- truth_eval[order(truth_eval$Method), , drop = FALSE]
+truth_eval$Method <- as.character(truth_eval$Method)
+
+
+truth_eval <- truth_eval |>
+    dplyr::select(
+        Method,
+        TP_regions,
+        FP_regions, FN_regions,
+        Precision_regions, Recall_regions, F1_regions,
+        Precision_bp, Recall_bp, F1_bp, IoU_bp
+    )
+
+regions_truth_eval <- truth_eval |>
+    dplyr::select(Method, TP_regions, FP_regions, FN_regions, Precision_regions, Recall_regions, F1_regions) |>
+    dplyr::rename_with(~ sub("_regions$", "", .), ends_with("_regions"))
+
+bp_truth_eval <- truth_eval |>
+    dplyr::select(Method, Precision_bp, Recall_bp, F1_bp, IoU_bp) |>
+    dplyr::rename_with(~ sub("_bp$", "", .), ends_with("_bp"))
+```
+```{r}
+knitr::kable(regions_truth_eval, digits = 4, caption = "Macro (Region-level) Performance Against Ground Truth")
+```
+
+```{r}
+knitr::kable(bp_truth_eval, digits = 4, caption = "Micro (Base-pair-level) Performance Against Ground Truth")
+```
+
+### Overlap Matrices (Methods + Truth)
+
+```{r}
+all_sets <- c(methods_list, list(`Ground Truth` = truth_dmrs))
+
+calculate_overlap <- function(gr1, gr2) {
+    if (length(gr1) == 0 || length(gr2) == 0) {
+        return(list(count = 0, percentage = 0))
+    }
+    overlap_count <- sum(overlapsAny(gr1, gr2))
+    pct <- overlap_count / length(gr1) * 100
+    list(count = overlap_count, percentage = pct)
+}
+
+overlap_count_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+overlap_pct_mat <- matrix(0, nrow = length(all_sets), ncol = length(all_sets))
+rownames(overlap_count_mat) <- colnames(overlap_count_mat) <- names(all_sets)
+rownames(overlap_pct_mat) <- colnames(overlap_pct_mat) <- names(all_sets)
+
+for (i in seq_along(all_sets)) {
+    for (j in seq_along(all_sets)) {
+        if (i == j) {
+            overlap_count_mat[i, j] <- length(all_sets[[i]])
+            overlap_pct_mat[i, j] <- 100
+        } else {
+            ov <- calculate_overlap(all_sets[[i]], all_sets[[j]])
+            overlap_count_mat[i, j] <- ov$count
+            overlap_pct_mat[i, j] <- ov$percentage
+        }
+    }
+}
+
+knitr::kable(overlap_count_mat, digits = 0, caption = "Overlap Counts (query=row, reference=column)")
+```
+```{r}
+knitr::kable(overlap_pct_mat, digits = 2, caption = "Overlap Percentages (query=row, reference=column)")
+```
+
+### CMEnt Stage 1 Quality Assessment (Seed Linkage)
+Assessing seed-space recoverability and seed capture efficiency.
+
+Metrics explanation:
+
+- Truth_DMRs_Total: Total number of ground truth DMRs.
+- Truth_DMRs_With_Seeds: Number of truth DMRs that have at least one overlapping seed site.
+- Truth_DMRs_Stage1Recoverable_2plusSeeds: Number of truth DMRs that have at least 2 overlapping seed sites, which is the minimum for CMEnt stage 1 to potentially recover the region.
+- Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds: Number of truth DMRs that have at least 2 overlapping seed sites that also overlap CMEnt-predicted DMRs, indicating they are potentially recoverable and captured by the method.
+- Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds: Number of truth DMRs where all overlapping seed sites are captured by CMEnt-predicted DMRs, indicating ideal stage 1 capture.
+- Seed_Capture_Rate_Pct_in_Truth: Percentage of seed sites that overlap truth DMRs that are also captured by CMEnt-predicted DMRs.
+- Median_Seed_Capture_Pct_Per_Truth: For truth DMRs that have at least one overlapping seed site, the median percentage of those seed sites that are captured by CMEnt-predicted DMRs.
+- Truth_DMRs_With_Missed_Seeds: Number of truth DMRs that have at least one overlapping seed site that is not captured by CMEnt-predicted DMRs.
+- Median_Max_Missed_Run_Per_Truth: For truth DMRs with missed seeds, the median length of the longest consecutive run of missed seed sites.
+- Max_Missed_Run_Observed: The maximum length of consecutive missed seed sites observed across all truth DMRs.
+
+Metrics values:
+
+```{r}
+seed_gr <- sort(seed_gr)
+mcols(seed_gr)$index <- seq_along(seed_gr)
+seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+
+if (length(dmrs_cment) > 0) {
+    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE, invert = TRUE)
+} else {
+    seeds_in_dmrs <- seed_gr[0]
+    seeds_in_truth_and_dmrs <- seed_gr[0]
+    seeds_in_truth_not_dmrs <- seeds_in_truth
+}
+
+seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs, ignore.strand = TRUE)
+truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs))
+seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs, ignore.strand = TRUE)
+truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs))
+truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
+
+recoverable_truth <- truth_seed_total >= 2L
+recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
+recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
+
+stage1_quality <- data.frame(
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
+    Truth_DMRs_Stage1Recoverable_2plusSeeds = sum(recoverable_truth),
+    Truth_DMRs_Stage1Recoverable_With2plusCapturedSeeds = sum(recoverable_with2captured),
+    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
+    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
+    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
+)
+
+for (col in colnames(stage1_quality)) {
+    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
+}
+
+# Consecutive missed-seed runs are computed per truth DMR using original seed index.
+ov_truth <- findOverlaps(seeds_in_truth_not_dmrs, truth_dmrs, ignore.strand = TRUE)
+qh_by_truth <- split(queryHits(ov_truth), subjectHits(ov_truth))
+run_df <- do.call(rbind, lapply(names(qh_by_truth), function(truth_id_chr) {
+    truth_id <- as.integer(truth_id_chr)
+    qh <- qh_by_truth[[truth_id_chr]]
+    idx <- mcols(seeds_in_truth_not_dmrs)$index[qh]
+    db <- as.numeric(mcols(seeds_in_truth_not_dmrs)$delta_beta[qh])
+
+    ord <- order(idx)
+    idx <- idx[ord]
+    db <- db[ord]
+
+    run_id <- cumsum(c(TRUE, diff(idx) != 1L))
+    data.frame(
+        Truth_DMR_Index = truth_id,
+        run_length = as.integer(tabulate(run_id)),
+        mean_delta_beta = as.numeric(tapply(db, run_id, mean, na.rm = TRUE))
+    )
+}))
+
+run_count <- as.data.frame(table(run_df$run_length))
+colnames(run_count) <- c("Consecutive_Seed_Length", "Count")
+run_delta <- aggregate(mean_delta_beta ~ run_length, data = run_df, FUN = mean, na.rm = TRUE)
+colnames(run_delta) <- c("Consecutive_Seed_Length", "Mean_Delta_Beta")
+run_summary <- merge(run_count, run_delta, by = "Consecutive_Seed_Length", all.x = TRUE)
+
+max_run_per_truth <- aggregate(run_length ~ Truth_DMR_Index, data = run_df, FUN = max)
+run_overview <- data.frame(
+    Truth_DMRs_With_Missed_Seeds = nrow(max_run_per_truth),
+    Median_Max_Missed_Run_Per_Truth = stats::median(max_run_per_truth$run_length),
+    Max_Missed_Run_Observed = max(max_run_per_truth$run_length)
+)
+for (col in colnames(run_overview)) {
+    cat(sprintf("- **%s**: %s\n", col, run_overview[[col]]))
+}
+
+```
+
+### CMEnt Stage 2-4 Quality Assessment (Extension and Merging)
+Assessing truth-side recovery and prediction-side fragmentation/purity after extension and merging.
+Metrics explanation:
+
+- Pred_DMRs_Total: Total number of CMEnt DMRs.
+- Pred_DMRs_Overlapping_Truth: Number of CMEnt DMRs that overlap at least one truth DMR.
+- Pred_DMRs_BPPrecision_ge50pct: Number of CMEnt DMRs with base-pair precision >= 50% (i.e., at least 50% of the CMEnt DMR's base pairs overlap with truth DMRs).
+- Pred_DMRs_BPPrecision_ge80pct: Number of CMEnt DMRs with base-pair precision >= 80%.
+- Truth_DMRs_Total: Total number of truth DMRs.
+- Truth_DMRs_Hit: Number of truth DMRs that have at least one overlapping CMEnt DMR.
+- Truth_DMRs_BPRecall_ge50pct: Number of truth DMRs with base-pair recall >= 50% (i.e., at least 50% of the truth DMR's base pairs are covered by CMEnt DMRs).
+- Truth_DMRs_BPRecall_ge80pct: Number of truth DMRs with base-pair recall >= 80%.
+- Median_Truth_BPRecall_Pct_Hit: Median base-pair recall percentage among truth DMRs that have at least one overlapping CMEnt DMR.
+- Median_Pred_BPPrecision_Pct_Overlap: Median base-pair precision percentage among CMEnt DMRs that have at least some overlap with truth DMRs.
+- Truth_DMRs_With_Multiple_Pred: Number of truth DMRs that have 2 or more overlapping CMEnt DMRs, indicating potential fragmentation.
+- Median_Preds_Per_Hit_Truth: Median number of overlapping CMEnt DMRs among truth DMRs that have at least one overlapping CMEnt DMR.
+- Max_Preds_On_Truth: Maximum number of overlapping CMEnt DMRs observed on any single truth DMR.
+
+Metrics values:
+
+```{r}
+truth_to_pred_hits <- findOverlaps(truth_dmrs, dmrs_cment, ignore.strand = TRUE)
+preds_per_truth <- tabulate(queryHits(truth_to_pred_hits), nbins = length(truth_dmrs))
+
+truth_overlap_bp <- numeric(length(truth_dmrs))
+if (length(truth_to_pred_hits) > 0) {
+    truth_intersections <- pintersect(
+        truth_dmrs[queryHits(truth_to_pred_hits)],
+        dmrs_cment[subjectHits(truth_to_pred_hits)]
+    )
+    truth_intersections_by_truth <- split(truth_intersections, queryHits(truth_to_pred_hits))
+    truth_overlap_bp[as.integer(names(truth_intersections_by_truth))] <- vapply(
+        truth_intersections_by_truth,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
+    )
+}
+truth_bp_recall <- ifelse(width(truth_dmrs) > 0, truth_overlap_bp / width(truth_dmrs), 0)
+
+pred_to_truth_hits <- findOverlaps(dmrs_cment, truth_dmrs, ignore.strand = TRUE)
+pred_overlap_bp <- numeric(length(dmrs_cment))
+if (length(pred_to_truth_hits) > 0) {
+    pred_intersections <- pintersect(
+        dmrs_cment[queryHits(pred_to_truth_hits)],
+        truth_dmrs[subjectHits(pred_to_truth_hits)]
+    )
+    pred_intersections_by_pred <- split(pred_intersections, queryHits(pred_to_truth_hits))
+    pred_overlap_bp[as.integer(names(pred_intersections_by_pred))] <- vapply(
+        pred_intersections_by_pred,
+        function(gr) sum(width(reduce(gr))),
+        numeric(1)
+    )
+}
+pred_bp_precision <- ifelse(width(dmrs_cment) > 0, pred_overlap_bp / width(dmrs_cment), 0)
+
+stage24_quality <- data.frame(
+    Pred_DMRs_Total = length(dmrs_cment),
+    Pred_DMRs_Overlapping_Truth = sum(overlapsAny(dmrs_cment, truth_dmrs)),
+    Pred_DMRs_BPPrecision_ge50pct = sum(pred_bp_precision >= 0.5),
+    Pred_DMRs_BPPrecision_ge80pct = sum(pred_bp_precision >= 0.8),
+    Truth_DMRs_Total = length(truth_dmrs),
+    Truth_DMRs_Hit = sum(preds_per_truth > 0),
+    Truth_DMRs_BPRecall_ge50pct = sum(truth_bp_recall >= 0.5),
+    Truth_DMRs_BPRecall_ge80pct = sum(truth_bp_recall >= 0.8),
+    Median_Truth_BPRecall_Pct_Hit = ifelse(sum(preds_per_truth > 0) == 0, 0, 100 * stats::median(truth_bp_recall[preds_per_truth > 0])),
+    Median_Pred_BPPrecision_Pct_Overlap = ifelse(sum(pred_bp_precision > 0) == 0, 0, 100 * stats::median(pred_bp_precision[pred_bp_precision > 0])),
+    Truth_DMRs_With_Multiple_Pred = sum(preds_per_truth >= 2),
+    Median_Preds_Per_Hit_Truth = ifelse(sum(preds_per_truth > 0) == 0, 0, stats::median(preds_per_truth[preds_per_truth > 0])),
+    Max_Preds_On_Truth = ifelse(length(preds_per_truth) == 0, 0, max(preds_per_truth))
+)
+for (col in names(stage24_quality)) {
+    cat(sprintf("- **%s**: %s\n", col, stage24_quality[[col]]))
+}
+```
+
+## Visualizations
+
+### Ground-Truth Metrics
+
+```{r, fig.width=10, fig.height=5}
+plot_df <- truth_eval |>
+    dplyr::select(Method, F1_regions, F1_bp, IoU_bp) |>
+    tidyr::pivot_longer(
+        cols = c(F1_regions, F1_bp, IoU_bp),
+        names_to = "Metric",
+        values_to = "Value"
+    )
+
+plot_df$Metric <- factor(
+    plot_df$Metric,
+    levels = c("F1_regions", "F1_bp", "IoU_bp"),
+    labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
+)
+plot_df$Method <- factor(plot_df$Method, levels = method_order)
+
+ggplot(plot_df, aes(x = Method, y = Value, fill = Method)) +
+    geom_col() +
+    facet_wrap(~Metric, nrow = 1) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
+    ) +
+    ylim(0, 1) +
+    labs(
+        title = "Method Performance vs Ground Truth",
+        x = "",
+        y = "Score"
+    )
+```
+
+### Width Distributions
+
+```{r, fig.width=8, fig.height=6, dpi=300}
+width_data <- do.call(rbind, lapply(names(all_sets), function(method) {
+    x <- all_sets[[method]]
+    if (length(x) == 0) {
         return(NULL)
     }
-    match_cment_to_method_significance(
-        cment_dmrs = dmrs_cment,
-        method_dmrs = method_dmrs[[spec$Method]],
-        method = spec$Method,
-        metric_label = spec$Metric,
-        value_col = spec$Column
-    )
-})))
+    data.frame(Method = method, Width = width(x))
+}))
+width_data$Method <- factor(width_data$Method, levels = names(all_sets))
 
-cment_significance_correlation_summary <- cment_significance_correlation_long |>
-    group_by(Method, Metric) |>
-    summarise(
-        N_Overlapping_CMEnt_DMRs = n(),
-        Spearman_Rho = round(cor(CMEnt_Score, NegLog10_Reported_Error, method = "spearman"), 3),
-        Pearson_R = round(cor(CMEnt_Score, NegLog10_Reported_Error, method = "pearson"), 3),
-        Median_Best_Jaccard = round(median(Best_Jaccard), 3),
-        Median_Reported_Value = signif(median(Reported_Error_Value), 3),
-        .groups = "drop"
-    )
-
-knitr::kable(
-    cment_significance_correlation_summary,
-    caption = "Correlation of CMEnt Score with Best-Matched Overlapping Region Significance"
-)
-```
-One best-overlap match per CMEnt DMR and method, selected by maximum Jaccard
-```{r}
-if (exists("cment_significance_correlation_long") && nrow(cment_significance_correlation_long) > 0) {
-    cment_significance_correlation_long$NegLog10_Reported_Error_Scaled <- group_by(cment_significance_correlation_long, Method) |>
-        mutate(NegLog10_Reported_Error_Scaled = scales::rescale(NegLog10_Reported_Error, to = c(0, 1))) |>
-        pull(NegLog10_Reported_Error_Scaled)
-    cment_significance_correlation_long$Correlation_Label <- sprintf(
-        "Spearman rho = %.3f\nPearson r = %.3f",
-        cment_significance_correlation_summary$Spearman_Rho[match(cment_significance_correlation_long$Method, cment_significance_correlation_summary$Method)],
-        cment_significance_correlation_summary$Pearson_R[match(cment_significance_correlation_long$Method, cment_significance_correlation_summary$Method)]
-    )
-    cment_significance_correlation_long$MethodWithLabel <- paste0(cment_significance_correlation_long$Method, "\n", cment_significance_correlation_long$Correlation_Label)
-    ggplot(
-        cment_significance_correlation_long,
-        aes(x = CMEnt_Score, y = NegLog10_Reported_Error_Scaled, color = Method)
+ggplot(width_data, aes(x = Method, y = Width, fill = Method)) +
+    geom_violin(alpha = 0.7) +
+    geom_boxplot(width = 0.2, alpha = 0.5, outlier.size = 0.5) +
+    scale_y_log10(labels = scales::comma) +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none"
     ) +
-        geom_point(alpha = 0.18, size = 0.4) +
-        geom_smooth(se = FALSE, linewidth = 1) +
-        facet_wrap(~MethodWithLabel, scales = "free_y") +
-        scale_color_manual(values = method_colors_sig) +
-        theme_minimal() +
-        labs(
-            title = "CMEnt Score vs Best-Matched Overlapping Region Significance",
-            x = "CMEnt Score",
-            y = expression(paste("Min-max Scaled ", -log[10], "Error Metric")),
-            color = "Method"
-        )
-}
+    labs(
+        title = "DMR Width Distributions",
+        x = "",
+        y = "Width (bp, log scale)"
+    )
 ```
 
-## Summary Statistics
-
-```{r}
-summary_table <- results_comparison |>
-    left_join(effect_size_df, by = "Method") |>
-    left_join(capture_df, by = "Method") |>
-    left_join(specificity_df |> dplyr::select(Method, Pct_Specific, Pct_Shared_2plus, Pct_Shared_3plus), by = "Method")
-
-knitr::kable(summary_table, digits = 2, caption = "Comprehensive Method Comparison Summary")
-```
+## Summary
 
 ```{r}
 cat("\n## Key Findings\n\n")
 
-if (nrow(results_comparison) > 0) {
-    max_dmrs <- results_comparison[which.max(results_comparison$Number_of_DMRs), ]
-    min_dmrs <- results_comparison[which.min(results_comparison$Number_of_DMRs), ]
+if (nrow(truth_eval) > 0) {
+    best_f1 <- truth_eval[which.max(truth_eval$F1_regions), ]
+    best_iou <- truth_eval[which.max(truth_eval$IoU_bp), ]
 
     cat(sprintf(
-        "- **%s** detected the most DMRs (%d regions)\n",
-        max_dmrs$Method, max_dmrs$Number_of_DMRs
+        "- Best region-level F1: **%s** (%.3f)\n",
+        best_f1$Method, best_f1$F1_regions
     ))
     cat(sprintf(
-        "- **%s** was most selective (%d regions)\n",
-        min_dmrs$Method, min_dmrs$Number_of_DMRs
+        "- Best base-pair IoU: **%s** (%.3f)\n",
+        best_iou$Method, best_iou$IoU_bp
     ))
 
-    if (exists("capture_df") && nrow(capture_df) > 0) {
-        best_capture <- capture_df[which.max(capture_df$Capture_Rate_Pct), ]
+    if ("CMEnt" %in% truth_eval$Method) {
+        seg <- truth_eval[truth_eval$Method == "CMEnt", ]
         cat(sprintf(
-            "- **%s** captured %.1f%% of high-confidence (3+ methods) DMRs\n",
-            best_capture$Method, best_capture$Capture_Rate_Pct
+            "- **CMEnt** region metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f\n",
+            seg$Precision_regions, seg$Recall_regions, seg$F1_regions
         ))
-    }
-
-    if (exists("effect_size_df") && nrow(effect_size_df) > 0) {
-        best_effect <- effect_size_df[which.max(effect_size_df$Mean_Delta_Beta), ]
         cat(sprintf(
-            "- **%s** had the highest mean effect size (delta beta = %.4f)\n",
-            best_effect$Method, best_effect$Mean_Delta_Beta
-        ))
-    }
-
-    if (exists("specificity_df") && "CMEnt" %in% specificity_df$Method) {
-        cment_row <- specificity_df[specificity_df$Method == "CMEnt", ]
-        cat(sprintf(
-            "- **CMEnt**: %.1f%% method-specific, %.1f%% shared with at least 2 methods, %.1f%% shared with at least 3 methods\n",
-            cment_row$Pct_Specific, cment_row$Pct_Shared_2plus, cment_row$Pct_Shared_3plus
+            "- **CMEnt** base-pair metrics: Precision = %.3f, Recall = %.3f, F1 = %.3f, IoU = %.3f\n",
+            seg$Precision_bp, seg$Recall_bp, seg$F1_bp, seg$IoU_bp
         ))
     }
 }

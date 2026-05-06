@@ -12,9 +12,7 @@ options("CMEnt.verbose" = 1)
 options("CMEnt.njobs" = 8)
 for (case in names(files_to_make)) {
     cment_file <- files_to_make[[case]]
-    loadExampleInputDataChr5And11("beta")
-    loadExampleInputDataChr5And11("dmps")
-    loadExampleInputDataChr5And11("pheno")
+    loadExampleInputDataChr5And11()
     pheno[, "casecontrol"] <- pheno$Sample_Group == "cancer"
     dmrs_cment <- CMEnt::findDMRsFromSeeds(
         beta = beta,

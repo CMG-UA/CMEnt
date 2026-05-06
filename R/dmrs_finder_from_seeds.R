@@ -82,7 +82,7 @@
 #'
 #' @examples
 #' # Load example data
-#' loadExampleInputData("beta", "dmps", "pheno")
+#' loadExampleInputData()
 #' # Find DMRs
 #' dmrs <- findDMRsFromSeeds(
 #'     beta = beta,
