@@ -1,268 +1,123 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr21And22()
-
-create_seeds_with_chr_pos <- function(seeds, beta_mat, locs) {
-    seed_row_names <- rownames(seeds)
-    seed_indices <- match(seed_row_names, rownames(beta_mat))
-    valid_indices <- !is.na(seed_indices)
-
-    seeds_subset <- seeds[valid_indices, , drop = FALSE]
-    seeds_subset$ID <- paste0(as.character(locs$chr[seed_indices[valid_indices]]), ":", locs$start[seed_indices[valid_indices]])
-    seeds_subset <- seeds_subset[!grepl("NA", seeds_subset$ID), , drop = FALSE]
-
-    seeds_subset
-}
-
-create_seeds_without_chr_prefix <- function(seeds, beta_mat, locs) { # nolint
-    seed_row_names <- rownames(seeds)
-    seed_indices <- match(seed_row_names, rownames(beta_mat))
-    valid_indices <- !is.na(seed_indices)
-
-    seeds_subset <- seeds[valid_indices, , drop = FALSE]
-    chr_without_prefix <- gsub("^chr", "", as.character(locs$chr[seed_indices[valid_indices]]))
-    seeds_subset$ID <- paste0(chr_without_prefix, ":", locs$start[seed_indices[valid_indices]])
-    seeds_subset <- seeds_subset[!grepl("NA", seeds_subset$ID), , drop = FALSE]
-
-    seeds_subset
-}
-
-
-
-test_that("findDMRsFromSeeds works with full bed file including all optional columns", {
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
+test_that("findDMRsFromSeeds matches in-memory results for a full synthetic BED input", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
     withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
 
-    bed_data <- data.frame(
-        chrom = as.character(locs$chr),
-        start = locs$start,
-        end = locs$start + 1,
-        id = rownames(beta_mat),
-        score = rep(0, nrow(beta_mat)),
-        strand = rep("*", nrow(beta_mat)),
-        stringsAsFactors = FALSE
+    writeSyntheticBedFile(
+        fixture,
+        bed_file,
+        end_col = "end",
+        id_col = "id",
+        include_score = TRUE,
+        include_strand = TRUE
     )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-
-    dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
-
-    dmrs <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
+    bed_dmrs <- runSyntheticFindDMRs(
+        fixture,
         beta = bed_file,
-        seeds = dmps_with_chr_pos,
+        seeds = makeSyntheticSeedsWithIds(fixture),
         seeds_id_col = "ID",
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
         bed_provided = TRUE,
         bed_chrom_col = "chrom",
-        bed_start_col = "start",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        njobs = 1
+        bed_start_col = "start"
     )
 
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_equal(as.character(GenomicRanges::seqnames(bed_dmrs)), as.character(GenomicRanges::seqnames(baseline)))
+    expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
+    expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
+    expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
+    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^chr1:chr1:100-chr1:300$")
 })
 
-test_that("findDMRsFromSeeds detects bed file by extension", {
-    skip_on_ci()
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
+test_that("findDMRsFromSeeds detects BED files by extension", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
     withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
 
-    bed_data <- data.frame(
-        chrom = as.character(locs$chr),
-        start = locs$start,
-        stringsAsFactors = FALSE
-    )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-
-    dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
-
-    dmrs <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
+    writeSyntheticBedFile(fixture, bed_file)
+    bed_dmrs <- runSyntheticFindDMRs(
+        fixture,
         beta = bed_file,
-        seeds = dmps_with_chr_pos,
+        seeds = makeSyntheticSeedsWithIds(fixture),
         seeds_id_col = "ID",
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
         bed_chrom_col = "chrom",
-        bed_start_col = "start",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        njobs = 1
+        bed_start_col = "start"
     )
 
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
+    expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
+    expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
 })
 
-test_that("findDMRsFromSeeds throws error when DMP IDs are not in chr:pos format with bed file", {
-    skip_on_ci()
-
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
+test_that("findDMRsFromSeeds rejects BED seeds that are not in chr:pos format", {
+    fixture <- makeSyntheticFindDMRsFixture()
     bed_file <- tempfile(fileext = ".bed")
     withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
 
-    bed_data <- data.frame(
-        chrom = as.character(locs$chr),
-        start = locs$start,
-        stringsAsFactors = FALSE
-    )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
+    writeSyntheticBedFile(fixture, bed_file)
 
     expect_error(
-        findDMRsFromSeeds(
-            .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
+        runSyntheticFindDMRs(
+            fixture,
             beta = bed_file,
-            seeds = dmps,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
             bed_provided = TRUE,
             bed_chrom_col = "chrom",
-            bed_start_col = "start",
-            min_seeds = 2,
-            min_sites = 3,
-            njobs = 1
+            bed_start_col = "start"
         ),
         "must be in 'chr:pos' format"
     )
-
 })
 
-test_that("findDMRsFromSeeds works with bed file without chr prefix in chromosome names", {
-    skip_on_ci()
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
+test_that("findDMRsFromSeeds handles BED files without a chr prefix", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
     withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
 
-    bed_data <- data.frame(
-        chrom = gsub("^chr", "", as.character(locs$chr)),
-        start = locs$start,
-        stringsAsFactors = FALSE
-    )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-
-    dmps_with_chr_pos <- create_seeds_without_chr_prefix(dmps, beta_mat, locs)
-
-    dmrs <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
+    writeSyntheticBedFile(fixture, bed_file, drop_chr_prefix = TRUE)
+    bed_dmrs <- runSyntheticFindDMRs(
+        fixture,
         beta = bed_file,
-        seeds = dmps_with_chr_pos,
+        seeds = makeSyntheticSeedsWithIds(fixture, include_chr_prefix = FALSE),
         seeds_id_col = "ID",
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
         bed_provided = TRUE,
         bed_chrom_col = "chrom",
-        bed_start_col = "start",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        njobs = 1
+        bed_start_col = "start"
     )
 
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
+    expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
+    expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
+    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^1:1:100-1:300$")
 })
 
-test_that("findDMRsFromSeeds works with bed file and custom column names", {
-    skip_on_ci()
-    beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
-    beta_mat <- as.matrix(beta_handler$getBeta())
-    locs <- beta_handler$getBetaLocs()
-
+test_that("findDMRsFromSeeds respects custom BED coordinate column names", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
     withr::defer(unlink(bed_file))
-    sample_cols <- rownames(pheno)
 
-    bed_data <- data.frame(
-        my_chr = as.character(locs$chr),
-        my_pos = locs$start,
-        my_end = locs$start + 1,
-        stringsAsFactors = FALSE
+    writeSyntheticBedFile(
+        fixture,
+        bed_file,
+        chrom_col = "my_chr",
+        start_col = "my_pos",
+        end_col = "my_end"
     )
-    for (sample in sample_cols) {
-        bed_data[[sample]] <- beta_mat[, sample]
-    }
-
-    write.table(bed_data, file = bed_file, sep = "\t", row.names = FALSE, quote = FALSE, col.names = TRUE)
-
-    dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
-
-    dmrs <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
+    bed_dmrs <- runSyntheticFindDMRs(
+        fixture,
         beta = bed_file,
-        seeds = dmps_with_chr_pos,
+        seeds = makeSyntheticSeedsWithIds(fixture),
         seeds_id_col = "ID",
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
         bed_provided = TRUE,
         bed_chrom_col = "my_chr",
-        bed_start_col = "my_pos",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        njobs = 1
+        bed_start_col = "my_pos"
     )
 
-
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
-    if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
-    }
+    expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
+    expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
+    expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
 })

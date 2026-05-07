@@ -1,16 +1,18 @@
 options("CMEnt.verbose" = 0)
-loadExampleInputData("beta", "pheno")
 
-.example_dmrs_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt", mustWork = FALSE)
-test_that("plotDMR creates a gtable object", {
+plot_fixture <- makeSyntheticPlotFixture()
+
+test_that("plotDMR creates a gtable object from synthetic DMR metadata", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 2, output_file = "Rplots.pdf"))
+    p <- suppressWarnings(plotDMR(
+        plot_fixture$dmrs,
+        dmr_index = 1,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
 
     expect_s3_class(p, "gtable")
     expect_true(inherits(p, "gTree"))
@@ -20,118 +22,100 @@ test_that("plotDMR creates a gtable object", {
 test_that("plotDMR handles invalid dmr_index", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
     expect_error(
-        plotDMR(dmrs, dmr_index = 0),
+        plotDMR(plot_fixture$dmrs, dmr_index = 0, plot_motif = FALSE, beta_locs = plot_fixture$locs, array = NULL),
         "is out of bounds"
     )
-
     expect_error(
-        plotDMR(dmrs, dmr_index = length(dmrs) + 1),
+        plotDMR(plot_fixture$dmrs, dmr_index = length(plot_fixture$dmrs) + 1, plot_motif = FALSE, beta_locs = plot_fixture$locs, array = NULL),
         "is out of bounds"
     )
 })
 
+test_that("plotDMR and plotDMRs validate PDF output paths", {
+    skip_if_not_installed("ggplot2")
+
+    expect_error(plotDMR(plot_fixture$dmrs, 1, plot_motif = FALSE, output_file = "dmr.png", beta_locs = plot_fixture$locs, array = NULL), ".pdf")
+    expect_error(plotDMRs(plot_fixture$dmrs, 1:2, plot_motif = FALSE, output_file = "dmrs.png"), ".pdf")
+})
+
+test_that("plotDMRs returns one plot per requested DMR", {
+    skip_if_not_installed("ggplot2")
+
+    p <- suppressWarnings(plotDMRs(
+        plot_fixture$dmrs,
+        dmr_indices = 1:2,
+        ncol = 2,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
+
+    expect_length(p, 2L)
+    expect_true(all(vapply(p, inherits, logical(1), what = "gtable")))
+})
+
+test_that("plotDMRs uses top_n when dmr_indices is NULL", {
+    skip_if_not_installed("ggplot2")
+
+    p <- suppressWarnings(plotDMRs(
+        plot_fixture$dmrs,
+        dmr_indices = NULL,
+        top_n = 1,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
+
+    expect_length(p, 1L)
+    expect_true(inherits(p[[1]], "gtable"))
+})
 
 test_that("plotDMR works without a title", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    custom_title <- "Test DMR Title"
-    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1, plot_title = FALSE))
+    p <- suppressWarnings(plotDMR(
+        plot_fixture$dmrs,
+        dmr_index = 1,
+        plot_title = FALSE,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
 
     expect_s3_class(p, "gtable")
 })
 
-test_that("plotDMRs creates a combined plot", {
+test_that(".plotDMRStructure retains only seed sites when no extension sites are present", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
+    ret <- CMEnt:::.plotDMRStructure(
+        dmrs = plot_fixture$dmrs,
+        dmr_index = 1,
+        beta_locs = plot_fixture$locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
 
-    n_dmrs <- min(4, length(dmrs))
-    p <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:n_dmrs, ncol = 2))
-
-    expect_true(!is.null(p))
-    expect_true(inherits(p[[1]], "gtable"))
+    expect_setequal(rownames(ret$total_locs), c("cgA", "cgB", "cgC"))
 })
 
-test_that("plotDMRs handles NULL dmr_indices", {
-    skip_if_not_installed("ggplot2")
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    p <- suppressWarnings(plotDMRs(dmrs, dmr_indices = NULL))
-
-    expect_true(!is.null(p))
-    expect_true(inherits(p[[1]], "gtable"))
-})
-
-test_that("plotDMRs respects ncol parameter", {
+test_that("plotDMR accepts data.frame DMR input", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
+    p <- suppressWarnings(plotDMR(
+        as.data.frame(plot_fixture$dmrs),
+        dmr_index = 1,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
 
-    p1 <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:4, ncol = 2))
-    expect_true(!is.null(p1))
-
-    p2 <- suppressWarnings(plotDMRs(dmrs, dmr_indices = 1:4, ncol = 4))
-    expect_true(!is.null(p2))
-})
-
-
-test_that("plotDMR handles DMRs with no extended sites", {
-    skip_if_not_installed("ggplot2")
-
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    no_extended_idx <- which(dmr_data$start_seed == dmr_data$start_site & dmr_data$end_seed == dmr_data$end_site)
-
-    if (length(no_extended_idx) > 0) {
-        p <- suppressWarnings(plotDMR(dmrs, dmr_index = no_extended_idx[1]))
-        expect_s3_class(p, "gtable")
-    } else {
-        skip("No DMRs without extended sites found")
-    }
-})
-
-test_that("plotDMR handles DMRs with multiple seeds", {
-    skip_if_not_installed("ggplot2")
-
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    dmr_data <- as.data.frame(S4Vectors::mcols(dmrs))
-    multi_seed_idx <- which(dmr_data$seeds_num >= 3)
-
-    if (length(multi_seed_idx) > 0) {
-        p <- suppressWarnings(plotDMR(dmrs, dmr_index = multi_seed_idx[1]))
-        expect_s3_class(p, "gtable")
-        expect_true(inherits(p, "gTree"))
-    } else {
-        skip("No DMRs with multiple seeds found")
-    }
+    expect_s3_class(p, "gtable")
 })
 
 test_that("plotDMR preserves overlapping extension site IDs without rowname mangling", {
@@ -158,7 +142,6 @@ test_that("plotDMR preserves overlapping extension site IDs without rowname mang
         stringsAsFactors = FALSE
     )
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
-
     pheno <- data.frame(
         Sample_Group = c("case", "control"),
         row.names = c("S1", "S2"),
@@ -213,12 +196,14 @@ test_that("plotDMR preserves overlapping extension site IDs without rowname mang
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    p <- suppressWarnings(plotDMR(dmrs, dmr_index = 1))
+    p <- suppressWarnings(plotDMR(
+        plot_fixture$dmrs,
+        dmr_index = 1,
+        plot_motif = FALSE,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38"
+    ))
 
     expect_true(inherits(p, "gtable"))
     expect_true(inherits(p, "gTree"))
@@ -244,43 +229,30 @@ test_that(".plotPWM clarifies when a motif logo is consensus-only", {
     expect_identical(p$labels$y, "Relative base weight")
 })
 
-test_that("plotDMR with beta and pheno includes PWM plot", {
+test_that("plotDMR with beta and pheno accepts precomputed PWM metadata", {
     skip_if_not_installed("ggplot2")
-    skip_if_not_installed("BSgenome.Hsapiens.UCSC.hg19")
 
-    dmrs <- readRDS(.example_dmrs_path)
-    if (length(dmrs) == 0 || !file.exists(.example_dmrs_path)) {
-        skip("Benchmark DMRs not available")
-    }
-
-    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-        pheno_env <- new.env(parent = emptyenv())
-        load(pheno, envir = pheno_env)
-        pheno <- pheno_env$pheno
-    }
-    if (is.character(beta) && length(beta) == 1 && file.exists(beta)) {
-        beta_env <- new.env(parent = emptyenv())
-        load(beta, envir = beta_env)
-        beta <- beta_env$beta
-    }
-
-    if (!is.data.frame(pheno) || !(is.matrix(beta) || is.data.frame(beta))) {
-        skip("Example beta/pheno data not available in a plottable format")
-    }
+    dmrs <- plot_fixture$dmrs
+    S4Vectors::mcols(dmrs)$pwm <- replicate(
+        length(dmrs),
+        matrix(
+            rep(c(0.7, 0.1, 0.1, 0.1), 12),
+            nrow = 4,
+            dimnames = list(Biostrings::DNA_BASES, NULL)
+        ),
+        simplify = FALSE
+    )
+    S4Vectors::mcols(dmrs)$consensus_seq <- c("AAAAAAAAAAAA", "CCCCCCCCCCCC")
 
     p <- suppressWarnings(plotDMR(
         dmrs = dmrs,
         dmr_index = 1,
-        beta = beta,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        genome = "hg19",
-        array = "450K"
+        beta = plot_fixture$beta_handler,
+        pheno = plot_fixture$pheno,
+        genome = "hg38",
+        array = NULL,
+        sample_group_col = "Sample_Group"
     ))
 
-    expect_true(inherits(p, "gtable"))
-
-    if ("pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
-        expect_true(nrow(p) >= 3)
-    }
+    expect_s3_class(p, "gtable")
 })

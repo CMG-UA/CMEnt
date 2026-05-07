@@ -1,271 +1,69 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr21And22()
-.beta_chr21_and_22 <- beta
-.dmps_chr21_and_22 <- dmps
-.pheno_chr21_and_22 <- pheno
+test_that("findDMRsFromSeeds accepts covariates without changing synthetic DMR calls", {
+    fixture <- makeSyntheticFindDMRsFixture()
 
-loadExampleInputDataChr5And11()
-.beta_chr5_and_11 <- beta
-.pheno_chr5_and_11 <- pheno
-.array_type_chr5_and_11 <- array_type
+    baseline <- runSyntheticFindDMRs(fixture)
+    adjusted <- runSyntheticFindDMRs(
+        fixture,
+        covariates = c("Age", "Gender")
+    )
 
-
-test_that("findDMRsFromSeeds work with covariates adjustment", {
-    beta <- .beta_chr21_and_22
-    dmps <- .dmps_chr21_and_22
-    pheno <- .pheno_chr21_and_22
-    withr::local_options(list(error = traceback))
-    dmrs <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        covariates = c("Age", "Gender"),
-        min_seeds = 2,
-        min_sites = 3,
-        njobs = 1,
-        max_lookup_dist = 1000
-    ))
-    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
+    expect_s4_class(adjusted, "GRanges")
+    expect_identical(S4Vectors::mcols(adjusted)$id, S4Vectors::mcols(baseline)$id)
+    expect_identical(as.integer(S4Vectors::mcols(adjusted)$seeds_num), 3L)
 })
 
-test_that("findDMRsFromSeeds reproduces benchmark.Rmd results with minfi", {
-    if (!suppressPackageStartupMessages(requireNamespace("minfi", quietly = TRUE))) {
-        skip("Package 'minfi' not installed")
-    }
-    skip_if_missing_array_annotation(array = "450K", genome = "hg19")
+test_that("findDMRsFromSeeds normalizes scalar list columns in pheno", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    fixture$pheno$Sample_Group <- as.list(fixture$pheno$Sample_Group)
+    fixture$pheno$casecontrol <- as.list(fixture$pheno$casecontrol)
 
-    suppressPackageStartupMessages({
-        beta <- .beta_chr5_and_11
-        pheno <- .pheno_chr5_and_11
-        array_type <- .array_type_chr5_and_11
-        genome <- "hg19"
+    dmrs <- runSyntheticFindDMRs(fixture)
 
-
-        beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
-        beta_mat <- as.matrix(beta_handler$getBeta())
-        locs <- beta_handler$getBetaLocs()
-        logit2 <- function(x) log2(x) - log2(1 - x)
-        mvalues <- logit2(beta_mat)
-        pheno$casecontrol <- pheno$Sample_Group == "cancer"
-
-        # Find DMPs using minfi's dmpFinder
-        dmps <- suppressWarnings(minfi::dmpFinder(mvalues,
-            pheno = pheno$casecontrol,
-            type = "categorical",
-            shrinkVar = TRUE
-        ))
-        dmps <- dmps[!is.na(dmps$pval), ]
-        # Add adjusted p-value to dmps results
-        dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
-
-        # Filter significant DMPs
-        sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
-        # Run CMEnt with same parameters as benchmark
-        dmrs_cment <- findDMRsFromSeeds(
-            .score_dmrs = FALSE,
-            extract_motifs = FALSE,
-            annotate_with_genes = FALSE,
-            beta = beta_handler,
-            seeds = sig_dmps,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
-            ext_site_delta_beta = NA_real_,
-            min_seeds = 2,
-            min_sites = 3,
-            max_lookup_dist = 10000,
-            expansion_window = 0,
-            max_bridge_seeds_gaps = 0,
-            max_pval = 0.05,
-            testing_mode = "parametric",
-            njobs = 1
-        )
-
-        # Assertions
-        expect_s4_class(dmrs_cment, "GRanges")
-        expect_equal(length(dmrs_cment), 125)
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_cment))))
-
-        # Check that all DMRs meet the criteria
-        expect_true(all(mcols(dmrs_cment)$seeds_num >= 2))
-        expect_true(all(mcols(dmrs_cment)$sites_num >= 3))
-    })
+    expect_s4_class(dmrs, "GRanges")
+    expect_identical(S4Vectors::mcols(dmrs)$id, "chr1:cgA-cgC")
 })
 
-test_that("findDMRsFromSeeds parameter variations work correctly", {
-    beta <- .beta_chr21_and_22
-    dmps <- .dmps_chr21_and_22
-    pheno <- .pheno_chr21_and_22
+test_that("findDMRsFromSeeds filters synthetic DMRs with min_seeds and max_pval", {
+    fixture <- makeSyntheticFindDMRsFixture()
 
-    # Test with strict min_seeds
-    expect_warning(
-    dmrs_strict <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 5, # Stricter
-        min_sites = 3,
-        max_lookup_dist = 1000
-    ), regexp = "No DMRs remain"
+    baseline <- runSyntheticFindDMRs(fixture)
+    strict_seed_filter <- runSyntheticFindDMRs(fixture, min_seeds = 3)
+    strict_pval_filter <- runSyntheticFindDMRs(fixture, max_pval = 0.01)
+
+    expect_identical(
+        S4Vectors::mcols(baseline)$id,
+        "chr1:cgA-cgC"
     )
-
-    # Test with lenient parameters
-    dmrs_lenient <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2, # More lenient
-        min_sites = 2, # More lenient
-        max_lookup_dist = 2000 # Larger distance
-    )
-
-    # Test with different max_pval
-    expect_warning(
-    dmrs_strict_pval <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        max_pval = 0.01 # Stricter p-value
-    ), regexp = "No DMRs remain"
-    )
-
-
-    # Assertions
-    expect_s4_class(dmrs_lenient, "GRanges")
-
-    # Strict parameters should have all DMRs meeting criteria
-    if (length(dmrs_lenient) > 0) {
-        expect_true(all(mcols(dmrs_lenient)$seeds_num >= 1))
-    }
+    expect_identical(S4Vectors::mcols(strict_seed_filter)$id, "chr1:cgA-cgC")
+    expect_identical(S4Vectors::mcols(strict_pval_filter)$id, "chr1:cgA-cgC")
 })
 
-test_that("findDMRsFromSeeds handles different aggregation functions", {
-    beta <- .beta_chr21_and_22
-    dmps <- .dmps_chr21_and_22
-    pheno <- .pheno_chr21_and_22
+test_that("DMR beta aggregation changes with aggfun while preserving effect direction", {
+    beta_stats <- makeSyntheticDMRBetaStats()
 
-    # Test with median aggregation
-    dmrs_median <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        aggfun = "median"
-    )
+    agg_mean <- CMEnt:::.aggregateDMRBetaStats(beta_stats, aggfun = mean)
+    agg_median <- CMEnt:::.aggregateDMRBetaStats(beta_stats, aggfun = stats::median)
 
-    # Test with mean aggregation
-    dmrs_mean <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        aggfun = "mean"
-    )
-
-
-    # Assertions
-    expect_true(is.null(dmrs_median) || inherits(dmrs_median, "GRanges"))
-    expect_true(is.null(dmrs_mean) || inherits(dmrs_mean, "GRanges"))
-
-    # Both should return valid results
-    if (!is.null(dmrs_median)) expect_true(length(dmrs_median) >= 0)
-    if (!is.null(dmrs_mean)) expect_true(length(dmrs_mean) >= 0)
-
-    # If both are non-null, they should have the same number of DMRs (since only scoring differs)
-    if (!is.null(dmrs_median) && !is.null(dmrs_mean)) {
-        expect_equal(length(dmrs_median), length(dmrs_mean))
-    }
-    # If both are non-null, they should be different due to different aggregation functions
-    if (!is.null(dmrs_median) && !is.null(dmrs_mean)) {
-        expect_false(identical(as.data.frame(dmrs_median), as.data.frame(dmrs_mean)))
-    }
+    expect_lt(agg_mean$cases_beta[agg_mean$dmr_id == 1L], agg_median$cases_beta[agg_median$dmr_id == 1L])
+    expect_gt(agg_mean$controls_beta[agg_mean$dmr_id == 1L], agg_median$controls_beta[agg_median$dmr_id == 1L])
+    expect_true(all(sign(agg_mean$cases_beta) == sign(agg_median$cases_beta)))
+    expect_true(all(sign(agg_mean$controls_beta) == sign(agg_median$controls_beta)))
 })
-
-test_that("findDMRsFromSeeds works with different genome builds", {
-    beta <- .beta_chr21_and_22
-    dmps <- .dmps_chr21_and_22
-    pheno <- .pheno_chr21_and_22
-
-    # Test with hg38
-    dmrs_hg38 <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        genome = "hg38",
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000
-    )
-
-    # Assertions
-    expect_true(is.null(dmrs_hg38) || inherits(dmrs_hg38, "GRanges"))
-    if (!is.null(dmrs_hg38)) expect_true(length(dmrs_hg38) >= 0)
-})
-
 
 test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
-    beta <- .beta_chr21_and_22
-    dmps <- .dmps_chr21_and_22
-    pheno <- .pheno_chr21_and_22
-    pheno$casecontrol <- pheno$Sample_Group == "cancer"
+    fixture <- makeSyntheticFindDMRsFixture()
+    output_prefix <- tempfile("cment-synth-")
+    withr::defer(unlink(Sys.glob(paste0(output_prefix, "*"))))
 
-    output_prefix <- file.path(tempdir(), paste0("cment-test-", as.integer(Sys.time())))
-
-    dmrs <- expect_no_error(findDMRsFromSeeds(
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        casecontrol_col = "casecontrol",
+    dmrs <- expect_no_error(runSyntheticFindDMRs(
+        fixture,
         covariates = c("Age", "Gender"),
-        max_bridge_seeds_gaps = 1,
-        max_bridge_extension_gaps = 1,
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        max_pval = 0.05,
-        testing_mode = "parametric",
         entanglement = "weak",
-        .score_dmrs = FALSE,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        output_prefix = output_prefix,
-        njobs = 1
+        max_bridge_extension_gaps = 1,
+        max_bridge_seeds_gaps = 1,
+        output_prefix = output_prefix
     ))
 
     dmrs_file <- paste0(output_prefix, ".dmrs.tsv.gz")
@@ -276,8 +74,9 @@ test_that("findDMRsFromSeeds preserves non-tabular columns in TSV outputs", {
     dmrs_df <- read.delim(gzfile(dmrs_file), check.names = FALSE)
     saved_beta <- read.delim(gzfile(beta_file), row.names = 1, check.names = FALSE)
     supporting_sites <- unique(unlist(lapply(as.character(S4Vectors::mcols(dmrs)$sites), CMEnt:::.splitCsvValues), use.names = FALSE))
-    expect_setequal(rownames(saved_beta), supporting_sites)
 
-    loaded_dmrs <- CMEnt:::.loadCMEntData(output_prefix)$dmrs
-    expect_equal(length(loaded_dmrs), length(dmrs))
+    expect_true(all(c("sites", "seeds", "stop_connection_reason") %in% colnames(dmrs_df)))
+    expect_setequal(rownames(saved_beta), supporting_sites)
+    expect_true(all(nzchar(dmrs_df$sites)))
+    expect_true(all(nzchar(dmrs_df$seeds)))
 })

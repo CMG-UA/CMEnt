@@ -183,9 +183,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (file_size_mb < mem_thres) {
                     private$.beta_file_in_memory <- tryCatch(
                         {
-                            temp_data <- data.table::fread(
+                            .log_step("Beta file is small (", round(file_size_mb, 1), " MB). Attempting to load into memory...", level = 2)
+                            temp_data <- .readBetaFileData(
                                 private$.beta_file,
-                                header = TRUE,
                                 data.table = FALSE,
                                 showProgress = getOption("CMEnt.verbose", 0) > 1
                             )
@@ -196,7 +196,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
                             .log_success(
                                 "Beta file loaded into memory (", nrow(temp_data),
-                                " sites x ", ncol(temp_data), " samples)"
+                                " sites x ", ncol(temp_data), " samples)", level = 2
                             )
 
                             temp_data
@@ -230,7 +230,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
 
                     if (!is.null(converted_tabix)) {
-                        .log_success("Beta file converted to tabix format for improved performance")
+                        .log_success("Beta file converted to tabix format for improved performance", level = 2)
                         private$.tabix_file <- converted_tabix
                         self$sorted_locs <- genomicLocsFromTabix(
                             input_tabix = private$.tabix_file,
@@ -241,7 +241,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         private$.self_contained <- TRUE
                         private$.beta_file <- NULL
                     } else {
-                        .log_info("Continuing with standard beta file (tabix conversion not available)")
+                        .log_info("Continuing with standard beta file (tabix conversion not available)", level = 2)
                     }
                 } else {
                     private$.beta_file <- NULL
@@ -295,14 +295,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     private$.beta_row_names <- rownames(private$.beta_file_in_memory)
                 } else if (!is.null(private$.beta_file)) {
                     .log_info("Reading from beta file...", level = 3)
-                    private$.beta_row_names <- unlist(data.table::fread(
-                        file = private$.beta_file,
-                        select = 1,
-                        sep = "\t",
-                        header = TRUE,
+                    private$.beta_row_names <- .readBetaFileRowNames(
+                        beta_file = private$.beta_file,
                         showProgress = TRUE,
                         nThread = self$njobs
-                    ))
+                    )
                     names(private$.beta_row_names) <- NULL
                 } else {
                     .log_info("Reading from tabix file...", level = 3)
@@ -352,32 +349,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 private$.beta_col_names <- colnames(private$.beta_file_in_memory)
             } else {
                 if (!is.null(private$.beta_file)) {
-                    if (endsWith(private$.beta_file, ".gz")) {
-                        conn <- gzfile(private$.beta_file, "r")
-                    } else {
-                        conn <- file(private$.beta_file, "r")
-                    }
+                    header_info <- .getBetaFileHeaderInfo(private$.beta_file)
+                    private$.beta_col_names <- header_info$sample_col_names
                 } else {
-                    conn <- gzfile(private$.tabix_file, "r")
+                    tabix_header_info <- .getBetaFileHeaderInfo(private$.tabix_file, is_tabix = TRUE)
+                    private$.beta_col_names <- tabix_header_info$sample_col_names
                 }
-
-                file_beta_col_names <- scan(conn,
-                    sep = "\t",
-                    what = character(),
-                    nlines = 1,
-                    quiet = TRUE
-                )
-                close(conn)
-
-                if (!is.null(private$.beta_file)) {
-                    # expected first column: site ID
-                    file_beta_col_names <- file_beta_col_names[-1]
-                } else {
-                    # expected first columns: #chrom start end id score strand
-                    file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
-                }
-
-                private$.beta_col_names <- file_beta_col_names
             }
 
             private$.beta_col_names
@@ -762,8 +739,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (!is.null(row_names)) {
                     beta_subset <- beta_subset[row_names, , drop = FALSE]
                 }
-                beta_subset <- beta_subset[, 8:ncol(beta_subset), drop = FALSE]
-                beta_subset <- as.data.frame(sapply(beta_subset, as.numeric))
+                tabix_sample_cols <- .getBetaFileHeaderInfo(
+                    private$.tabix_file,
+                    is_tabix = TRUE
+                )$sample_col_names
+                beta_subset <- beta_subset[, tabix_sample_cols, drop = FALSE]
+                beta_subset <- as.data.frame(
+                    lapply(beta_subset, as.numeric),
+                    check.names = FALSE,
+                    stringsAsFactors = FALSE
+                )
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }

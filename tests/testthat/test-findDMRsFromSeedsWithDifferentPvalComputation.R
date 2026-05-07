@@ -1,227 +1,88 @@
 options("CMEnt.verbose" = 0)
-loadExampleInputDataChr21And22("beta", "dmps", "pheno")
 
-test_that("findDMRsFromSeeds works with empirical p-value mode and different strategies", {
-    skip_on_ci()
+test_that("empirical Monte Carlo connectivity is reproducible under the same RNG seed", {
+    sites_beta <- rbind(
+        c(0.30, 0.35, 0.40, 0.45, 0.50),
+        c(0.32, 0.36, 0.39, 0.44, 0.48)
+    )
+    pheno <- data.frame(sample = seq_len(5))
+    pheno[["__casecontrol__"]] <- c(0L, 0L, 1L, 1L, 1L)
+    group_inds <- list(g1 = seq_len(5))
 
-    # Test parametric mode (baseline)
-    dmrs_parametric <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
+    set.seed(42)
+    ret1 <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
         pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "parametric"
+        max_pval = 0.05,
+        entanglement = "strong",
+        aggfun = mean,
+        testing_mode_per_group = c(g1 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "montecarlo"),
+        ntries = 25,
+        mid_p = TRUE
+    )
+    set.seed(42)
+    ret2 <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
+        pheno = pheno,
+        max_pval = 0.05,
+        entanglement = "strong",
+        aggfun = mean,
+        testing_mode_per_group = c(g1 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "montecarlo"),
+        ntries = 25,
+        mid_p = TRUE
     )
 
-    # Test empirical mode with auto strategy
-    dmrs_empirical_auto <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "auto",
-        ntries = 100
-    ))
-
-    # Test automatic p-value mode selection
-    dmrs_pval_auto <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "auto",
-        empirical_strategy = "auto",
-        ntries = 100
-    )
-
-    # Test empirical mode with montecarlo strategy
-    dmrs_empirical_mc <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "montecarlo",
-        ntries = 100
-    ))
-
-    # Test empirical mode with permutations strategy
-    dmrs_empirical_perm <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "permutations",
-        ntries = 100
-    )
-
-    # Assertions
-    expect_true(is.null(dmrs_parametric) || inherits(dmrs_parametric, "GRanges"))
-    expect_true(is.null(dmrs_empirical_auto) || inherits(dmrs_empirical_auto, "GRanges"))
-    expect_true(is.null(dmrs_pval_auto) || inherits(dmrs_pval_auto, "GRanges"))
-    expect_true(is.null(dmrs_empirical_mc) || inherits(dmrs_empirical_mc, "GRanges"))
-    expect_true(is.null(dmrs_empirical_perm) || inherits(dmrs_empirical_perm, "GRanges"))
-
-    # All should produce valid results
-    if (!is.null(dmrs_parametric) && length(dmrs_parametric) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_parametric))))
-    }
-
-    if (!is.null(dmrs_empirical_auto) && length(dmrs_empirical_auto) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_empirical_auto))))
-    }
-
-    if (!is.null(dmrs_pval_auto) && length(dmrs_pval_auto) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_pval_auto))))
-    }
+    expect_equal(ret1, ret2)
 })
 
-test_that("findDMRsFromSeeds empirical mode respects external random seeds for reproducibility", {
-    skip_on_ci()
-    # Run with same seed twice
-    set.seed(42)
-    dmrs_seed1_run1 <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
+test_that("ntries = 0 enumerates the full permutation set when it is small enough", {
+    sites_beta <- rbind(
+        c(0.25, 0.35, 0.45, 0.55),
+        c(0.30, 0.40, 0.50, 0.45)
+    )
+    pheno <- data.frame(sample = seq_len(4))
+    pheno[["__casecontrol__"]] <- c(0L, 0L, 1L, 1L)
+    group_inds <- list(g1 = seq_len(4))
+
+    ret_default <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
         pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "montecarlo",
-        ntries = 50
-    ))
-    set.seed(42)
-    dmrs_seed1_run2 <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
+        max_pval = 0.5,
+        entanglement = "strong",
+        aggfun = mean,
+        testing_mode_per_group = c(g1 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "permutations"),
+        ntries = 0,
+        mid_p = FALSE
+    )
+    ret_full <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
         pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "montecarlo",
-        ntries = 50
-    ))
-    # Run with different seed
-    set.seed(123)
-    dmrs_seed2 <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        empirical_strategy = "montecarlo",
-        ntries = 50
-    ))
+        max_pval = 0.5,
+        entanglement = "strong",
+        aggfun = mean,
+        testing_mode_per_group = c(g1 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "permutations"),
+        ntries = factorial(4),
+        mid_p = FALSE
+    )
 
-    # Assertions
-    expect_true(is.null(dmrs_seed1_run1) || inherits(dmrs_seed1_run1, "GRanges"))
-    expect_true(is.null(dmrs_seed1_run2) || inherits(dmrs_seed1_run2, "GRanges"))
-    expect_true(is.null(dmrs_seed2) || inherits(dmrs_seed2, "GRanges"))
-
-    # Same seed should produce same number of DMRs
-    if (!is.null(dmrs_seed1_run1) && !is.null(dmrs_seed1_run2)) {
-        expect_equal(length(dmrs_seed1_run1), length(dmrs_seed1_run2))
-    }
-})
-
-test_that("findDMRsFromSeeds handles different ntries values correctly", {
-    skip_on_ci()
-    # Test with ntries = 0 (should use default)
-    dmrs_ntries_0 <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        ntries = 0
-    ))
-
-    # Test with ntries = 50
-    dmrs_ntries_50 <- suppressWarnings(findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        testing_mode = "empirical",
-        ntries = 50
-    ))
-
-    # Assertions
-    expect_true(is.null(dmrs_ntries_0) || inherits(dmrs_ntries_0, "GRanges"))
-    expect_true(is.null(dmrs_ntries_50) || inherits(dmrs_ntries_50, "GRanges"))
-
-    # All should produce valid results
-    if (!is.null(dmrs_ntries_50) && length(dmrs_ntries_50) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_ntries_50))))
-    }
+    expect_equal(ret_default, ret_full)
 })
 
 test_that(".testConnectivityBatch marks edges as failing when empirical permutation p-values cannot reach threshold", {
     set.seed(1)
     sites_beta <- matrix(runif(5 * 12, min = 0.05, max = 0.95), nrow = 5, ncol = 12)
     pheno <- data.frame(dummy = seq_len(12))
-    pheno[["__casecontrol__"]] <- c(rep(0, 6), rep(1, 6))
+    pheno[["__casecontrol__"]] <- c(rep(0L, 6), rep(1L, 6))
     group_inds <- list(g1 = 1:6, g2 = 7:12)
+
     expect_warning(
         ret_strong <- CMEnt:::.testConnectivityBatch(
             sites_beta = sites_beta,
@@ -230,12 +91,14 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
             max_pval = 1e-5,
             entanglement = "strong",
             aggfun = median,
-            testing_mode = c(g1 = "empirical", g2 = "empirical"),
-            empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
+            testing_mode_per_group = c(g1 = "empirical", g2 = "empirical"),
+            empirical_strategy_per_group = c(g1 = "permutations", g2 = "permutations"),
             ntries = 50,
             mid_p = FALSE
-        ), "sufficient small empirical p-value"
+        ),
+        "sufficient small empirical p-value"
     )
+
     expect_true(all(!ret_strong$connected))
     expect_true(all(ret_strong$reason == "pval>max_pval"))
     expect_true(all(ret_strong$pval == 1))
@@ -247,11 +110,12 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
         max_pval = 1e-5,
         entanglement = "weak",
         aggfun = median,
-        testing_mode = c(g1 = "empirical", g2 = "empirical"),
-        empirical_strategy = c(g1 = "permutations", g2 = "permutations"),
+        testing_mode_per_group = c(g1 = "empirical", g2 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "permutations", g2 = "permutations"),
         ntries = 50,
         mid_p = FALSE
     ))
+
     expect_true(all(!ret_weak$connected))
     expect_true(all(grepl("pval>max_pval", ret_weak$reason, fixed = TRUE)))
 })

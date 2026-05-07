@@ -111,26 +111,38 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 ## Load Data
 
 ```{r}
-sim_beta_path <- get_benchmark_file("sim_beta_1000.tsv")
-sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
+sim_beta_path <- get_benchmark_file("sim_beta_500.tsv")
+sim_truth_path <- get_benchmark_file("sim_dmrs_500.tsv")
+array_type <- "450K"
+
 if (!file.exists(sim_beta_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/19663986/files/microarray_sim_beta_1000.tsv?download=1",
+        url = "https://zenodo.org/records/19663986/files/microarray_sim_beta_500.tsv?download=1",
         destfile = sim_beta_path
     )
 }
 if (!file.exists(sim_truth_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/19663986/files/microarray_sim_dmrs_1000.tsv?download=1",
+        url = "https://zenodo.org/records/19663986/files/microarray_sim_dmrs_500.tsv?download=1",
         destfile = sim_truth_path
     )
 }
 
+
 genome <- "hg19"
 
-beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
+beta_handler <- CMEnt::getBetaHandler(sim_beta_path, array = array_type, genome = genome)
 
-pheno <- colnames(beta_handler)
+sample_ids <- beta_handler$getBetaColNames()
+pheno <- data.frame(
+    Sample_Group = ifelse(
+        grepl("Condition1", sample_ids, ignore.case = TRUE),
+        "normal",
+        "cancer"
+    ),
+    row.names = sample_ids,
+    stringsAsFactors = FALSE
+)
 
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
@@ -148,9 +160,9 @@ dmps <- suppressWarnings(dmpFinder(mvalues,
     shrinkVar = TRUE
 ))
 # sort DMPs by location
+dmps <- dmps[!is.na(dmps$pval), ]
 dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
 dmps <- dmps[rownames(dmp_locs), , drop = FALSE]
-dmps <- dmps[!is.na(dmps$pval), ]
 dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
 
 case_idx <- which(pheno$casecontrol)
@@ -162,9 +174,9 @@ sig_dmps <- dmps[dmps$pval_adj < 0.01 & abs(dmps$delta_beta) >= 0.05, ]
 cat(sprintf("Found %d significant DMPs (FDR < 0.01, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
 dmps_gr <- makeGRangesFromDataFrame(
     data.frame(
-        chr = locs$chr,
-        start = locs$start,
-        end = locs$end,
+        chr = dmp_locs$chr,
+        start = dmp_locs$start,
+        end = dmp_locs$end,
         pval = dmps$pval,
         qval = dmps$pval_adj,
         stat = dmps$qval
@@ -193,7 +205,6 @@ if (!file.exists(cment_file)) {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
-        covariates = c("Age", "Gender"),
         max_bridge_seeds_gaps  = 1,
         max_bridge_extension_gaps = 3,
         min_seeds = 2,
@@ -403,13 +414,13 @@ if (!file.exists(dmrcate_file)) {
                     colnames(design)[2] <- "cancer_vs_normal"
                 }
 
-                myannotation <- site.annotate("array", mvalues,
+                myannotation <- cpg.annotate("array", mvalues,
                     what = "M", arraytype = "450K",
                     analysis.type = "differential", design = design,
                     coef = coef_col, fdr = 0.05
                 )
 
-                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.sites = 3, betacutoff = 0.05)
+                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
                 extractRanges(dmrcate_results, genome = "hg19")
             }
         },
@@ -460,6 +471,28 @@ if (!file.exists(bumphunter_file)) {
         pos = locs$start,
         maxGap = bh_max_gap
     )
+    run_bumphunter_fit <- function(cutoff, B) {
+        bumphunter(beta_mat,
+            design = design,
+            chr = as.character(locs$chr),
+            pos = locs$start,
+            cluster = bh_cluster,
+            cutoff = cutoff,
+            maxGap = max_gap,
+            nullMethod = "bootstrap",
+            B = B,
+            type = "Beta",
+            coef = 2
+        )
+    }
+    has_informative_bumphunter_null <- function(fit) {
+        null_values <- unlist(fit$null$value, use.names = FALSE)
+        null_lengths <- unlist(fit$null$length, use.names = FALSE)
+        length(null_values) > 0 &&
+            any(abs(null_values) > 0) &&
+            length(null_lengths) > 0 &&
+            any(null_lengths > 0)
+    }
     max_gap <- bh_max_gap
     dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
@@ -467,18 +500,7 @@ if (!file.exists(bumphunter_file)) {
     max_iter <- 10L
     while (dmrs_cnt > bh_max_dmrs && iter < max_iter) {
         iter <- iter + 1L
-        dmrs <- bumphunter(beta_mat,
-            design = design,
-            cutoff = dmrs_cutoff,
-            chr = as.character(locs$chr),
-            pos = locs$start,
-            cluster = bh_cluster,
-            maxGap = max_gap,
-            nullMethod = "bootstrap",
-            B = 0,
-            type = "Beta",
-            coef = 2
-        )
+        dmrs <- run_bumphunter_fit(cutoff = dmrs_cutoff, B = 0)
         dmrs_cnt <- nrow(dmrs$table)
         dmrs_cutoff <- dmrs_cutoff * 1.2
         rm(dmrs)
@@ -489,18 +511,29 @@ if (!file.exists(bumphunter_file)) {
         "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
         final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_b
     ))
-    bumphunter_results <- bumphunter(beta_mat,
-        design = design,
-        chr = as.character(locs$chr),
-        pos = locs$start,
-        cluster = bh_cluster,
-        cutoff = final_cutoff,
-        maxGap = max_gap,
-        nullMethod = "bootstrap",
-        B = bh_b,
-        type = "Beta",
-        coef = 2
-    )
+    bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
+    bh_cutoff_floor <- 0.005
+    bh_bootstrap_adjust_iter <- 0L
+    bh_max_bootstrap_adjust <- 6L
+    while (
+        nrow(bumphunter_results$table) > 0 &&
+            (all(is.na(bumphunter_results$table$p.value)) ||
+                !has_informative_bumphunter_null(bumphunter_results)) &&
+            final_cutoff > bh_cutoff_floor &&
+            bh_bootstrap_adjust_iter < bh_max_bootstrap_adjust
+    ) {
+        prev_cutoff <- final_cutoff
+        final_cutoff <- max(final_cutoff / 2, bh_cutoff_floor)
+        if (identical(final_cutoff, prev_cutoff)) {
+            break
+        }
+        bh_bootstrap_adjust_iter <- bh_bootstrap_adjust_iter + 1L
+        cat(sprintf(
+            "Bumphunter: bootstrap null degenerate at cutoff=%.4f; retrying with cutoff=%.4f\n",
+            prev_cutoff, final_cutoff
+        ))
+        bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
+    }
 
     dmr_table <- bumphunter_results$table
     # bumphunter already estimates region-level p-values from the bootstrap null.

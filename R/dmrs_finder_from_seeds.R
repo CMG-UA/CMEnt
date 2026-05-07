@@ -3041,19 +3041,22 @@ findDMRsFromSeeds <- function(
         )
     }
     pheno_all <- pheno[beta_col_names, , drop = FALSE]
+    sample_group_values <- .coercePhenoColumn(pheno_all[[sample_group_col]], sample_group_col)
+    pheno_all[[sample_group_col]] <- sample_group_values
     if (is.null(casecontrol_col)) {
         pheno_all[, .CASE_CONTROL_COL] <- ifelse(
-            pheno_all[, sample_group_col] == levels(as.factor(pheno_all[, sample_group_col]))[1],
+            sample_group_values == levels(as.factor(sample_group_values))[1],
             0, 1
         )
     } else {
-        pheno_all[, .CASE_CONTROL_COL] <- as.numeric(pheno_all[, casecontrol_col])
+        pheno_all[[casecontrol_col]] <- .coercePhenoColumn(pheno_all[[casecontrol_col]], casecontrol_col)
+        pheno_all[, .CASE_CONTROL_COL] <- as.numeric(pheno_all[[casecontrol_col]])
     }
     ignored_sample_groups_chr <- if (is.null(ignored_sample_groups)) character(0) else {
         x <- trimws(unlist(base::strsplit(ignored_sample_groups, ",")))
         x[nzchar(x)]
     }
-    samples_selection_mask <- !(pheno_all[, sample_group_col] %in% ignored_sample_groups_chr)
+    samples_selection_mask <- !(sample_group_values %in% ignored_sample_groups_chr)
     if ("case" %in% ignored_sample_groups_chr) {
         samples_selection_mask <- samples_selection_mask & (pheno_all[, .CASE_CONTROL_COL] != 1)
     }
@@ -3065,7 +3068,7 @@ findDMRsFromSeeds <- function(
         stop("At least two samples are required after applying ignored_sample_groups.")
     }
     pheno_detection <- pheno_all[beta_col_names_detection, , drop = FALSE]
-    sample_groups <- factor(pheno_detection[, sample_group_col])
+    sample_groups <- factor(pheno_detection[[sample_group_col]])
     group_inds <- split(seq_along(sample_groups), sample_groups)
     testing_mode_per_group <- rep(testing_mode, length.out = length(unique(pheno_detection[[sample_group_col]])))
     names(testing_mode_per_group) <- unique(pheno_detection[[sample_group_col]])

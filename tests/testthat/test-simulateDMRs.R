@@ -178,3 +178,59 @@ test_that("simulateDMRs supports BSseq input provided as an rds path", {
     expect_s4_class(sim$simulated, "BSseq")
     expect_equal(ncol(sim$simulated), ncol(bs))
 })
+
+test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs", {
+    pos <- c(100L, 160L, 240L, 330L, 430L, 540L, 660L, 790L)
+    cov <- matrix(400L, nrow = length(pos), ncol = 6)
+    eta <- matrix(
+        qlogis(seq(0.25, 0.75, length.out = length(pos))),
+        nrow = length(pos),
+        ncol = 6
+    )
+    meth <- matrix(
+        round(plogis(eta) * cov),
+        nrow = nrow(cov),
+        ncol = ncol(cov)
+    )
+    bs <- BSseq(
+        chr = rep("chr1", length(pos)),
+        pos = pos,
+        M = meth,
+        Cov = cov,
+        sampleNames = paste0("sample_", seq_len(ncol(cov)))
+    )
+
+    set.seed(2025)
+    sim <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 1,
+        delta_max0 = 0.3,
+        min_sites = length(pos),
+        max_sites = length(pos),
+        truth_min_delta_beta = 0,
+        rename_samples = FALSE,
+        resample_counts = FALSE
+    )
+
+    case_samples <- which(sim$groups == sim$case_group)
+    orig_eta <- CMEnt:::.simulationLogitFromCounts(
+        bsseq::getCoverage(bs, type = "M")[, case_samples, drop = FALSE],
+        bsseq::getCoverage(bs, type = "Cov")[, case_samples, drop = FALSE]
+    )
+    sim_eta <- CMEnt:::.simulationLogitFromCounts(
+        bsseq::getCoverage(sim$simulated, type = "M")[, case_samples, drop = FALSE],
+        bsseq::getCoverage(sim$simulated, type = "Cov")[, case_samples, drop = FALSE]
+    )
+    observed_profile <- rowMeans(sim_eta - orig_eta)
+    observed_profile <- observed_profile / max(abs(observed_profile))
+
+    base_profile <- CMEnt:::.simulationEffectProfile(
+        pos = pos,
+        profile = "triweight",
+        degree = 4L,
+        flank_fraction = 0.2
+    )
+
+    expect_gt(stats::cor(observed_profile[-length(observed_profile)], observed_profile[-1L]), 0.3)
+    expect_lt(stats::cor(abs(observed_profile), base_profile), 0.995)
+})

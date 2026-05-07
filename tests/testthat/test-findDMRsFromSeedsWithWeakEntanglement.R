@@ -1,96 +1,71 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr21And22("beta", "dmps", "pheno")
+makeWeakEntanglementInput <- function() {
+    sites_beta <- rbind(
+        c(0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.31, 0.36, 0.41, 0.46, 0.51, 0.56),
+        c(0.30, 0.35, 0.40, 0.50, 0.55, 0.45, 0.31, 0.36, 0.41, 0.51, 0.56, 0.46)
+    )
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+    pheno[["__casecontrol__"]] <- c(rep(0L, 6), rep(1L, 6))
 
-test_that("findDMRsFromSeeds works with weak entanglement", {
-     dmrs_relaxed <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
+    list(
+        sites_beta = sites_beta,
         pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
+        group_inds = list(g1 = 1:6, g2 = 7:12),
+        testing_mode_per_group = c(g1 = "parametric", g2 = "parametric"),
+        empirical_strategy_per_group = c(g1 = "auto", g2 = "auto")
+    )
+}
+
+test_that("weak entanglement keeps edges that fail only after strong-mode correction", {
+    input <- makeWeakEntanglementInput()
+
+    strong <- CMEnt:::.testConnectivityBatch(
+        sites_beta = input$sites_beta,
+        group_inds = input$group_inds,
+        pheno = input$pheno,
+        testing_mode_per_group = input$testing_mode_per_group,
+        empirical_strategy_per_group = input$empirical_strategy_per_group,
+        max_pval = 0.05,
+        entanglement = "strong",
+        aggfun = mean,
+        ntries = 10,
+        mid_p = TRUE
+    )
+    weak <- CMEnt:::.testConnectivityBatch(
+        sites_beta = input$sites_beta,
+        group_inds = input$group_inds,
+        pheno = input$pheno,
+        testing_mode_per_group = input$testing_mode_per_group,
+        empirical_strategy_per_group = input$empirical_strategy_per_group,
+        max_pval = 0.05,
         entanglement = "weak",
-        testing_mode = "parametric"
+        aggfun = mean,
+        ntries = 10,
+        mid_p = TRUE
     )
 
-
-    dmrs_relaxed <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        entanglement = "weak",
-        testing_mode = "parametric",
-    )
-
-    expect_true(is.null(dmrs_relaxed) || inherits(dmrs_relaxed, "GRanges"))
-    if (!is.null(dmrs_relaxed) && length(dmrs_relaxed) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_relaxed))))
-    }
+    expect_false(strong$connected[[1]])
+    expect_identical(strong$reason[[1]], "pval>max_pval")
+    expect_true(weak$connected[[1]])
+    expect_identical(weak$reason[[1]], "")
 })
 
-test_that("weak entanglement produces more or equal DMRs than strong entanglement", {
-    handler <- getBetaHandler(beta, array = "450K", genome = "hg19")
+test_that("findDMRsFromSeeds accepts weak entanglement on deterministic synthetic data", {
+    fixture <- makeSyntheticFindDMRsFixture()
 
-    dmrs_strict <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        entanglement = "strong",
-        testing_mode = "parametric"
-    )
+    strong <- runSyntheticFindDMRs(fixture, entanglement = "strong")
+    weak <- runSyntheticFindDMRs(fixture, entanglement = "weak")
 
-    dmrs_relaxed <- findDMRsFromSeeds(
-        .score_dmrs = FALSE,
-        annotate_with_genes = FALSE,
-        extract_motifs = FALSE,
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        min_seeds = 2,
-        min_sites = 3,
-        max_lookup_dist = 1000,
-        entanglement = "weak",
-        testing_mode = "parametric"
-    )
-
-    strict_count <- if (is.null(dmrs_strict)) 0 else length(dmrs_strict)
-    relaxed_count <- if (is.null(dmrs_relaxed)) 0 else length(dmrs_relaxed)
-
-    expect_true(relaxed_count >= strict_count)
+    expect_s4_class(weak, "GRanges")
+    expect_identical(S4Vectors::mcols(weak)$id, S4Vectors::mcols(strong)$id)
 })
 
 test_that("entanglement parameter validates correctly", {
+    fixture <- makeSyntheticFindDMRsFixture()
+
     expect_error(
-        findDMRsFromSeeds(
-            .score_dmrs = FALSE,
-            annotate_with_genes = FALSE,
-            extract_motifs = FALSE,
-            beta = beta,
-            seeds = dmps,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
-            entanglement = "invalid"
-        ),
+        runSyntheticFindDMRs(fixture, entanglement = "invalid"),
         "is not a prefix"
     )
 })

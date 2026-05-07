@@ -19,31 +19,159 @@
     )
 }
 
+.getBetaSampleColInds <- function(beta_col_names,
+                                  is_tabix = FALSE,
+                                  chrom_col = "#chrom",
+                                  start_col = "start") {
+    if (length(beta_col_names) == 0L) {
+        return(integer(0))
+    }
+    if (!is_tabix) {
+        if (length(beta_col_names) < 2L) {
+            return(integer(0))
+        }
+        return(seq.int(2L, length(beta_col_names)))
+    }
 
-.getBetaColNamesAndInds <- function(beta_file, beta_col_names = NULL, is_tabix = FALSE) {
-    if (endsWith(beta_file, "gz")) {
-        conn <- gzfile(beta_file, "r")
+    structural_cols <- unique(tolower(c(
+        chrom_col, start_col,
+        "#chrom", "chrom", "chr", "start", "end", "stop",
+        "id", "name", "score", "strand"
+    )))
+    which(!(tolower(beta_col_names) %in% structural_cols))
+}
+
+.getBetaFileHeaderInfo <- function(beta_file,
+                                   is_tabix = FALSE,
+                                   chrom_col = "#chrom",
+                                   start_col = "start") {
+    conn <- if (endsWith(beta_file, "gz")) gzfile(beta_file, "r") else file(beta_file, "r")
+    on.exit(close(conn), add = TRUE)
+
+    header_lines <- readLines(conn, n = 2L)
+    if (length(header_lines) == 0L) {
+        stop("Beta file is empty: ", beta_file)
+    }
+
+    header_names <- strsplit(header_lines[[1]], "\t", fixed = TRUE)[[1]]
+    first_data_fields <- if (length(header_lines) >= 2L) {
+        strsplit(header_lines[[2]], "\t", fixed = TRUE)[[1]]
     } else {
-        conn <- file(beta_file, "r")
+        character(0)
     }
-    file_beta_col_names <- scan(conn,
-        sep = "\t",
-        what = character(),
-        nlines = 1,
-        quiet = TRUE
+
+    missing_row_id_header <- !is_tabix &&
+        length(first_data_fields) == length(header_names) + 1L
+    file_beta_col_names <- if (missing_row_id_header) {
+        c(".row_id", header_names)
+    } else {
+        header_names
+    }
+    sample_inds <- .getBetaSampleColInds(
+        file_beta_col_names,
+        is_tabix = is_tabix,
+        chrom_col = chrom_col,
+        start_col = start_col
     )
-    close(conn)
-    if (is_tabix) {
-        file_beta_col_names <- file_beta_col_names[7:length(file_beta_col_names)]
+
+    list(
+        file_beta_col_names = file_beta_col_names,
+        sample_col_inds = sample_inds,
+        sample_col_names = file_beta_col_names[sample_inds],
+        missing_row_id_header = missing_row_id_header
+    )
+}
+
+.readBetaFileData <- function(beta_file,
+                              skip = 1L,
+                              nrows = Inf,
+                              data.table = FALSE,
+                              showProgress = FALSE) {
+    header_info <- .getBetaFileHeaderInfo(beta_file)
+    beta_data <- data.table::fread(
+        beta_file,
+        header = FALSE,
+        skip = skip,
+        nrows = nrows,
+        data.table = data.table,
+        showProgress = showProgress,
+        check.names = FALSE
+    )
+
+    if (ncol(beta_data) == 0L) {
+        return(beta_data)
     }
-    sample_col_start <- if (is_tabix) 1L else 2L
-    file_sample_col_names <- file_beta_col_names[seq.int(sample_col_start, length(file_beta_col_names))]
+
+    expected_ncol <- length(header_info$file_beta_col_names)
+    if (ncol(beta_data) != expected_ncol) {
+        stop(
+            "Beta file column count mismatch after header normalization. Expected ",
+            expected_ncol, " columns but found ", ncol(beta_data),
+            " in ", beta_file, "."
+        )
+    }
+
+    colnames(beta_data) <- header_info$file_beta_col_names
+    beta_data
+}
+
+.readBetaFileRowNames <- function(beta_file,
+                                  showProgress = FALSE,
+                                  nThread = 1L) {
+    beta_row_names <- data.table::fread(
+        file = beta_file,
+        select = 1,
+        sep = "\t",
+        header = FALSE,
+        skip = 1L,
+        showProgress = showProgress,
+        data.table = FALSE,
+        nThread = nThread
+    )
+    unlist(beta_row_names[[1]], use.names = FALSE)
+}
+
+.coercePhenoColumn <- function(x, col_name) {
+    if (is.list(x) && !is.data.frame(x)) {
+        scalar_lengths <- lengths(x)
+        if (!all(scalar_lengths == 1L)) {
+            stop(
+                "Phenotype column '", col_name,
+                "' must contain scalar values, but list elements with length != 1 were found."
+            )
+        }
+        if (any(vapply(x, is.list, logical(1)))) {
+            stop(
+                "Phenotype column '", col_name,
+                "' contains nested lists and cannot be used."
+            )
+        }
+        x <- unlist(x, use.names = FALSE)
+    }
+    x
+}
+
+
+.getBetaColNamesAndInds <- function(beta_file,
+                                    beta_col_names = NULL,
+                                    is_tabix = FALSE,
+                                    chrom_col = "#chrom",
+                                    start_col = "start") {
+    header_info <- .getBetaFileHeaderInfo(
+        beta_file = beta_file,
+        is_tabix = is_tabix,
+        chrom_col = chrom_col,
+        start_col = start_col
+    )
+    file_beta_col_names <- header_info$file_beta_col_names
+    file_sample_col_names <- header_info$sample_col_names
+    sample_inds <- header_info$sample_col_inds
     if (is.null(beta_col_names)) {
         beta_col_names <- file_sample_col_names
-        cols_inds <- seq.int(sample_col_start, length(file_beta_col_names))
+        cols_inds <- sample_inds
     } else {
-        cols_inds <- match(beta_col_names, file_beta_col_names)
-        cols_inds <- cols_inds[!is.na(cols_inds), drop = FALSE]
+        cols_inds <- match(beta_col_names, file_sample_col_names)
+        cols_inds <- sample_inds[cols_inds[!is.na(cols_inds)]]
         if (length(cols_inds) == 0) {
             stop(
                 "Beta file does not contain any phenotype rownames ",
@@ -66,11 +194,7 @@
                             beta_row_names = NULL,
                             beta_col_names = NULL) {
     if (is.null(beta_row_names)) {
-        beta_row_names <- unlist(data.table::fread(
-            file = beta_file,
-            select = 1,
-            header = TRUE
-        ))
+        beta_row_names <- .readBetaFileRowNames(beta_file)
     }
 
     ret <- .getBetaColNamesAndInds(beta_file, beta_col_names)
@@ -987,10 +1111,8 @@ convertBetaToTabix <- function(beta_file,
                 # Read header to get column names
                 .log_step("Reading beta file header...", level = 2)
 
-                header_conn <- if (endsWith(beta_file, ".gz")) gzfile(beta_file, "r") else file(beta_file, "r")
-                header_line <- readLines(header_conn, n = 1)
-                close(header_conn)
-                col_names <- base::strsplit(header_line, "\t")[[1]]
+                header_info <- .getBetaFileHeaderInfo(beta_file)
+                col_names <- header_info$file_beta_col_names
 
                 # Get total number of rows for progress tracking
                 .log_step("Counting rows in beta file...", level = 2)
@@ -1012,7 +1134,7 @@ convertBetaToTabix <- function(beta_file,
                 withr::defer(unlink(temp_bed))
 
                 # Write header to temp BED file with 6 mandatory BED columns
-                bed_header <- c("#chrom", "start", "end", "id", "score", "strand", col_names[-1])
+                bed_header <- c("#chrom", "start", "end", "id", "score", "strand", header_info$sample_col_names)
                 writeLines(paste(bed_header, collapse = "\t"), temp_bed)
 
                 # Process file in chunks to avoid memory issues
@@ -1060,7 +1182,7 @@ convertBetaToTabix <- function(beta_file,
                         bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
                         # Add beta values as additional columns
-                        beta_subset <- chunk_data[match(common_sites, site_ids), -1, drop = FALSE]
+                    beta_subset <- chunk_data[match(common_sites, site_ids), header_info$sample_col_names, drop = FALSE]
                         bed_chunk <- cbind(bed_chunk, beta_subset)
 
                         # Append to temp BED file
@@ -1321,7 +1443,11 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     .log_step("Reading beta file", beta_file, level = 2)
     # Read the beta file
-    beta_data <- data.table::fread(beta_file, header = TRUE, data.table = FALSE, showProgress = getOption("CMEnt.verbose", 0) > 1)
+    beta_data <- .readBetaFileData(
+        beta_file,
+        data.table = FALSE,
+        showProgress = getOption("CMEnt.verbose", 0) > 1
+    )
 
     # Get row names (site IDs) from first column
     site_ids <- beta_data[[1]]

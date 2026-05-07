@@ -521,7 +521,7 @@ run_dmrcate_bsseq <- function(
                         ann,
                         lambda = 1000,
                         C = 2,
-                        min.sites = 3
+                        min.cpgs = 3
                     )
                     ranges_out <- DMRcate::extractRanges(dmrcate_res, genome = genome)
                     rm(ann, dmrcate_res)

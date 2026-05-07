@@ -221,6 +221,38 @@ simulateDMRs <- function(
     dmr_cluster_ids <- eligible[dmr_cluster_pos]
     dmr_indices <- index_by_cluster[dmr_cluster_ids]
 
+    correlation_length <- .simulationDefaultCorrelationLength(
+        pos = pos,
+        indices = index_by_cluster[eligible]
+    )
+    sample_sd_fraction <- 0.75
+    default_corr_sd <- 0.30
+    corr_lookup <- .simulationBuildCorrelationLookup(
+        affected_samples = length(case_samples),
+        template_pos = .simulationTemplatePositions(
+            pos = pos,
+            indices = index_by_cluster[eligible]
+        ),
+        template_cov = .simulationTemplateCoverage(cov_mat),
+        length_scale = correlation_length,
+        sample_sd_fraction = sample_sd_fraction
+    )
+    corr_targets <- .simulationFitCorrelationTargets(
+        beta = .simulationBetaFromCounts(meth_mat, cov_mat),
+        chr = chr,
+        pos = pos,
+        group_indices = list(control_samples, case_samples),
+        max_gap = max_gap,
+        n_targets = num_dmrs
+    )
+    corr_sd_used <- vapply(
+        corr_targets,
+        .simulationPickCorrelationSd,
+        numeric(1),
+        lookup = corr_lookup,
+        default_corr_sd = default_corr_sd
+    )
+
     truth_rows <- vector("list", num_dmrs)
     truth_gr <- vector("list", num_dmrs)
     selected_gr <- vector("list", num_dmrs)
@@ -237,6 +269,7 @@ simulateDMRs <- function(
         delta_max <- delta_max0 + (stats::rbeta(1L, 2, 2) - 0.5) * delta_jitter
         delta_max <- pmin(pmax(delta_max, 0.01), 0.95)
 
+        direction <- sample(c(-1, 1), 1L)
         reference_beta <- stats::median(p0[, case_samples, drop = FALSE], na.rm = TRUE)
         if (!is.finite(reference_beta)) {
             reference_beta <- stats::median(p0, na.rm = TRUE)
@@ -244,22 +277,37 @@ simulateDMRs <- function(
         if (!is.finite(reference_beta)) {
             reference_beta <- 0.5
         }
-        reference_beta <- .clampSimulationBeta(reference_beta)
-
-        direction <- sample(c(-1, 1), 1L)
         if (direction > 0 && reference_beta > 1 - delta_max) {
             direction <- -1
         } else if (direction < 0 && reference_beta < delta_max) {
             direction <- 1
         }
-        target_beta <- .clampSimulationBeta(reference_beta + direction * delta_max)
-        effect_logit <- stats::qlogis(target_beta) - stats::qlogis(reference_beta)
+        diff_hit <- direction * delta_max * prof
+        current_corr_sd <- corr_sd_used[[dmr_i]]
+        group_field <- .simulationMakeCorrelatedEffect(
+            pos = pos[idx],
+            sigma = current_corr_sd,
+            length_scale = correlation_length
+        )
+        sample_sd <- current_corr_sd * sample_sd_fraction
+
+        p1_case <- matrix(NA_real_, nrow = length(idx), ncol = length(case_samples))
+        for (sample_i in seq_along(case_samples)) {
+            p1_case[, sample_i] <- .simulationShiftedProbabilities(
+                base_prob = p0[, case_samples[[sample_i]]],
+                diff_hit = diff_hit,
+                pos = pos[idx],
+                group_field = group_field,
+                sample_sd = sample_sd,
+                length_scale = correlation_length
+            )
+        }
 
         eta1 <- eta0
-        eta1[, case_samples] <- eta1[, case_samples, drop = FALSE] + outer(prof, rep(effect_logit, length(case_samples)))
+        eta1[, case_samples] <- stats::qlogis(.clampSimulationBeta(p1_case))
 
-        intended_delta <- rowMeans(plogis(eta1[, case_samples, drop = FALSE]), na.rm = TRUE) -
-            rowMeans(plogis(eta0[, case_samples, drop = FALSE]), na.rm = TRUE)
+        intended_delta <- rowMeans(p1_case, na.rm = TRUE) -
+            rowMeans(p0[, case_samples, drop = FALSE], na.rm = TRUE)
         intended_delta[!is.finite(intended_delta)] <- 0
         truth_local <- which(abs(intended_delta) >= truth_min_delta_beta)
         if (length(truth_local) < min(min_sites, length(idx))) {
@@ -306,6 +354,9 @@ simulateDMRs <- function(
             intended_delta_beta_abs = stats::median(abs(intended_delta[truth_local]), na.rm = TRUE),
             direction = ifelse(observed_delta >= 0, "hyper", "hypo"),
             case_group = output_case_group,
+            corr_target = corr_targets[[dmr_i]],
+            corr_sd_used = current_corr_sd,
+            sample_sd_frac_used = sample_sd_fraction,
             stringsAsFactors = FALSE
         )
     }
@@ -320,6 +371,9 @@ simulateDMRs <- function(
     GenomicRanges::mcols(gr_dmrs)$delta_beta <- deltas
     GenomicRanges::mcols(gr_dmrs)$delta_beta_abs <- abs(deltas)
     GenomicRanges::mcols(gr_dmrs)$case_group <- output_case_group
+    GenomicRanges::mcols(gr_dmrs)$corr_target <- corr_targets
+    GenomicRanges::mcols(gr_dmrs)$corr_sd_used <- corr_sd_used
+    GenomicRanges::mcols(gr_dmrs)$sample_sd_frac_used <- sample_sd_fraction
 
     meth_mat <- meth_mat[, output_order, drop = FALSE]
     cov_mat <- cov_mat[, output_order, drop = FALSE]
@@ -637,6 +691,250 @@ simulateDMRs <- function(
     out <- (1 - pmin(scaled, 1)^degree)^degree
     out[!is.finite(out)] <- 0
     pmax(out, 0)
+}
+
+.simulationMakeCorrelatedEffect <- function(pos, sigma = 0.25, length_scale = 200) {
+    n_pos <- length(pos)
+    if (n_pos <= 1L || !is.finite(sigma) || sigma <= 0) {
+        return(rep(0, n_pos))
+    }
+    distances <- abs(outer(pos, pos, "-"))
+    corr_mat <- exp(-distances / length_scale)
+    diag(corr_mat) <- diag(corr_mat) + 1e-8
+    latent <- t(chol(corr_mat)) %*% stats::rnorm(n_pos)
+    as.numeric(sigma * latent)
+}
+
+.simulationShiftedProbabilities <- function(base_prob,
+                                            diff_hit,
+                                            pos,
+                                            group_field = NULL,
+                                            sample_sd = 0,
+                                            length_scale = 200) {
+    base_prob <- .clampSimulationBeta(base_prob)
+    target_prob <- .clampSimulationBeta(base_prob + diff_hit)
+    det_shift <- stats::qlogis(target_prob) - stats::qlogis(base_prob)
+
+    if (is.null(group_field)) {
+        group_field <- rep(0, length(base_prob))
+    }
+    sample_field <- if (sample_sd > 0) {
+        .simulationMakeCorrelatedEffect(
+            pos = pos,
+            sigma = sample_sd,
+            length_scale = length_scale
+        )
+    } else {
+        rep(0, length(base_prob))
+    }
+
+    plogis(stats::qlogis(base_prob) + det_shift + group_field + sample_field)
+}
+
+.simulationComputePairCorrelations <- function(x, y) {
+    if (length(x) == 0L || ncol(x) < 2L || !all(dim(x) == dim(y))) {
+        return(numeric(0))
+    }
+    x_centered <- x - rowMeans(x)
+    y_centered <- y - rowMeans(y)
+    denom <- sqrt(rowSums(x_centered^2) * rowSums(y_centered^2))
+    cors <- rowSums(x_centered * y_centered) / denom
+    cors[is.finite(cors)]
+}
+
+.simulationBackgroundFitCorrelations <- function(beta, chr, pos, group_indices, max_gap) {
+    ord <- order(chr, pos)
+    beta_ord <- beta[ord, , drop = FALSE]
+    chr_ord <- chr[ord]
+    pos_ord <- pos[ord]
+    cluster_ord <- .makeSimulationClusters(chr_ord, pos_ord, max_gap = max_gap)
+    pair_end <- which(
+        chr_ord[-1L] == chr_ord[-length(chr_ord)] &
+            cluster_ord[-1L] == cluster_ord[-length(cluster_ord)]
+    ) + 1L
+    pair_start <- pair_end - 1L
+    if (length(pair_start) == 0L) {
+        return(numeric(0))
+    }
+
+    pooled <- unlist(lapply(group_indices, function(idx) {
+        if (length(idx) < 2L) {
+            return(numeric(0))
+        }
+        m_values <- .transformBeta(
+            beta_ord[, idx, drop = FALSE],
+            pheno = data.frame(sample = seq_len(length(idx)))
+        )
+        pair_corr <- .simulationComputePairCorrelations(
+            x = m_values[pair_start, , drop = FALSE],
+            y = m_values[pair_end, , drop = FALSE]
+        )
+        pair_corr[pair_corr > 0]
+    }))
+    pooled[is.finite(pooled)]
+}
+
+.simulationFitCorrelationTargets <- function(beta,
+                                             chr,
+                                             pos,
+                                             group_indices,
+                                             max_gap,
+                                             n_targets,
+                                             corr_rate = 1) {
+    pos_corr <- .simulationBackgroundFitCorrelations(
+        beta = beta,
+        chr = chr,
+        pos = pos,
+        group_indices = group_indices,
+        max_gap = max_gap
+    )
+    if (length(pos_corr) < 20L) {
+        return(rep(NA_real_, n_targets))
+    }
+
+    corr_mean <- mean(pos_corr)
+    corr_var <- stats::var(pos_corr)
+    if (!is.finite(corr_mean) || !is.finite(corr_var) || corr_mean <= 0 || corr_var <= 1e-8) {
+        return(rep(NA_real_, n_targets))
+    }
+
+    shape <- corr_mean^2 / corr_var
+    rate <- corr_mean / corr_var
+    if (!is.finite(shape) || !is.finite(rate) || shape <= 0 || rate <= 0) {
+        return(rep(NA_real_, n_targets))
+    }
+
+    pmin(
+        pmax(
+            stats::rgamma(n = n_targets, shape = shape, rate = rate) * corr_rate,
+            0
+        ),
+        0.99
+    )
+}
+
+.simulationCorrelationMetric <- function(corr_sd,
+                                         affected_samples,
+                                         template_pos,
+                                         template_cov,
+                                         length_scale,
+                                         sample_sd_fraction = 0.75,
+                                         pilot_reps = 6L) {
+    if (affected_samples < 2L || length(template_pos) < 2L || corr_sd <= 0) {
+        return(0)
+    }
+
+    rep_metrics <- numeric(pilot_reps)
+    base_prob <- matrix(0.5, nrow = length(template_pos), ncol = affected_samples)
+    diff_hit <- rep(0, length(template_pos))
+
+    for (rep_i in seq_len(pilot_reps)) {
+        group_field <- .simulationMakeCorrelatedEffect(
+            pos = template_pos,
+            sigma = corr_sd,
+            length_scale = length_scale
+        )
+        beta_sim <- matrix(NA_real_, nrow = length(template_pos), ncol = affected_samples)
+        for (sample_i in seq_len(affected_samples)) {
+            new_prob <- .simulationShiftedProbabilities(
+                base_prob = base_prob[, sample_i],
+                diff_hit = diff_hit,
+                pos = template_pos,
+                group_field = group_field,
+                sample_sd = corr_sd * sample_sd_fraction,
+                length_scale = length_scale
+            )
+            beta_sim[, sample_i] <- stats::rbinom(
+                n = length(template_pos),
+                size = template_cov,
+                prob = new_prob
+            ) / template_cov
+        }
+        m_values <- .transformBeta(
+            beta_sim,
+            pheno = data.frame(sample = seq_len(affected_samples))
+        )
+        pair_corr <- .simulationComputePairCorrelations(
+            x = m_values[-nrow(m_values), , drop = FALSE],
+            y = m_values[-1L, , drop = FALSE]
+        )
+        pair_corr <- pair_corr[pair_corr > 0]
+        rep_metrics[rep_i] <- if (length(pair_corr) == 0L) 0 else mean(pair_corr)
+    }
+
+    mean(rep_metrics)
+}
+
+.simulationBuildCorrelationLookup <- function(affected_samples,
+                                              template_pos,
+                                              template_cov,
+                                              length_scale,
+                                              sample_sd_fraction = 0.75,
+                                              corr_sd_grid = seq(0.15, 0.45, by = 0.05)) {
+    if (affected_samples < 2L || length(template_pos) < 2L) {
+        return(data.frame(corr_sd = 0.30, metric = 0))
+    }
+
+    withr::with_seed(1, {
+        data.frame(
+            corr_sd = corr_sd_grid,
+            metric = vapply(
+                corr_sd_grid,
+                .simulationCorrelationMetric,
+                numeric(1),
+                affected_samples = affected_samples,
+                template_pos = template_pos,
+                template_cov = template_cov,
+                length_scale = length_scale,
+                sample_sd_fraction = sample_sd_fraction
+            )
+        )
+    })
+}
+
+.simulationPickCorrelationSd <- function(target, lookup, default_corr_sd = 0.30) {
+    if (is.null(lookup) || nrow(lookup) == 0L) {
+        return(default_corr_sd)
+    }
+    if (!is.finite(target)) {
+        return(default_corr_sd)
+    }
+    lookup$corr_sd[[which.min(abs(lookup$metric - target))]]
+}
+
+.simulationTemplatePositions <- function(pos, indices, min_len = 5L) {
+    cluster_lengths <- lengths(indices)
+    template_len <- max(min_len, as.integer(round(stats::median(cluster_lengths))))
+    template_spacing <- stats::median(
+        unlist(lapply(indices, function(idx) diff(pos[idx]))),
+        na.rm = TRUE
+    )
+    if (!is.finite(template_spacing) || template_spacing <= 0) {
+        template_spacing <- 100
+    }
+    seq.int(
+        from = 1L,
+        by = max(1L, as.integer(round(template_spacing))),
+        length.out = template_len
+    )
+}
+
+.simulationTemplateCoverage <- function(cov) {
+    template_cov <- stats::median(cov[cov > 0], na.rm = TRUE)
+    if (!is.finite(template_cov) || template_cov < 1) {
+        template_cov <- 100
+    }
+    as.integer(round(template_cov))
+}
+
+.simulationDefaultCorrelationLength <- function(pos, indices) {
+    positive_gaps <- unlist(lapply(indices, function(idx) diff(pos[idx])))
+    positive_gaps <- positive_gaps[is.finite(positive_gaps) & positive_gaps > 0]
+    default_gap <- stats::median(positive_gaps, na.rm = TRUE)
+    if (!is.finite(default_gap) || default_gap <= 0) {
+        default_gap <- 100
+    }
+    max(as.numeric(default_gap) * 3, 1)
 }
 
 .simulationBetaFromCounts <- function(meth, cov) {
