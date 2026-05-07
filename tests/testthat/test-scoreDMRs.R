@@ -1,6 +1,6 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr21And22()
+loadExampleInputDataChr5And11()
 
 test_that("scoreDMRs adds score column to DMRs", {
 
