@@ -1200,13 +1200,13 @@ if (!file.exists(dmrcate_file)) {
                     colnames(design)[2] &lt;- &quot;cancer_vs_normal&quot;
                 }
 
-                myannotation &lt;- site.annotate(&quot;array&quot;, mvalues,
+                myannotation &lt;- cpg.annotate(&quot;array&quot;, mvalues,
                     what = &quot;M&quot;, arraytype = &quot;450K&quot;,
                     analysis.type = &quot;differential&quot;, design = design,
                     coef = coef_col, fdr = 0.05
                 )
 
-                dmrcate_results &lt;- dmrcate(myannotation, C = 2, lambda = 1000, min.sites = 3, betacutoff = 0.05)
+                dmrcate_results &lt;- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
                 extractRanges(dmrcate_results, genome = &quot;hg19&quot;)
             }
         },

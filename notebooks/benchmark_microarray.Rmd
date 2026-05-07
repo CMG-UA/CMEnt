@@ -387,13 +387,13 @@ if (!file.exists(dmrcate_file)) {
                     colnames(design)[2] <- "cancer_vs_normal"
                 }
 
-                myannotation <- site.annotate("array", mvalues,
+                myannotation <- cpg.annotate("array", mvalues,
                     what = "M", arraytype = "450K",
                     analysis.type = "differential", design = design,
                     coef = coef_col, fdr = 0.05
                 )
 
-                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.sites = 3, betacutoff = 0.05)
+                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
                 extractRanges(dmrcate_results, genome = "hg19")
             }
         },
@@ -444,6 +444,28 @@ if (!file.exists(bumphunter_file)) {
         pos = locs$start,
         maxGap = bh_max_gap
     )
+    run_bumphunter_fit <- function(cutoff, B) {
+        bumphunter(beta_mat,
+            design = design,
+            chr = as.character(locs$chr),
+            pos = locs$start,
+            cluster = bh_cluster,
+            cutoff = cutoff,
+            maxGap = max_gap,
+            nullMethod = "bootstrap",
+            B = B,
+            type = "Beta",
+            coef = 2
+        )
+    }
+    has_informative_bumphunter_null <- function(fit) {
+        null_values <- unlist(fit$null$value, use.names = FALSE)
+        null_lengths <- unlist(fit$null$length, use.names = FALSE)
+        length(null_values) > 0 &&
+            any(abs(null_values) > 0) &&
+            length(null_lengths) > 0 &&
+            any(null_lengths > 0)
+    }
     max_gap <- bh_max_gap
     dmrs_cutoff <- 0.1
     dmrs_cnt <- Inf
@@ -451,18 +473,7 @@ if (!file.exists(bumphunter_file)) {
     max_iter <- 10L
     while (dmrs_cnt > bh_max_dmrs && iter < max_iter) {
         iter <- iter + 1L
-        dmrs <- bumphunter(beta_mat,
-            design = design,
-            cutoff = dmrs_cutoff,
-            chr = as.character(locs$chr),
-            pos = locs$start,
-            cluster = bh_cluster,
-            maxGap = max_gap,
-            nullMethod = "bootstrap",
-            B = 0,
-            type = "Beta",
-            coef = 2
-        )
+        dmrs <- run_bumphunter_fit(cutoff = dmrs_cutoff, B = 0)
         dmrs_cnt <- nrow(dmrs$table)
         dmrs_cutoff <- dmrs_cutoff * 1.2
         rm(dmrs)
@@ -473,18 +484,29 @@ if (!file.exists(bumphunter_file)) {
         "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
         final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_b
     ))
-    bumphunter_results <- bumphunter(beta_mat,
-        design = design,
-        chr = as.character(locs$chr),
-        pos = locs$start,
-        cluster = bh_cluster,
-        cutoff = final_cutoff,
-        maxGap = max_gap,
-        nullMethod = "bootstrap",
-        B = bh_b,
-        type = "Beta",
-        coef = 2
-    )
+    bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
+    bh_cutoff_floor <- 0.005
+    bh_bootstrap_adjust_iter <- 0L
+    bh_max_bootstrap_adjust <- 6L
+    while (
+        nrow(bumphunter_results$table) > 0 &&
+            (all(is.na(bumphunter_results$table$p.value)) ||
+                !has_informative_bumphunter_null(bumphunter_results)) &&
+            final_cutoff > bh_cutoff_floor &&
+            bh_bootstrap_adjust_iter < bh_max_bootstrap_adjust
+    ) {
+        prev_cutoff <- final_cutoff
+        final_cutoff <- max(final_cutoff / 2, bh_cutoff_floor)
+        if (identical(final_cutoff, prev_cutoff)) {
+            break
+        }
+        bh_bootstrap_adjust_iter <- bh_bootstrap_adjust_iter + 1L
+        cat(sprintf(
+            "Bumphunter: bootstrap null degenerate at cutoff=%.4f; retrying with cutoff=%.4f\n",
+            prev_cutoff, final_cutoff
+        ))
+        bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
+    }
 
     dmr_table <- bumphunter_results$table
     # bumphunter already estimates region-level p-values from the bootstrap null.
