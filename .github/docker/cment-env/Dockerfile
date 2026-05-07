@@ -27,7 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtiff5-dev \
     libxml2-dev \
     pandoc \
-    && rm -rf /var/lib/apt/lists/*
+    ghostscript \
+    texlive-latex-base \
+    texlive-fonts-recommended \
+    texlive-fonts-extra \
+    texlive-latex-extra
 
 COPY .github/docker/cment-env/.Rprofile .Rprofile
 ENV R_PROFILE_USER=/home/root/.Rprofile
@@ -45,3 +49,6 @@ COPY .github/docker/cment-env/install-requirements.R install-requirements.R
 RUN Rscript install-requirements.R
 # Install additional packages that are not in the requirements files but are needed for testing and development
 RUN Rscript -e "install_deps(packages=c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), bioc_packages=c('IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'))"
+
+RUN apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
