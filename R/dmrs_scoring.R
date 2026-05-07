@@ -830,7 +830,7 @@
 #'
 #' @examples
 #' # Load example data
-#' loadExampleInputData("beta", "pheno")
+#' loadExampleInputDataChr5And11()
 #'
 #' # Load pre-computed DMRs
 #' dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
