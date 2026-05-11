@@ -63,6 +63,10 @@ get_benchmark_file <- function(filename) {
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
 }
+
+get_method_cache_file <- function(method, genome) {
+    get_benchmark_file(sprintf("dmrs.%s.%s.rds", method, genome))
+}
 ```
 
 ### Install External Dependencies
@@ -114,6 +118,7 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 sim_beta_path <- get_benchmark_file("sim_beta_500.tsv")
 sim_truth_path <- get_benchmark_file("sim_dmrs_500.tsv")
 array_type <- "450K"
+genome <- "hg19"
 
 if (!file.exists(sim_beta_path)) {
     curl::curl_download(
@@ -127,9 +132,14 @@ if (!file.exists(sim_truth_path)) {
         destfile = sim_truth_path
     )
 }
-
-
-genome <- "hg19"
+truth_df <- data.table::fread(sim_truth_path)
+truth_dmrs <- makeGRangesFromDataFrame(
+    truth_df,
+    seqnames.field = "seqnames",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+)
 
 beta_handler <- CMEnt::getBetaHandler(sim_beta_path, array = array_type, genome = genome)
 
@@ -146,6 +156,28 @@ pheno <- data.frame(
 
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
+truth_probe_counts <- countOverlaps(truth_dmrs, makeGRangesFromDataFrame(
+    as.data.frame(locs),
+    seqnames.field = "chr",
+    start.field = "start",
+    end.field = "end",
+    keep.extra.columns = TRUE
+))
+truth_overlap_n <- sum(truth_probe_counts > 0L)
+if (truth_overlap_n < 0.9 * length(truth_dmrs)) {
+    stop(
+        sprintf(
+            paste(
+                "Only %d/%d truth DMRs overlap probe loci under genome='%s'.",
+                "This simulated microarray truth set was generated on hg19;",
+                "delete stale cache files and rerun with genome='hg19'."
+            ),
+            truth_overlap_n,
+            length(truth_dmrs),
+            genome
+        )
+    )
+}
 logit2 <- function(x) log2(x) - log2(1 - x)
 mvalues <- logit2(beta_mat)
 pheno$casecontrol <- pheno$Sample_Group == "cancer"
@@ -170,8 +202,8 @@ ctrl_idx <- which(!pheno$casecontrol)
 dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
     rowMeans(beta_mat[rownames(dmps), ctrl_idx, drop = FALSE])
 
-sig_dmps <- dmps[dmps$pval_adj < 0.01 & abs(dmps$delta_beta) >= 0.05, ]
-cat(sprintf("Found %d significant DMPs (FDR < 0.01, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
+sig_dmps <- dmps[dmps$pval_adj < 0.05, ]
+cat(sprintf("Found %d significant DMPs (FDR < 0.05)\n", nrow(sig_dmps)))
 dmps_gr <- makeGRangesFromDataFrame(
     data.frame(
         chr = dmp_locs$chr,
@@ -179,7 +211,8 @@ dmps_gr <- makeGRangesFromDataFrame(
         end = dmp_locs$end,
         pval = dmps$pval,
         qval = dmps$pval_adj,
-        stat = dmps$qval
+        stat = dmps$qval,
+        delta_beta = dmps$delta_beta
     ),
     keep.extra.columns = TRUE
 )
@@ -189,7 +222,7 @@ names(dmps_gr) <- rownames(dmps)
 ## Method 1: CMEnt
 
 ```{r CMEnt}
-cment_file <-  get_benchmark_file("dmrs.CMEnt.rds")
+cment_file <- get_method_cache_file("CMEnt", genome)
 if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.verbose" = 1)
@@ -213,7 +246,6 @@ if (!file.exists(cment_file)) {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
-        .score_dmrs = TRUE,
         njobs = cment_njobs,
         verbose = 1
     )
@@ -233,7 +265,7 @@ cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as
 ## Method 2: comb-p
 
 ```{r comb-p}
-combp_file <- get_benchmark_file("dmrs.combp.rds")
+combp_file <- get_method_cache_file("combp", genome)
 
 run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
@@ -319,7 +351,7 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 
 ## Method 3: probeLasso
 ```{r probeLasso}
-probelasso_file <- get_benchmark_file("dmrs.probeLasso.rds")
+probelasso_file <- get_method_cache_file("probeLasso", genome)
 
 run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
@@ -396,7 +428,7 @@ cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso)
 ## Method 4: DMRcate
 
 ```{r dmrcate}
-dmrcate_file <- get_benchmark_file("dmrs.dmrcate.rds")
+dmrcate_file <- get_method_cache_file("dmrcate", genome)
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
     start_time <- Sys.time()
@@ -421,7 +453,7 @@ if (!file.exists(dmrcate_file)) {
                 )
 
                 dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
-                extractRanges(dmrcate_results, genome = "hg19")
+                extractRanges(dmrcate_results, genome = genome)
             }
         },
         error = function(e) {
@@ -445,7 +477,7 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 ## Method 5: Bumphunter
 
 ```{r bumphunter}
-bumphunter_file <- get_benchmark_file("dmrs.bumphunter.rds")
+bumphunter_file <- get_method_cache_file("bumphunter", genome)
 if (!file.exists(bumphunter_file)) {
     suppressPackageStartupMessages({
         library(bumphunter)
@@ -610,6 +642,7 @@ methods_list <- list(
 )
 
 methods_list <- methods_list[sapply(methods_list, length) > 0]
+method_order <- names(methods_list)
 
 calculate_overlap <- function(gr1, gr2) {
     if (length(gr1) == 0 || length(gr2) == 0) {
@@ -913,47 +946,49 @@ ggplot(effect_size_df, aes(x = reorder(Method, -Mean_Delta_Beta), y = Mean_Delta
 ### Gene Annotation Analysis
 
 ```{r}
-if (requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
-    library(TxDb.Hsapiens.UCSC.hg19.knownGene)
-    txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
-
-    promoters_gr <- promoters(txdb, upstream = 2000, downstream = 500)
-    genes_gr <- genes(txdb)
-
-    annotate_dmrs <- function(dmrs, method_name) {
-        if (length(dmrs) == 0) {
-            return(data.frame(
-                Method = method_name,
-                Total_DMRs = 0,
-                In_Promoters = 0,
-                In_Gene_Bodies = 0,
-                Intergenic = 0,
-                Pct_Promoters = 0,
-                Pct_Gene_Bodies = 0,
-                Pct_Intergenic = 0
-            ))
-        }
-
-        in_promoters <- sum(overlapsAny(dmrs, promoters_gr))
-        in_genes <- sum(overlapsAny(dmrs, genes_gr))
-        intergenic <- length(dmrs) - sum(overlapsAny(dmrs, c(promoters_gr, genes_gr)))
-
-        data.frame(
+annotate_dmrs <- function(dmrs, method_name) {
+    if (length(dmrs) == 0) {
+        return(data.frame(
             Method = method_name,
-            Total_DMRs = length(dmrs),
-            In_Promoters = in_promoters,
-            In_Gene_Bodies = in_genes,
-            Intergenic = intergenic,
-            Pct_Promoters = round(100 * in_promoters / length(dmrs), 1),
-            Pct_Gene_Bodies = round(100 * in_genes / length(dmrs), 1),
-            Pct_Intergenic = round(100 * intergenic / length(dmrs), 1)
-        )
+            Total_DMRs = 0,
+            In_Promoters = 0,
+            In_Gene_Bodies = 0,
+            Intergenic = 0,
+            Pct_Promoters = 0,
+            Pct_Gene_Bodies = 0,
+            Pct_Intergenic = 0
+        ))
     }
 
-    gene_annotation_list <- lapply(names(methods_list), function(method) {
-        annotate_dmrs(methods_list[[method]], method)
-    })
+    annotated_dmrs <- tryCatch(
+        suppressWarnings(CMEnt::annotateDMRsWithGenes(dmrs, genome = genome)),
+        error = function(e) NULL
+    )
+    if (is.null(annotated_dmrs)) {
+        return(NULL)
+    }
 
+    promoter_hits <- !is.na(mcols(annotated_dmrs)$in_promoter_of) & nzchar(mcols(annotated_dmrs)$in_promoter_of)
+    gene_hits <- !is.na(mcols(annotated_dmrs)$in_gene_body_of) & nzchar(mcols(annotated_dmrs)$in_gene_body_of)
+    intergenic <- sum(!(promoter_hits | gene_hits))
+
+    data.frame(
+        Method = method_name,
+        Total_DMRs = length(annotated_dmrs),
+        In_Promoters = sum(promoter_hits),
+        In_Gene_Bodies = sum(gene_hits),
+        Intergenic = intergenic,
+        Pct_Promoters = round(100 * sum(promoter_hits) / length(annotated_dmrs), 1),
+        Pct_Gene_Bodies = round(100 * sum(gene_hits) / length(annotated_dmrs), 1),
+        Pct_Intergenic = round(100 * intergenic / length(annotated_dmrs), 1)
+    )
+}
+
+gene_annotation_list <- Filter(Negate(is.null), lapply(names(methods_list), function(method) {
+    annotate_dmrs(methods_list[[method]], method)
+}))
+
+if (length(gene_annotation_list) > 0) {
     gene_annotation_df <- do.call(rbind, gene_annotation_list)
     knitr::kable(gene_annotation_df, caption = "DMR Gene Context Annotation")
 
@@ -978,17 +1013,18 @@ if (requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
 if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
     library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
     anno <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+    common_sites <- intersect(rownames(locs), rownames(anno))
 
     site_context_gr <- makeGRangesFromDataFrame(
         data.frame(
-            chr = anno$chr,
-            start = anno$pos,
-            end = anno$pos,
-            context = anno$Relation_to_Island
+            chr = locs[common_sites, "chr"],
+            start = locs[common_sites, "start"],
+            end = locs[common_sites, "end"],
+            context = anno[common_sites, "Relation_to_Island"]
         ),
         keep.extra.columns = TRUE
     )
-    names(site_context_gr) <- rownames(anno)
+    names(site_context_gr) <- common_sites
 
     get_site_context_distribution <- function(dmrs, method_name) {
         if (length(dmrs) == 0) {
@@ -1545,17 +1581,17 @@ Metrics explanation:
 Metrics values:
 
 ```{r}
-seed_gr <- sort(seed_gr)
-mcols(seed_gr)$index <- seq_along(seed_gr)
-seeds_in_truth <- subsetByOverlaps(seed_gr, truth_dmrs, ignore.strand = TRUE)
+dmps_gr <- sort(dmps_gr)
+mcols(dmps_gr)$index <- seq_along(dmps_gr)
+seeds_in_truth <- subsetByOverlaps(dmps_gr, truth_dmrs, ignore.strand = TRUE)
 
 if (length(dmrs_cment) > 0) {
-    seeds_in_dmrs <- subsetByOverlaps(seed_gr, dmrs_cment, ignore.strand = TRUE)
+    seeds_in_dmrs <- subsetByOverlaps(dmps_gr, dmrs_cment, ignore.strand = TRUE)
     seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE)
     seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, dmrs_cment, ignore.strand = TRUE, invert = TRUE)
 } else {
-    seeds_in_dmrs <- seed_gr[0]
-    seeds_in_truth_and_dmrs <- seed_gr[0]
+    seeds_in_dmrs <- dmps_gr[0]
+    seeds_in_truth_and_dmrs <- dmps_gr[0]
     seeds_in_truth_not_dmrs <- seeds_in_truth
 }
 

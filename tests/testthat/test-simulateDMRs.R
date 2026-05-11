@@ -86,6 +86,58 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
+test_that("simulateDMRs fits and stores correlation calibration metadata", {
+    bs <- create_simulation_bsseq()
+    set.seed(456)
+    sim <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20
+    )
+
+    expect_true(all(c(
+        "background_corr_target", "expected_correlation",
+        "corr_target", "corr_sd_used", "sample_sd_frac_used"
+    ) %in% colnames(sim$truth)))
+    expect_true(all(c(
+        "background_corr_target", "expected_correlation",
+        "corr_target", "corr_sd_used", "sample_sd_frac_used"
+    ) %in% names(GenomicRanges::mcols(sim$gr.dmrs))))
+    expect_true(any(is.finite(sim$truth$corr_target)))
+    expect_true(all(is.finite(sim$truth$corr_sd_used)))
+    expect_true(all(sim$truth$sample_sd_frac_used > 0))
+    expect_true(all(sim$truth$expected_correlation == 0.3))
+    expect_true(all(sim$truth$corr_target == sim$truth$expected_correlation))
+})
+
+test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
+    bs <- create_simulation_bsseq()
+    set.seed(456)
+    sim_low_target <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20,
+        expected_correlation = 0.2
+    )
+    set.seed(456)
+    sim_high_target <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20,
+        expected_correlation = 0.6
+    )
+
+    expect_equal(sim_low_target$truth$background_corr_target, sim_high_target$truth$background_corr_target)
+    expect_true(all(sim_low_target$truth$corr_target == 0.2))
+    expect_true(all(sim_high_target$truth$corr_target == 0.6))
+})
+
 test_that("simulateDMRs is reproducible with external seed for BSseq input", {
     bs <- create_simulation_bsseq()
     set.seed(42)

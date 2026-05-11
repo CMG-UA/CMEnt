@@ -27,6 +27,9 @@
 #'   selected cluster.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
+#' @param expected_correlation Desired within-DMR expected correlation target.
+#'   This is treated as an absolute target rather than an additive offset over
+#'   the background correlation and is capped to the interval `[0, 0.99]`.
 #' @param profile Shape of the regional effect, either `"triweight"` or
 #'   `"flat"`.
 #' @param profile_degree Degree used by the triweight profile.
@@ -69,6 +72,7 @@ simulateDMRs <- function(
     max_sites = 500L,
     truth_min_delta_beta = 0.05,
     delta_jitter = 1 / 3,
+    expected_correlation = 0.8,
     profile = c("triweight", "flat"),
     profile_degree = 4L,
     flank_fraction = 0.2,
@@ -109,6 +113,12 @@ simulateDMRs <- function(
     }
     if (length(delta_jitter) != 1L || !is.finite(delta_jitter) || delta_jitter < 0) {
         stop("'delta_jitter' must be a non-negative numeric scalar.")
+    }
+    if (length(expected_correlation) != 1L ||
+        !is.finite(expected_correlation) ||
+        expected_correlation < 0 ||
+        expected_correlation > 0.99) {
+        stop("'expected_correlation' must be a numeric scalar in [0, 0.99].")
     }
     if (length(profile_degree) != 1L || is.na(profile_degree) || profile_degree < 1L) {
         stop("'profile_degree' must be a positive integer.")
@@ -237,7 +247,7 @@ simulateDMRs <- function(
         length_scale = correlation_length,
         sample_sd_fraction = sample_sd_fraction
     )
-    corr_targets <- .simulationFitCorrelationTargets(
+    background_corr_targets <- .simulationFitCorrelationTargets(
         beta = .simulationBetaFromCounts(meth_mat, cov_mat),
         chr = chr,
         pos = pos,
@@ -245,6 +255,7 @@ simulateDMRs <- function(
         max_gap = max_gap,
         n_targets = num_dmrs
     )
+    corr_targets <- rep(expected_correlation, num_dmrs)
     corr_sd_used <- vapply(
         corr_targets,
         .simulationPickCorrelationSd,
@@ -354,6 +365,9 @@ simulateDMRs <- function(
             intended_delta_beta_abs = stats::median(abs(intended_delta[truth_local]), na.rm = TRUE),
             direction = ifelse(observed_delta >= 0, "hyper", "hypo"),
             case_group = output_case_group,
+            genome = input$genome,
+            background_corr_target = background_corr_targets[[dmr_i]],
+            expected_correlation = expected_correlation,
             corr_target = corr_targets[[dmr_i]],
             corr_sd_used = current_corr_sd,
             sample_sd_frac_used = sample_sd_fraction,
@@ -371,6 +385,9 @@ simulateDMRs <- function(
     GenomicRanges::mcols(gr_dmrs)$delta_beta <- deltas
     GenomicRanges::mcols(gr_dmrs)$delta_beta_abs <- abs(deltas)
     GenomicRanges::mcols(gr_dmrs)$case_group <- output_case_group
+    GenomicRanges::mcols(gr_dmrs)$genome <- input$genome
+    GenomicRanges::mcols(gr_dmrs)$background_corr_target <- background_corr_targets
+    GenomicRanges::mcols(gr_dmrs)$expected_correlation <- expected_correlation
     GenomicRanges::mcols(gr_dmrs)$corr_target <- corr_targets
     GenomicRanges::mcols(gr_dmrs)$corr_sd_used <- corr_sd_used
     GenomicRanges::mcols(gr_dmrs)$sample_sd_frac_used <- sample_sd_fraction
@@ -403,6 +420,9 @@ simulateDMRs <- function(
         selected_regions = selected_regions,
         groups = stats::setNames(output_groups, sample_names),
         case_group = output_case_group,
+        genome = input$genome,
+        background_corr_target = background_corr_targets,
+        expected_correlation = expected_correlation,
         input_groups = stats::setNames(as.character(groups)[output_order], sample_names),
         input_case_group = case_group,
         duplicate_loci_collapsed = collapsed_input$n_collapsed
@@ -440,6 +460,11 @@ simulateDMRs <- function(
         meth_mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
         cov_mat <- as.matrix(bsseq::getCoverage(bs, type = "Cov"))
         gr <- GenomicRanges::granges(bs)
+        input_genome <- unique(as.character(GenomeInfoDb::genome(gr)))
+        input_genome <- input_genome[!is.na(input_genome) & nzchar(input_genome)]
+        if (length(input_genome) != 1L) {
+            input_genome <- NA_character_
+        }
         chr <- as.character(GenomeInfoDb::seqnames(gr))
         pos <- GenomicRanges::start(gr)
         end_pos <- GenomicRanges::end(gr)
@@ -457,6 +482,7 @@ simulateDMRs <- function(
             chr = chr,
             pos = pos,
             end = end_pos,
+            genome = input_genome,
             meth = meth_mat,
             cov = cov_mat
         ))
@@ -529,6 +555,7 @@ simulateDMRs <- function(
         chr = as.character(beta_locs$chr),
         pos = as.integer(beta_locs$start),
         end = as.integer(beta_locs$end),
+        genome = beta_handler$genome,
         meth = meth_mat,
         cov = cov_mat,
         beta_locs = beta_locs
