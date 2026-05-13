@@ -58,9 +58,9 @@
         ),
         optparse::make_option(
             "--min_adj_seeds",
-            default = 2,
+            default = NULL,
             type = "integer",
-            help = "The minimum supporting seeds per DMR, after adjusted by array backround site content, minimum 2,defaults to 2"
+            help = "The minimum supporting seeds per DMR, after adjusted by array backround site content, optional"
         ),
         optparse::make_option(
             "--min_sites",

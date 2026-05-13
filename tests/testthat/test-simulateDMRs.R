@@ -99,16 +99,17 @@ test_that("simulateDMRs fits and stores correlation calibration metadata", {
 
     expect_true(all(c(
         "background_corr_target", "expected_correlation",
-        "corr_target", "corr_sd_used", "sample_sd_frac_used"
+        "corr_target", "corr_sd_used", "corr_metric_estimate", "sample_sd_frac_used"
     ) %in% colnames(sim$truth)))
     expect_true(all(c(
         "background_corr_target", "expected_correlation",
-        "corr_target", "corr_sd_used", "sample_sd_frac_used"
+        "corr_target", "corr_sd_used", "corr_metric_estimate", "sample_sd_frac_used"
     ) %in% names(GenomicRanges::mcols(sim$gr.dmrs))))
     expect_true(any(is.finite(sim$truth$corr_target)))
     expect_true(all(is.finite(sim$truth$corr_sd_used)))
+    expect_true(all(is.finite(sim$truth$corr_metric_estimate)))
     expect_true(all(sim$truth$sample_sd_frac_used > 0))
-    expect_true(all(sim$truth$expected_correlation == 0.3))
+    expect_true(all(sim$truth$expected_correlation == 0.7))
     expect_true(all(sim$truth$corr_target == sim$truth$expected_correlation))
 })
 
@@ -136,6 +137,7 @@ test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
     expect_equal(sim_low_target$truth$background_corr_target, sim_high_target$truth$background_corr_target)
     expect_true(all(sim_low_target$truth$corr_target == 0.2))
     expect_true(all(sim_high_target$truth$corr_target == 0.6))
+    expect_true(all(sim_high_target$truth$corr_metric_estimate >= sim_low_target$truth$corr_metric_estimate))
 })
 
 test_that("simulateDMRs is reproducible with external seed for BSseq input", {

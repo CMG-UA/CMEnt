@@ -15,6 +15,7 @@ simulateDMRs(
   max_sites = 500L,
   truth_min_delta_beta = 0.05,
   delta_jitter = 1/3,
+  expected_correlation = 0.7,
   profile = c("triweight", "flat"),
   profile_degree = 4L,
   flank_fraction = 0.2,
@@ -58,6 +59,10 @@ selected cluster.}
 
 \item{delta_jitter}{Width of the random effect-size jitter around
 \code{delta_max0}.}
+
+\item{expected_correlation}{Desired within-DMR expected correlation target.
+This is treated as an absolute target rather than an additive offset over
+the background correlation and is capped to the interval \code{[0, 0.99]}.}
 
 \item{profile}{Shape of the regional effect, either \code{"triweight"} or
 \code{"flat"}.}

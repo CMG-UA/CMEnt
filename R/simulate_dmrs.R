@@ -64,13 +64,13 @@
 simulateDMRs <- function(
     beta,
     num_dmrs = 3000L,
-    delta_max0 = 0.3,
+    delta_max0 = 0.4,
     groups = NULL,
     case_group = NULL,
     max_gap = 500L,
     min_sites = 5L,
     max_sites = 500L,
-    truth_min_delta_beta = 0.05,
+    truth_min_delta_beta = 0.2,
     delta_jitter = 1 / 3,
     expected_correlation = 0.7,
     profile = c("triweight", "flat"),
@@ -256,13 +256,15 @@ simulateDMRs <- function(
         n_targets = num_dmrs
     )
     corr_targets <- rep(expected_correlation, num_dmrs)
-    corr_sd_used <- vapply(
+    corr_pick_index <- vapply(
         corr_targets,
-        .simulationPickCorrelationSd,
-        numeric(1),
+        .simulationPickCorrelationIndex,
+        integer(1),
         lookup = corr_lookup,
         default_corr_sd = default_corr_sd
     )
+    corr_sd_used <- corr_lookup$corr_sd[corr_pick_index]
+    corr_metric_estimate <- corr_lookup$metric[corr_pick_index]
 
     truth_rows <- vector("list", num_dmrs)
     truth_gr <- vector("list", num_dmrs)
@@ -370,6 +372,7 @@ simulateDMRs <- function(
             expected_correlation = expected_correlation,
             corr_target = corr_targets[[dmr_i]],
             corr_sd_used = current_corr_sd,
+            corr_metric_estimate = corr_metric_estimate[[dmr_i]],
             sample_sd_frac_used = sample_sd_fraction,
             stringsAsFactors = FALSE
         )
@@ -390,6 +393,7 @@ simulateDMRs <- function(
     GenomicRanges::mcols(gr_dmrs)$expected_correlation <- expected_correlation
     GenomicRanges::mcols(gr_dmrs)$corr_target <- corr_targets
     GenomicRanges::mcols(gr_dmrs)$corr_sd_used <- corr_sd_used
+    GenomicRanges::mcols(gr_dmrs)$corr_metric_estimate <- corr_metric_estimate
     GenomicRanges::mcols(gr_dmrs)$sample_sd_frac_used <- sample_sd_fraction
 
     meth_mat <- meth_mat[, output_order, drop = FALSE]
@@ -423,6 +427,9 @@ simulateDMRs <- function(
         genome = input$genome,
         background_corr_target = background_corr_targets,
         expected_correlation = expected_correlation,
+        corr_target = corr_targets,
+        corr_sd_used = corr_sd_used,
+        corr_metric_estimate = corr_metric_estimate,
         input_groups = stats::setNames(as.character(groups)[output_order], sample_names),
         input_case_group = case_group,
         duplicate_loci_collapsed = collapsed_input$n_collapsed
@@ -897,7 +904,7 @@ simulateDMRs <- function(
                                               template_cov,
                                               length_scale,
                                               sample_sd_fraction = 0.75,
-                                              corr_sd_grid = seq(0.15, 0.45, by = 0.05)) {
+                                              corr_sd_grid = seq(0.1, 1.0, by = 0.1)) {
     if (affected_samples < 2L || length(template_pos) < 2L) {
         return(data.frame(corr_sd = 0.30, metric = 0))
     }
@@ -919,14 +926,34 @@ simulateDMRs <- function(
     })
 }
 
+.simulationPickCorrelationIndex <- function(target, lookup, default_corr_sd = 0.30) {
+    if (is.null(lookup) || nrow(lookup) == 0L) {
+        return(1L)
+    }
+    valid_sd <- is.finite(lookup$corr_sd)
+    valid_metric <- valid_sd & is.finite(lookup$metric)
+    if (!any(valid_metric)) {
+        if (any(valid_sd)) {
+            return(which(valid_sd)[which.min(abs(lookup$corr_sd[valid_sd] - default_corr_sd))])
+        }
+        return(1L)
+    }
+    valid_idx <- which(valid_metric)
+    if (!is.finite(target)) {
+        return(valid_idx[which.min(abs(lookup$corr_sd[valid_idx] - default_corr_sd))])
+    }
+    valid_idx[which.min(abs(lookup$metric[valid_idx] - target))]
+}
+
 .simulationPickCorrelationSd <- function(target, lookup, default_corr_sd = 0.30) {
     if (is.null(lookup) || nrow(lookup) == 0L) {
         return(default_corr_sd)
     }
-    if (!is.finite(target)) {
-        return(default_corr_sd)
-    }
-    lookup$corr_sd[[which.min(abs(lookup$metric - target))]]
+    lookup$corr_sd[[.simulationPickCorrelationIndex(
+        target = target,
+        lookup = lookup,
+        default_corr_sd = default_corr_sd
+    )]]
 }
 
 .simulationTemplatePositions <- function(pos, indices, min_len = 5L) {

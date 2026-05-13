@@ -39,8 +39,8 @@
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).
-#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Default is 2. (Minimum is 1.)
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained if they have enough seeds relative to the local site density. Default is NULL (disabled).
 #' @param min_sites Numeric. Minimum number of sites in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
@@ -1871,7 +1871,7 @@
                 if (all(is.na(v))) {
                     return(NA_real_)
                 }
-                max(v, na.rm = TRUE)
+                min(v, na.rm = TRUE)
             }
         ))
         reasons[corr_mask & !connected] <- apply(
@@ -2606,13 +2606,13 @@
         return(NULL)
     }
 
-    if (array_based && min_adj_seeds > min_seeds) {
+    if (array_based && !is.null(min_adj_seeds) && min_adj_seeds > min_seeds) {
         .log_step("Calculating site content and adjusted seeds number..", level = 3)
         sites_num_bg <- getSiteBackgroundCounts(filtered_dmrs_ranges, genome)
         sites_num_bg[!is.finite(sites_num_bg) | is.na(sites_num_bg) | sites_num_bg <= 0] <- 1L
         filtered_dmrs$sites_num_bg <- sites_num_bg
 
-        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs$sites_num / filtered_dmrs$sites_num_bg * filtered_dmrs$seeds_num)
+        filtered_dmrs$seeds_num_adj <- ceiling(filtered_dmrs$sites_num_bg / filtered_dmrs$sites_num * filtered_dmrs$seeds_num)
 
         .log_success("site content calculated.", level = 3)
         adj_filtered_dmrs <- filtered_dmrs[
@@ -2792,8 +2792,8 @@
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
 #' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).
-#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.
-#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. Minimum is 2. Default is 2.
+#' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 1. Default is 2.
+#' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained if they have enough seeds relative to the local site density. Default is NULL (disabled).
 #' @param min_sites Numeric. Minimum number of sites in a DMR after extension, including the seeds. Minimum is 2. Default is 3.
 #' @param aggfun Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".
 #' @param ignored_sample_groups Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.
@@ -2845,7 +2845,7 @@ findDMRsFromSeeds <- function(
     max_bridge_seeds_gaps = 1L,
     max_bridge_extension_gaps = 1L,
     min_seeds = 2,
-    min_adj_seeds = 2,
+    min_adj_seeds = NULL,
     min_sites = 3,
     aggfun = c("median", "mean"),
     ignored_sample_groups = NULL,
@@ -3002,10 +3002,6 @@ findDMRsFromSeeds <- function(
     stopifnot(!is.null(min_sites))
     if (min_seeds < 2 && min_sites < 2) {
         stop("min_seeds or min_sites must be at least 2, to define a DMR")
-    }
-    stopifnot(!is.null(min_adj_seeds))
-    if (min_adj_seeds < 2) {
-        stop("min_adj_seeds must be at least 2, to define a DMR")
     }
     stopifnot(!is.null(max_lookup_dist))
     ext_site_delta_beta <- .normalizeForceConnectDeltaBeta(

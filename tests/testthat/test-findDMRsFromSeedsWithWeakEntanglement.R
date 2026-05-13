@@ -51,6 +51,33 @@ test_that("weak entanglement keeps edges that fail only after strong-mode correc
     expect_identical(weak$reason[[1]], "")
 })
 
+test_that("weak entanglement reports the best passing group p-value", {
+    g1x <- seq(0.2, 0.8, length.out = 8)
+    g1y <- g1x + c(0.01, -0.01, 0, 0.01, -0.01, 0, 0.01, -0.01)
+    g2x <- seq(0.2, 0.8, length.out = 8)
+    g2y <- c(0.5, 0.1, 0.8, 0.3, 0.7, 0.2, 0.4, 0.6)
+    sites_beta <- rbind(c(g1x, g2x), c(g1y, g2y))
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+    pheno[["__casecontrol__"]] <- c(rep(0L, 8), rep(1L, 8))
+    group_inds <- list(g1 = 1:8, g2 = 9:16)
+    testing_mode_per_group <- c(g1 = "parametric", g2 = "parametric")
+    empirical_strategy_per_group <- c(g1 = "auto", g2 = "auto")
+
+    weak <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = group_inds,
+        pheno = pheno,
+        testing_mode_per_group = testing_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group,
+        max_pval = 0.05,
+        entanglement = "weak",
+        aggfun = mean
+    )
+
+    expect_true(weak$connected[[1]])
+    expect_lt(weak$pval[[1]], 0.05)
+})
+
 test_that("findDMRsFromSeeds accepts weak entanglement on deterministic synthetic data", {
     fixture <- makeSyntheticFindDMRsFixture()
 
