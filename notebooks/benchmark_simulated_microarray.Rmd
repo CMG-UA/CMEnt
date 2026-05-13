@@ -223,7 +223,27 @@ names(dmps_gr) <- rownames(dmps)
 
 ```{r CMEnt}
 cment_file <- get_method_cache_file("CMEnt")
-if (!file.exists(cment_file)) {
+cment_params <- list(
+    max_bridge_seeds_gaps = 1,
+    max_bridge_extension_gaps = 1,
+    min_seeds = 2,
+    min_sites = 5,
+    # The simulated truth interval uses truth_min_delta_beta = 0.05.
+    ext_site_delta_beta = 0.05,
+    max_lookup_dist = 1000,
+    max_pval = 0.05,
+    entanglement = "weak"
+)
+cment_cache_valid <- FALSE
+if (file.exists(cment_file)) {
+    ret <- readRDS(cment_file)
+    cment_cache_valid <- identical(ret$params, cment_params)
+    if (cment_cache_valid) {
+        dmrs_cment <- ret$dmrs
+        time_cment <- ret$time
+    }
+}
+if (!cment_cache_valid) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.verbose" = 1)
     options("CMEnt.njobs" = cment_njobs)
@@ -238,25 +258,21 @@ if (!file.exists(cment_file)) {
         pheno = pheno,
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
-        max_bridge_seeds_gaps  = 1,
-        max_bridge_extension_gaps = 1,
-        min_seeds = 2,
-        min_sites = 5,
-        ext_site_delta_beta = 0.2,
-        max_lookup_dist = 1000,
-        max_pval = 0.05,
-        entanglement = "weak",
+        testing_mode  = "parametric",
+        max_bridge_seeds_gaps = cment_params$max_bridge_seeds_gaps,
+        max_bridge_extension_gaps = cment_params$max_bridge_extension_gaps,
+        min_seeds = cment_params$min_seeds,
+        min_sites = cment_params$min_sites,
+        ext_site_delta_beta = cment_params$ext_site_delta_beta,
+        max_lookup_dist = cment_params$max_lookup_dist,
+        max_pval = cment_params$max_pval,
+        entanglement = cment_params$entanglement,
         njobs = cment_njobs,
-        verbose = 1
+        verbose = 2
     )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
-    rm(beta_handler)
-} else {
-    ret <- readRDS(cment_file)
-    dmrs_cment <- ret$dmrs
-    time_cment <- ret$time
+    saveRDS(list(dmrs = dmrs_cment, time = time_cment, params = cment_params), cment_file)
 }
 
 cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
