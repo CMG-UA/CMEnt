@@ -64,8 +64,8 @@ get_benchmark_file <- function(filename) {
     benchmark_file
 }
 
-get_method_cache_file <- function(method, genome) {
-    get_benchmark_file(sprintf("dmrs.%s.%s.rds", method, genome))
+get_method_cache_file <- function(method) {
+    get_benchmark_file(sprintf("dmrs.%s.rds", method))
 }
 ```
 
@@ -222,7 +222,7 @@ names(dmps_gr) <- rownames(dmps)
 ## Method 1: CMEnt
 
 ```{r CMEnt}
-cment_file <- get_method_cache_file("CMEnt", genome)
+cment_file <- get_method_cache_file("CMEnt")
 if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.verbose" = 1)
@@ -239,9 +239,9 @@ if (!file.exists(cment_file)) {
         sample_group_col = "Sample_Group",
         casecontrol_col = "casecontrol",
         max_bridge_seeds_gaps  = 1,
-        max_bridge_extension_gaps = 3,
+        max_bridge_extension_gaps = 1,
         min_seeds = 2,
-        min_sites = 3,
+        min_sites = 5,
         ext_site_delta_beta = 0.2,
         max_lookup_dist = 1000,
         max_pval = 0.05,
@@ -265,7 +265,7 @@ cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as
 ## Method 2: comb-p
 
 ```{r comb-p}
-combp_file <- get_method_cache_file("combp", genome)
+combp_file <- get_method_cache_file("combp")
 
 run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
@@ -351,7 +351,7 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 
 ## Method 3: probeLasso
 ```{r probeLasso}
-probelasso_file <- get_method_cache_file("probeLasso", genome)
+probelasso_file <- get_method_cache_file("probeLasso")
 
 run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
@@ -428,7 +428,7 @@ cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso)
 ## Method 4: DMRcate
 
 ```{r dmrcate}
-dmrcate_file <- get_method_cache_file("dmrcate", genome)
+dmrcate_file <- get_method_cache_file("dmrcate")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
     start_time <- Sys.time()
@@ -477,7 +477,7 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 ## Method 5: Bumphunter
 
 ```{r bumphunter}
-bumphunter_file <- get_method_cache_file("bumphunter", genome)
+bumphunter_file <- get_method_cache_file("bumphunter")
 if (!file.exists(bumphunter_file)) {
     suppressPackageStartupMessages({
         library(bumphunter)

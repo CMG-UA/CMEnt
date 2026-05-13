@@ -72,7 +72,7 @@ simulateDMRs <- function(
     max_sites = 500L,
     truth_min_delta_beta = 0.05,
     delta_jitter = 1 / 3,
-    expected_correlation = 0.8,
+    expected_correlation = 0.7,
     profile = c("triweight", "flat"),
     profile_degree = 4L,
     flank_fraction = 0.2,
