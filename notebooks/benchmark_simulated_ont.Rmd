@@ -203,7 +203,6 @@ We use a DSS approach to identify candidate seeds based on differential methylat
 #     min_sites = 10L,
 #     max_sites = 500L,
 #     truth_min_delta_beta = 0.1,
-#     profile = "triweight",
 #     seed = 42
 # )
 if (!file.exists(seeds_file)) {
