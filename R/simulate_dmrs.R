@@ -19,21 +19,22 @@
 #'   `Condition2`.
 #' @param case_group Group receiving the differential shift. Defaults to the
 #'   second group level.
-#' @param max_gap Maximum gap, in bp, used to form candidate site clusters.
-#' @param min_sites Minimum number of sites per candidate DMR cluster.
-#' @param max_sites Maximum number of sites per candidate DMR cluster.
+#' @param max_gap Maximum gap, in bp, used to form candidate site segments.
+#' @param min_sites Minimum number of sites per candidate DMR segment.
+#' @param max_sites Maximum number of sites per candidate DMR segment.
 #' @param truth_min_delta_beta Minimum intended beta-scale perturbation for a
 #'   site to define the reported truth interval. Set to `0` to report the full
-#'   selected cluster.
+#'   selected segment.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
 #' @param expected_correlation Desired within-DMR expected correlation target.
 #'   This is treated as an absolute target rather than an additive offset over
 #'   the background correlation and is capped to the interval `[0, 0.99]`.
-#' @param profile Shape of the regional effect, either `"triweight"` or
-#'   `"flat"`.
+#' @param neighbor_window Number of neighboring sites used to smooth the
+#'   index-based correlated random effect inside each DMR. A value of `5`
+#'   uses up to two upstream and two downstream neighboring sites.
 #' @param profile_degree Degree used by the triweight profile.
-#' @param flank_fraction Fraction of the selected cluster width added on both
+#' @param flank_fraction Fraction of the selected segment width added on both
 #'   sides before evaluating the triweight profile.
 #' @param rename_samples If `TRUE`, samples are reordered and renamed using the
 #'   `dmrseq::simDMRs()` convention: controls first as `Condition1_Rep1`,
@@ -73,7 +74,7 @@ simulateDMRs <- function(
     truth_min_delta_beta = 0.2,
     delta_jitter = 1 / 3,
     expected_correlation = 0.7,
-    profile = c("triweight", "flat"),
+    neighbor_window = 5L,
     profile_degree = 4L,
     flank_fraction = 0.2,
     rename_samples = TRUE,
@@ -84,13 +85,16 @@ simulateDMRs <- function(
     beta_row_names_file = NULL,
     chrom_col = "#chrom",
     start_col = "start",
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
+    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    verbose = getOption("CMEnt.verbose", 1)
 ) {
-    profile <- match.arg(profile)
+    
+    options("CMEnt.verbose" = verbose)
     num_dmrs <- as.integer(num_dmrs)
     max_gap <- as.integer(max_gap)
     min_sites <- as.integer(min_sites)
     max_sites <- as.integer(max_sites)
+    neighbor_window <- as.integer(neighbor_window)
     profile_degree <- as.integer(profile_degree)
 
     if (length(num_dmrs) != 1L || is.na(num_dmrs) || num_dmrs < 1L) {
@@ -120,13 +124,16 @@ simulateDMRs <- function(
         expected_correlation > 0.99) {
         stop("'expected_correlation' must be a numeric scalar in [0, 0.99].")
     }
+    if (length(neighbor_window) != 1L || is.na(neighbor_window) || neighbor_window < 1L) {
+        stop("'neighbor_window' must be a positive integer.")
+    }
     if (length(profile_degree) != 1L || is.na(profile_degree) || profile_degree < 1L) {
         stop("'profile_degree' must be a positive integer.")
     }
     if (length(flank_fraction) != 1L || !is.finite(flank_fraction) || flank_fraction < 0) {
         stop("'flank_fraction' must be a non-negative numeric scalar.")
     }
-
+    .log_step("Preparing input...", level = 1)
     input <- .prepareSimulationInput(
         beta = beta,
         array = array,
@@ -200,20 +207,22 @@ simulateDMRs <- function(
     end_pos <- collapsed_input$end
     row_ids <- collapsed_input$row_ids
 
-    clusters <- .makeSimulationClusters(chr = chr, pos = pos, max_gap = max_gap)
-    index_by_cluster <- split(seq_along(clusters), clusters)
-    cluster_lengths <- lengths(index_by_cluster)
-    eligible <- which(cluster_lengths >= min_sites & cluster_lengths <= max_sites)
+    .log_step("Identifying candidate genomic segments for DMR simulation...", level = 1)
+    segments <- .findContiguousSegments(chr = chr, pos = pos, max_gap = max_gap)
+    index_by_segment <- split(seq_along(segments), segments)
+    segment_lengths <- lengths(index_by_segment)
+    eligible <- which(segment_lengths >= min_sites & segment_lengths <= max_sites)
     if (length(eligible) < num_dmrs) {
         stop(
-            "Only ", length(eligible), " eligible candidate clusters found, but ",
+            "Only ", length(eligible), " eligible candidate genomic segments found, but ",
             num_dmrs, " DMRs were requested. Decrease 'num_dmrs' or relax ",
             "'min_sites'/'max_sites'/'max_gap'."
         )
     }
-
-    cluster_weights <- vapply(index_by_cluster[eligible], function(idx) {
-        beta_region <- .simulationBetaFromCounts(
+    # Preferentially select segments with intermediate methylation levels, as these are more likely to yield the intended effect sizes and avoid floor/ceiling effects. 
+    # These probabilities are not intended to be exact or to target a specific distribution, but rather to provide a heuristic preference for segments with more dynamic methylation.
+    segments_choosing_prob <- vapply(index_by_segment[eligible], function(idx) {
+        beta_region <- .convertCountsToBeta(
             meth_mat[idx, , drop = FALSE],
             cov_mat[idx, , drop = FALSE]
         )
@@ -223,32 +232,24 @@ simulateDMRs <- function(
         }
         pmax(1 - sqrt(2) * abs(0.5 - p)^0.5, 0)
     }, numeric(1))
-    if (!any(cluster_weights > 0)) {
-        cluster_weights <- rep(1, length(eligible))
+    if (!any(segments_choosing_prob > 0)) {
+        segments_choosing_prob <- rep(1, length(eligible))
     }
 
-    dmr_cluster_pos <- sample(seq_along(eligible), num_dmrs, replace = FALSE, prob = cluster_weights)
-    dmr_cluster_ids <- eligible[dmr_cluster_pos]
-    dmr_indices <- index_by_cluster[dmr_cluster_ids]
+    dmr_segment_pos <- sample(seq_along(eligible), num_dmrs, replace = FALSE, prob = segments_choosing_prob)
+    dmr_segment_ids <- eligible[dmr_segment_pos]
+    dmr_indices <- index_by_segment[dmr_segment_ids]
 
-    correlation_length <- .simulationDefaultCorrelationLength(
-        pos = pos,
-        indices = index_by_cluster[eligible]
-    )
-    sample_sd_fraction <- 0.75
+    .log_step("Fitting correlation structure for DMR simulation...", level = 1)
     default_corr_sd <- 0.30
     corr_lookup <- .simulationBuildCorrelationLookup(
         affected_samples = length(case_samples),
-        template_pos = .simulationTemplatePositions(
-            pos = pos,
-            indices = index_by_cluster[eligible]
-        ),
+        template_length = .simulationTemplateLength(indices = index_by_segment[eligible]),
         template_cov = .simulationTemplateCoverage(cov_mat),
-        length_scale = correlation_length,
-        sample_sd_fraction = sample_sd_fraction
+        neighbor_window = neighbor_window
     )
     background_corr_targets <- .simulationFitCorrelationTargets(
-        beta = .simulationBetaFromCounts(meth_mat, cov_mat),
+        beta = .convertCountsToBeta(meth_mat, cov_mat),
         chr = chr,
         pos = pos,
         group_indices = list(control_samples, case_samples),
@@ -272,12 +273,13 @@ simulateDMRs <- function(
     deltas <- numeric(num_dmrs)
     dmr_mncov <- numeric(num_dmrs)
     dmr_lengths <- integer(num_dmrs)
-
+    .log_step("Simulating DMRs...", level = 1)
+    pb <- utils::txtProgressBar(min = 0, max = num_dmrs, style = 3, width = 50, char = "=", title = "Simulating DMRs")
     for (dmr_i in seq_along(dmr_indices)) {
         idx <- dmr_indices[[dmr_i]]
-        eta0 <- .simulationLogitFromCounts(meth_mat[idx, , drop = FALSE], cov_mat[idx, , drop = FALSE])
+        eta0 <- .convertCountsToLogits(meth_mat[idx, , drop = FALSE], cov_mat[idx, , drop = FALSE])
         p0 <- plogis(eta0)
-        prof <- .simulationEffectProfile(pos[idx], profile, profile_degree, flank_fraction)
+        prof <- .simulationEffectProfile(pos[idx], profile_degree, flank_fraction)
 
         delta_max <- delta_max0 + (stats::rbeta(1L, 2, 2) - 0.5) * delta_jitter
         delta_max <- pmin(pmax(delta_max, 0.01), 0.95)
@@ -297,22 +299,14 @@ simulateDMRs <- function(
         }
         diff_hit <- direction * delta_max * prof
         current_corr_sd <- corr_sd_used[[dmr_i]]
-        group_field <- .simulationMakeCorrelatedEffect(
-            pos = pos[idx],
-            sigma = current_corr_sd,
-            length_scale = correlation_length
-        )
-        sample_sd <- current_corr_sd * sample_sd_fraction
 
         p1_case <- matrix(NA_real_, nrow = length(idx), ncol = length(case_samples))
         for (sample_i in seq_along(case_samples)) {
             p1_case[, sample_i] <- .simulationShiftedProbabilities(
                 base_prob = p0[, case_samples[[sample_i]]],
                 diff_hit = diff_hit,
-                pos = pos[idx],
-                group_field = group_field,
-                sample_sd = sample_sd,
-                length_scale = correlation_length
+                corr_sd = current_corr_sd,
+                neighbor_window = neighbor_window
             )
         }
 
@@ -335,8 +329,8 @@ simulateDMRs <- function(
             resample_counts = resample_counts
         )
 
-        case_beta <- rowMeans(.simulationBetaFromCounts(meth_mat[truth_idx, case_samples, drop = FALSE], cov_mat[truth_idx, case_samples, drop = FALSE]), na.rm = TRUE)
-        control_beta <- rowMeans(.simulationBetaFromCounts(meth_mat[truth_idx, control_samples, drop = FALSE], cov_mat[truth_idx, control_samples, drop = FALSE]), na.rm = TRUE)
+        case_beta <- rowMeans(.convertCountsToBeta(meth_mat[truth_idx, case_samples, drop = FALSE], cov_mat[truth_idx, case_samples, drop = FALSE]), na.rm = TRUE)
+        control_beta <- rowMeans(.convertCountsToBeta(meth_mat[truth_idx, control_samples, drop = FALSE], cov_mat[truth_idx, control_samples, drop = FALSE]), na.rm = TRUE)
         observed_delta <- stats::median(case_beta - control_beta, na.rm = TRUE)
         if (!is.finite(observed_delta)) {
             observed_delta <- direction * delta_max
@@ -373,9 +367,10 @@ simulateDMRs <- function(
             corr_target = corr_targets[[dmr_i]],
             corr_sd_used = current_corr_sd,
             corr_metric_estimate = corr_metric_estimate[[dmr_i]],
-            sample_sd_frac_used = sample_sd_fraction,
+            neighbor_window = neighbor_window,
             stringsAsFactors = FALSE
         )
+        utils::setTxtProgressBar(pb, dmr_i)
     }
 
     gr_dmrs <- suppressWarnings(do.call(c, truth_gr))
@@ -394,12 +389,12 @@ simulateDMRs <- function(
     GenomicRanges::mcols(gr_dmrs)$corr_target <- corr_targets
     GenomicRanges::mcols(gr_dmrs)$corr_sd_used <- corr_sd_used
     GenomicRanges::mcols(gr_dmrs)$corr_metric_estimate <- corr_metric_estimate
-    GenomicRanges::mcols(gr_dmrs)$sample_sd_frac_used <- sample_sd_fraction
+    GenomicRanges::mcols(gr_dmrs)$neighbor_window <- neighbor_window
 
     meth_mat <- meth_mat[, output_order, drop = FALSE]
     cov_mat <- cov_mat[, output_order, drop = FALSE]
     colnames(meth_mat) <- colnames(cov_mat) <- sample_names
-
+    .log_step("Building output object...", level = 1)
     output <- .buildSimulationOutputObject(
         input = input,
         meth = meth_mat,
@@ -430,6 +425,7 @@ simulateDMRs <- function(
         corr_target = corr_targets,
         corr_sd_used = corr_sd_used,
         corr_metric_estimate = corr_metric_estimate,
+        neighbor_window = neighbor_window,
         input_groups = stats::setNames(as.character(groups)[output_order], sample_names),
         input_case_group = case_group,
         duplicate_loci_collapsed = collapsed_input$n_collapsed
@@ -439,6 +435,7 @@ simulateDMRs <- function(
         result$beta_locs <- output$beta_locs
     }
 
+    .log_success("Simulation complete!", level = 1)
     result
 }
 
@@ -494,7 +491,15 @@ simulateDMRs <- function(
             cov = cov_mat
         ))
     }
-
+    if (!is.null(sorted_locs)) {
+        if (!all(c("chr", "start") %in% colnames(sorted_locs))) {
+            stop("When provided, 'sorted_locs' must contain 'chr' and 'start' columns.")
+        }
+        if (!is.character(sorted_locs$chr) || !is.numeric(sorted_locs$start)) {
+            stop("'chr' column in 'sorted_locs' must be character and 'start' column must be numeric.")
+        }
+        sorted_locs <- sorted_locs[order(sorted_locs$chr, sorted_locs$start), , drop = FALSE]
+    }
     beta_handler <- getBetaHandler(
         beta = beta,
         array = array,
@@ -602,7 +607,7 @@ simulateDMRs <- function(
         ))
     }
 
-    beta_new <- .simulationBetaFromCounts(meth = meth, cov = cov)
+    beta_new <- .convertCountsToBeta(meth = meth, cov = cov)
     rownames(beta_new) <- row_ids
     colnames(beta_new) <- sample_names
     beta_locs <- data.frame(
@@ -699,7 +704,7 @@ simulateDMRs <- function(
     paste0(groups, "_Rep", as.integer(reps))
 }
 
-.makeSimulationClusters <- function(chr, pos, max_gap) {
+.findContiguousSegments <- function(chr, pos, max_gap) {
     if (length(chr) != length(pos)) {
         stop("'chr' and 'pos' must have the same length.")
     }
@@ -710,10 +715,7 @@ simulateDMRs <- function(
     cumsum(starts)
 }
 
-.simulationEffectProfile <- function(pos, profile, degree, flank_fraction) {
-    if (length(pos) == 1L || identical(profile, "flat")) {
-        return(rep(1, length(pos)))
-    }
+.simulationEffectProfile <- function(pos, degree, flank_fraction) {
     first <- min(pos)
     last <- max(pos)
     width <- max(last - first, 1)
@@ -727,42 +729,61 @@ simulateDMRs <- function(
     pmax(out, 0)
 }
 
-.simulationMakeCorrelatedEffect <- function(pos, sigma = 0.25, length_scale = 200) {
-    n_pos <- length(pos)
-    if (n_pos <= 1L || !is.finite(sigma) || sigma <= 0) {
-        return(rep(0, n_pos))
+.createCorrelatedEffectPrior <- function(n_sites,
+                                         sigma = 0.25,
+                                         neighbor_weight = 0.7,
+                                         neighbor_window = 5L) {
+    if (n_sites <= 1L || !is.finite(sigma) || sigma <= 0) {
+        return(rep(0, n_sites))
     }
-    distances <- abs(outer(pos, pos, "-"))
-    corr_mat <- exp(-distances / length_scale)
-    diag(corr_mat) <- diag(corr_mat) + 1e-8
-    latent <- t(chol(corr_mat)) %*% stats::rnorm(n_pos)
+    if (!is.finite(neighbor_weight)) {
+        neighbor_weight <- 0.7
+    }
+    neighbor_weight <- pmax(neighbor_weight, 0)
+    neighbor_window <- as.integer(neighbor_window)
+    if (length(neighbor_window) != 1L || is.na(neighbor_window) || neighbor_window < 1L) {
+        neighbor_window <- 5L
+    }
+    neighbor_radius <- min(n_sites - 1L, floor(neighbor_window / 2L))
+
+    site_noise <- stats::rnorm(n_sites)
+    latent <- site_noise
+    latent_var <- rep(1, n_sites)
+
+    if (neighbor_radius > 0L && neighbor_weight > 0) {
+        for (offset in seq_len(neighbor_radius)) {
+            weight <- neighbor_weight^offset
+            left_idx <- seq.int(offset + 1L, n_sites)
+            right_idx <- seq_len(n_sites - offset)
+            latent[left_idx] <- latent[left_idx] + weight * site_noise[right_idx]
+            latent[right_idx] <- latent[right_idx] + weight * site_noise[left_idx]
+            latent_var[left_idx] <- latent_var[left_idx] + weight^2
+            latent_var[right_idx] <- latent_var[right_idx] + weight^2
+        }
+    }
+    latent <- latent / sqrt(latent_var)
     as.numeric(sigma * latent)
 }
 
 .simulationShiftedProbabilities <- function(base_prob,
                                             diff_hit,
-                                            pos,
-                                            group_field = NULL,
-                                            sample_sd = 0,
-                                            length_scale = 200) {
+                                            corr_sd = 0,
+                                            neighbor_window = 5L) {
     base_prob <- .clampSimulationBeta(base_prob)
     target_prob <- .clampSimulationBeta(base_prob + diff_hit)
     det_shift <- stats::qlogis(target_prob) - stats::qlogis(base_prob)
 
-    if (is.null(group_field)) {
-        group_field <- rep(0, length(base_prob))
-    }
-    sample_field <- if (sample_sd > 0) {
-        .simulationMakeCorrelatedEffect(
-            pos = pos,
-            sigma = sample_sd,
-            length_scale = length_scale
+    correlated_effect <- if (corr_sd > 0) {
+        .createCorrelatedEffectPrior(
+            n_sites = length(base_prob),
+            sigma = corr_sd,
+            neighbor_window = neighbor_window
         )
     } else {
         rep(0, length(base_prob))
     }
 
-    plogis(stats::qlogis(base_prob) + det_shift + group_field + sample_field)
+    plogis(stats::qlogis(base_prob) + det_shift + correlated_effect)
 }
 
 .simulationComputePairCorrelations <- function(x, y) {
@@ -781,10 +802,10 @@ simulateDMRs <- function(
     beta_ord <- beta[ord, , drop = FALSE]
     chr_ord <- chr[ord]
     pos_ord <- pos[ord]
-    cluster_ord <- .makeSimulationClusters(chr_ord, pos_ord, max_gap = max_gap)
+    segment_ord <- .findContiguousSegments(chr_ord, pos_ord, max_gap = max_gap)
     pair_end <- which(
         chr_ord[-1L] == chr_ord[-length(chr_ord)] &
-            cluster_ord[-1L] == cluster_ord[-length(cluster_ord)]
+            segment_ord[-1L] == segment_ord[-length(segment_ord)]
     ) + 1L
     pair_start <- pair_end - 1L
     if (length(pair_start) == 0L) {
@@ -849,37 +870,29 @@ simulateDMRs <- function(
 
 .simulationCorrelationMetric <- function(corr_sd,
                                          affected_samples,
-                                         template_pos,
+                                         template_length,
                                          template_cov,
-                                         length_scale,
-                                         sample_sd_fraction = 0.75,
+                                         neighbor_window = 5L,
                                          pilot_reps = 6L) {
-    if (affected_samples < 2L || length(template_pos) < 2L || corr_sd <= 0) {
+    if (affected_samples < 2L || template_length < 2L || corr_sd <= 0) {
         return(0)
     }
 
     rep_metrics <- numeric(pilot_reps)
-    base_prob <- matrix(0.5, nrow = length(template_pos), ncol = affected_samples)
-    diff_hit <- rep(0, length(template_pos))
+    base_prob <- matrix(0.5, nrow = template_length, ncol = affected_samples)
+    diff_hit <- rep(0, template_length)
 
     for (rep_i in seq_len(pilot_reps)) {
-        group_field <- .simulationMakeCorrelatedEffect(
-            pos = template_pos,
-            sigma = corr_sd,
-            length_scale = length_scale
-        )
-        beta_sim <- matrix(NA_real_, nrow = length(template_pos), ncol = affected_samples)
+        beta_sim <- matrix(NA_real_, nrow = template_length, ncol = affected_samples)
         for (sample_i in seq_len(affected_samples)) {
             new_prob <- .simulationShiftedProbabilities(
                 base_prob = base_prob[, sample_i],
                 diff_hit = diff_hit,
-                pos = template_pos,
-                group_field = group_field,
-                sample_sd = corr_sd * sample_sd_fraction,
-                length_scale = length_scale
+                corr_sd = corr_sd,
+                neighbor_window = neighbor_window
             )
             beta_sim[, sample_i] <- stats::rbinom(
-                n = length(template_pos),
+                n = template_length,
                 size = template_cov,
                 prob = new_prob
             ) / template_cov
@@ -900,12 +913,11 @@ simulateDMRs <- function(
 }
 
 .simulationBuildCorrelationLookup <- function(affected_samples,
-                                              template_pos,
+                                              template_length,
                                               template_cov,
-                                              length_scale,
-                                              sample_sd_fraction = 0.75,
+                                              neighbor_window = 5L,
                                               corr_sd_grid = seq(0.1, 1.0, by = 0.1)) {
-    if (affected_samples < 2L || length(template_pos) < 2L) {
+    if (affected_samples < 2L || template_length < 2L) {
         return(data.frame(corr_sd = 0.30, metric = 0))
     }
 
@@ -917,10 +929,9 @@ simulateDMRs <- function(
                 .simulationCorrelationMetric,
                 numeric(1),
                 affected_samples = affected_samples,
-                template_pos = template_pos,
+                template_length = template_length,
                 template_cov = template_cov,
-                length_scale = length_scale,
-                sample_sd_fraction = sample_sd_fraction
+                neighbor_window = neighbor_window
             )
         )
     })
@@ -956,21 +967,9 @@ simulateDMRs <- function(
     )]]
 }
 
-.simulationTemplatePositions <- function(pos, indices, min_len = 5L) {
-    cluster_lengths <- lengths(indices)
-    template_len <- max(min_len, as.integer(round(stats::median(cluster_lengths))))
-    template_spacing <- stats::median(
-        unlist(lapply(indices, function(idx) diff(pos[idx]))),
-        na.rm = TRUE
-    )
-    if (!is.finite(template_spacing) || template_spacing <= 0) {
-        template_spacing <- 100
-    }
-    seq.int(
-        from = 1L,
-        by = max(1L, as.integer(round(template_spacing))),
-        length.out = template_len
-    )
+.simulationTemplateLength <- function(indices, min_len = 5L) {
+    segment_lengths <- lengths(indices)
+    max(min_len, as.integer(round(stats::median(segment_lengths))))
 }
 
 .simulationTemplateCoverage <- function(cov) {
@@ -981,24 +980,14 @@ simulateDMRs <- function(
     as.integer(round(template_cov))
 }
 
-.simulationDefaultCorrelationLength <- function(pos, indices) {
-    positive_gaps <- unlist(lapply(indices, function(idx) diff(pos[idx])))
-    positive_gaps <- positive_gaps[is.finite(positive_gaps) & positive_gaps > 0]
-    default_gap <- stats::median(positive_gaps, na.rm = TRUE)
-    if (!is.finite(default_gap) || default_gap <= 0) {
-        default_gap <- 100
-    }
-    max(as.numeric(default_gap) * 3, 1)
-}
-
-.simulationBetaFromCounts <- function(meth, cov) {
+.convertCountsToBeta <- function(meth, cov) {
     beta <- (meth + 0.5) / (cov + 1)
     beta[cov <= 0] <- NA_real_
     beta
 }
 
-.simulationLogitFromCounts <- function(meth, cov) {
-    stats::qlogis(.clampSimulationBeta(.simulationBetaFromCounts(meth, cov)))
+.convertCountsToLogits <- function(meth, cov) {
+    stats::qlogis(.clampSimulationBeta(.convertCountsToBeta(meth, cov)))
 }
 
 .clampSimulationBeta <- function(x) {

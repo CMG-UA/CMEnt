@@ -183,7 +183,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (file_size_mb < mem_thres) {
                     private$.beta_file_in_memory <- tryCatch(
                         {
-                            .log_step("Beta file is small (", round(file_size_mb, 1), " MB). Attempting to load into memory...", level = 2)
+                            .log_step("Beta file is small (", round(file_size_mb, 1), " MB). Attempting to load into memory...", level = 3)
                             temp_data <- .readBetaFileData(
                                 private$.beta_file,
                                 data.table = FALSE,
@@ -196,7 +196,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
                             .log_success(
                                 "Beta file loaded into memory (", nrow(temp_data),
-                                " sites x ", ncol(temp_data), " samples)", level = 2
+                                " sites x ", ncol(temp_data), " samples)", level = 3
                             )
 
                             temp_data
@@ -213,14 +213,15 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else {
                     .log_info(
                         "Beta file is large (", round(file_size_mb, 1),
-                        " MB). Checking for tabix conversion opportunity..."
+                        " MB). Checking for tabix conversion opportunity...",
+                        level = 3
                     )
                 }
 
                 # If file wasn't loaded into memory, try tabix conversion
                 if (is.null(private$.beta_file_in_memory)) {
                     sorted_locs <- self$getGenomicLocs()
-
+                    .log_step("Attempting to convert beta file to tabix format for improved performance...", level = 3)
                     # Attempt conversion
                     converted_tabix <- convertBetaToTabix(
                         beta_file = private$.beta_file,
@@ -230,7 +231,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
 
                     if (!is.null(converted_tabix)) {
-                        .log_success("Beta file converted to tabix format for improved performance", level = 2)
+                        .log_success("Beta file converted to tabix format for improved performance", level = 3)
                         private$.tabix_file <- converted_tabix
                         self$sorted_locs <- genomicLocsFromTabix(
                             input_tabix = private$.tabix_file,
@@ -241,13 +242,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         private$.self_contained <- TRUE
                         private$.beta_file <- NULL
                     } else {
-                        .log_info("Continuing with standard beta file (tabix conversion not available)", level = 2)
+                        .log_info("Continuing with standard beta file (tabix conversion not available)", level = 3)
                     }
                 } else {
                     private$.beta_file <- NULL
                 }
             }
-            .log_info("Beta data loading complete.", level = 2)
+            .log_info("Beta data loading complete.", level = 3)
             private$.loaded <- TRUE
             invisible(self)
         },

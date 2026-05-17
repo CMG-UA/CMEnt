@@ -7,16 +7,16 @@
 simulateDMRs(
   beta,
   num_dmrs = 3000L,
-  delta_max0 = 0.3,
+  delta_max0 = 0.4,
   groups = NULL,
   case_group = NULL,
   max_gap = 500L,
   min_sites = 5L,
   max_sites = 500L,
-  truth_min_delta_beta = 0.05,
+  truth_min_delta_beta = 0.2,
   delta_jitter = 1/3,
   expected_correlation = 0.7,
-  profile = c("triweight", "flat"),
+  neighbor_window = 5L,
   profile_degree = 4L,
   flank_fraction = 0.2,
   rename_samples = TRUE,
@@ -47,29 +47,30 @@ samples are assigned to \code{Condition1} and the remaining samples to
 \item{case_group}{Group receiving the differential shift. Defaults to the
 second group level.}
 
-\item{max_gap}{Maximum gap, in bp, used to form candidate site clusters.}
+\item{max_gap}{Maximum gap, in bp, used to form candidate site segments.}
 
-\item{min_sites}{Minimum number of sites per candidate DMR cluster.}
+\item{min_sites}{Minimum number of sites per candidate DMR segment.}
 
-\item{max_sites}{Maximum number of sites per candidate DMR cluster.}
+\item{max_sites}{Maximum number of sites per candidate DMR segment.}
 
 \item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
 site to define the reported truth interval. Set to \code{0} to report the full
-selected cluster.}
+selected segment.}
 
 \item{delta_jitter}{Width of the random effect-size jitter around
 \code{delta_max0}.}
 
 \item{expected_correlation}{Desired within-DMR expected correlation target.
 This is treated as an absolute target rather than an additive offset over
-the background correlation and is capped to the interval \code{[0, 0.99]}.}
+the background correlation and is capped to the interval \verb{[0, 0.99]}.}
 
-\item{profile}{Shape of the regional effect, either \code{"triweight"} or
-\code{"flat"}.}
+\item{neighbor_window}{Number of neighboring sites used to smooth the
+index-based correlated random effect inside each DMR. A value of \code{5}
+uses up to two upstream and two downstream neighboring sites.}
 
 \item{profile_degree}{Degree used by the triweight profile.}
 
-\item{flank_fraction}{Fraction of the selected cluster width added on both
+\item{flank_fraction}{Fraction of the selected segment width added on both
 sides before evaluating the triweight profile.}
 
 \item{rename_samples}{If \code{TRUE}, samples are reordered and renamed using the

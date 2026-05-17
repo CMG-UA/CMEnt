@@ -76,6 +76,35 @@ test_that("ntries = 0 enumerates the full permutation set when it is small enoug
     expect_equal(ret_default, ret_full)
 })
 
+test_that(".testConnectivityBatch treats zero-variance correlations as connected with p-value zero", {
+    sites_beta <- rbind(
+        c(0.20, 0.30, 0.40, 0.50, 0.60, 0.70),
+        rep(0.10, 6)
+    )
+    pheno <- data.frame(sample = seq_len(6))
+    pheno[["__casecontrol__"]] <- c(0L, 0L, 0L, 1L, 1L, 1L)
+    group_inds <- list(g1 = seq_len(6))
+
+    for (testing_mode in c("parametric", "empirical")) {
+        ret <- CMEnt:::.testConnectivityBatch(
+            sites_beta = sites_beta,
+            group_inds = group_inds,
+            pheno = pheno,
+            max_pval = 0.05,
+            entanglement = "strong",
+            aggfun = mean,
+            testing_mode_per_group = c(g1 = testing_mode),
+            empirical_strategy_per_group = c(g1 = "montecarlo"),
+            ntries = 10,
+            mid_p = TRUE
+        )
+
+        expect_true(ret$connected[[1]])
+        expect_identical(ret$reason[[1]], "")
+        expect_equal(ret$pval[[1]], 0)
+    }
+})
+
 test_that(".testConnectivityBatch marks edges as failing when empirical permutation p-values cannot reach threshold", {
     set.seed(1)
     sites_beta <- matrix(runif(5 * 12, min = 0.05, max = 0.95), nrow = 5, ncol = 12)

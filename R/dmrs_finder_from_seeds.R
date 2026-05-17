@@ -263,14 +263,15 @@
 #' @keywords internal
 #' @noRd
 .normalizeForceConnectDeltaBeta <- function(force_connect_delta_beta, arg_name = "force_connect_delta_beta") {
-    if (is.null(force_connect_delta_beta)) {
+    if (is.null(force_connect_delta_beta) || is.na(force_connect_delta_beta)) {
         return(NA_real_)
     }
+    try(force_connect_delta_beta <- as.numeric(force_connect_delta_beta), silent =  TRUE)
     if (!is.numeric(force_connect_delta_beta) || length(force_connect_delta_beta) != 1L) {
         stop("'", arg_name, "' must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
     }
-    force_connect_delta_beta <- as.numeric(force_connect_delta_beta)[1]
-    if (is.na(force_connect_delta_beta) || is.infinite(force_connect_delta_beta)) {
+    force_connect_delta_beta <- force_connect_delta_beta[1]
+    if (is.infinite(force_connect_delta_beta)) {
         return(NA_real_)
     }
     if (force_connect_delta_beta < 0 || force_connect_delta_beta > 1) {
@@ -936,6 +937,49 @@
             )
         } else if (dgap > 0L) {
             checked_pairs <- data.frame(before = run_ends + 1, after = run_ends + dgap + 1)
+            if (!is.null(max_lookup_dist) && is.finite(max_lookup_dist) && nrow(checked_pairs) > 0L) {
+                site_starts_for_shift <- as.integer(beta_locs[, "start"])
+                candidate_dist <- site_starts_for_shift[checked_pairs$after] - site_starts_for_shift[checked_pairs$before]
+                shift_mask <- !is.na(candidate_dist) & candidate_dist > max_lookup_dist
+                if (any(shift_mask)) {
+                    .log_info(
+                        "Forward distance between ", sum(shift_mask),
+                        " downstream bridge assessment(s) exceeds max_lookup_dist. Attempting to back-shift the assessments to see if we can bridge the gap that way.",
+                        level = 3
+                    )
+                    shifted_before <- run_ends + 1L - dgap
+                    shifted_after <- run_ends + 1L
+                    valid_shift <- shift_mask & shifted_before >= 1L & shifted_after <= n_sites
+                    if (any(valid_shift)) {
+                        shifted_dist <- rep(NA_real_, length(valid_shift))
+                        valid_shift_inds <- which(valid_shift)
+                        shifted_dist[valid_shift_inds] <- site_starts_for_shift[shifted_after[valid_shift_inds]] -
+                            site_starts_for_shift[shifted_before[valid_shift_inds]]
+                        valid_shift <- valid_shift & !is.na(shifted_dist) & shifted_dist <= max_lookup_dist
+                        shifted_edge_end <- shifted_after - 1L
+                        shifted_has_eoi <- rep(FALSE, length(valid_shift))
+                        shift_width <- unique(shifted_edge_end[valid_shift] - shifted_before[valid_shift] + 1L)
+                        if (length(shift_width) > 0L) {
+                            for (offset in seq_len(max(shift_width)) - 1L) {
+                                edge_idx <- shifted_before + offset
+                                in_range <- valid_shift & edge_idx <= shifted_edge_end
+                                shifted_has_eoi[in_range] <- shifted_has_eoi[in_range] |
+                                    connectivity_array[edge_idx[in_range], "reason"] == "end-of-input"
+                            }
+                        }
+                        valid_shift <- valid_shift & !shifted_has_eoi
+                        if (any(valid_shift)) {
+                            checked_pairs$before[valid_shift] <- shifted_before[valid_shift]
+                            checked_pairs$after[valid_shift] <- shifted_after[valid_shift]
+                            .log_info(
+                                "Back-shifted ", sum(valid_shift),
+                                " downstream bridge assessment(s) after the forward bridged candidate exceeded max_lookup_dist.",
+                                level = 3
+                            )
+                        }
+                    }
+                }
+            }
             .log_info(
                 "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the downstream edges of existing connected regions to see if we can bridge small gaps.",
                 level = 3
@@ -1069,6 +1113,24 @@
     bridge_mask <- rep(FALSE, n_sites)
     recheck <- integer(0)
 
+    .updatePvalMin <- function(idx, values) {
+        if (length(idx) == 0L || length(values) == 0L) {
+            return(invisible(NULL))
+        }
+        keep <- !is.na(idx) & idx >= 1L & idx <= length(pval_vec) & !is.na(values)
+        idx <- as.integer(idx[keep])
+        values <- as.numeric(values[keep])
+        if (length(idx) == 0L) {
+            return(invisible(NULL))
+        }
+        for (i in unique(idx)) {
+            new_pval <- min(values[idx == i], na.rm = TRUE)
+            old_pval <- pval_vec[i]
+            pval_vec[i] <<- if (is.na(old_pval)) new_pval else min(old_pval, new_pval)
+        }
+        invisible(NULL)
+    }
+
     .applyChunkResult <- function(item) {
         x <- item$result
         if (nrow(x) == 0L) {
@@ -1097,21 +1159,38 @@
             update_m <- x[["connected"]]
             if (any(update_m) && length(masked_idx) >= 1L) {
                 update_idx <- masked_idx[update_m]
-                connected_vec[update_idx] <<- x$connected[update_m]
-                pval_vec[update_idx] <<- x$pval[update_m]
-                reason_vec[update_idx] <<- x$reason[update_m]
-                if (!is.null(fail_col) && fail_col %in% names(x)) {
-                    fail_vec[update_idx] <<- x[[fail_col]][update_m]
-                }
-                if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
-                    delta_vec[update_idx] <<- x$delta_beta[update_m]
+                update_pval <- x$pval[update_m]
+                update_was_connected <- connected_vec[update_idx]
+                newly_updated_mask <- !update_was_connected
+                if (any(newly_updated_mask)) {
+                    newly_updated_idx <- update_idx[newly_updated_mask]
+                    connected_vec[newly_updated_idx] <<- x$connected[update_m][newly_updated_mask]
+                    reason_vec[newly_updated_idx] <<- x$reason[update_m][newly_updated_mask]
+                    if (!is.null(fail_col) && fail_col %in% names(x)) {
+                        fail_vec[newly_updated_idx] <<- x[[fail_col]][update_m][newly_updated_mask]
+                    }
+                    if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
+                        delta_vec[newly_updated_idx] <<- x$delta_beta[update_m][newly_updated_mask]
+                    }
                 }
                 gap <- if (ugap > 0L) ugap else dgap
                 bridge_idx <- rep(update_idx, each = gap) + rep.int(seq.int(0L, gap - 1L), length(update_idx))
-                bridge_idx <- bridge_idx[bridge_idx >= 1L & bridge_idx <= n_sites]
+                bridge_pval <- rep(update_pval, each = gap)
+                bridge_keep <- bridge_idx >= 1L & bridge_idx <= n_sites
+                bridge_idx <- bridge_idx[bridge_keep]
+                bridge_pval <- bridge_pval[bridge_keep]
                 if (length(bridge_idx) > 0L) {
-                    bridge_mask[bridge_idx] <- TRUE
-                    recheck <<- c(recheck, bridge_idx)
+                    bridge_was_connected <- connected_vec[bridge_idx]
+                    update_bridge_match <- match(bridge_idx, update_idx)
+                    matched_update_bridge <- !is.na(update_bridge_match)
+                    bridge_was_connected[matched_update_bridge] <- update_was_connected[update_bridge_match[matched_update_bridge]]
+                    newly_connected_mask <- !bridge_was_connected
+                    newly_connected_idx <- bridge_idx[newly_connected_mask]
+                    if (length(newly_connected_idx) > 0L) {
+                        .updatePvalMin(newly_connected_idx, bridge_pval[newly_connected_mask])
+                        bridge_mask <<- replace(bridge_mask, newly_connected_idx, TRUE)
+                        recheck <<- c(recheck, newly_connected_idx)
+                    }
                 }
             }
         }
@@ -1726,11 +1805,15 @@
         g_reasons[low_df] <- ifelse(g_reasons[low_df] == "", "df<1", g_reasons[low_df])
         g_mask[low_df] <- FALSE
 
+        zero_variance_cor <- is.na(cors) & !is.na(denom) & denom == 0 & g_mask
+        cors[zero_variance_cor] <- 1
+
         na_r <- is.na(cors) & g_mask
         g_reasons[na_r] <- ifelse(g_reasons[na_r] == "", "na r", g_reasons[na_r])
         g_mask[na_r] <- FALSE
 
         ps <- rep(NA_real_, sn_pairs)
+        ps[zero_variance_cor] <- 0
         effective_testing_mode <- testing_mode_per_group[g]
 
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
@@ -1740,11 +1823,12 @@
             na_tstat <- is.na(tstats) & g_mask
             g_reasons[na_tstat] <- "na tstat"
             g_mask[na_tstat] <- FALSE
-            ps[g_mask] <- -2 * expm1(pt(abs(tstats[g_mask]), df = dfs[g_mask], log.p = TRUE))
+            pval_mask <- g_mask & !zero_variance_cor
+            ps[pval_mask] <- -2 * expm1(pt(abs(tstats[pval_mask]), df = dfs[pval_mask], log.p = TRUE))
         } else {
             # Empirical p-values via permutations of sample labels within group
             # Only compute for rows that are still connected and have finite cors
-            mask <- is.finite(cors) & g_mask
+            mask <- is.finite(cors) & g_mask & !zero_variance_cor
             if (any(mask)) {
                 counts_ge <- integer(sn_pairs)
                 counts_eq <- integer(sn_pairs)
@@ -1762,7 +1846,7 @@
                             ") exceeds max_pval_corrected (", max_pval_corrected,
                             "). Marking currently eligible pairs as not connected for this group."
                         )
-                        ps[g_mask] <- 1
+                        ps[g_mask & !zero_variance_cor] <- 1
                         skip_empirical <- TRUE
                     }
                 }
@@ -1825,9 +1909,9 @@
                         }
                     }
                     if (mid_p) {
-                        ps <- (counts_ge + 0.5 * counts_eq + 1) / (ntries + 1)
+                        ps[mask] <- (counts_ge[mask] + 0.5 * counts_eq[mask] + 1) / (ntries + 1)
                     } else {
-                        ps <- (counts_ge + counts_eq + 1) / (ntries + 1)
+                        ps[mask] <- (counts_ge[mask] + counts_eq[mask] + 1) / (ntries + 1)
                     }
                 }
             }
@@ -1874,6 +1958,18 @@
                 min(v, na.rm = TRUE)
             }
         ))
+        disconnected_pval_mask <- corr_mask & !connected
+        if (any(disconnected_pval_mask)) {
+            disconnected_pvals <- per_group_p[, disconnected_pval_mask, drop = FALSE]
+            disconnected_reasons <- per_group_reasons[, disconnected_pval_mask, drop = FALSE]
+            pvals[disconnected_pval_mask] <- vapply(seq_len(ncol(disconnected_pvals)), function(i) {
+                failed_by_pval <- disconnected_reasons[, i] == "pval>max_pval" & !is.na(disconnected_pvals[, i])
+                if (!any(failed_by_pval)) {
+                    return(NA_real_)
+                }
+                min(disconnected_pvals[failed_by_pval, i], na.rm = TRUE)
+            }, numeric(1))
+        }
         reasons[corr_mask & !connected] <- apply(
             per_group_reasons[, corr_mask & !connected, drop = FALSE], 2, function(v) paste(v, collapse = ";")
         )
@@ -2879,8 +2975,12 @@ findDMRsFromSeeds <- function(
             )))
         } else if (is.data.frame(seeds)) {
             seeds_tsv <- as.data.frame(seeds)
+        } else if (is.vector(seeds) && length(seeds) > 1) {
+            seeds_tsv <- as.data.frame(seeds)
+            colnames(seeds_tsv) <- "seeds"
+            seeds_id_col <- "seeds"
         } else {
-            stop("seeds must be either a file path or a data frame")
+            stop("seeds must be either a file path, a vector, or a data frame")
         }
         if (inherits(seeds_tsv, "try-error")) {
             return(list(data = NULL, id_col = seeds_id_col))
@@ -3232,6 +3332,7 @@ findDMRsFromSeeds <- function(
     } else {
         Reduce(c, unname(chr_results))
     }
+    .log_info("Total DMRs identified: ", length(final_dmrs_granges), level = 2)
     final_ord <- order(as.character(GenomicRanges::seqnames(final_dmrs_granges)), GenomicRanges::start(final_dmrs_granges), GenomicRanges::end(final_dmrs_granges))
     final_dmrs_granges <- final_dmrs_granges[final_ord]
 

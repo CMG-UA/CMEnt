@@ -99,18 +99,18 @@ test_that("simulateDMRs fits and stores correlation calibration metadata", {
 
     expect_true(all(c(
         "background_corr_target", "expected_correlation",
-        "corr_target", "corr_sd_used", "corr_metric_estimate", "sample_sd_frac_used"
+        "corr_target", "corr_sd_used", "corr_metric_estimate", "neighbor_window"
     ) %in% colnames(sim$truth)))
     expect_true(all(c(
         "background_corr_target", "expected_correlation",
-        "corr_target", "corr_sd_used", "corr_metric_estimate", "sample_sd_frac_used"
+        "corr_target", "corr_sd_used", "corr_metric_estimate", "neighbor_window"
     ) %in% names(GenomicRanges::mcols(sim$gr.dmrs))))
     expect_true(any(is.finite(sim$truth$corr_target)))
     expect_true(all(is.finite(sim$truth$corr_sd_used)))
     expect_true(all(is.finite(sim$truth$corr_metric_estimate)))
-    expect_true(all(sim$truth$sample_sd_frac_used > 0))
     expect_true(all(sim$truth$expected_correlation == 0.7))
     expect_true(all(sim$truth$corr_target == sim$truth$expected_correlation))
+    expect_true(all(sim$truth$neighbor_window == 5L))
 })
 
 test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
@@ -138,6 +138,23 @@ test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
     expect_true(all(sim_low_target$truth$corr_target == 0.2))
     expect_true(all(sim_high_target$truth$corr_target == 0.6))
     expect_true(all(sim_high_target$truth$corr_metric_estimate >= sim_low_target$truth$corr_metric_estimate))
+})
+
+test_that("simulateDMRs exposes the correlated-neighbor window", {
+    bs <- create_simulation_bsseq()
+    set.seed(456)
+    sim <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20,
+        neighbor_window = 7L
+    )
+
+    expect_equal(sim$neighbor_window, 7L)
+    expect_true(all(sim$truth$neighbor_window == 7L))
+    expect_true(all(GenomicRanges::mcols(sim$gr.dmrs)$neighbor_window == 7L))
 })
 
 test_that("simulateDMRs is reproducible with external seed for BSseq input", {
@@ -267,11 +284,11 @@ test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs
     )
 
     case_samples <- which(sim$groups == sim$case_group)
-    orig_eta <- CMEnt:::.simulationLogitFromCounts(
+    orig_eta <- CMEnt:::.convertCountsToLogits(
         bsseq::getCoverage(bs, type = "M")[, case_samples, drop = FALSE],
         bsseq::getCoverage(bs, type = "Cov")[, case_samples, drop = FALSE]
     )
-    sim_eta <- CMEnt:::.simulationLogitFromCounts(
+    sim_eta <- CMEnt:::.convertCountsToLogits(
         bsseq::getCoverage(sim$simulated, type = "M")[, case_samples, drop = FALSE],
         bsseq::getCoverage(sim$simulated, type = "Cov")[, case_samples, drop = FALSE]
     )
@@ -280,7 +297,6 @@ test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs
 
     base_profile <- CMEnt:::.simulationEffectProfile(
         pos = pos,
-        profile = "triweight",
         degree = 4L,
         flank_fraction = 0.2
     )

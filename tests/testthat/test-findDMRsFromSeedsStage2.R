@@ -82,6 +82,120 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
     expect_equal(ret2$recheck, 3L)
 })
 
+test_that("bridge recheck keeps the minimum p-value observed for bridged edges", {
+    site_ids <- paste0("cg", seq_len(5))
+    x <- seq(0.2, 0.8, length.out = 8)
+    y <- x + c(0.01, -0.01, 0, 0.01, -0.01, 0, 0.01, -0.01)
+    beta <- rbind(
+        rep(0.5, length(x)),
+        x,
+        rep(0.3, length(x)),
+        y,
+        rep(0.4, length(x))
+    )
+    rownames(beta) <- site_ids
+    colnames(beta) <- paste0("S", seq_along(x))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = seq(100, 500, 100),
+        end = seq(101, 501, 100),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        g = rep("A", length(x)),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    pheno[["__casecontrol__"]] <- rep(c(0L, 1L), each = 4L)
+    conn <- data.frame(
+        connected = c(TRUE, FALSE, FALSE, FALSE, FALSE),
+        pval = c(0.01, 1e-12, NA_real_, NA_real_, NA_real_),
+        reason = c("", "pval>max_pval", "pval>max_pval", "pval>max_pval", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+
+    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+        beta_handler = bh, beta_locs = locs, pheno = pheno,
+        group_inds = list(A = seq_along(x)),
+        testing_mode_per_group = c(A = "parametric"),
+        empirical_strategy_per_group = c(A = "auto"),
+        max_pval = 0.05,
+        max_lookup_dist = 1000,
+        connectivity_array = conn,
+        ugap = 0L,
+        dgap = 2L,
+        splits = matrix(c(1, 4), ncol = 2),
+        njobs = 1
+    )
+
+    expect_true(ret$connectivity_array$connected[[2]])
+    expect_true(ret$connectivity_array$connected[[3]])
+    expect_equal(ret$connectivity_array$pval[[2]], 1e-12)
+    expect_false(is.na(ret$connectivity_array$pval[[3]]))
+    expect_lt(ret$connectivity_array$pval[[3]], 0.05)
+})
+
+test_that("downstream bridge recheck shifts back when the forward candidate is too distant", {
+    site_ids <- paste0("cg", seq_len(5))
+    x <- seq(0.2, 0.8, length.out = 8)
+    y <- x + c(0.01, -0.01, 0, 0.01, -0.01, 0, 0.01, -0.01)
+    beta <- rbind(
+        x,
+        rep(0.5, length(x)),
+        y,
+        rep(0.4, length(x)),
+        rev(x)
+    )
+    rownames(beta) <- site_ids
+    colnames(beta) <- paste0("S", seq_along(x))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = c(100L, 200L, 300L, 400L, 10000L),
+        end = c(101L, 201L, 301L, 401L, 10001L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        g = rep("A", length(x)),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    pheno[["__casecontrol__"]] <- rep(c(0L, 1L), each = 4L)
+    conn <- data.frame(
+        connected = c(FALSE, TRUE, FALSE, FALSE, FALSE),
+        pval = c(NA_real_, 0.01, NA_real_, NA_real_, NA_real_),
+        reason = c("pval>max_pval", "", "pval>max_pval", "pval>max_pval", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+
+    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+        beta_handler = bh, beta_locs = locs, pheno = pheno,
+        group_inds = list(A = seq_along(x)),
+        testing_mode_per_group = c(A = "parametric"),
+        empirical_strategy_per_group = c(A = "auto"),
+        max_pval = 0.05,
+        max_lookup_dist = 500,
+        connectivity_array = conn,
+        ugap = 0L,
+        dgap = 2L,
+        splits = matrix(c(1, 4), ncol = 2),
+        njobs = 1
+    )
+
+    expect_true(ret$connectivity_array$connected[[1]])
+    expect_true(ret$connectivity_array$connected[[2]])
+    expect_false(ret$connectivity_array$connected[[3]])
+    expect_false(ret$connectivity_array$connected[[4]])
+    expect_equal(ret$recheck, 1L)
+    expect_lt(ret$connectivity_array$pval[[1]], 0.05)
+    expect_equal(ret$connectivity_array$reason[[1]], "bridged")
+    expect_equal(ret$connectivity_array$reason[[2]], "")
+    expect_equal(ret$connectivity_array$pval[[2]], 0.01)
+})
+
 
 test_that("connectivity chunk size is derived from available RAM", {
     chunk_size <- CMEnt:::.connectivityChunkSize(

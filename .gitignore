@@ -51,3 +51,4 @@ tmp/
 data
 
 CMEnt_*.tar.gz
+notebooks/benchmarks/simulated_microarray/controls.tsv

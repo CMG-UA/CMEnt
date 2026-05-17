@@ -472,7 +472,7 @@
     if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
-    if (level <= length(.CMEnt_log_env$last_step_time)) {
+    if (toString(level) %in% names(.CMEnt_log_env$last_step_time)) {
         dur <- .fmt_dur(.CMEnt_log_env$last_step_time[[level]])
     } else {
         .log_warn("No previous step time recorded for level ", level, " to calculate duration.")
@@ -485,6 +485,8 @@
     }
     lead <- .col(cli::symbol$tick, "green")
     message(.format_log_output(msg, lead = lead, level = level))
+    # Clear the recorded step time for this level after reporting success
+    .CMEnt_log_env$last_step_time[[toString(level)]] <- NULL
     invisible()
 }
 
@@ -514,7 +516,11 @@
     if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
-    .CMEnt_log_env$last_step_time[[level]] <- Sys.time() # nolint
+    # If there is a previous step time recorded for this level, calculate and report the duration since that time
+    if (toString(level) %in% names(.CMEnt_log_env$last_step_time)) {
+        .log_success("", level = level)
+    }
+    .CMEnt_log_env$last_step_time[[toString(level)]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$arrow_right, "cyan")
     message(.format_log_output(msg, lead = lead, level = level))

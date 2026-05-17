@@ -29,7 +29,7 @@ findDMRsFromSeeds(
   max_bridge_seeds_gaps = 1L,
   max_bridge_extension_gaps = 1L,
   min_seeds = 2,
-  min_adj_seeds = 2,
+  min_adj_seeds = NULL,
   min_sites = 3,
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
@@ -91,9 +91,9 @@ non-missing case-control delta beta can be force-connected. Default is 0.2.}
 
 \item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).}
 
-\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 2. Default is 2.}
+\item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 1. Default is 2.}
 
-\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. Minimum is 2. Default is 2.}
+\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained if they have enough seeds relative to the local site density. Default is NULL (disabled).}
 
 \item{min_sites}{Numeric. Minimum number of sites in a DMR after extension, including the seeds. Minimum is 2. Default is 3.}
 
@@ -174,7 +174,7 @@ ext_site_delta_beta parameter if needed.
 
 \examples{
 # Load example data
-loadExampleInputData("beta", "dmps", "pheno")
+loadExampleInputData()
 # Find DMRs
 dmrs <- findDMRsFromSeeds(
     beta = beta,

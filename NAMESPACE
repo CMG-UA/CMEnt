@@ -2,6 +2,7 @@
 
 export(annotateDMRsWithGenes)
 export(augmentBSSeq)
+export(combinePvalues)
 export(computeDMRsInteraction)
 export(convertBetaToTabix)
 export(extractDMRMotifs)
