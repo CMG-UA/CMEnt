@@ -27,7 +27,8 @@ simulateDMRs(
   beta_row_names_file = NULL,
   chrom_col = "#chrom",
   start_col = "start",
-  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
+  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+  verbose = getOption("CMEnt.verbose", 1)
 )
 }
 \arguments{
@@ -60,9 +61,9 @@ selected segment.}
 \item{delta_jitter}{Width of the random effect-size jitter around
 \code{delta_max0}.}
 
-\item{expected_correlation}{Desired within-DMR expected correlation target.
-This is treated as an absolute target rather than an additive offset over
-the background correlation and is capped to the interval \verb{[0, 0.99]}.}
+\item{expected_correlation}{Minimum within-DMR expected correlation target.
+The per-DMR target is the larger of this value and the estimated local
+background correlation, capped to the interval \verb{[0, 0.99]}.}
 
 \item{neighbor_window}{Number of neighboring sites used to smooth the
 index-based correlated random effect inside each DMR. A value of \code{5}

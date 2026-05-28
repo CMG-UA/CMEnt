@@ -89,3 +89,37 @@ test_that("BetaHandler extracts sample names from minimal tabix headers", {
 
     expect_equal(beta_handler$getBetaColNames(), c("Sample1", "Sample2"))
 })
+
+test_that("BetaHandler tabix backend supports repeated row requests", {
+    skip_if_not(nzchar(Sys.which("tabix")))
+    skip_if_not(nzchar(Sys.which("bgzip")))
+    withr::local_options(list(CMEnt.beta_in_mem_threshold_mb = 0))
+
+    beta_file <- tempfile(fileext = ".tsv")
+    withr::defer(unlink(beta_file))
+    writeLines(
+        c(
+            "ID\tSample1\tSample2",
+            "cg1\t0.1\t0.2",
+            "cg2\t0.3\t0.4",
+            "cg3\t0.5\t0.6"
+        ),
+        beta_file
+    )
+    sorted_locs <- data.frame(
+        chr = rep("chr1", 3),
+        start = c(100L, 200L, 300L),
+        end = c(101L, 201L, 301L),
+        row.names = c("cg1", "cg2", "cg3")
+    )
+
+    beta_handler <- getBetaHandler(beta = beta_file, sorted_locs = sorted_locs)
+    beta_subset <- beta_handler$getBeta(
+        row_names = c("cg1", "cg2", "cg2", "cg3"),
+        col_names = c("Sample1", "Sample2")
+    )
+
+    expect_equal(nrow(beta_subset), 4)
+    expect_equal(unname(unlist(beta_subset[2, ])), unname(unlist(beta_subset[3, ])))
+    expect_equal(rownames(beta_subset), c("cg1", "cg2", "cg2.1", "cg3"))
+})

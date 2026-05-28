@@ -25,6 +25,39 @@ test_that("findDMRsFromSeeds normalizes scalar list columns in pheno", {
     expect_identical(S4Vectors::mcols(dmrs)$id, "chr1:cgA-cgC")
 })
 
+test_that("findDMRsFromSeeds reads phenotype TSV sample IDs from the first column", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    pheno_file <- tempfile(fileext = ".tsv")
+    withr::defer(unlink(pheno_file))
+
+    pheno_out <- cbind(sample_id = rownames(fixture$pheno), fixture$pheno)
+    write.table(pheno_out, pheno_file, sep = "\t", row.names = FALSE, quote = FALSE)
+
+    dmrs <- runSyntheticFindDMRs(fixture, pheno = pheno_file)
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_identical(S4Vectors::mcols(dmrs)$id, "chr1:cgA-cgC")
+})
+
+test_that("findDMRsFromSeeds derives case/control after aligning pheno to beta samples", {
+    fixture <- makeSyntheticFindDMRsFixture()
+    fixture$pheno$Sample_Group <- rep(c("control", "case"), each = 3)
+    fixture$pheno$casecontrol <- NULL
+
+    unused_sample <- fixture$pheno[1, , drop = FALSE]
+    rownames(unused_sample) <- "unused_sample"
+    unused_sample$Sample_Group <- "aaa"
+    fixture$pheno <- rbind(unused_sample, fixture$pheno)
+
+    dmrs <- runSyntheticFindDMRs(fixture, casecontrol_col = NULL)
+    dmr_stats <- S4Vectors::mcols(dmrs)
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_true(all(is.finite(dmr_stats$cases_beta)))
+    expect_true(all(is.finite(dmr_stats$controls_beta)))
+    expect_true(all(is.finite(dmr_stats$delta_beta)))
+})
+
 test_that("findDMRsFromSeeds filters synthetic DMRs with min_seeds and max_pval", {
     fixture <- makeSyntheticFindDMRsFixture()
 

@@ -204,9 +204,99 @@ test_that("connectivity chunk size is derived from available RAM", {
         n_pairs = 5000,
         available_ram_bytes = 1024^2
     )
-    expect_equal(chunk_size, floor(0.9 * 1024^2 / (2 * 6 * 8 * 12)))
+    expect_equal(chunk_size, floor(0.9 * 1024^2 / (2 * 6 * 8 * 96)))
+    withr::local_options(list(CMEnt.connectivity_bytes_per_sample_pair = 8 * 12))
+    expect_equal(
+        CMEnt:::.connectivityChunkSize(6, 2, 5000, available_ram_bytes = 1024^2),
+        floor(0.9 * 1024^2 / (2 * 6 * 8 * 12))
+    )
+    withr::local_options(list(CMEnt.connectivity_bytes_per_sample_pair = NULL))
     expect_equal(
         CMEnt:::.connectivityChunkSize(6, 2, 10, available_ram_bytes = 1024^2),
         10L
     )
+    withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
+    expect_equal(CMEnt:::.connectivityChunkSize(6, 2, 10000, available_ram_bytes = 1024^5), 2500L)
+})
+
+test_that("BiocParallel connectivity matches sequential connectivity over multiple chunks", {
+    set.seed(42)
+    n_sites <- 4100L
+    n_samples <- 6L
+    site_ids <- paste0("cg", seq_len(n_sites))
+    beta <- matrix(runif(n_sites * n_samples), nrow = n_sites)
+    rownames(beta) <- site_ids
+    colnames(beta) <- paste0("S", seq_len(n_samples))
+    locs <- data.frame(
+        chr = rep("chr1", n_sites),
+        start = seq_len(n_sites) * 10L,
+        end = seq_len(n_sites) * 10L + 1L,
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        Sample_Group = rep(c("A", "B"), each = n_samples / 2L),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    pheno[[CMEnt:::.CASE_CONTROL_COL]] <- rep(c(0L, 1L), each = n_samples / 2L)
+    group_inds <- split(seq_len(n_samples), pheno$Sample_Group)
+    args <- list(
+        beta_handler = bh,
+        beta_locs = locs,
+        pheno = pheno,
+        group_inds = group_inds,
+        testing_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"),
+        col_names = colnames(beta),
+        max_pval = 0.05,
+        ext_site_delta_beta = NA_real_,
+        max_lookup_dist = 1000,
+        entanglement = "strong",
+        aggfun = stats::median,
+        ntries = 0,
+        mid_p = FALSE
+    )
+
+    seq_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 1L)))
+    withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
+    bp_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 2L)))
+
+    expect_gt(nrow(bp_ret$splits), 1L)
+    expect_equal(seq_ret$connectivity_array, bp_ret$connectivity_array)
+})
+
+test_that("connectivity split pooling keeps enough chunks for available jobs", {
+    splits <- cbind(seq_len(8), seq_len(8))
+
+    pooled <- CMEnt:::.poolConnectivitySplits(
+        splits_mat = splits,
+        chunk_size = 8L,
+        min_splits = 4L
+    )
+
+    expect_equal(nrow(pooled), 4L)
+    expect_equal(pooled[1L, 1L], 1L)
+    expect_equal(pooled[nrow(pooled), 2L], 8L)
+    expect_true(all(pooled[, 2L] >= pooled[, 1L]))
+})
+
+test_that("connectivity split pooling does not invent chunks beyond natural chunks", {
+    pooled <- CMEnt:::.poolConnectivitySplits(
+        splits_mat = matrix(c(1L, 16L), ncol = 2L),
+        chunk_size = 16L,
+        min_splits = 4L
+    )
+
+    expect_equal(nrow(pooled), 1L)
+    expect_equal(as.vector(t(pooled)), c(1L, 16L))
+
+    sparse <- CMEnt:::.poolConnectivitySplits(
+        splits_mat = cbind(c(1L, 3L), c(1L, 3L)),
+        split_weights = c(1L, 1L),
+        chunk_size = 10L,
+        min_splits = 4L
+    )
+    expect_equal(nrow(sparse), 2L)
 })

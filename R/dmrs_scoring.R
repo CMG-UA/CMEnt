@@ -66,12 +66,14 @@
         }
         train_indices <- which(folds != fold)
         train_groups <- as.factor(groups[train_indices])
-        model <- e1071::svm(
-            beta_mat_t[train_indices, , drop = FALSE],
-            train_groups,
-            kernel = "radial",
-            scale = TRUE
-        )
+        suppressWarnings({
+            model <- e1071::svm(
+                beta_mat_t[train_indices, , drop = FALSE],
+                train_groups,
+                kernel = "radial",
+                scale = TRUE
+            )
+        })
         fold_pred <- predict(model, beta_mat_t[test_indices, , drop = FALSE], decision.values = TRUE)
         fold_pred_chr <- as.character(fold_pred)
         predictions[test_indices] <- fold_pred_chr
@@ -776,8 +778,8 @@
 #' discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 #' classification. For each DMR, this function performs stratified k-fold cross-prediction
 #' using an RBF kernel SVM and computes a margin-sensitive classification score based on
-#' decision values, which serves as a measure of the DMR's discriminative power. 
-#' The scores are then smoothed along the genome using a Gaussian-kNN approach, 
+#' decision values, which serves as a measure of the DMR's discriminative power.
+#' The scores are then smoothed along the genome using a Gaussian-kNN approach,
 #' and piecewise-linear segments are detected using the PELT algorithm, expecting a rising->plateau->decreasing pattern.
 #' Finally, DMRs are assigned to localized blocks based on the smoothed score profiles
 #' and specified gap rules.
@@ -857,7 +859,8 @@ scoreDMRs <- function(
     njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
-    options("CMEnt.verbose" = verbose)
+    old_setting <- options("CMEnt.verbose" = verbose)
+    on.exit(options(old_setting), add = TRUE)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
@@ -884,18 +887,19 @@ scoreDMRs <- function(
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
-    .log_step("Transforming beta values for DMR scoring", level = 2)
-    dmrs_m <- .transformBeta(beta_handler$getBeta(
+    dmr_beta <- beta_handler$getBeta(
         row_names = unique(unlist(dmr_sites)),
         col_names = beta_col_names
-    ), pheno = pheno, covariate_model = covariate_model)
-    .log_success("Beta values transformed", level = 2)
+    )
+    .log_step("Transforming beta values for DMR scoring", level = 3)
+    dmrs_m <- .transformBeta(dmr_beta, pheno = pheno, covariate_model = covariate_model)
+    .log_success("Beta values transformed", level = 3)
     if (njobs > 1L) {
         .setupParallel()
         on.exit(.finalizeParallel(), add = TRUE)
     }
 
-    .log_step("Extracting DMR-specific beta matrices for classification", level = 2)
+    .log_step("Extracting DMR-specific beta matrices for classification", level = 3)
     dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
         dmr_sites_i <- dmr_sites[[i]]
         if (length(dmr_sites_i) == 0L) {
@@ -903,8 +907,8 @@ scoreDMRs <- function(
         }
         dmrs_m[dmr_sites_i, , drop = FALSE]
     })
-    .log_success("DMR-specific beta matrices extracted", level = 2)
-    .log_step("Computing cross-validated classification scores for DMRs", level = 2)
+    .log_success("DMR-specific beta matrices extracted", level = 3)
+    .log_step("Computing cross-validated classification scores for DMRs", level = 3)
     if (njobs > 1L) {
         cv_metrics <- future.apply::future_lapply(
             dmrs_m_values,
@@ -926,10 +930,10 @@ scoreDMRs <- function(
     }
     cv_metrics <- do.call(rbind, cv_metrics)
 
-    .log_success("Cross-validated classification scores computed", level = 2)
+    .log_success("Cross-validated classification scores computed", level = 3)
     mcols(dmrs)$score <- as.numeric(cv_metrics[, "score"])
     mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics[, "cv_accuracy"])
-    .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 2)
+    .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 3)
 
     dmrs <- .assignDMRBlocksFromScores(
         dmrs = dmrs,
@@ -942,7 +946,7 @@ scoreDMRs <- function(
         njobs = njobs,
         verbose = verbose
     )
-    .log_success("DMRs assigned to blocks", level = 2)
+    .log_success("DMRs assigned to blocks", level = 3)
 
     dmrs <- dmrs[order(mcols(dmrs)$score, decreasing = TRUE)]
     if (df_provided) {

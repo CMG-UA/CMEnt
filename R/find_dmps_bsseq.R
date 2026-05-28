@@ -12,7 +12,7 @@
 #' @param covariates A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).
 #' @param fdr_thres The false discovery rate threshold for calling DMPs. Default is 0.05.
 #' @param output_file An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
-#' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is the number of available CPU cores minus one.
+#' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is 1.
 #'
 #' @return A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 #' 
@@ -52,7 +52,7 @@ findDMPsBSSeq <- function(
     covariates = NULL,
     fdr_thres = 0.05,
     output_file = NULL,
-    njobs = max(1L, BiocParallel::bpnworkers(BiocParallel::bpparam()) - 1L)
+    njobs = 1L
 ) {
     .assertPackagesInstalled(
         pkg_names = "DSS",
@@ -157,25 +157,47 @@ findDMPsBSSeq <- function(
     chr_in_bsseq <- unique(seqn)
     nworkers <- min(njobs, length(chr_in_bsseq))
 
-    run_dss_for_chr <- function(chr_name) {
-        chr_idx <- seqn == chr_name
-        bsseq_chr <- bsseq_obj[chr_idx, ]
+    bsseq_by_chr <- lapply(
+        chr_in_bsseq,
+        function(chr_name) bsseq_obj[seqn == chr_name, ]
+    )
+    names(bsseq_by_chr) <- chr_in_bsseq
+
+    run_dss_for_chr <- function(bsseq_chr) {
+        chr_name <- unique(as.character(seqnames(bsseq_chr)))[1L]
         if (nrow(bsseq_chr) == 0L) {
             return(NULL)
         }
-        suppressMessages({
-            fit <- DSS::DMLfit.multiFactor(
-                BSobj = bsseq_chr,
-                design = pheno,
-                formula = formula
-            )
-            dml_chr <- DSS::DMLtest.multiFactor(fit, term = "condition")
-        })
+        dml_chr <- tryCatch(
+            suppressMessages({
+                fit <- DSS::DMLfit.multiFactor(
+                    BSobj = bsseq_chr,
+                    design = pheno,
+                    formula = formula
+                )
+                DSS::DMLtest.multiFactor(fit, term = "condition")
+            }),
+            error = function(e) {
+                stop(
+                    "DSS failed for chromosome ", chr_name, ": ", conditionMessage(e),
+                    call. = FALSE
+                )
+            }
+        )
         dml_chr <- as.data.frame(dml_chr)
 
         case_idx <- pheno$condition == "case"
         control_idx <- pheno$condition == "control"
         meth_chr <- bsseq::getMeth(bsseq_chr, type = "raw")
+        if (is.null(dim(meth_chr))) {
+            meth_chr <- matrix(
+                meth_chr,
+                nrow = nrow(bsseq_chr),
+                ncol = ncol(bsseq_chr)
+            )
+        } else {
+            meth_chr <- as.matrix(meth_chr)
+        }
         case_mean <- rowMeans(meth_chr[, case_idx, drop = FALSE], na.rm = TRUE)
         control_mean <- rowMeans(meth_chr[, control_idx, drop = FALSE], na.rm = TRUE)
         dml_chr$delta_beta <- case_mean - control_mean
@@ -184,12 +206,38 @@ findDMPsBSSeq <- function(
         dml_chr
     }
 
-    bp_param <- .makeBiocParallelParam(nworkers, n_tasks = length(chr_in_bsseq))
-    dml_by_chr <- BiocParallel::bplapply(
-        chr_in_bsseq,
-        run_dss_for_chr,
-        BPPARAM = bp_param
-    )
+    if (nworkers <= 1L) {
+        dml_by_chr <- lapply(bsseq_by_chr, run_dss_for_chr)
+    } else {
+        parallel_backend <- NULL
+        if (!.bsseqIsInMemory(bsseq_obj) &&
+            identical(
+                tolower(as.character(getOption("CMEnt.biocparallel_backend", "auto"))[1L]),
+                "auto"
+            )) {
+            parallel_backend <- "snow"
+        }
+        bp_param <- .makeBiocParallelParam(
+            nworkers,
+            n_tasks = length(chr_in_bsseq),
+            parallel_backend = parallel_backend
+        )
+        dml_by_chr <- tryCatch(
+            BiocParallel::bplapply(
+                bsseq_by_chr,
+                run_dss_for_chr,
+                BPPARAM = bp_param
+            ),
+            error = function(e) {
+                warning(
+                    "Parallel DSS chromosome processing failed; retrying serially. Original error: ",
+                    conditionMessage(e),
+                    call. = FALSE
+                )
+                lapply(bsseq_by_chr, run_dss_for_chr)
+            }
+        )
+    }
     dml_by_chr <- Filter(Negate(is.null), dml_by_chr)
     if (length(dml_by_chr) == 0L) {
         stop("DSS::DMLtest returned no chromosome-level results.")

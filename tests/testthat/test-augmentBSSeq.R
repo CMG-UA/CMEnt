@@ -158,6 +158,27 @@ test_that("augmentBSSeq filters sites based on min_samples", {
     expect_equal(nrow(result), expected_sites)
 })
 
+test_that("augmentBSSeq returns sorted unique loci", {
+    bsseq_obj <- create_mock_bsseq(n_sites = 20, n_samples = 3)
+    bsseq_obj <- bsseq_obj[c(5L, 1L, seq_len(nrow(bsseq_obj))), ]
+
+    set.seed(123)
+    result <- augmentBSSeq(
+        bsseq_obj,
+        n_new_samples = 2,
+        min_samples = 1,
+        calibrate_correlation = FALSE
+    )
+
+    loc_key <- paste0(
+        as.character(GenomicRanges::seqnames(result)),
+        ":",
+        GenomicRanges::start(result)
+    )
+    expect_equal(anyDuplicated(loc_key), 0L)
+    expect_true(all(diff(GenomicRanges::start(result)) >= 0L))
+})
+
 test_that("augmentBSSeq coverage values are positive", {
     bsseq_obj <- create_mock_bsseq(n_sites = 50, n_samples = 3)
     set.seed(123)

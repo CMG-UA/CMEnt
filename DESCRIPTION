@@ -140,6 +140,7 @@ Collate:
     'shiny_modules.R'
     'shiny_app.R'
     'augment_bsseq.R'
+    "combine_pvalues.R"
     'simulate_dmrs.R'
     'find_dmps_bsseq.R'
     'zzz.R'

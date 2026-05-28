@@ -258,7 +258,7 @@ test_that("BetaHandler allows missing sites from BSseq when allow_missing=TRUE",
     expect_equal(rownames(beta_subset), c(site_names[[1]], site_names[[2]]))
 })
 
-test_that("BetaHandler subset returns compact BSseq handler with requested rows and columns", {
+test_that("BetaHandler subset materializes compact in-memory BSseq handler", {
     set.seed(123)
     n_loci <- 60
     n_samples <- 6
@@ -286,6 +286,8 @@ test_that("BetaHandler subset returns compact BSseq handler with requested rows 
     )
 
     expect_s3_class(subset_handler, "BetaHandler")
+    expect_null(subset_handler$.__enclos_env__$private$.bsseq_object)
+    expect_equal(nrow(subset_handler$.__enclos_env__$private$.beta_file_in_memory), length(subset_rows))
     expect_equal(subset_handler$getBetaRowNames(), subset_rows)
     expect_equal(subset_handler$getBetaColNames(), subset_cols)
     expect_equal(
@@ -294,6 +296,48 @@ test_that("BetaHandler subset returns compact BSseq handler with requested rows 
         tolerance = 1e-8
     )
     expect_equal(rownames(subset_handler$getBetaLocs()), subset_rows)
+})
+
+test_that("BetaHandler subset preserves compact HDF5-backed BSseq views", {
+    skip_if_not_installed("HDF5Array")
+
+    set.seed(123)
+    n_loci <- 60
+    n_samples <- 6
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep("chr1", n_loci),
+        ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
+    )
+    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    names(gr) <- site_names
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+
+    beta_handler <- getBetaHandler(beta = bsseq_hdf5)
+    subset_rows <- site_names[10:20]
+    subset_cols <- sample_names[c(2, 4, 6)]
+    subset_handler <- beta_handler$subset(row_names = subset_rows, col_names = subset_cols)
+    subset_bsseq <- subset_handler$.__enclos_env__$private$.bsseq_object
+
+    expect_s4_class(subset_bsseq, "BSseq")
+    expect_null(subset_handler$.__enclos_env__$private$.beta_file_in_memory)
+    expect_equal(nrow(subset_bsseq), length(subset_rows))
+    expect_equal(ncol(subset_bsseq), length(subset_cols))
+    expect_equal(
+        subset_handler$getBeta(),
+        beta_handler$getBeta(row_names = subset_rows, col_names = subset_cols),
+        tolerance = 1e-8
+    )
 })
 
 test_that("BetaHandler subset supports numeric row indexing", {

@@ -27,9 +27,9 @@
 #'   selected segment.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
-#' @param expected_correlation Desired within-DMR expected correlation target.
-#'   This is treated as an absolute target rather than an additive offset over
-#'   the background correlation and is capped to the interval `[0, 0.99]`.
+#' @param expected_correlation Minimum within-DMR expected correlation target.
+#'   The per-DMR target is the larger of this value and the estimated local
+#'   background correlation, capped to the interval `[0, 0.99]`.
 #' @param neighbor_window Number of neighboring sites used to smooth the
 #'   index-based correlated random effect inside each DMR. A value of `5`
 #'   uses up to two upstream and two downstream neighboring sites.
@@ -89,7 +89,8 @@ simulateDMRs <- function(
     verbose = getOption("CMEnt.verbose", 1)
 ) {
     
-    options("CMEnt.verbose" = verbose)
+    old_setting <- options("CMEnt.verbose" = verbose)
+    on.exit(options(old_setting), add = TRUE)
     num_dmrs <- as.integer(num_dmrs)
     max_gap <- as.integer(max_gap)
     min_sites <- as.integer(min_sites)
@@ -200,6 +201,7 @@ simulateDMRs <- function(
         end = end_pos,
         row_ids = row_ids
     )
+    collapsed_input <- .orderSimulationLoci(collapsed_input)
     meth_mat <- collapsed_input$meth
     cov_mat <- collapsed_input$cov
     chr <- collapsed_input$chr
@@ -256,7 +258,9 @@ simulateDMRs <- function(
         max_gap = max_gap,
         n_targets = num_dmrs
     )
-    corr_targets <- rep(expected_correlation, num_dmrs)
+    corr_targets <- pmax(expected_correlation, background_corr_targets, na.rm = TRUE)
+    corr_targets[!is.finite(corr_targets)] <- expected_correlation
+    corr_targets <- pmin(pmax(corr_targets, 0), 0.99)
     corr_pick_index <- vapply(
         corr_targets,
         .simulationPickCorrelationIndex,
@@ -435,7 +439,7 @@ simulateDMRs <- function(
         result$beta_locs <- output$beta_locs
     }
 
-    .log_success("Simulation complete!", level = 1)
+    .log_info("Simulation complete!", level = 1)
     result
 }
 
@@ -668,6 +672,20 @@ simulateDMRs <- function(
     )
 }
 
+.orderSimulationLoci <- function(x) {
+    ord <- order(x$chr, x$pos, x$end, na.last = TRUE)
+    if (identical(ord, seq_along(ord))) {
+        return(x)
+    }
+    x$meth <- x$meth[ord, , drop = FALSE]
+    x$cov <- x$cov[ord, , drop = FALSE]
+    x$chr <- x$chr[ord]
+    x$pos <- x$pos[ord]
+    x$end <- x$end[ord]
+    x$row_ids <- x$row_ids[ord]
+    x
+}
+
 .resolveSimulationGroups <- function(groups, n_samples, case_group = NULL) {
     if (is.null(groups)) {
         n_control <- floor(n_samples / 2)
@@ -711,7 +729,8 @@ simulateDMRs <- function(
     if (length(chr) == 0L) {
         return(integer(0))
     }
-    starts <- c(TRUE, chr[-1L] != chr[-length(chr)] | diff(pos) > max_gap)
+    pos_diff <- diff(pos)
+    starts <- c(TRUE, chr[-1L] != chr[-length(chr)] | pos_diff < 0L | pos_diff > max_gap)
     cumsum(starts)
 }
 
@@ -916,7 +935,7 @@ simulateDMRs <- function(
                                               template_length,
                                               template_cov,
                                               neighbor_window = 5L,
-                                              corr_sd_grid = seq(0.1, 1.0, by = 0.1)) {
+                                              corr_sd_grid = seq(0.1, 3.0, by = 0.1)) {
     if (affected_samples < 2L || template_length < 2L) {
         return(data.frame(corr_sd = 0.30, metric = 0))
     }

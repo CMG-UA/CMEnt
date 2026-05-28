@@ -36,6 +36,46 @@ augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,
                          calibrate_correlation = TRUE,
                          calibration_iterations = 8,
                          calibration_samples = NULL) {
+    .prepareInputBSseq <- function(bs) {
+        if (!inherits(bs, "BSseq")) {
+            stop("'bs' must be a BSseq object")
+        }
+        bs <- sort(bs)
+        gr <- GenomicRanges::granges(bs)
+        chr <- as.character(GenomeInfoDb::seqnames(gr))
+        pos <- GenomicRanges::start(gr)
+        key <- paste(chr, pos, sep = "\t")
+        if (anyDuplicated(key) == 0L) {
+            return(bs)
+        }
+
+        first_idx <- match(unique(key), key)
+        cov <- rowsum(as.matrix(bsseq::getCoverage(bs, type = "Cov")),
+            group = key,
+            reorder = FALSE
+        )
+        meth <- rowsum(as.matrix(bsseq::getCoverage(bs, type = "M")),
+            group = key,
+            reorder = FALSE
+        )
+        colnames(cov) <- colnames(meth) <- colnames(bs)
+        collapsed <- bsseq::BSseq(
+            chr = chr[first_idx],
+            pos = pos[first_idx],
+            M = as.matrix(meth),
+            Cov = as.matrix(cov),
+            sampleNames = colnames(bs)
+        )
+        SummarizedExperiment::colData(collapsed) <- SummarizedExperiment::colData(bs)
+        old_seqinfo <- GenomeInfoDb::seqinfo(bs)
+        collapsed_seqlevels <- GenomeInfoDb::seqlevels(collapsed)
+        if (all(collapsed_seqlevels %in% GenomeInfoDb::seqlevels(old_seqinfo))) {
+            GenomeInfoDb::seqinfo(collapsed) <- old_seqinfo[collapsed_seqlevels]
+        }
+        sort(collapsed)
+    }
+
+    bs <- .prepareInputBSseq(bs)
     n_new_samples <- as.integer(n_new_samples)
     min_samples <- as.integer(min_samples)
     calibrate_correlation <- as.logical(calibrate_correlation)

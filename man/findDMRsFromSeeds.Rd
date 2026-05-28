@@ -2,11 +2,8 @@
 % Please edit documentation in R/dmrs_finder_from_seeds.R
 \name{findDMRsFromSeeds}
 \alias{findDMRsFromSeeds}
-\alias{.CASE_CONTROL_COL}
-\title{Find Differentially Methylated Regions (DMRs) from Pre-computed seeds}
+\title{Find Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)}
 \usage{
-.CASE_CONTROL_COL
-
 findDMRsFromSeeds(
   beta,
   seeds,
@@ -19,7 +16,7 @@ findDMRsFromSeeds(
   array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
   genome = NULL,
   max_pval = 0.05,
-  entanglement = c("strong", "weak"),
+  entanglement = c("weak", "strong"),
   testing_mode = c("auto", "parametric", "empirical"),
   empirical_strategy = c("auto", "montecarlo", "permutations"),
   ntries = 200L,
@@ -47,19 +44,28 @@ findDMRsFromSeeds(
 )
 }
 \arguments{
-\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file. If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start, followed by samples names in the given pheno, with corresponging beta values, and it will be converted to a tabix-indexed beta file internall, with the locations separately saved and queried as a DelayedDataFrame. object.}
+\item{beta}{Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file.
+If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start,
+followed by samples names in the given pheno, with corresponging beta values,
+and it will be converted to a tabix-indexed beta file internall,
+with the locations separately saved and queried as a DelayedDataFrame. object.}
 
-\item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe, in a format like the one produced by dmpFinder.}
+\item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
+in a format like the one produced by dmpFinder.}
 
-\item{pheno}{Data frame. Phenotype data.}
+\item{pheno}{Character. Path to the phenotype TSV file or the phenotype dataframe,
+containing sample information including group labels and optionally covariates.}
 
-\item{seeds_id_col}{Character. Column name or index for Seed identifiers in the seeds TSV file. Default is NULL, which corresponds to the rows names if existing, or the first column if not.}
+\item{seeds_id_col}{Character. Column name or index for Seed identifiers in the seeds TSV file.
+Default is NULL, which corresponds to the rows names if existing, or the first column if not.}
 
 \item{sample_group_col}{Character. Column name for sample group information in the phenotype data. Default is NULL.}
 
-\item{casecontrol_col}{Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status . If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
+\item{casecontrol_col}{Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status .
+If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
 
-\item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex"). When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
+\item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex").
+When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
 
 \item{ext_site_delta_beta}{Numeric. Minimum absolute delta beta value that will
 force proximal sites to be treated as connected during Stage 2 expansion,
@@ -67,45 +73,58 @@ regardless of their correlation p-value. Set to \code{NA}, \code{NULL}, or \code
 disable this shortcut. A value of \code{0} means any proximal site with a
 non-missing case-control delta beta can be force-connected. Default is 0.2.}
 
-\item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome. Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
+\item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome.
+Also ignored if the beta file is provided as a beta values BED file. Default is "450K".}
 
-\item{genome}{Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays, otherwise "hg38".}
+\item{genome}{Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays,
+otherwise "hg38".}
 
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 
-\item{entanglement}{Character. "strong" (default) requires all groups to show significant correlation for connectivity; "weak" requires at least one group to show significant correlation.}
+\item{entanglement}{Character. "weak" (default) requires at least one group to show significant correlation;
+"strong" requires all groups to show significant correlation for connectivity.}
 
-\item{testing_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values or "empirical" for permutation-based p-values.}
+\item{testing_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values
+per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values
+or "empirical" for permutation-based p-values.}
 
-\item{empirical_strategy}{Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo; "permutations" always uses permutations.}
+\item{empirical_strategy}{Character. When testing_mode = "empirical": "auto" (default) uses Monte Carlo for
+groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo;
+"permutations" always uses permutations.}
 
 \item{ntries}{Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).}
 
-\item{mid_p}{Logical. Whether to use mid-p adjustment when \code{testing_mode = "empirical"}. Default is \code{FALSE}.}
-
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).}
 
-\item{expansion_window}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.}
+\item{expansion_window}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods,
+with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2.
+Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.}
 
-\item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
+\item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1
+when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
 
 \item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).}
 
 \item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 1. Default is 2.}
 
-\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension. It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained if they have enough seeds relative to the local site density. Default is NULL (disabled).}
+\item{min_adj_seeds}{Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension.
+It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained
+if they have enough seeds relative to the local site density. Default is NULL (disabled).}
 
 \item{min_sites}{Numeric. Minimum number of sites in a DMR after extension, including the seeds. Minimum is 2. Default is 3.}
 
-\item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs. Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
+\item{aggfun}{Function or character. Aggregation function to use when calculating delta beta values and p-values of DMRs.
+Can be "median", "mean", or a function (e.g., median, mean). Default is "median".}
 
-\item{ignored_sample_groups}{Character vector. Sample groups to ignore during connection and expansion, separated by commas. Can also be "case" or "control". Default is NULL.}
+\item{ignored_sample_groups}{Character vector. Sample groups to ignore during connection and expansion, separated by commas.
+Can also be "case" or "control". Default is NULL.}
 
 \item{output_prefix}{Character. Identifier for the output files. If not provided, no output will be saved. Default is NULL.}
 
 \item{njobs}{Numeric. Number of parallel jobs to use. Default is the number of available cores.}
 
-\item{beta_row_names_file}{Character. Path to a file containing row names for the beta values. If not provided, row names will be read from the beta file. Default is NULL.}
+\item{beta_row_names_file}{Character. Path to a file containing row names for the beta values.
+If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
@@ -113,54 +132,33 @@ non-missing case-control delta beta can be force-connected. Default is 0.2.}
 
 \item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 
-\item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE. In case the input has a .bed extension, this will be set to TRUE automatically.}
+\item{bed_provided}{Logical. Whether the beta file is provided as a BED file. Default is FALSE.
+In case the input has a .bed extension, this will be set to TRUE automatically.}
 
 \item{bed_chrom_col}{Character. Column name for chromosome in the BED file. Default is "chrom".}
 
 \item{bed_start_col}{Character. Column name for start position in the BED file. Default is "start".}
 
-\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose). Default is retrieved from option "CMEnt.verbose".}
+\item{verbose}{Numeric. Level of verbosity for logging messages, from 0 (not verbose) to 5 (very very verbose).
+Default is retrieved from option "CMEnt.verbose".}
 
 \item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 }
 \value{
-A GRanges object containing identified DMRs with metadata columns:
-\itemize{
-\item sites_num: Number of sites in the region
-\item seeds_num: Number of seeds in the region
-\item delta_beta: Aggregated methylation difference (using the specified aggregation function)
-\item delta_beta_min: Minimum methylation difference
-\item delta_beta_max: Maximum methylation difference
-\item delta_beta_sd: Standard deviation of methylation differences
-\item cases_beta: Mean beta value in cases
-\item controls_beta: Mean beta value in controls
-\item start_seed: ID of the first Seed in the region
-\item end_seed: ID of the last Seed in the region
-\item start_seed_pos: Genomic position of the first Seed in the region
-\item end_seed_pos: Genomic position of the last Seed in the region
-\item seeds: Comma-separated list of Seed IDs in the region
-\item connection_corr_pval: Aggregated correlation p-value of connected seeds
-\item stop_connection_reason: Reasons for stopping the connection of seeds
-\item start_site: ID of the starting site after expansion
-\item end_site: ID of the ending site after expansion
-\item upstream_expansion_length: Number of sites expanded upstream
-\item upstream_expansion_stop_reason: Reason for stopping upstream expansion
-\item downstream_expansion_length: Number of sites expanded downstream
-\item downstream_expansion_stop_reason: Reason for stopping downstream expansion
-\item merged_dmrs_num: Number of merged DMRs
-}
-
 Data frame of identified DMRs.
 }
 \description{
-This function identifies Differentially Methylated Regions (DMRs) from pre-computed
-Differentially Methylated Positions (seeds) using a correlation-based approach. It expands
-seeds into regions, considering both statistical significance and biological
-relevance of methylation changes.
-
-This function identifies DMRs from a given set of seeds and a beta value file.
+This function identifies DMRs from a given set of seeds and a beta value file. It operates in three main stages:
+\enumerate{
+\item \strong{Seed Connectivity}: It builds a connectivity array based on the correlation of beta values between seeds and their proximal sites,
+connecting seeds into preliminary DMRs based on significant correlations.
+\item \strong{DMR Expansion}: It expands the preliminary DMRs by including nearby sites that show significant correlation with the seeds,
+allowing for a specified delta-beta threshold to connect sites that may not meet the correlation p-value cutoff but have a strong effect size.
+\item \strong{DMR Merging and Filtering}: It merges overlapping extended DMRs into final DMRs and applies filtering based on the number of seeds and sites,
+as well as optional adjustments for array-based analyses.
 }
-\section{Important Note on Input Data}{
+}
+\section{Note on Input Data}{
 
 Do not apply heavy filtering to your seeds prior to using this function, particularly based on
 beta values or effect sizes. The function works by expanding regions around seeds
@@ -169,19 +167,12 @@ may remove important sites that could serve as "bridges" to connect more seeds i
 larger, biologically meaningful DMRs. For optimal results, include all statistically
 significant seeds (e.g., adjusted p-value < 0.05) and let the function handle region expansion
 and letting the function reconnect proximal sites during expansion using the
-ext_site_delta_beta parameter if needed.
+ext_site_delta_beta parameter if needed. The p-value adjustment can be done using \code{\link[=combinePvalues]{combinePvalues()}} or other methods,
+but avoid filtering based on beta value thresholds or effect size cutoffs before running this function. For BSSeq data,
+we supply a helper function \link{findDMRsFromBSSeq} that performs seed finding using DSS.
 }
 
 \examples{
-# Load example data
-loadExampleInputData()
-# Find DMRs
-dmrs <- findDMRsFromSeeds(
-    beta = beta,
-    seeds = dmps,
-    pheno = pheno
-)
-
 \donttest{
 loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 dmrs <- findDMRsFromSeeds(

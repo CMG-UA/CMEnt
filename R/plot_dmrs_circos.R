@@ -468,7 +468,8 @@
     }
 
     if (!is.null(verbose)) {
-        options("CMEnt.verbose" = verbose)
+        old_setting <- options("CMEnt.verbose" = verbose)
+        on.exit(options(old_setting), add = TRUE)
     }
 
     cytoband <- .getCytobandData(genome)
@@ -592,7 +593,8 @@
 
     cytoband <- prepared_state$cytoband
     if (!is.null(verbose)) {
-        options("CMEnt.verbose" = verbose)
+        old_setting <- options("CMEnt.verbose" = verbose)
+        on.exit(options(old_setting), add = TRUE)
     }
     region_df <- .normalizeCircosRegion(region, cytoband)
     dmrs <- .filterDMRsByScopeForCircos(
@@ -1448,15 +1450,15 @@
 }
 
 .computeCircosInteractionState <- function(dmrs,
-                                          genome,
-                                          array,
-                                          sorted_locs,
-                                          min_similarity,
-                                          motif_site_flank_size,
-                                          min_component_size,
-                                          query_components_with_jaspar,
-                                          components = NULL,
-                                          interactions = NULL) {
+                                           genome,
+                                           array,
+                                           sorted_locs,
+                                           min_similarity,
+                                           motif_site_flank_size,
+                                           min_component_size,
+                                           query_components_with_jaspar,
+                                           components = NULL,
+                                           interactions = NULL) {
     if (xor(is.null(components), is.null(interactions))) {
         stop("components and interactions must both be NULL or both be provided.")
     }
@@ -1624,7 +1626,8 @@ plotDMRsCircos <- function(dmrs,
     cytoband <- .getCytobandData(genome)
 
     if (!is.null(verbose)) {
-        options("CMEnt.verbose" = verbose)
+        old_setting <- options("CMEnt.verbose" = verbose)
+        on.exit(options(old_setting), add = TRUE)
     }
     verbose <- getOption("CMEnt.verbose", default = 2)
     beta_handler <- getBetaHandler(
@@ -2255,7 +2258,7 @@ plotAutoDMRsCircos <- function(dmrs,
         stop("No DMRs remain after applying automatic-selection chromosome filters.")
     }
     interaction_state <- NULL
-    if (method %in% c("components", "hybrid") || !is.null(components) || !is.null(interactions)) { 
+    if (method %in% c("components", "hybrid") || !is.null(components) || !is.null(interactions)) {
         if (is.null(sorted_locs) && inherits(beta, "BetaHandler")) {
             sorted_locs <- beta$getBetaLocs()
         }

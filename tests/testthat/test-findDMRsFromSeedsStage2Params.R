@@ -6,19 +6,19 @@ test_that("findDMRsFromSeeds with expansion_window and max_bridge_seeds_gaps par
 
     # Test with expansion_window and max_bridge_seeds_gaps
     dmrs_expanded <- findDMRsFromSeeds(
-            .score_dmrs = FALSE,
-            extract_motifs = FALSE,
-            annotate_with_genes = FALSE,
-            beta = beta,
-            seeds = dmps,
-            pheno = pheno,
-            sample_group_col = "Sample_Group",
-            min_seeds = 2,
-            min_sites = 3,
-            max_lookup_dist = 1000,
-            expansion_window = 1, # Expand DMRs by 1bp
-            max_bridge_seeds_gaps = 2 # Allow bridging up to 2 seeds apart
-        )
+        .score_dmrs = FALSE,
+        extract_motifs = FALSE,
+        annotate_with_genes = FALSE,
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        min_seeds = 2,
+        min_sites = 3,
+        max_lookup_dist = 1000,
+        expansion_window = 1, # Expand DMRs by 1bp
+        max_bridge_seeds_gaps = 2 # Allow bridging up to 2 seeds apart
+    )
     # Assertions
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
@@ -118,7 +118,7 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
         testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         max_pval = 0.05,
-        force_connect_delta_beta = NA_real_,
+        ext_site_delta_beta = NA_real_,
         max_lookup_dist = 1000,
         site_starts = c(100L, 200L),
         entanglement = "strong",
@@ -134,7 +134,7 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
         testing_mode_per_group = testing_mode_per_group,
         empirical_strategy_per_group = empirical_strategy_per_group,
         max_pval = 0.05,
-        force_connect_delta_beta = 0,
+        ext_site_delta_beta = 0,
         max_lookup_dist = 1000,
         site_starts = c(100L, 200L),
         entanglement = "strong",
@@ -147,7 +147,7 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
     expect_true(zero_threshold_force_connect$connected[[1]])
     expect_identical(
         zero_threshold_force_connect$reason[[1]],
-        "abs(delta_beta)>=force_connect_delta_beta"
+        "abs(delta_beta)>=ext_site_delta_beta"
     )
 })
 

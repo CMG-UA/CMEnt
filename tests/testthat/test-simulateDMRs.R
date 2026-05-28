@@ -109,11 +109,13 @@ test_that("simulateDMRs fits and stores correlation calibration metadata", {
     expect_true(all(is.finite(sim$truth$corr_sd_used)))
     expect_true(all(is.finite(sim$truth$corr_metric_estimate)))
     expect_true(all(sim$truth$expected_correlation == 0.7))
-    expect_true(all(sim$truth$corr_target == sim$truth$expected_correlation))
+    expect_true(all(sim$truth$corr_target >= sim$truth$expected_correlation))
+    finite_bg <- is.finite(sim$truth$background_corr_target)
+    expect_true(all(sim$truth$corr_target[finite_bg] >= sim$truth$background_corr_target[finite_bg]))
     expect_true(all(sim$truth$neighbor_window == 5L))
 })
 
-test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
+test_that("simulateDMRs uses expected correlation as a local-background floor", {
     bs <- create_simulation_bsseq()
     set.seed(456)
     sim_low_target <- simulateDMRs(
@@ -135,8 +137,9 @@ test_that("simulateDMRs uses fixed expected correlation targets inside DMRs", {
     )
 
     expect_equal(sim_low_target$truth$background_corr_target, sim_high_target$truth$background_corr_target)
-    expect_true(all(sim_low_target$truth$corr_target == 0.2))
-    expect_true(all(sim_high_target$truth$corr_target == 0.6))
+    expect_equal(sim_low_target$truth$corr_target, pmax(0.2, sim_low_target$truth$background_corr_target))
+    expect_equal(sim_high_target$truth$corr_target, pmax(0.6, sim_high_target$truth$background_corr_target))
+    expect_true(all(sim_high_target$truth$corr_target >= sim_low_target$truth$corr_target))
     expect_true(all(sim_high_target$truth$corr_metric_estimate >= sim_low_target$truth$corr_metric_estimate))
 })
 
@@ -183,6 +186,21 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
     loc_key <- paste0(as.character(GenomicRanges::seqnames(sim$simulated)), ":", GenomicRanges::start(sim$simulated))
     expect_equal(anyDuplicated(loc_key), 0L)
     expect_equal(sim$duplicate_loci_collapsed, 1L)
+})
+
+test_that("simulateDMRs reorders collapsed loci before segmenting", {
+    meth <- cov <- matrix(1L, nrow = 9L, ncol = 2L)
+    chr <- rep("chr2", 9L)
+    pos <- c(1000L, 1100L, 1200L, 100L, 200L, 300L, 100L, 200L, 300L)
+
+    collapsed <- CMEnt:::.collapseSimulationDuplicateLoci(meth, cov, chr, pos)
+    raw_segments <- CMEnt:::.findContiguousSegments(collapsed$chr, collapsed$pos, max_gap = 500L)
+    ordered <- CMEnt:::.orderSimulationLoci(collapsed)
+    segments <- CMEnt:::.findContiguousSegments(ordered$chr, ordered$pos, max_gap = 500L)
+
+    expect_gt(length(unique(raw_segments)), 1L)
+    expect_equal(ordered$pos, c(100L, 200L, 300L, 1000L, 1100L, 1200L))
+    expect_equal(lengths(split(ordered$pos, segments)), c("1" = 3L, "2" = 3L))
 })
 
 test_that("simulateDMRs uses simDMRs sample names for custom groups", {

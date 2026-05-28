@@ -19,6 +19,13 @@ is_bsseq <- function(obj) {
     identical(row_order, seq_along(row_order))
 }
 
+.bsseqIsInMemory <- function(obj) {
+    if (!inherits(obj, "BSseq")) {
+        return(FALSE)
+    }
+    any(sapply(assays(obj), function(x) inherits(x, "matrix")))
+}
+
 .prepareBSseqForBetaHandler <- function(obj) {
     if (.bsseqIsSorted(obj)) {
         return(obj)
@@ -186,7 +193,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             .log_step("Beta file is small (", round(file_size_mb, 1), " MB). Attempting to load into memory...", level = 3)
                             temp_data <- .readBetaFileData(
                                 private$.beta_file,
-                                data.table = FALSE,
+                                data_table = FALSE,
                                 showProgress = getOption("CMEnt.verbose", 0) > 1
                             )
 
@@ -372,7 +379,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             .log_info("Loading genomic locations for validation...", level = 2)
             sorted_locs <- self$getGenomicLocs()
             if (!is.null(private$.bsseq_object)) {
-                .log_success("BSseq beta locations validated", level = 2)
+                .log_info("BSseq beta locations validated", level = 2)
             } else if (is.null(private$.beta_file_in_memory)) {
                 .log_info("Getting beta row names for validation...", level = 2)
                 beta_row_names <- self$getBetaRowNames()
@@ -542,8 +549,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 subset_locs <- all_locs[subset_row_names, , drop = FALSE]
             }
 
-            if ((!is.null(private$.beta_file_in_memory) || !is.null(private$.bsseq_object))) {
-                # For in-memory/BSseq backends, materialize only the needed slice so workers do not
+            if (!is.null(private$.beta_file_in_memory) || .bsseqIsInMemory(private$.bsseq_object)) {
+                # For in-memory beta backends, materialize only the needed slice so workers do not
                 # inherit the full parent payload when this subset handler is serialized.
                 subset_beta <- self$getBeta(
                     row_names = query_row_names,
@@ -565,7 +572,18 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             subset_handler$.__enclos_env__$private$.beta_locs <- subset_locs
             subset_handler$.__enclos_env__$private$.beta_row_names <- subset_row_names
             subset_handler$.__enclos_env__$private$.beta_col_names <- subset_col_names
-            subset_handler$.__enclos_env__$private$.beta_row_index_map <- as.integer(row_match)
+            if (!is.null(private$.bsseq_object)) {
+                storage_rows <- if (!is.null(private$.beta_row_index_map)) {
+                    private$.beta_row_index_map[row_match]
+                } else {
+                    row_match
+                }
+                storage_cols <- match(subset_col_names, sampleNames(private$.bsseq_object))
+                subset_handler$.__enclos_env__$private$.bsseq_object <- private$.bsseq_object[storage_rows, storage_cols]
+                subset_handler$.__enclos_env__$private$.beta_row_index_map <- NULL
+            } else {
+                subset_handler$.__enclos_env__$private$.beta_row_index_map <- as.integer(row_match)
+            }
             subset_handler$.__enclos_env__$private$.loaded <- TRUE
             subset_handler$.__enclos_env__$private$.validated <- TRUE
             subset_handler$.__enclos_env__$private$.self_contained <- TRUE
@@ -586,7 +604,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             # Fast-path numeric row indexing for file/tabix backends:
             # convert indices to row names once and avoid repeated set operations downstream.
             if (!is.null(row_names) && is.numeric(row_names) &&
-                is.null(private$.beta_file_in_memory) && is.null(private$.bsseq_object)) {
+                    is.null(private$.beta_file_in_memory) && is.null(private$.bsseq_object)) {
                 row_idx <- as.integer(row_names)
                 all_row_names <- self$getBetaRowNames()
                 n_all <- length(all_row_names)
@@ -715,25 +733,38 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     regions <- data.frame(chr = base::strsplit(chr, ",")[[1]])
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
-                    qregions <- regions[!duplicated(regions), ]
+                    qregions <- regions[!duplicated(regions[, c("chr", "start", "end"), drop = FALSE]), c("chr", "start", "end"), drop = FALSE]
                     qregions <- qregions[str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
                 }
                 beta_subset <- bedr::tabix(qregions, private$.tabix_file,
                     check.valid = FALSE,
                     check.sort = FALSE, check.chr = FALSE, verbose = FALSE
                 )
-                if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < length(row_names))) {
+                if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < nrow(qregions))) {
                     stop("Requested site sites not found in beta tabix file")
                 }
                 # bedr forces the first three columns to be named "chr", "start", "stop" .... https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
                 if (is.null(chr)) {
-                    merge_on <- c("chr", "start")
-                    beta_subset <- merge(
-                        regions[, c(merge_on, "name")],
-                        beta_subset,
-                        by.x = merge_on, by.y = merge_on,
-                        all.x = TRUE, all.y = FALSE
-                    )
+                    if ("id" %in% colnames(beta_subset) && all(unique(regions$name) %in% as.character(beta_subset$id))) {
+                        beta_subset$name <- as.character(beta_subset$id)
+                    } else {
+                        merge_on <- c("chr", "start")
+                        regions_by_coord <- regions[!duplicated(regions[, merge_on, drop = FALSE]), c(merge_on, "name"), drop = FALSE]
+                        beta_subset <- merge(
+                            regions_by_coord,
+                            beta_subset,
+                            by.x = merge_on, by.y = merge_on,
+                            all.x = TRUE, all.y = FALSE
+                        )
+                    }
+                    if (anyDuplicated(beta_subset$name) > 0L) {
+                        duplicated_names <- unique(beta_subset$name[duplicated(beta_subset$name)])
+                        stop(
+                            "Beta tabix query returned duplicate row names: ",
+                            paste(head(duplicated_names, 10), collapse = ", "),
+                            if (length(duplicated_names) > 10L) " ..." else ""
+                        )
+                    }
                 }
                 rownames(beta_subset) <- beta_subset$name
                 # order by input row_names if provided
@@ -745,17 +776,19 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     is_tabix = TRUE
                 )$sample_col_names
                 beta_subset <- beta_subset[, tabix_sample_cols, drop = FALSE]
+                beta_subset_rownames <- rownames(beta_subset)
                 beta_subset <- as.data.frame(
                     lapply(beta_subset, as.numeric),
                     check.names = FALSE,
                     stringsAsFactors = FALSE
                 )
+                rownames(beta_subset) <- beta_subset_rownames
                 if (!is.null(col_names)) {
                     beta_subset <- beta_subset[, col_names, drop = FALSE]
                 }
             }
             if (!is.null(private$.bsseq_object)) {
-                .log_step("Extracting beta values from BSseq object..", level = 4)
+                .log_step("Extracting beta values from BSseq object..", level = 3)
                 all_row_names <- private$.getExplicitRowNames(self$getBetaLocs())
                 if (is.null(all_row_names) && (!is.null(row_names) && !is.numeric(row_names))) {
                     all_row_names <- self$getBetaRowNames()
@@ -876,8 +909,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .self_contained = FALSE,
         .getExplicitRowNames = function(x) {
             rn_info <- .row_names_info(x, type = 0L)
-            if (is.integer(rn_info) && length(rn_info) == 2L &&
-                is.na(rn_info[1L]) && rn_info[2L] < 0L) {
+            if (
+                is.integer(rn_info) && length(rn_info) == 2L &&
+                    is.na(rn_info[1L]) && rn_info[2L] < 0L
+            ) {
                 return(NULL)
             }
             rownames(x)
@@ -892,14 +927,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         .regionsFromRowNames = function(row_names) {
             if (is.null(row_names)) {
                 locs <- self$getBetaLocs()
+                names <- rownames(locs)
             } else {
                 locs <- self$getBetaLocs()[row_names, , drop = FALSE]
+                names <- as.character(row_names)
             }
             regions <- data.frame(
                 chr = as.character(locs[, "chr"]),
                 start = as.integer(locs[, "start"]),
                 end = as.integer(locs[, "start"]) + 1,
-                name = rownames(locs)
+                name = names
             )
         }
     )

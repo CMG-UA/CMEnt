@@ -15,7 +15,7 @@ findDMPsBSSeq(
   covariates = NULL,
   fdr_thres = 0.05,
   output_file = NULL,
-  njobs = max(1L, BiocParallel::bpnworkers(BiocParallel::bpparam()) - 1L)
+  njobs = 1L
 )
 }
 \arguments{
@@ -39,7 +39,7 @@ findDMPsBSSeq(
 
 \item{output_file}{An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).}
 
-\item{njobs}{The number of parallel jobs to use for chromosome-level analysis. Default is the number of available CPU cores minus one.}
+\item{njobs}{The number of parallel jobs to use for chromosome-level analysis. Default is 1.}
 }
 \value{
 A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.

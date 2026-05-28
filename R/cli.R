@@ -225,14 +225,15 @@
 #'         verbose = 1,
 #'         entanglement = "strong"
 #'     )
-#' 
+#'
 #'     findDMRsFromSeedsCLI(args)
 #' }
 #' }
 #'
 #' @export
 findDMRsFromSeedsCLI <- function(args) {
-    options("CMEnt.verbose" = args$verbose)
+    old_setting <- options("CMEnt.verbose" = args$verbose)
+    on.exit(options(old_setting), add = TRUE)
     pheno <- .processSamplesheet(args)$samplesheet
     array <- args$array
     covariates <- args$covariates

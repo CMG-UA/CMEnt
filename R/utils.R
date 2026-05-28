@@ -85,7 +85,7 @@
 .readBetaFileData <- function(beta_file,
                               skip = 1L,
                               nrows = Inf,
-                              data.table = FALSE,
+                              data_table = FALSE,
                               showProgress = FALSE) {
     header_info <- .getBetaFileHeaderInfo(beta_file)
     beta_data <- data.table::fread(
@@ -93,7 +93,7 @@
         header = FALSE,
         skip = skip,
         nrows = nrows,
-        data.table = data.table,
+        data.table = data_table,
         showProgress = showProgress,
         check.names = FALSE
     )
@@ -115,6 +115,8 @@
     beta_data
 }
 
+#' @keywords internal
+#' @noRd
 .readBetaFileRowNames <- function(beta_file,
                                   showProgress = FALSE,
                                   nThread = 1L) {
@@ -131,6 +133,8 @@
     unlist(beta_row_names[[1]], use.names = FALSE)
 }
 
+#' @keywords internal
+#' @noRd
 .coercePhenoColumn <- function(x, col_name) {
     if (is.list(x) && !is.data.frame(x)) {
         scalar_lengths <- lengths(x)
@@ -151,7 +155,8 @@
     x
 }
 
-
+#' @keywords internal
+#' @noRd
 .getBetaColNamesAndInds <- function(beta_file,
                                     beta_col_names = NULL,
                                     is_tabix = FALSE,
@@ -472,8 +477,8 @@
     if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
     }
-    if (toString(level) %in% names(.CMEnt_log_env$last_step_time)) {
-        dur <- .fmt_dur(.CMEnt_log_env$last_step_time[[level]])
+    if (as.character(level) %in% names(.CMEnt_log_env$last_step_time)) {
+        dur <- .fmt_dur(.CMEnt_log_env$last_step_time[[as.character(level)]])
     } else {
         .log_warn("No previous step time recorded for level ", level, " to calculate duration.")
         dur <- ""
@@ -486,7 +491,7 @@
     lead <- .col(cli::symbol$tick, "green")
     message(.format_log_output(msg, lead = lead, level = level))
     # Clear the recorded step time for this level after reporting success
-    .CMEnt_log_env$last_step_time[[toString(level)]] <- NULL
+    .CMEnt_log_env$last_step_time[[as.character(level)]] <- NULL # nolint
     invisible()
 }
 
@@ -517,10 +522,10 @@
         return(invisible())
     }
     # If there is a previous step time recorded for this level, calculate and report the duration since that time
-    if (toString(level) %in% names(.CMEnt_log_env$last_step_time)) {
+    if (as.character(level) %in% names(.CMEnt_log_env$last_step_time)) {
         .log_success("", level = level)
     }
-    .CMEnt_log_env$last_step_time[[toString(level)]] <- Sys.time() # nolint
+    .CMEnt_log_env$last_step_time[[as.character(level)]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$arrow_right, "cyan")
     message(.format_log_output(msg, lead = lead, level = level))
@@ -529,7 +534,7 @@
 
 #' @keywords internal
 #' @noRd
-.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE) {
+.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL) {
     workers <- suppressWarnings(as.integer(njobs))
     if (length(workers) == 0L || is.na(workers) || workers < 1L) {
         stop("njobs must be a positive integer.", call. = FALSE)
@@ -546,10 +551,27 @@
         return(BiocParallel::SerialParam(progressbar = progressbar))
     }
 
-    if (identical(.Platform$OS.type, "unix")) {
-        BiocParallel::MulticoreParam(workers = workers, progressbar = progressbar)
+    if (is.null(parallel_backend)) {
+        parallel_backend <- getOption("CMEnt.biocparallel_backend", "auto")
+    }
+    parallel_backend <- tolower(as.character(parallel_backend)[1L])
+    if (!parallel_backend %in% c("auto", "multicore", "snow", "sock", "multisession")) {
+        warning("Unsupported CMEnt BiocParallel backend='", parallel_backend, "'. Falling back to 'auto'.")
+        parallel_backend <- "auto"
+    }
+
+    if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
+        if (is.null(n_tasks)) {
+            BiocParallel::MulticoreParam(workers = workers, progressbar = progressbar)
+        } else {
+            BiocParallel::MulticoreParam(workers = workers, tasks = n_tasks, progressbar = progressbar)
+        }
     } else {
-        BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = progressbar)
+        if (is.null(n_tasks)) {
+            BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = progressbar)
+        } else {
+            BiocParallel::SnowParam(workers = workers, tasks = n_tasks, type = "SOCK", progressbar = progressbar)
+        }
     }
 }
 
@@ -1188,7 +1210,7 @@ convertBetaToTabix <- function(beta_file,
                         bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
 
                         # Add beta values as additional columns
-                    beta_subset <- chunk_data[match(common_sites, site_ids), header_info$sample_col_names, drop = FALSE]
+                        beta_subset <- chunk_data[match(common_sites, site_ids), header_info$sample_col_names, drop = FALSE]
                         bed_chunk <- cbind(bed_chunk, beta_subset)
 
                         # Append to temp BED file
@@ -1451,7 +1473,7 @@ sortBetaFileByCoordinates <- function(beta_file,
     # Read the beta file
     beta_data <- .readBetaFileData(
         beta_file,
-        data.table = FALSE,
+        data_table = FALSE,
         showProgress = getOption("CMEnt.verbose", 0) > 1
     )
 
@@ -2048,9 +2070,9 @@ supportedOrganisms <- function() {
 
 
 .findDMRsDependencyRequirements <- function(beta, array, genome,
-                                           annotate_with_genes = TRUE,
-                                           extract_motifs = TRUE,
-                                           bed_provided = FALSE) {
+                                            annotate_with_genes = TRUE,
+                                            extract_motifs = TRUE,
+                                            bed_provided = FALSE) {
     is_tabix_input <- is.character(beta) &&
         length(beta) == 1L &&
         file.exists(beta) &&
@@ -3510,8 +3532,10 @@ loadExampleInputData <- function(...) {
                 )),
                 warning = function(w) {
                     warning_message <- conditionMessage(w)
-                    if (grepl("HEAD request", warning_message, fixed = TRUE) ||
-                        grepl("cache information", warning_message, fixed = TRUE)) {
+                    if (
+                        grepl("HEAD request", warning_message, fixed = TRUE) ||
+                            grepl("cache information", warning_message, fixed = TRUE)
+                    ) {
                         invokeRestart("muffleWarning")
                     }
                 }
