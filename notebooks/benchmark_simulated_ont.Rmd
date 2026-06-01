@@ -78,7 +78,6 @@ ext_site_delta_beta  <- 0.1
 max_bridge_seeds_gaps <- 1L
 max_bridge_extension_gaps <- 2L
 max_lookup_dist <- 1000L
-
 method_cache_tag <- sprintf(
     "sites%d_p%s_ext%s_lookup%d",
     min_sites,
@@ -425,7 +424,7 @@ if (!file.exists(cment_file)) {
         max_bridge_seeds_gaps = max_bridge_seeds_gaps,
         max_bridge_extension_gaps = max_bridge_extension_gaps,
         min_seeds = min_seeds,
-        min_sites = min_sites,
+        min_sites = min_sites/2,
         max_pval = max_pval,
         ext_site_delta_beta = ext_site_delta_beta,
         max_lookup_dist = max_lookup_dist, # Use a larger lookup distance (10k is the default)
@@ -650,13 +649,13 @@ run_dmrseq_bsseq <- function(
     bs_obj,
     chunk = TRUE,
     max_sites_per_chunk = 500000L,
-    chunk_overlap_sites = 2000L,
-    max_perms = 5L
+    chunk_overlap_sites = 2000L
 ) {
     if (!requireNamespace("dmrseq", quietly = TRUE)) {
         warning("dmrseq not installed; returning empty set.")
         return(GenomicRanges::GRanges())
     }
+
 
     if (!"Sample_Group" %in% colnames(as.data.frame(colData(bs_obj)))) {
         warning("Sample_Group not present in BSseq colData; returning empty set.")
@@ -688,12 +687,20 @@ run_dmrseq_bsseq <- function(
                     testCovariate = "Sample_Group",
                     cutoff = 0.1,
                     minNumRegion = min_sites,
-                    maxPerms = as.integer(max_perms),
                     verbose = FALSE,
                     BPPARAM = bpparam
                 )
-                mcols(fit)$qval[!is.finite(mcols(fit)$qval)] <- 1
-                fit <- fit[mcols(fit)$qval < 0.05]
+                qvals <- mcols(fit)$qval
+                if (length(fit) > 0 && any(is.finite(qvals))) {
+                    fit <- fit[is.finite(qvals) & qvals < 0.05]
+                } else if (length(fit) > 0) {
+                    cat(sprintf(
+                        "dmrseq chunk %s %d/%d returned observed candidates but no finite q-values; keeping candidates without permutation significance.\n",
+                        chr_name,
+                        chunk_i,
+                        length(chunk_starts)
+                    ))
+                }
 
                 if (length(fit) > 0 && !is.na(core_start_pos) && !is.na(core_end_pos)) {
                     mids <- floor((GenomicRanges::start(fit) + GenomicRanges::end(fit)) / 2)

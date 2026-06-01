@@ -53,3 +53,4 @@ data
 CMEnt_*.tar.gz
 notebooks/benchmarks/simulated_microarray/controls.tsv
 notebooks/benchmarks/simulated_ont/sim_bs_1000.h5
+notebooks/benchmarks/simulated_ont/bsseq_augmented.rds
