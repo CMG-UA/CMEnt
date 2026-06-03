@@ -39,6 +39,7 @@ Imports:
     BiocParallel,
     Biostrings,
     BSgenome,
+    bsseqData,
     bslib (>= 0.5.0),
     bsseq,
     callr,
@@ -124,7 +125,6 @@ Suggests:
     org.Mm.eg.db,
     JASPAR2024,
     optparse,
-    bsseqData,
     pkgload
 Config/testthat/edition: 3
 Collate:
