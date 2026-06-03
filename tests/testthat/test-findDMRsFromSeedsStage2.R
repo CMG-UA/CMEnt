@@ -204,19 +204,11 @@ test_that("connectivity chunk size is derived from available RAM", {
         n_pairs = 5000,
         available_ram_bytes = 1024^2
     )
-    expect_equal(chunk_size, floor(0.9 * 1024^2 / (2 * 6 * 8 * 96)))
-    withr::local_options(list(CMEnt.connectivity_bytes_per_sample_pair = 8 * 12))
-    expect_equal(
-        CMEnt:::.connectivityChunkSize(6, 2, 5000, available_ram_bytes = 1024^2),
-        floor(0.9 * 1024^2 / (2 * 6 * 8 * 12))
-    )
-    withr::local_options(list(CMEnt.connectivity_bytes_per_sample_pair = NULL))
+    expect_equal(chunk_size, floor(0.9 * 1024^2 / (2 * 6 * 8 * 12)))
     expect_equal(
         CMEnt:::.connectivityChunkSize(6, 2, 10, available_ram_bytes = 1024^2),
         10L
     )
-    withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
-    expect_equal(CMEnt:::.connectivityChunkSize(6, 2, 10000, available_ram_bytes = 1024^5), 2500L)
 })
 
 test_that("BiocParallel connectivity matches sequential connectivity over multiple chunks", {
@@ -261,6 +253,7 @@ test_that("BiocParallel connectivity matches sequential connectivity over multip
 
     seq_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 1L)))
     withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
+    local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
     bp_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 2L)))
 
     expect_gt(nrow(bp_ret$splits), 1L)

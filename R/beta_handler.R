@@ -734,7 +734,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else {
                     regions <- private$.regionsFromRowNames(row_names)
                     qregions <- regions[!duplicated(regions[, c("chr", "start", "end"), drop = FALSE]), c("chr", "start", "end"), drop = FALSE]
-                    qregions <- qregions[str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
+                    qregions <- qregions[stringr::str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
                 }
                 beta_subset <- bedr::tabix(qregions, private$.tabix_file,
                     check.valid = FALSE,

@@ -3164,20 +3164,22 @@ findDMRsFromSeeds <- function(
     stopifnot(!is.null(max_lookup_dist))
     ext_site_delta_beta <- {
         if (is.null(ext_site_delta_beta) || is.na(ext_site_delta_beta)) {
-            return(NA_real_)
+            NA_real_
+        } else {
+            try(ext_site_delta_beta <- as.numeric(ext_site_delta_beta), silent = TRUE)
+            if (!is.numeric(ext_site_delta_beta) || length(ext_site_delta_beta) != 1L) {
+                stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+            }
+            ext_site_delta_beta <- ext_site_delta_beta[1]
+            if (is.infinite(ext_site_delta_beta)) {
+                NA_real_
+            } else {
+                if (ext_site_delta_beta < 0 || ext_site_delta_beta > 1) {
+                    stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+                }
+                ext_site_delta_beta
+            }
         }
-        try(ext_site_delta_beta <- as.numeric(ext_site_delta_beta), silent =  TRUE)
-        if (!is.numeric(ext_site_delta_beta) || length(ext_site_delta_beta) != 1L) {
-            stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
-        }
-        ext_site_delta_beta <- ext_site_delta_beta[1]
-        if (is.infinite(ext_site_delta_beta)) {
-            return(NA_real_)
-        }
-        if (ext_site_delta_beta < 0 || ext_site_delta_beta > 1) {
-            stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
-        }
-        ext_site_delta_beta
     }
 
     if (expansion_window == "auto") {

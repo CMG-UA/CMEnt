@@ -324,7 +324,7 @@ test_that("findDMRsFromSeeds works with BSseq input", {
         site_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
         pval = rep(0.001, length(dmr_region_idx))
     )
-    expect_warning(
+    expect_no_warning(
         dmrs <- findDMRsFromSeeds(
             beta = bsseq_obj,
             seeds_id_col = "site_id",
@@ -336,8 +336,7 @@ test_that("findDMRsFromSeeds works with BSseq input", {
             njobs = 1,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE
-        ),
-        "No DMRs remain after filtering based on min_seeds."
+        )
     )
 })
 
