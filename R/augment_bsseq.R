@@ -26,6 +26,7 @@
 #' @examples
 #' \donttest{
 #'     # Load example BSseq data
+#'     library(bsseqData)
 #'     data(BS.cancer.ex)
 #'     set.seed(123)
 #'     # Augment with 5 synthetic samples

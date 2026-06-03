@@ -19,6 +19,7 @@
 #' @examples
 #' \donttest{
 #' # Load example BSseq data
+#' library(bsseqData)
 #' data(BS.cancer.ex)
 #' # Create a sample metadata data frame
 #' samplesheet <- data.frame(
