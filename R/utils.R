@@ -2437,24 +2437,26 @@ orderByLoc <- function(x,
     paste0(output_prefix, suffix)
 }
 
-.downloadFirstAvailable <- function(urls, destfile, mode = "wb", quiet = TRUE) {
+.downloadFirstAvailable <- function(urls, destfile, mode = "wb", quiet = TRUE, nattempts = 3) {
     attempts <- character(length(urls))
 
     for (i in seq_along(urls)) {
-        error_message <- tryCatch(
-            {
-                utils::download.file(urls[[i]], destfile, quiet = quiet, mode = mode)
-                NULL
-            },
-            error = function(e) {
-                conditionMessage(e)
+        for (attempt in seq_len(nattempts)) {
+            error_message <- tryCatch(
+                {
+                    utils::download.file(urls[[i]], destfile, quiet = quiet, mode = mode)
+                    NULL
+                },
+                error = function(e) {
+                    conditionMessage(e)
+                }
+            )
+
+            if (is.null(error_message)) {
+                return(urls[[i]])
             }
-        )
-
-        if (is.null(error_message)) {
-            return(urls[[i]])
+            Sys.sleep(1)
         }
-
         attempts[[i]] <- paste0(urls[[i]], " (", error_message, ")")
     }
 
