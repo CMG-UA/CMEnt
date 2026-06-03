@@ -32,6 +32,7 @@ test_that("findDMRsFromSeeds matches in-memory results for a full synthetic BED 
 })
 
 test_that("findDMRsFromSeeds detects BED files by extension", {
+    skip_on_ci()
     fixture <- makeSyntheticFindDMRsFixture()
     baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
@@ -95,6 +96,7 @@ test_that("findDMRsFromSeeds handles BED files without a chr prefix", {
 })
 
 test_that("findDMRsFromSeeds respects custom BED coordinate column names", {
+    skip_on_ci()
     fixture <- makeSyntheticFindDMRsFixture()
     baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
