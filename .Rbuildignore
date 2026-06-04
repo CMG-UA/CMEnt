@@ -29,3 +29,5 @@
 ^envs$
 ^.*\.BiocCheck$
 ^tmp$
+^Rplots\.pdf$
+^tests/testthat/Rplots\.pdf$

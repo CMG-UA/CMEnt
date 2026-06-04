@@ -475,7 +475,7 @@
 
     # Create title if not provided
     title <- sprintf(
-        "DMR #%d: %s:%s-%s\nScore: %.2f\nCV Accuracy: %.2f\n%d seeds (\u0394\u03b2=%.3f)",
+        "DMR #%d: %s:%s-%s\nScore: %.2f\nCV Accuracy: %.2f\n%d seeds (delta beta=%.3f)",
         dmr_index,
         chr,
         format(dmr_start, big.mark = ",", scientific = FALSE),
@@ -660,7 +660,7 @@
             colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
             breaks = signif(q, digits = 2),
             limits = beta_limits,
-            name = "\u03b2-values"
+            name = "Beta values"
         )
     } else if (beta_limits[2] <= 0.5) {
         coloring <- ggplot2::scale_fill_gradient(
@@ -668,7 +668,7 @@
             high = "#f7f7f7",
             breaks = signif(q, digits = 2),
             limits = beta_limits,
-            name = "\u03b2-values"
+            name = "Beta values"
         )
     } else {
         coloring <- ggplot2::scale_fill_gradient(
@@ -676,7 +676,7 @@
             high = "#d7191c",
             breaks = signif(q, digits = 2),
             limits = beta_limits,
-            name = "\u03b2-values"
+            name = "Beta values"
         )
     }
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
@@ -953,7 +953,9 @@ minmaxscale <- function(x) {
 #' plotDMRs(dmrs, dmr_indices = 1:2, ncol = 2, plot_motif = FALSE)
 #'
 #' # Plot with beta values heatmap
-#' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+#' if (interactive()) {
+#'     plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+#' }
 #' }
 #'
 #' @export

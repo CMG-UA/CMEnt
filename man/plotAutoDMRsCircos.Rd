@@ -92,10 +92,12 @@ dmrs <- readRDS(system.file(
     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 ))
 \donttest{
-plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
-plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
-plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
-plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
+if (interactive()) {
+    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
+    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
+    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
+    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
+}
 }
 }

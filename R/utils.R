@@ -393,7 +393,7 @@
         return("")
     }
     if (secs < 0.001) {
-        x <- " (took %.2f\u03bcs)"
+        x <- " (took %.2f us)"
         Encoding(x) <- "UTF-8"
         sprintf(x, secs * 1000000)
     } else if (secs < 1) {

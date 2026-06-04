@@ -67,7 +67,9 @@ dmrs <- readRDS(system.file(
 plotDMRs(dmrs, dmr_indices = 1:2, ncol = 2, plot_motif = FALSE)
 
 # Plot with beta values heatmap
-plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+if (interactive()) {
+    plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
+}
 }
 
 }

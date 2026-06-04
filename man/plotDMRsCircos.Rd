@@ -102,8 +102,10 @@ dmrs <- readRDS(system.file(
     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 ))
 \donttest{
-plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
+if (interactive()) {
+    plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+    plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
+}
 }
 
 }

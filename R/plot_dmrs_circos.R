@@ -1561,8 +1561,10 @@
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
 #' \donttest{
-#' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-#' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
+#' if (interactive()) {
+#'     plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+#'     plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
+#' }
 #' }
 #'
 #' @importFrom circlize circos.initializeWithIdeogram circos.trackPlotRegion circos.genomicHeatmap
@@ -2219,11 +2221,13 @@ plotDMRsCircos <- function(dmrs,
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
 #' \donttest{
-#' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-#' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
-#' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
-#' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
-#' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
+#' if (interactive()) {
+#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
+#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
+#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
+#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
+#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
+#' }
 #' }
 #' @export
 plotAutoDMRsCircos <- function(dmrs,
