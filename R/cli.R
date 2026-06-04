@@ -225,8 +225,8 @@
 #'         entanglement = "strong"
 #'     )
 #'
-#'     \donttest{
-#'     findDMRsFromSeedsCLI(args)
+#'     if (interactive()) {
+#'         findDMRsFromSeedsCLI(args)
 #'     }
 #' }
 #'

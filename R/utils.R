@@ -2599,7 +2599,9 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
                 )
             )
         )
-        sites <- data.table::as.data.table(as.data.frame(sites, stringsAsFactors = FALSE))[, seq_len(2L)]
+        sites <- data.table::as.data.table(
+            as.data.frame(sites, stringsAsFactors = FALSE)[, seq_len(2L), drop = FALSE]
+        )
         colnames(sites) <- c("chr", "start")
         sites[, "end"] <- sites[, "start"]
         data.table::setkey(sites, chr, start, end)

@@ -31,8 +31,8 @@ if (requireNamespace("optparse", quietly = TRUE)) {
         entanglement = "strong"
     )
 
-    \donttest{
-    findDMRsFromSeedsCLI(args)
+    if (interactive()) {
+        findDMRsFromSeedsCLI(args)
     }
 }
 
