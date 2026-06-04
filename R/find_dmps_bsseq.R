@@ -38,9 +38,11 @@
 #'        case_group = "Condition2",
 #'        covariates = "Age",
 #'        fdr_thres = 0.05,
-#'        output_file = "dmp_results.tsv.gz",
+#'        output_file = NULL,
 #'        njobs = 4
 #'     )
+#'     print(head(dmps))
+#' 
 #' }
 #' }
 #' @importFrom stats as.formula
