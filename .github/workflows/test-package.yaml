@@ -154,8 +154,18 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      - name: Install test dependencies
+        shell: bash {0}
+        run: |
+          # Instal gpg,git,curl for codecov upload
+          apt-get update && apt-get install -y --no-install-recommends \
+            gpg \
+            git \
+            curl
+          # Install test dependencies
+          Rscript -e 'install.packages(c("covr", "testthat"))'
+      
       - uses: actions/checkout@v4
-
       - name: Run coverage
         shell: Rscript {0}
         run: |
