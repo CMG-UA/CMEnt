@@ -88,7 +88,10 @@ falls back to top-scoring individual DMR windows. Both selectors are greedy and
 avoid exhaustive optimization to keep region finding inexpensive.
 }
 \examples{
-\dontrun{
+dmrs <- readRDS(system.file(
+    "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+))
+\donttest{
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
 plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")

@@ -29,13 +29,13 @@
 }
 
 .motifCorr <- function(pwmSubjectMatrixList, pwmQuery, pwmQueryRevcomp = NULL) {
-    sapply(pwmSubjectMatrixList, function(pwmSubject) {
+    vapply(pwmSubjectMatrixList, function(pwmSubject) {
         best <- .maxPWMCorr(pwmSubject, pwmQuery)
         if (!is.null(pwmQueryRevcomp)) {
             best <- max(best, .maxPWMCorr(pwmSubject, pwmQueryRevcomp))
         }
         best
-    })
+    }, numeric(1))
 }
 
 .parseDMRComponentIndices <- function(x) {
@@ -642,9 +642,9 @@ computeDMRsInteraction <- function(
                 mat <- Reduce("+", pwms) / length(pwms)
                 mat / colSums(mat)
             })
-            components_df$consensus_seq <- sapply(components_df$avg_pwm, function(pwm) {
+            components_df$consensus_seq <- vapply(components_df$avg_pwm, function(pwm) {
                 paste(Biostrings::DNA_BASES[apply(pwm, 2, which.max)], collapse = "")
-            })
+            }, character(1))
             # Order by component size
             components_df <- components_df[order(-components_df$size), ]
             old_component_ids <- components_df$component_id

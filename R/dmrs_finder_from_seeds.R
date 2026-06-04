@@ -467,8 +467,8 @@
 
 .chooseTestingOptions <- function(group, mat, mask, testing_mode, empirical_strategy) {
     n_sites <- nrow(mat)
-    x_mat_full <- mat[1:(n_sites - 1), , drop = FALSE] # Sites i
-    y_mat_full <- mat[2:n_sites, , drop = FALSE] # Sites i+1
+    x_mat_full <- mat[seq_len(n_sites - 1L), , drop = FALSE] # Sites i
+    y_mat_full <- mat[seq.int(2L, n_sites), , drop = FALSE] # Sites i+1
     x_mat <- x_mat_full[mask, , drop = FALSE]
     y_mat <- y_mat_full[mask, , drop = FALSE]
     valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
@@ -1030,7 +1030,7 @@
         site_starts <- as.numeric(beta_locs[splits[1, 1]:(splits[1, 2] + 1L), "start"])
         s <- length(site_starts)
         if (!is.null(max_lookup_dist) && !is.null(site_starts)) {
-            dists <- site_starts[2:s] - site_starts[1:(s - 1)]
+            dists <- site_starts[seq.int(2L, s)] - site_starts[seq_len(s - 1L)]
             exceeded_dist <- dists > max_lookup_dist
         } else {
             exceeded_dist <- rep(FALSE, n_sites - 1L)
@@ -1050,9 +1050,9 @@
                 )
             }
         )
-        empirical_strategy_per_group <- sapply(groups_options, function(opt) opt$empirical_strategy)
+        empirical_strategy_per_group <- vapply(groups_options, function(opt) opt$empirical_strategy, character(1))
         names(empirical_strategy_per_group) <- names(group_inds)
-        testing_mode_per_group <- sapply(groups_options, function(opt) opt$testing_mode)
+        testing_mode_per_group <- vapply(groups_options, function(opt) opt$testing_mode, character(1))
         names(testing_mode_per_group) <- names(group_inds)
         rm(first_chunk, site_starts, exceeded_dist, nexdist_mask, groups_options)
         gc()
@@ -2107,7 +2107,7 @@
                 sum(end_less_than_start),
                 " DMRs have been assigned an end larger than start ! (CODE BUG TO BE REPORTED)",
                 " Those are: \n\t",
-                paste0(capture.output(print(dmrs[end_less_than_start, ])), collapse = "\n\t")
+                paste0(capture.output(dmrs[end_less_than_start, ]), collapse = "\n\t")
             )
         )
     }
@@ -2509,8 +2509,8 @@
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
-    upstream_expansion_length_table <- table(sapply(ret, function(x) x[["upstream_expansion_length"]]))
-    downstream_expansion_length_table <- table(sapply(ret, function(x) x[["downstream_expansion_length"]]))
+    upstream_expansion_length_table <- table(vapply(ret, function(x) x[["upstream_expansion_length"]], numeric(1)))
+    downstream_expansion_length_table <- table(vapply(ret, function(x) x[["downstream_expansion_length"]], numeric(1)))
     # sort tables by names (expansion sizes)
     upstream_expansion_length_table <- upstream_expansion_length_table[order(as.integer(names(upstream_expansion_length_table)))]
     downstream_expansion_length_table <- downstream_expansion_length_table[order(as.integer(names(downstream_expansion_length_table)))]
@@ -2564,7 +2564,7 @@
     colnames(agg_df) <- c(mcol_names, "merged_dmrs_num")
     # ranges that do not need to be merged will have only one hit
     tqh <- table(qh)
-    .log_info("Frequency of N-DMRs overlap:\n", paste(capture.output(print(table(tqh))), collapse = "\n"), level = 3)
+    .log_info("Frequency of N-DMRs overlap:\n", paste(capture.output(table(tqh)), collapse = "\n"), level = 3)
     single_hits <- which(tqh == 1)
     if (length(single_hits) > 0) {
         # get the corresponding indices in the original extended_dmrs_ranges
@@ -2740,7 +2740,7 @@
     )
     seeds_match <- match(seq_len(nrow(annotated_dmrs)), seeds_agg$dmr_id)
     if (anyNA(seeds_match)) {
-        stop("Internal error while aggregating seed beta statistics: missing dmr_id rows.")
+        stop("Internal failure while aggregating seed beta statistics: missing dmr_id rows.")
     }
     seeds_agg <- seeds_agg[seeds_match, , drop = FALSE]
 
@@ -2769,7 +2769,7 @@
     )
     sites_match <- match(seq_len(nrow(annotated_dmrs)), sites_agg$dmr_id)
     if (anyNA(sites_match)) {
-        stop("Internal error while aggregating site beta statistics: missing dmr_id rows.")
+        stop("Internal failure while aggregating site beta statistics: missing dmr_id rows.")
     }
     sites_agg <- sites_agg[sites_match, , drop = FALSE]
 
@@ -2923,8 +2923,8 @@
 #' @return Data frame of identified DMRs.
 #'
 #' @examples
-#' \donttest{
 #' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
+#' \donttest{
 #' dmrs <- findDMRsFromSeeds(
 #'   beta = beta,
 #'   seeds = dmps,
@@ -3033,7 +3033,7 @@ findDMRsFromSeeds <- function(
             stop("pheno must be either a file path or a data frame")
         }
         if (inherits(pheno_df, "try-error")) {
-            stop("Error reading pheno file: ", pheno)
+            stop("Could not read pheno file: ", pheno)
         }
         if (all(rownames(pheno_df) == as.character(seq_len(nrow(pheno_df))))) {
             pheno_row_names <- as.character(pheno_df[, 1])

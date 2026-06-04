@@ -915,7 +915,7 @@ minmaxscale <- function(x) {
                 subtitle = pwm_subtitle,
                 title = paste0("Motif PWM (consensus: ", consensus_seq, ")")
             ) +
-            ggplot2::scale_x_continuous(breaks = 1:n_positions, labels = as.character(position_labels))
+            ggplot2::scale_x_continuous(breaks = seq_len(n_positions), labels = as.character(position_labels))
     }))
 
     pwm_plot
@@ -945,10 +945,12 @@ minmaxscale <- function(x) {
 #'   If beta is provided: A list of combined plot objects with structure and heatmap.
 #'
 #' @examples
-#' \dontrun{
+#' dmrs <- readRDS(system.file(
+#'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+#' ))
+#' \donttest{
 #' # Plot structure only
-#' dmrs <- readRDS("dmrs.rds")
-#' plotDMRs(dmrs, dmr_indices = 1:6, ncol = 3)
+#' plotDMRs(dmrs, dmr_indices = 1:2, ncol = 2, plot_motif = FALSE)
 #'
 #' # Plot with beta values heatmap
 #' plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
@@ -1060,23 +1062,11 @@ plotDMRs <- function(dmrs,
 #'   and sequence logo motif plot (if motif information is available and plot_motif is TRUE).
 #'
 #' @examples
-#' \dontrun{
-#' # Using BetaHandler
-#' loadExampleInputDataChr5And11()
-#' dmrs_tsv <- system.file("extdata", "example_outputChr5And11.dmrs.tsv.gz", package = "CMEnt")
-#' dmrs_tsv <- read.table(gzfile(dmrs_tsv), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-#' 
-#' beta_handler <- getBetaHandler(beta = beta, array = array, genome = "hg38")
-#' plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
-#'
-#' # Using a beta matrix
-#' plotDMR(dmrs, 1, beta = beta, pheno = pheno_df)
-#'
-#' # With custom flank size for motif extraction
-#' plotDMR(dmrs, 1, beta = beta, pheno = pheno_df, motif_site_flank_size = 10)
-#'
-#' # Without motif plot
-#' plotDMR(dmrs, 1, beta = beta, pheno = pheno_df, plot_motif = FALSE)
+#' dmrs <- readRDS(system.file(
+#'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+#' ))
+#' \donttest{
+#' plotDMR(dmrs, 1, plot_motif = FALSE)
 #' }
 #'
 #' @export
@@ -1619,11 +1609,13 @@ plotDMR <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \dontrun{
-#' dmrs <- readRDS("dmrs.rds")
+#' dmrs <- data.frame(
+#'     chr = "chr7",
+#'     start = seq(1e6, by = 5e4, length.out = 10),
+#'     end = seq(1e6, by = 5e4, length.out = 10) + 100,
+#'     score = seq(0.5, 0.8, length.out = 10)
+#' )
 #' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
-#' print(p)
-#' }
 #' @export
 plotDMRBlockFormation <- function(dmrs,
                                   chromosome,
@@ -1911,11 +1903,13 @@ plotDMRBlockFormation <- function(dmrs,
 #' @return A ggplot object.
 #'
 #' @examples
-#' \dontrun{
-#' dmrs <- readRDS("dmrs.rds")
+#' dmrs <- data.frame(
+#'     chr = c("chr1", "chr1", "chr2"),
+#'     start = c(100, 200, 100),
+#'     end = c(150, 250, 150),
+#'     score = c(0.6, 0.8, 0.7)
+#' )
 #' p <- plotDMRsManhattan(dmrs)
-#' print(p)
-#' }
 #' @export
 plotDMRsManhattan <- function(dmrs,
                               region = NULL,

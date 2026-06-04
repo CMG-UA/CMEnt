@@ -61,19 +61,11 @@ The function performs the following steps:
 }
 }
 \examples{
-\dontrun{
-# Convert a beta file to tabix format
-tabix_file <- convertBetaToTabix(
-    beta_file = "methylation_beta.txt",
-    array = "450K"
-)
-
-# Use custom output location
-tabix_file <- convertBetaToTabix(
-    beta_file = "methylation_beta.txt",
-    output_file = "my_custom_location.bed.gz",
-    array = "EPIC"
-)
+if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
+    beta_file <- tempfile(fileext = ".tsv")
+    writeLines(c("\tsample1", "cg1\t0.5"), beta_file)
+    locs <- data.frame(chr = "chr1", start = 100L, row.names = "cg1")
+    tabix_file <- convertBetaToTabix(beta_file, sorted_locs = locs)
 }
 
 }

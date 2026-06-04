@@ -175,8 +175,8 @@ but avoid filtering based on beta value thresholds or effect size cutoffs before
 }
 
 \examples{
-\donttest{
 loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
+\donttest{
 dmrs <- findDMRsFromSeeds(
   beta = beta,
   seeds = dmps,

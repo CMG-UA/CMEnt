@@ -81,40 +81,21 @@ storage.
 }
 
 \examples{
-\dontrun{
 # Create a simple phenotype data frame
 pheno <- data.frame(
-    sample_group = c("case", "case", "control", "control"),
-    row.names = c("Sample1", "Sample2", "Sample3", "Sample4")
+    sample_group = c("case", "control"),
+    row.names = c("Sample1", "Sample2")
 )
 
-# Process a custom BED file
-result <- readCustomMethylationBedData(
-    bed_file = "custom_methylation.bed.gz",
-    genome = "hg38",
-    pheno = pheno
-)
-
-# Use custom column names
-result <- readCustomMethylationBedData(
-    bed_file = "custom_methylation.bed",
-    pheno = pheno,
-    genome = "hg38",
-    chrom_col = "chromosome",
-    start_col = "position"
-)
-
-# Specify custom output directory
-result <- readCustomMethylationBedData(
-    bed_file = "custom_methylation.bed.gz",
-    pheno = pheno,
-    genome = "hg38",
-    output_dir = "/path/to/output"
-)
-
-# Access the processed files
-tabix_file <- result$tabix_file
-locations <- result$locations
+if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
+    bed_file <- tempfile(fileext = ".bed")
+    writeLines(c(
+        "#chrom\tstart\tSample1\tSample2",
+        "chr1\t100\t0.2\t0.8",
+        "chr1\t200\t0.3\t0.7"
+    ), bed_file)
+    result <- readCustomMethylationBedData(bed_file, pheno)
+    result$tabix_file
 }
 
 }

@@ -63,7 +63,8 @@ njobs > 1 when using the online API, or install the appropriate BSgenome package
 for much faster local sequence retrieval.
 }
 \examples{
-\dontrun{
+dmrs <- GenomicRanges::GRanges("chr1", IRanges::IRanges(100000, 100100))
+\donttest{
 # Extract sequences for DMRs using BSgenome packages
 sequences <- getDMRSequences(dmrs, "hg19")
 
@@ -71,9 +72,9 @@ sequences <- getDMRSequences(dmrs, "hg19")
 sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 
 # Calculate GC content
-gc_content <- sapply(sequences, function(s) {
+gc_content <- vapply(sequences, function(s) {
     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
-})
+}, numeric(1))
 }
 
 }

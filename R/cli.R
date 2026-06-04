@@ -210,7 +210,6 @@
 #' @return None, outputs results to files
 #'
 #' @examples
-#' \dontrun{
 #' if (requireNamespace("optparse", quietly = TRUE)) {
 #'     args <- list(
 #'         beta = "path/to/beta_values.rds",
@@ -226,8 +225,9 @@
 #'         entanglement = "strong"
 #'     )
 #'
+#'     \donttest{
 #'     findDMRsFromSeedsCLI(args)
-#' }
+#'     }
 #' }
 #'
 #' @export
@@ -462,7 +462,7 @@ launchCMEntViewerCLI <- function(args) {
     invocation <- .resolveCMEntCLIInvocation(cli_args)
 
     if (isTRUE(invocation$top_level_help)) {
-        cat(.topLevelCMEntCLIHelp(script_name), "\n")
+        writeLines(.topLevelCMEntCLIHelp(script_name))
         return(invisible(0L))
     }
 

@@ -24,14 +24,12 @@
 #' @importFrom SummarizedExperiment assays
 #' @return A BSseq object with original and synthetic samples
 #' @examples
-#' \donttest{
-#'     if (requireNamespace("bsseqData", quietly = TRUE)) {
-#'         # Load example BSseq data
-#'         data(BS.cancer.ex, package = "bsseqData")
-#'         BS.cancer.ex <- BS.cancer.ex[seq_len(1000), ]
-#'         set.seed(123)
-#'         # Augment with 5 synthetic samples
-#'         augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 5)
+#' if (requireNamespace("bsseqData", quietly = TRUE)) {
+#'     data(BS.cancer.ex, package = "bsseqData")
+#'     BS.cancer.ex <- BS.cancer.ex[seq_len(100), ]
+#'     \donttest{
+#'     set.seed(123)
+#'     augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 2)
 #'     }
 #' }
 #' @export

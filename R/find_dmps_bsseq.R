@@ -17,7 +17,6 @@
 #' @return A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 #' 
 #' @examples
-#' \donttest{
 #' if (requireNamespace("bsseqData", quietly = TRUE) &&
 #'     requireNamespace("DSS", quietly = TRUE)) {
 #'     # Load example BSseq data
@@ -30,6 +29,7 @@
 #'       Age = c(30, 32, 31, 28, 29, 27)
 #'     )
 #'     # Find DMPs with DSS
+#'     \donttest{
 #'     dmps <- findDMPsBSSeq(
 #'        bsseq = BS.cancer.ex,
 #'        samplesheet = samplesheet,
@@ -42,8 +42,7 @@
 #'        njobs = 4
 #'     )
 #'     print(head(dmps))
-#' 
-#' }
+#'     }
 #' }
 #' @importFrom stats as.formula
 #' @export
@@ -66,9 +65,9 @@ findDMPsBSSeq <- function(
         reason = "DMP calling from BSseq objects is delegated to DSS."
     )
     if (chr == "auto") {
-        chr <- paste0("chr", c(1:22))
+        chr <- paste0("chr", seq_len(22L))
     } else if (chr == "all") {
-        chr <- c(paste0("chr", c(1:22)), "chrX", "chrY")
+        chr <- c(paste0("chr", seq_len(22L)), "chrX", "chrY")
     } else {
         chr <- trimws(unlist(strsplit(chr, ",")))
     }
@@ -95,7 +94,7 @@ findDMPsBSSeq <- function(
     colnames(pheno) <- trimws(colnames(pheno))
 
     if (!all(c(group_col, id_col) %in% colnames(pheno))) {
-        stop(paste("Group column", group_col, "or ID column", id_col, "not found in samplesheet."))
+        stop("Group column ", group_col, " or ID column ", id_col, " not found in samplesheet.")
     }
 
     pheno[[id_col]] <- as.character(pheno[[id_col]])
@@ -107,7 +106,7 @@ findDMPsBSSeq <- function(
     }
 
     if (!is.null(case_group) && !case_group %in% pheno[[group_col]]) {
-        stop(paste("Specified case group", case_group, "not found in group column", group_col))
+        stop("Specified case group ", case_group, " not found in group column ", group_col)
     }
     if (!all(colnames(bsseq_obj) %in% pheno[[id_col]])) {
         stop("Not all samples in BSseq object are present in the samplesheet.")
@@ -138,7 +137,10 @@ findDMPsBSSeq <- function(
     if (!is.null(covariates)) {
         missing_covariates <- setdiff(covariates, colnames(pheno))
         if (length(missing_covariates) > 0) {
-            stop(paste("The following covariates are missing from the provided samplesheet:", paste(missing_covariates, collapse = ",")))
+            stop(
+                "The following covariates are missing from the provided samplesheet: ",
+                paste(missing_covariates, collapse = ",")
+            )
         }
     }
 
@@ -236,7 +238,7 @@ findDMPsBSSeq <- function(
             ),
             error = function(e) {
                 warning(
-                    "Parallel DSS chromosome processing failed; retrying serially. Original error: ",
+                    "Parallel DSS chromosome processing failed; retrying serially. Original condition: ",
                     conditionMessage(e),
                     call. = FALSE
                 )

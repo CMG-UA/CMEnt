@@ -8,7 +8,7 @@
         abs_delta_beta <- abs(chr_dmrs$delta_beta)
         score <- minmaxscale(abs_delta_beta)
         ord <- order(score, decreasing = TRUE)
-        selected_indices <- ord[1:max_dmrs_per_chr]
+        selected_indices <- ord[seq_len(max_dmrs_per_chr)]
         chr_dmrs[selected_indices]
     })
     filtered_dmrs <- unlist(GenomicRanges::GRangesList(filtered_dmrs_list))
@@ -677,7 +677,7 @@
     }
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
-        heatmap_numeric <- as.matrix(heatmap_df[, -(1:3), drop = FALSE])
+        heatmap_numeric <- as.matrix(heatmap_df[, -seq_len(3L), drop = FALSE])
         storage.mode(heatmap_numeric) <- "numeric"
         valid_vals <- as.numeric(heatmap_numeric)
         valid_vals <- valid_vals[is.finite(valid_vals)]
@@ -696,7 +696,7 @@
             }
             heatmap_height <- 0.3
             heatmap_df_plot <- data.frame(
-                heatmap_df[, 1:3, drop = FALSE],
+                heatmap_df[, seq_len(3L), drop = FALSE],
                 heatmap_numeric,
                 check.names = FALSE,
                 stringsAsFactors = FALSE
@@ -1557,8 +1557,10 @@
 #' @return `NULL` invisibly after drawing the plot.
 #'
 #' @examples
-#' \dontrun{
-#' dmrs <- readRDS("dmrs.rds")
+#' dmrs <- readRDS(system.file(
+#'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+#' ))
+#' \donttest{
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
 #' }
@@ -1813,7 +1815,7 @@ plotDMRsCircos <- function(dmrs,
     }
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
-        heatmap_numeric <- as.matrix(heatmap_df[, -(1:3), drop = FALSE])
+        heatmap_numeric <- as.matrix(heatmap_df[, -seq_len(3L), drop = FALSE])
         storage.mode(heatmap_numeric) <- "numeric"
         valid_vals <- as.numeric(heatmap_numeric)
         valid_vals <- valid_vals[is.finite(valid_vals)]
@@ -1832,7 +1834,7 @@ plotDMRsCircos <- function(dmrs,
             }
             heatmap_height <- 0.3
             heatmap_df_plot <- data.frame(
-                heatmap_df[, 1:3, drop = FALSE],
+                heatmap_df[, seq_len(3L), drop = FALSE],
                 heatmap_numeric,
                 check.names = FALSE,
                 stringsAsFactors = FALSE
@@ -2213,7 +2215,10 @@ plotDMRsCircos <- function(dmrs,
 #'   `start`, and `end`.
 #'
 #' @examples
-#' \dontrun{
+#' dmrs <- readRDS(system.file(
+#'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+#' ))
+#' \donttest{
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
 #' plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")

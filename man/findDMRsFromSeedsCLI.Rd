@@ -16,7 +16,6 @@ None, outputs results to files
 Command Line Interface for Finding DMRs from DMPs
 }
 \examples{
-\dontrun{
 if (requireNamespace("optparse", quietly = TRUE)) {
     args <- list(
         beta = "path/to/beta_values.rds",
@@ -32,8 +31,9 @@ if (requireNamespace("optparse", quietly = TRUE)) {
         entanglement = "strong"
     )
 
+    \donttest{
     findDMRsFromSeedsCLI(args)
-}
+    }
 }
 
 }

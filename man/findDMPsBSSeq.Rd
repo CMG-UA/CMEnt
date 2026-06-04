@@ -48,7 +48,6 @@ A data frame of identified DMPs with columns for chromosome, position, site ID, 
 This helper function identifies differentially methylated positions (DMPs) from a BSseq object using the DSS package. It allows for flexible specification of sample groups, covariates, and chromosome filtering.
 }
 \examples{
-\donttest{
 if (requireNamespace("bsseqData", quietly = TRUE) &&
     requireNamespace("DSS", quietly = TRUE)) {
     # Load example BSseq data
@@ -61,6 +60,7 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
       Age = c(30, 32, 31, 28, 29, 27)
     )
     # Find DMPs with DSS
+    \donttest{
     dmps <- findDMPsBSSeq(
        bsseq = BS.cancer.ex,
        samplesheet = samplesheet,
@@ -69,9 +69,10 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
        case_group = "Condition2",
        covariates = "Age",
        fdr_thres = 0.05,
-       output_file = "dmp_results.tsv.gz",
+       output_file = NULL,
        njobs = 4
     )
-}
+    print(head(dmps))
+    }
 }
 }

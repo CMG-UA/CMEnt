@@ -62,6 +62,20 @@
 #'   `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`, `selected_regions`,
 #'   `groups`, and `case_group`. For reproducible simulations, call
 #'   `set.seed()` before `simulateDMRs()`.
+#' @examples
+#' beta <- matrix(seq(0.1, 0.9, length.out = 48), nrow = 12)
+#' rownames(beta) <- paste0("cg", seq_len(nrow(beta)))
+#' colnames(beta) <- paste0("sample", seq_len(ncol(beta)))
+#' locs <- data.frame(
+#'     chr = "chr1",
+#'     start = seq(100, by = 100, length.out = nrow(beta)),
+#'     row.names = rownames(beta)
+#' )
+#' set.seed(1)
+#' simulated <- simulateDMRs(
+#'     beta, num_dmrs = 1, min_sites = 5, max_sites = 20,
+#'     sorted_locs = locs, verbose = 0
+#' )
 #' @importFrom stats qlogis plogis
 #' @export
 simulateDMRs <- function(

@@ -178,10 +178,14 @@
         cols_inds <- match(beta_col_names, file_sample_col_names)
         cols_inds <- sample_inds[cols_inds[!is.na(cols_inds)]]
         if (length(cols_inds) == 0) {
+            supplied_names <- paste(
+                beta_col_names[seq_len(min(5, length(beta_col_names)))],
+                collapse = ", "
+            )
             stop(
                 "Beta file does not contain any phenotype rownames ",
                 "as column name. First 5 supplied phenotype rownames: ",
-                paste(beta_col_names[seq_len(min(5, length(beta_col_names)))], sep = ",")
+                supplied_names
             )
         }
         beta_col_names <- file_beta_col_names[cols_inds]
@@ -351,9 +355,7 @@
     stopifnot(nrow(subset_samplesheet) != 0)
     .log_info(
         "Read samplesheet head:\n\t",
-        paste(capture.output(print(
-            head(subset_samplesheet)
-        )), collapse = "\n\t")
+        paste(capture.output(head(subset_samplesheet)), collapse = "\n\t")
     )
     if (!is.null(sample_group_col)) {
         if (!is.null(sample_group_control)) {
@@ -891,40 +893,21 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 #' storage.
 #'
 #' @examples
-#' \dontrun{
 #' # Create a simple phenotype data frame
 #' pheno <- data.frame(
-#'     sample_group = c("case", "case", "control", "control"),
-#'     row.names = c("Sample1", "Sample2", "Sample3", "Sample4")
+#'     sample_group = c("case", "control"),
+#'     row.names = c("Sample1", "Sample2")
 #' )
 #'
-#' # Process a custom BED file
-#' result <- readCustomMethylationBedData(
-#'     bed_file = "custom_methylation.bed.gz",
-#'     genome = "hg38",
-#'     pheno = pheno
-#' )
-#'
-#' # Use custom column names
-#' result <- readCustomMethylationBedData(
-#'     bed_file = "custom_methylation.bed",
-#'     pheno = pheno,
-#'     genome = "hg38",
-#'     chrom_col = "chromosome",
-#'     start_col = "position"
-#' )
-#'
-#' # Specify custom output directory
-#' result <- readCustomMethylationBedData(
-#'     bed_file = "custom_methylation.bed.gz",
-#'     pheno = pheno,
-#'     genome = "hg38",
-#'     output_dir = "/path/to/output"
-#' )
-#'
-#' # Access the processed files
-#' tabix_file <- result$tabix_file
-#' locations <- result$locations
+#' if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
+#'     bed_file <- tempfile(fileext = ".bed")
+#'     writeLines(c(
+#'         "#chrom\tstart\tSample1\tSample2",
+#'         "chr1\t100\t0.2\t0.8",
+#'         "chr1\t200\t0.3\t0.7"
+#'     ), bed_file)
+#'     result <- readCustomMethylationBedData(bed_file, pheno)
+#'     result$tabix_file
 #' }
 #'
 #' @seealso
@@ -980,7 +963,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 
     # Quickly read number of rows in BED file
     tmp_con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
-    num_rows <- sum(sapply(readLines(tmp_con), function(x) nchar(x) > 0)) - 1
+    num_rows <- sum(vapply(readLines(tmp_con), function(x) nchar(x) > 0, logical(1))) - 1
     close(tmp_con)
     .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
 
@@ -1083,19 +1066,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Convert a beta file to tabix format
-#' tabix_file <- convertBetaToTabix(
-#'     beta_file = "methylation_beta.txt",
-#'     array = "450K"
-#' )
-#'
-#' # Use custom output location
-#' tabix_file <- convertBetaToTabix(
-#'     beta_file = "methylation_beta.txt",
-#'     output_file = "my_custom_location.bed.gz",
-#'     array = "EPIC"
-#' )
+#' if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
+#'     beta_file <- tempfile(fileext = ".tsv")
+#'     writeLines(c("\tsample1", "cg1\t0.5"), beta_file)
+#'     locs <- data.frame(chr = "chr1", start = 100L, row.names = "cg1")
+#'     tabix_file <- convertBetaToTabix(beta_file, sorted_locs = locs)
 #' }
 #'
 #' @export
@@ -1363,7 +1338,7 @@ convertBetaToTabix <- function(beta_file,
                     "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
                     shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
                 )
-                system(sort_cmd)
+                system2("sh", c("-c", shQuote(sort_cmd)))
             }
             unlink(temp_bed)
             # Compress with bgzip
@@ -1435,20 +1410,14 @@ convertBetaToTabix <- function(beta_file,
 #' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 #'
 #' @examples
-#' \dontrun{
-#' # Sort a beta file for 450K array
-#' sorted_file <- sortBetaFileByCoordinates(
-#'     beta_file = "unsorted_beta.txt",
-#'     output_file = "sorted_beta.txt",
-#'     array = "450K"
+#' beta_file <- tempfile(fileext = ".tsv")
+#' writeLines(c("sample1", "cg2\t0.2", "cg1\t0.1"), beta_file)
+#' locs <- data.frame(
+#'     chr = c("chr1", "chr1"),
+#'     start = c(100L, 200L),
+#'     row.names = c("cg1", "cg2")
 #' )
-#'
-#' # Sort an EPIC array beta file with default output name
-#' sorted_file <- sortBetaFileByCoordinates(
-#'     beta_file = "epic_beta.txt",
-#'     array = "EPIC"
-#' )
-#' }
+#' sorted_file <- sortBetaFileByCoordinates(beta_file, genomic_locs = locs)
 #'
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
@@ -1782,7 +1751,8 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     msg <- c(msg, "Install with:", .formatInstallInstructions(missing_pkgs))
 
-    stop(paste(msg, collapse = "\n"), call. = FALSE)
+    msg <- paste(msg, collapse = "\n")
+    stop(msg, call. = FALSE)
 }
 
 
@@ -1838,7 +1808,8 @@ sortBetaFileByCoordinates <- function(beta_file,
     }
     msg <- c(msg, "Install with:", .formatInstallInstructions(missing_pkgs))
 
-    stop(paste(msg, collapse = "\n"), call. = FALSE)
+    msg <- paste(msg, collapse = "\n")
+    stop(msg, call. = FALSE)
 }
 
 
@@ -1853,10 +1824,8 @@ sortBetaFileByCoordinates <- function(beta_file,
             "epicv2" = "IlluminaHumanMethylationEPICv2anno.20a1.hg38",
             "27k" = "IlluminaHumanMethylation27kanno.ilmn12.hg19",
             stop(
-                paste0(
-                    "Incorrect array and genome combination was provided. ",
-                    "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported."
-                ),
+                "Incorrect array and genome combination was provided. ",
+                "For hg19, hg38, and hs1, ('450K','EPIC','EPICv2','27K') arrays are supported.",
                 call. = FALSE
             )
         ))
@@ -2515,7 +2484,8 @@ orderByLoc <- function(x,
 #' for much faster local sequence retrieval.
 #'
 #' @examples
-#' \dontrun{
+#' dmrs <- GenomicRanges::GRanges("chr1", IRanges::IRanges(100000, 100100))
+#' \donttest{
 #' # Extract sequences for DMRs using BSgenome packages
 #' sequences <- getDMRSequences(dmrs, "hg19")
 #'
@@ -2523,9 +2493,9 @@ orderByLoc <- function(x,
 #' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
 #'
 #' # Calculate GC content
-#' gc_content <- sapply(sequences, function(s) {
+#' gc_content <- vapply(sequences, function(s) {
 #'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
-#' })
+#' }, numeric(1))
 #' }
 #'
 #' @importFrom BSgenome getSeq
@@ -2553,7 +2523,7 @@ getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, d
         seq_db <- getExportedValue(pkg_name, pkg_name)
         sequences <- Biostrings::getSeq(seq_db, dmrs, as.character = TRUE)
         if (is.list(sequences)) {
-            sequences <- sapply(sequences, function(x) paste(x, collapse = ""))
+            sequences <- vapply(sequences, function(x) paste(x, collapse = ""), character(1))
         }
     } else {
         .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
@@ -2584,12 +2554,12 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
     pkg_name <- .getBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         sequences <- getDMRSequences(regions, genome, use_online = TRUE, njobs = njobs)
-        site_counts <- sapply(sequences, function(seq) {
+        site_counts <- vapply(sequences, function(seq) {
             if (is.na(seq)) {
                 return(NA_integer_)
             }
             stringr::str_count(seq, "CG")
-        })
+        }, integer(1))
         return(unlist(site_counts))
     }
     cache_dir <- getOption(
@@ -2629,13 +2599,13 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
                 )
             )
         )
-        sites <- data.table::as.data.table(as.data.frame(sites, stringsAsFactors = FALSE))[, 1:2]
+        sites <- data.table::as.data.table(as.data.frame(sites, stringsAsFactors = FALSE))[, seq_len(2L)]
         colnames(sites) <- c("chr", "start")
         sites[, "end"] <- sites[, "start"]
         data.table::setkey(sites, chr, start, end)
         .saveBiocFileCacheRDS(sites, cache_dir, cache_key)
     }
-    regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, 1:3]
+    regions <- as.data.frame(regions, stringsAsFactors = FALSE)[, seq_len(3L)]
     regions <- data.table::as.data.table(regions)
     colnames(regions) <- c("rchr", "rstart", "rend")
     regions[, "id"] <- seq_len(nrow(regions))
@@ -3028,7 +2998,7 @@ convertToGRanges <- function(obj, genome) {
         if (any(grepl(":", obj[[1]]))) {
             obj$original_location <- obj[[1]]
             loc_split <- base::strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
-            obj[[1]] <- sapply(loc_split, function(x) x[1])
+            obj[[1]] <- vapply(loc_split, function(x) x[1], character(1))
         }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,

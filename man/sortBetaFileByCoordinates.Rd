@@ -49,19 +49,13 @@ The function performs the following steps:
 If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
 }
 \examples{
-\dontrun{
-# Sort a beta file for 450K array
-sorted_file <- sortBetaFileByCoordinates(
-    beta_file = "unsorted_beta.txt",
-    output_file = "sorted_beta.txt",
-    array = "450K"
+beta_file <- tempfile(fileext = ".tsv")
+writeLines(c("sample1", "cg2\t0.2", "cg1\t0.1"), beta_file)
+locs <- data.frame(
+    chr = c("chr1", "chr1"),
+    start = c(100L, 200L),
+    row.names = c("cg1", "cg2")
 )
-
-# Sort an EPIC array beta file with default output name
-sorted_file <- sortBetaFileByCoordinates(
-    beta_file = "epic_beta.txt",
-    array = "EPIC"
-)
-}
+sorted_file <- sortBetaFileByCoordinates(beta_file, genomic_locs = locs)
 
 }

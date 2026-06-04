@@ -9,11 +9,11 @@
     for (g in names(group_folds)) {
         if (length(group_folds[[g]]) < nfold) {
             gsize <- length(group_folds[[g]])
-            stop(paste0(
+            stop(
                 "Number of samples in group (", gsize, ") '", g, "' is less than nfold = ", nfold,
                 ". Cannot perform stratified cross-prediction. Reduce nfold using options(CMEnt.scoring_nfold=", gsize,
                 ") or increase number of samples in this group."
-            ))
+            )
         }
     }
     folds <- integer(length(groups))

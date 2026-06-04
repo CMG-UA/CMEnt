@@ -76,23 +76,11 @@ Additionally, if motif information is available or can be extracted, a sequence 
 plot is added showing the nucleotide composition and information content around site sites in the DMR.
 }
 \examples{
-\dontrun{
-# Using BetaHandler
-loadExampleInputDataChr5And11()
-dmrs_tsv <- system.file("extdata", "example_outputChr5And11.dmrs.tsv.gz", package = "CMEnt")
-dmrs_tsv <- read.table(gzfile(dmrs_tsv), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-
-beta_handler <- getBetaHandler(beta = beta, array = array, genome = "hg38")
-plotDMR(dmrs, 1, beta = beta_handler, pheno = pheno_df)
-
-# Using a beta matrix
-plotDMR(dmrs, 1, beta = beta, pheno = pheno_df)
-
-# With custom flank size for motif extraction
-plotDMR(dmrs, 1, beta = beta, pheno = pheno_df, motif_site_flank_size = 10)
-
-# Without motif plot
-plotDMR(dmrs, 1, beta = beta, pheno = pheno_df, plot_motif = FALSE)
+dmrs <- readRDS(system.file(
+    "extdata", "example_outputChr5And11.rds", package = "CMEnt"
+))
+\donttest{
+plotDMR(dmrs, 1, plot_motif = FALSE)
 }
 
 }
