@@ -87,6 +87,8 @@ test_that("findDMRsFromSeeds works with small beta file (in-memory loading)", {
 })
 
 test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
+    skip_if_not(nzchar(Sys.which("tabix")))
+    skip_if_not(nzchar(Sys.which("bgzip")))
     
     expected_dmrs <- findDMRsFromSeeds(
         .score_dmrs = FALSE,
@@ -131,6 +133,8 @@ test_that("findDMRsFromSeeds works with large beta file (tabix indexing)", {
 })
 
 test_that("subset connectivity matches between in-memory and tabix beta handlers", {
+    skip_if_not(nzchar(Sys.which("tabix")))
+    skip_if_not(nzchar(Sys.which("bgzip")))
     dmps <- dmps[seq_len(20), , drop = FALSE]
 
     mem_handler <- getBetaHandler(beta, array = "450K", genome = "hg19", njobs = 1)

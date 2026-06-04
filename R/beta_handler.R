@@ -406,6 +406,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         overwrite = TRUE
                     )
                     private$.beta_file <- sorted_beta_file
+                    private$.beta_row_names <- NULL
+                    private$.beta_locs <- NULL
+                    private$.beta_row_names <- self$getBetaRowNames()
                 }
                 .log_success("Beta file sorting validated", level = 2)
             } else {

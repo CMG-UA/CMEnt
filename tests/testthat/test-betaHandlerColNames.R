@@ -123,3 +123,40 @@ test_that("BetaHandler tabix backend supports repeated row requests", {
     expect_equal(unname(unlist(beta_subset[2, ])), unname(unlist(beta_subset[3, ])))
     expect_equal(rownames(beta_subset), c("cg1", "cg2", "cg2.1", "cg3"))
 })
+
+test_that("BetaHandler file fallback refreshes row order after sorting", {
+    withr::local_options(list(CMEnt.beta_in_mem_threshold_mb = 0))
+    withr::local_envvar(list(PATH = tempfile("no-tabix-")))
+
+    beta_file <- tempfile(fileext = ".tsv")
+    withr::defer(unlink(beta_file))
+    writeLines(
+        c(
+            "ID\tSample1\tSample2",
+            "cg2\t0.3\t0.4",
+            "cg1\t0.1\t0.2"
+        ),
+        beta_file
+    )
+    sorted_locs <- data.frame(
+        chr = rep("chr1", 2),
+        start = c(100L, 200L),
+        end = c(101L, 201L),
+        row.names = c("cg1", "cg2")
+    )
+
+    beta_handler <- suppressWarnings(
+        getBetaHandler(beta = beta_file, sorted_locs = sorted_locs)
+    )
+
+    expect_equal(rownames(beta_handler$getBetaLocs()), c("cg1", "cg2"))
+    expect_equal(
+        beta_handler$getBeta(row_names = c("cg2", "cg1")),
+        matrix(
+            c(0.3, 0.1, 0.4, 0.2),
+            nrow = 2,
+            dimnames = list(c("cg2", "cg1"), c("Sample1", "Sample2"))
+        )
+    )
+    expect_error(beta_handler$getBeta(row_names = "missing"), "not found")
+})

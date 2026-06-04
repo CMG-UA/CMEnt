@@ -211,7 +211,9 @@
         conn <- file(beta_file, "r")
     }
     if (!is.null(sites)) {
-        sites_inds <- which(beta_row_names %in% sites)
+        requested_inds <- match(sites, beta_row_names)
+        found <- !is.na(requested_inds)
+        sites_inds <- sort(unique(requested_inds[found]))
         sites_inds_steps <- diff(c(-1, sites_inds)) - 1
         beta_sites <- lapply(sites_inds_steps, function(step) {
             l <- scan(
@@ -223,11 +225,17 @@
             )
             as.numeric(l[cols_inds])
         })
+        beta_sites <- beta_sites[match(requested_inds[found], sites_inds)]
+        sites <- sites[found]
     } else {
         beta_sites <- readLines(conn)[2:(length(beta_row_names) + 1)]
     }
     close(conn)
-    beta_sites <- do.call(rbind, beta_sites)
+    beta_sites <- if (length(beta_sites) == 0L) {
+        matrix(numeric(0), nrow = 0L, ncol = length(beta_col_names))
+    } else {
+        do.call(rbind, beta_sites)
+    }
     rownames(beta_sites) <- sites
     colnames(beta_sites) <- beta_col_names
     beta_sites
