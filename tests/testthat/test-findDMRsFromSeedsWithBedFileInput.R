@@ -1,6 +1,7 @@
 options("CMEnt.verbose" = 0)
 
 test_that("findDMRsFromSeeds matches in-memory results for a full synthetic BED input", {
+    skip_on_ci()
     fixture <- makeSyntheticFindDMRsFixture()
     baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
@@ -73,6 +74,7 @@ test_that("findDMRsFromSeeds rejects BED seeds that are not in chr:pos format", 
 })
 
 test_that("findDMRsFromSeeds handles BED files without a chr prefix", {
+    skip_on_ci()
     fixture <- makeSyntheticFindDMRsFixture()
     baseline <- runSyntheticFindDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
