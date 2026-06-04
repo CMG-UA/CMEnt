@@ -324,10 +324,10 @@ NULL
     if (!is.null(axis_params$continuous_range)) {
         return(as.numeric(axis_params$continuous_range))
     }
-    if (!is.null(axis_params$range$range)) {
-        return(as.numeric(axis_params$range$range))
-    }
     if (!is.null(axis_params$range)) {
+        if (is.list(axis_params$range) && !is.null(axis_params$range$range)) {
+            return(as.numeric(axis_params$range$range))
+        }
         return(as.numeric(axis_params$range))
     }
 

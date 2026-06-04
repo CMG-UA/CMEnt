@@ -2207,12 +2207,6 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
-    if (!"start" %in% colnames(locs)) {
-        locs[, "start"] <- locs[, "start"]
-    }
-    if (!"start" %in% colnames(locs)) {
-        locs[, "start"] <- locs[, "start"]
-    }
     if (!"end" %in% colnames(locs)) {
         locs[, "end"] <- locs[, "start"] + 1
     }
