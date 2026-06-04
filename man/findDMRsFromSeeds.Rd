@@ -94,6 +94,8 @@ groups with <6 samples and permutations for groups with >=6 samples; "montecarlo
 
 \item{ntries}{Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).}
 
+\item{mid_p}{Logical. Whether to use mid-p values for empirical correlation tests. Default is FALSE.}
+
 \item{max_lookup_dist}{Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).}
 
 \item{expansion_window}{Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods,
@@ -169,7 +171,7 @@ significant seeds (e.g., adjusted p-value < 0.05) and let the function handle re
 and letting the function reconnect proximal sites during expansion using the
 ext_site_delta_beta parameter if needed. The p-value adjustment can be done using \code{\link[=combinePvalues]{combinePvalues()}} or other methods,
 but avoid filtering based on beta value thresholds or effect size cutoffs before running this function. For BSSeq data,
-we supply a helper function \link{findDMRsFromBSSeq} that performs seed finding using DSS.
+\code{\link[=findDMPsBSSeq]{findDMPsBSSeq()}} performs seed finding using DSS.
 }
 
 \examples{

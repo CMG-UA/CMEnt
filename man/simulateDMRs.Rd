@@ -100,6 +100,9 @@ non-BSseq file inputs.}
 \item{start_col}{Start column name for tabix inputs.}
 
 \item{njobs}{Number of parallel jobs for loading non-BSseq inputs.}
+
+\item{verbose}{Numeric. Logging verbosity level. Default comes from
+\code{getOption("CMEnt.verbose")}.}
 }
 \value{
 A list with simulated output (\code{simulated}), optional genomic

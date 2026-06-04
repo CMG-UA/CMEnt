@@ -158,6 +158,19 @@ test_that("augmentBSSeq filters sites based on min_samples", {
     expect_equal(nrow(result), expected_sites)
 })
 
+test_that("augmentBSSeq handles delayed coverage assays", {
+    bsseq_obj <- create_mock_bsseq(n_sites = 20, n_samples = 3)
+    assays <- SummarizedExperiment::assays(bsseq_obj)
+    assays$Cov <- DelayedArray::DelayedArray(assays$Cov)
+    assays$M <- DelayedArray::DelayedArray(assays$M)
+    SummarizedExperiment::assays(bsseq_obj) <- assays
+
+    set.seed(123)
+    result <- augmentBSSeq(bsseq_obj, n_new_samples = 1, min_samples = 2)
+
+    expect_s4_class(result, "BSseq")
+})
+
 test_that("augmentBSSeq returns sorted unique loci", {
     bsseq_obj <- create_mock_bsseq(n_sites = 20, n_samples = 3)
     bsseq_obj <- bsseq_obj[c(5L, 1L, seq_len(nrow(bsseq_obj))), ]

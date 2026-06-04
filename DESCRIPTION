@@ -39,7 +39,6 @@ Imports:
     BiocParallel,
     Biostrings,
     BSgenome,
-    bsseqData,
     bslib (>= 0.5.0),
     bsseq,
     callr,
@@ -50,7 +49,6 @@ Imports:
     data.table,
     DelayedArray,
     DelayedDataFrame,
-    DMRsegaldata,
     DT,
     e1071,
     FNN,
@@ -76,7 +74,6 @@ Imports:
     R.utils,
     R6,
     rhdf5,
-    readr,
     reshape2,
     rtracklayer,
     S4Vectors,
@@ -92,6 +89,8 @@ Imports:
     utils,
     withr
 Suggests:
+    bsseqData,
+    DMRsegaldata,
     ExperimentHub,
     IlluminaHumanMethylation27kanno.ilmn12.hg19,
     IlluminaHumanMethylation450kanno.ilmn12.hg19,

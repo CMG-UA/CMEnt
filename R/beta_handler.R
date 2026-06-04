@@ -44,6 +44,7 @@ is_bsseq <- function(obj) {
 #' @importFrom GenomeInfoDb seqnames
 #' @importFrom IRanges start end
 #' @importFrom bsseq sampleNames
+#' @importFrom bedr tabix
 #' @keywords internal
 BetaHandler <- R6::R6Class("BetaHandler", # nolint
     public = list(
@@ -739,7 +740,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     qregions <- regions[!duplicated(regions[, c("chr", "start", "end"), drop = FALSE]), c("chr", "start", "end"), drop = FALSE]
                     qregions <- qregions[stringr::str_order(paste(qregions$chr, qregions$start, ":"), numeric = TRUE), 1:3, drop = FALSE]
                 }
-                beta_subset <- bedr::tabix(qregions, private$.tabix_file,
+                beta_subset <- tabix(qregions, private$.tabix_file,
                     check.valid = FALSE,
                     check.sort = FALSE, check.chr = FALSE, verbose = FALSE
                 )

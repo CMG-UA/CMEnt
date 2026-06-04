@@ -54,6 +54,8 @@
 #' @param chrom_col Chromosome column name for tabix inputs.
 #' @param start_col Start column name for tabix inputs.
 #' @param njobs Number of parallel jobs for loading non-BSseq inputs.
+#' @param verbose Numeric. Logging verbosity level. Default comes from
+#'   `getOption("CMEnt.verbose")`.
 #'
 #' @return A list with simulated output (`simulated`), optional genomic
 #'   locations for non-BSseq inputs (`beta_locs`), and dmrseq-like metadata:

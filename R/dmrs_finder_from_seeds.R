@@ -2851,7 +2851,7 @@
 #' and letting the function reconnect proximal sites during expansion using the
 #' ext_site_delta_beta parameter if needed. The p-value adjustment can be done using [combinePvalues()] or other methods,
 #' but avoid filtering based on beta value thresholds or effect size cutoffs before running this function. For BSSeq data,
-#' we supply a helper function [findDMRsFromBSSeq] that performs seed finding using DSS.
+#' [findDMPsBSSeq()] performs seed finding using DSS.
 #'
 #' @param beta Character. Path to the beta value file, or a tabix file, or a beta matrix, or a BetaHandler object, or a bed file.
 #'  If a bed file is provided, it must at least contain bed_chrom_col and bed_chrom_start,
@@ -2888,6 +2888,7 @@
 #'  groups with <6 samples and permutations for groups with >=6 samples; "montecarlo" always uses Monte Carlo;
 #'  "permutations" always uses permutations.
 #' @param ntries Integer. Number of permutations when testing_mode = "empirical". Default is 0 (disabled).
+#' @param mid_p Logical. Whether to use mid-p values for empirical correlation tests. Default is FALSE.
 #' @param max_lookup_dist Numeric. Maximum distance to look up for adjacent seeds belonging to the same DMR during Stage 1. Default is 10000 (10 kb).
 #' @param expansion_window Numeric. Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods,
 #'  with this total window width in bp. This value sets a maximum effective size of a DMR after stage 2.

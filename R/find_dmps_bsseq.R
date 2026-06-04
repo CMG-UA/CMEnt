@@ -18,27 +18,29 @@
 #' 
 #' @examples
 #' \donttest{
-#' # Load example BSseq data
-#' library(bsseqData)
-#' data(BS.cancer.ex)
-#' # Create a sample metadata data frame
-#' samplesheet <- data.frame(
-#'    Sample_ID = colnames(BS.cancer.ex),
-#'   Sample_Group = c(rep("Condition1", 3), rep("Condition2", 3)),
-#'   Age = c(30, 32, 31, 28, 29, 27)
-#' )
-#' # Find DMPs with DSS
-#' dmps <- findDMPsBSSeq(
-#'    bsseq = BS.cancer.ex,
-#'    samplesheet = samplesheet,
-#'    group_col = "Sample_Group",
-#'    id_col = "Sample_ID",
-#'    case_group = "Condition2",
-#'    covariates = "Age",
-#'    fdr_thres = 0.05,
-#'    output_file = "dmp_results.tsv.gz",
-#'    njobs = 4
-#' )
+#' if (requireNamespace("bsseqData", quietly = TRUE) &&
+#'     requireNamespace("DSS", quietly = TRUE)) {
+#'     # Load example BSseq data
+#'     data(BS.cancer.ex, package = "bsseqData")
+#'     # Create a sample metadata data frame
+#'     samplesheet <- data.frame(
+#'        Sample_ID = colnames(BS.cancer.ex),
+#'       Sample_Group = c(rep("Condition1", 3), rep("Condition2", 3)),
+#'       Age = c(30, 32, 31, 28, 29, 27)
+#'     )
+#'     # Find DMPs with DSS
+#'     dmps <- findDMPsBSSeq(
+#'        bsseq = BS.cancer.ex,
+#'        samplesheet = samplesheet,
+#'        group_col = "Sample_Group",
+#'        id_col = "Sample_ID",
+#'        case_group = "Condition2",
+#'        covariates = "Age",
+#'        fdr_thres = 0.05,
+#'        output_file = "dmp_results.tsv.gz",
+#'        njobs = 4
+#'     )
+#' }
 #' }
 #' @importFrom stats as.formula
 #' @export

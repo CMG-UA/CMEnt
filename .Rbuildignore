@@ -24,3 +24,6 @@
 ^inst/extdata/example_output\.meta\.rds$
 ^notebooks($|/)
 ^_site$
+^build_and_push\.sh$
+^Dockerfile$
+^envs$

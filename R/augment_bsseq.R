@@ -25,12 +25,14 @@
 #' @return A BSseq object with original and synthetic samples
 #' @examples
 #' \donttest{
-#'     # Load example BSseq data
-#'     library(bsseqData)
-#'     data(BS.cancer.ex)
-#'     set.seed(123)
-#'     # Augment with 5 synthetic samples
-#'     augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 5)
+#'     if (requireNamespace("bsseqData", quietly = TRUE)) {
+#'         # Load example BSseq data
+#'         data(BS.cancer.ex, package = "bsseqData")
+#'         BS.cancer.ex <- BS.cancer.ex[seq_len(1000), ]
+#'         set.seed(123)
+#'         # Augment with 5 synthetic samples
+#'         augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 5)
+#'     }
 #' }
 #' @export
 augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,
@@ -110,20 +112,21 @@ augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,
     }
 
     # Keep only sites with coverage in at least min_samples
-    cov_matrix <- bsseq::getCoverage(bs)
+    cov_matrix <- as.matrix(bsseq::getCoverage(bs))
     valid_sites <- rowSums(cov_matrix > 0) >= min_samples
     bsseq_filtered <- bs[valid_sites, ]
-    # Keep assay-level sample dimnames aligned with colData before combining objects.
-    colnames(SummarizedExperiment::assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
-    colnames(SummarizedExperiment::assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
 
     if (nrow(bsseq_filtered) == 0L) {
         stop("No site sites have coverage in at least 'min_samples' samples")
     }
 
-    # Extract coverage and methylation counts
-    cov <- as.matrix(bsseq::getCoverage(bsseq_filtered))
+    # Realize assays before combining original and synthetic samples.
+    cov <- cov_matrix[valid_sites, , drop = FALSE]
     M <- as.matrix(bsseq::getCoverage(bsseq_filtered, type = "M"))
+    SummarizedExperiment::assays(bsseq_filtered)$M <- M
+    SummarizedExperiment::assays(bsseq_filtered)$Cov <- cov
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$M) <- colnames(bsseq_filtered)
+    colnames(SummarizedExperiment::assays(bsseq_filtered)$Cov) <- colnames(bsseq_filtered)
 
     n_sites <- nrow(bsseq_filtered)
     n_orig_samples <- ncol(cov)
