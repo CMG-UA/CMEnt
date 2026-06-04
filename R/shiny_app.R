@@ -34,11 +34,11 @@
 #' }
 #'
 #' @examples
-#' \donttest{
-#' # After running findDMRsFromSeeds with output_prefix = "my_analysis"
-#' launchCMEntViewer(
-#'   output_prefix = "results/my_analysis"
-#' )
+#' if (interactive()) {
+#'     # After running findDMRsFromSeeds with output_prefix = "my_analysis"
+#'     launchCMEntViewer(
+#'       output_prefix = "results/my_analysis"
+#'     )
 #' }
 #'
 #' @seealso \code{\link{findDMRsFromSeeds}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}

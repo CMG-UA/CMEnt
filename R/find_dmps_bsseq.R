@@ -22,6 +22,7 @@
 #'     requireNamespace("DSS", quietly = TRUE)) {
 #'     # Load example BSseq data
 #'     data(BS.cancer.ex, package = "bsseqData")
+#'     BS.cancer.ex <- BS.cancer.ex[seq_len(1000), ]
 #'     # Create a sample metadata data frame
 #'     samplesheet <- data.frame(
 #'        Sample_ID = colnames(BS.cancer.ex),

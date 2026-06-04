@@ -27,3 +27,5 @@
 ^build_and_push\.sh$
 ^Dockerfile$
 ^envs$
+^.*\.BiocCheck$
+^tmp$

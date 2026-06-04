@@ -53,11 +53,11 @@ The function expects the following output files from \code{findDMRsFromSeeds}:
 }
 }
 \examples{
-\donttest{
-# After running findDMRsFromSeeds with output_prefix = "my_analysis"
-launchCMEntViewer(
-  output_prefix = "results/my_analysis"
-)
+if (interactive()) {
+    # After running findDMRsFromSeeds with output_prefix = "my_analysis"
+    launchCMEntViewer(
+      output_prefix = "results/my_analysis"
+    )
 }
 
 }
