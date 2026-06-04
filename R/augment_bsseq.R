@@ -33,10 +33,12 @@
 #'     }
 #' }
 #' @export
-augmentBSSeq <- function(bs, n_new_samples, min_samples = 2,
-                         calibrate_correlation = TRUE,
-                         calibration_iterations = 8,
-                         calibration_samples = NULL) {
+augmentBSSeq <- function(
+    bs, n_new_samples, min_samples = 2,
+    calibrate_correlation = TRUE,
+    calibration_iterations = 8,
+    calibration_samples = NULL
+    ) {
     .prepareInputBSseq <- function(bs) {
         if (!inherits(bs, "BSseq")) {
             stop("'bs' must be a BSseq object")

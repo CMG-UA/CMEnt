@@ -27,11 +27,11 @@ knitr::opts_chunk$set(
 cat("
 <style>
 .main-container {
-  max-width: 98vw !important;
-  width: 98vw !important;
+    max-width: 98vw !important;
+    width: 98vw !important;
 }
 .container-fluid {
-  max-width: 98vw !important;
+    max-width: 98vw !important;
 }
 </style>
 ")

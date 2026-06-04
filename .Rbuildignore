@@ -15,6 +15,7 @@
 ^\.RData$
 ^\.Rprofile$
 ^\.vscode$
+^CMEnt\.BiocCheck$
 ^CMEnt\.Rcheck$
 ^vignettes/.*\.(md|html)$
 ^codecov\.yml$
@@ -27,7 +28,6 @@
 ^build_and_push\.sh$
 ^Dockerfile$
 ^envs$
-^.*\.BiocCheck$
 ^tmp$
 ^Rplots\.pdf$
 ^tests/testthat/Rplots\.pdf$

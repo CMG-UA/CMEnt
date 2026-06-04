@@ -85,7 +85,7 @@ jobs:
           error-on: '"warning"'
           upload-results: always
           upload-snapshots: always
-          build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
+          build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf", "--output=/tmp")'
 
   bioccheck:
     name: BiocCheck
@@ -108,19 +108,12 @@ jobs:
         continue-on-error: true
         shell: Rscript {0}
         run: |
+          if (dir.exists("CMEnt.BiocCheck")) {
+            unlink("CMEnt.BiocCheck", recursive = TRUE)
+          }
           BiocCheck::BiocCheck(
             ".",
             `new-package` = TRUE,
-            `quit-with-status` = TRUE
-          )
-
-      - name: Run BiocCheckGitClone
-        id: bioccheck_git
-        continue-on-error: true
-        shell: Rscript {0}
-        run: |
-          BiocCheck::BiocCheckGitClone(
-            ".",
             `quit-with-status` = TRUE
           )
 
@@ -133,6 +126,19 @@ jobs:
             ./*.BiocCheck
             ./*.BiocCheck/**
           if-no-files-found: ignore
+
+      - name: Run BiocCheckGitClone
+        id: bioccheck_git
+        continue-on-error: true
+        shell: Rscript {0}
+        run: |
+          if (dir.exists("CMEnt.BiocCheck")) {
+            unlink("CMEnt.BiocCheck", recursive = TRUE)
+          }
+          BiocCheck::BiocCheckGitClone(
+            ".",
+            `quit-with-status` = TRUE
+          )
 
       - name: Fail if BiocCheck reported errors or warnings
         if: ${{ steps.bioccheck.outcome != 'success' || steps.bioccheck_git.outcome != 'success' }}
