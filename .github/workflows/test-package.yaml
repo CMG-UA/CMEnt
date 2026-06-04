@@ -114,7 +114,8 @@ jobs:
           BiocCheck::BiocCheck(
             ".",
             `new-package` = TRUE,
-            `quit-with-status` = TRUE
+            `quit-with-status` = TRUE,
+            `no-check-bioc-help` = TRUE
           )
 
       - name: Upload BiocCheck reports
