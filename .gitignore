@@ -24,6 +24,7 @@ tests/testthat/test*.loader
 tests/testthat/Rplots.pdf
 Rplots.pdf
 CMEnt.Rcheck/
+*.BiocCheck/
 ..Rcheck/00check.log
 
 # Generated documentation files ----

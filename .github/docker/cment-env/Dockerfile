@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-fonts-extra \
     texlive-latex-extra
 
-COPY .github/docker/cment-env/.Rprofile .Rprofile
+COPY .github/docker/cment-env/docker.Rprofile .Rprofile
 ENV R_PROFILE_USER=/home/root/.Rprofile
 RUN mkdir -p "$HOME/.cache/R/ExperimentHub" && \
     for i in {1..5}; do \
