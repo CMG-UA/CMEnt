@@ -10,10 +10,6 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
   R_KEEP_PKG_SOURCE: yes
