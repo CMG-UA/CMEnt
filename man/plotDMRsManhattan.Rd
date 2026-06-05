@@ -28,7 +28,7 @@ plotDMRsManhattan(
 a GRanges, a string in the form \code{"chr:start-end"}, or a data.frame/list with
 \code{chr}, \code{start}, and \code{end}.}
 
-\item{genome}{Character. Genome version passed to \code{convertToGRanges} (default: \code{"hg38"}).}
+\item{genome}{Character. Genome version passed to \code{.convertToGRanges} (default: \code{"hg38"}).}
 
 \item{promoter_col}{Character. Metadata column indicating promoter overlap (default: \code{"in_promoter_of"}).}
 

@@ -90,7 +90,7 @@ NULL
 
         filtered_dmrs <- shiny::reactive({
             shiny::req(data$dmrs)
-            dmrs_df <- convertToDataFrame(data$dmrs)
+            dmrs_df <- .convertToDataFrame(data$dmrs)
             if (!is.null(input$filter_chr) && input$filter_chr != "") {
                 dmrs_df <- dmrs_df[dmrs_df$chr == input$filter_chr, , drop = FALSE]
             }

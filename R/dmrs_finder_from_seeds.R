@@ -2628,7 +2628,7 @@
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 2)
-    merged_dmrs <- convertToDataFrame(merged_dmrs_ranges)
+    merged_dmrs <- .convertToDataFrame(merged_dmrs_ranges)
 
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
         .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
@@ -2665,7 +2665,7 @@
     } else {
         filtered_dmrs_ranges <- merged_dmrs_ranges
     }
-    filtered_dmrs <- convertToDataFrame(filtered_dmrs_ranges)
+    filtered_dmrs <- .convertToDataFrame(filtered_dmrs_ranges)
 
     if (nrow(filtered_dmrs) == 0) {
         .log_warn("No DMRs passed the filtering step.")
@@ -2674,7 +2674,7 @@
 
     if (array_based && !is.null(min_adj_seeds) && min_adj_seeds > min_seeds) {
         .log_step("Calculating site content and adjusted seeds number..", level = 3)
-        sites_num_bg <- getSiteBackgroundCounts(filtered_dmrs_ranges, genome)
+        sites_num_bg <- .getSiteBackgroundCounts(filtered_dmrs_ranges, genome)
         sites_num_bg[!is.finite(sites_num_bg) | is.na(sites_num_bg) | sites_num_bg <= 0] <- 1L
         filtered_dmrs$sites_num_bg <- sites_num_bg
 
@@ -2811,7 +2811,7 @@
 
 
     if (is.data.frame(annotated_dmrs)) {
-        annotated_dmrs <- convertToGRanges(annotated_dmrs, genome = genome)
+        annotated_dmrs <- .convertToGRanges(annotated_dmrs, genome = genome)
     }
 
     if (extract_motifs) {
@@ -2823,7 +2823,7 @@
 
     final_dmrs_granges <- annotated_dmrs
 
-    final_dmrs <- convertToDataFrame(final_dmrs_granges)
+    final_dmrs <- .convertToDataFrame(final_dmrs_granges)
 
     .log_info("Final number of chromosome-scoped DMRs: ", nrow(final_dmrs), level = 2)
 
@@ -3418,7 +3418,7 @@ findDMRsFromSeeds <- function(
         write.table(viewer_beta, gz, sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
         close(gz)
 
-        final_dmrs <- convertToDataFrame(final_dmrs_granges)
+        final_dmrs <- .convertToDataFrame(final_dmrs_granges)
         encoded_dmrs <- .encodeNonTabularColumns(final_dmrs)
         dmrs_file <- paste0(output_prefix_dot, "dmrs.tsv.gz")
         gz <- gzfile(dmrs_file, "w")

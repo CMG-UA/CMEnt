@@ -1,7 +1,11 @@
 #!/usr/bin/env Rscript
 
+if (!requireNamespace("CMEnt", quietly = TRUE)) {
+    stop("Package 'CMEnt' must be installed before using this CLI.", call. = FALSE)
+}
+
 .findDMRsFromSeedsCLIOptionList <- function() {
-    .assertPackagesInstalled(
+    CMEnt:::.assertPackagesInstalled(
         pkg_names = "optparse",
         context = ".findDMRsFromSeedsCLIOptionList()",
         reason = "CMEnt CLI support is implemented with the optparse package."
@@ -167,7 +171,7 @@
 }
 
 .launchCMEntViewerCLIOptionList <- function() {
-    .assertPackagesInstalled(
+    CMEnt:::.assertPackagesInstalled(
         pkg_names = "optparse",
         context = ".launchCMEntViewerCLIOptionList()",
         reason = "CMEnt CLI support is implemented with the optparse package."
@@ -204,6 +208,53 @@
     )
 }
 
+.findDMPsArrayCLIOptionList <- function() {
+    CMEnt:::.assertPackagesInstalled(
+        pkg_names = "optparse",
+        context = ".findDMPsArrayCLIOptionList()",
+        reason = "CMEnt CLI support is implemented with the optparse package."
+    )
+
+    list(
+        optparse::make_option("--beta", help = "Beta matrix/file input supported by getBetaHandler()."),
+        optparse::make_option("--samplesheet", help = "Tab-delimited samplesheet containing sample metadata."),
+        optparse::make_option("--samplesheet_sep", default = "\t", help = "Samplesheet separator (default: tab)."),
+        optparse::make_option("--group_col", default = "Sample_Group", help = "Samplesheet group column."),
+        optparse::make_option("--id_col", default = "Sample_ID", help = "Samplesheet sample ID column."),
+        optparse::make_option("--array", default = "450K", help = "Array platform: 450K, 27K, EPIC, EPICv2, or Mouse."),
+        optparse::make_option("--genome", default = "hg19", help = "Reference genome: hg19, hg38, hs1, mm10, or mm39."),
+        optparse::make_option("--sorted_locs", default = NULL, help = "Optional RDS file with sorted genomic locations."),
+        optparse::make_option("--chr", default = "auto", help = "Chromosomes to analyze: auto, all, or comma-separated chromosome names."),
+        optparse::make_option("--case_group", default = NULL, help = "Group label to treat as case. Defaults to first group in samplesheet."),
+        optparse::make_option("--covariates", default = NULL, help = "Optional comma-separated covariate columns."),
+        optparse::make_option("--fdr_thres", default = 0.05, type = "double", help = "FDR threshold for returned DMPs."),
+        optparse::make_option("--output_file", help = "Required output TSV/TSV.GZ file for DMP results."),
+        optparse::make_option("--njobs", default = 1, type = "integer", help = "Number of jobs used when reading beta input.")
+    )
+}
+
+.findDMPsBSSeqCLIOptionList <- function() {
+    CMEnt:::.assertPackagesInstalled(
+        pkg_names = "optparse",
+        context = ".findDMPsBSSeqCLIOptionList()",
+        reason = "CMEnt CLI support is implemented with the optparse package."
+    )
+
+    list(
+        optparse::make_option("--bsseq", help = "BSseq RDS input file."),
+        optparse::make_option("--samplesheet", help = "Tab-delimited samplesheet containing sample metadata."),
+        optparse::make_option("--samplesheet_sep", default = "\t", help = "Samplesheet separator (default: tab)."),
+        optparse::make_option("--group_col", default = "Sample_Group", help = "Samplesheet group column."),
+        optparse::make_option("--id_col", default = "Sample_ID", help = "Samplesheet sample ID column."),
+        optparse::make_option("--chr", default = "auto", help = "Chromosomes to analyze: auto, all, or comma-separated chromosome names."),
+        optparse::make_option("--case_group", default = NULL, help = "Group label to treat as case. Defaults to first group in samplesheet."),
+        optparse::make_option("--covariates", default = NULL, help = "Optional comma-separated covariate columns."),
+        optparse::make_option("--fdr_thres", default = 0.05, type = "double", help = "FDR threshold for returned DMPs."),
+        optparse::make_option("--output_file", help = "Required output TSV/TSV.GZ file for DMP results."),
+        optparse::make_option("--njobs", default = 1, type = "integer", help = "Number of parallel jobs.")
+    )
+}
+
 #' Command Line Interface for Finding DMRs from DMPs
 #'
 #' @param args Argument list from optparse containing command line parameters
@@ -230,7 +281,6 @@
 #'     }
 #' }
 #'
-#' @export
 findDMRsFromSeedsCLI <- function(args) {
     old_setting <- options("CMEnt.verbose" = args$verbose)
     on.exit(options(old_setting), add = TRUE)
@@ -282,11 +332,56 @@ findDMRsFromSeedsCLI <- function(args) {
         paste(paste(names(input_args), input_args, sep = ": "), collapse = "\n\t")
     )
 
-    invisible(do.call(findDMRsFromSeeds, input_args))
+    invisible(do.call(CMEnt::findDMRsFromSeeds, input_args))
+}
+
+#' Command Line Interface for Array DMP Calling
+#'
+#' @param args Argument list from optparse containing command line parameters.
+#' @return Invisibly returns the DMP data frame after writing `args$output_file`.
+findDMPsArrayCLI <- function(args) {
+    .requireCLIOptions(args, c("beta", "samplesheet", "output_file"))
+    invisible(CMEnt::findDMPsArray(
+        beta = args$beta,
+        samplesheet = args$samplesheet,
+        samplesheet_sep = args$samplesheet_sep,
+        group_col = args$group_col,
+        id_col = args$id_col,
+        array = args$array,
+        genome = args$genome,
+        sorted_locs = .nullIfCLIString(args$sorted_locs),
+        njobs = args$njobs,
+        chr = args$chr,
+        case_group = .nullIfCLIString(args$case_group),
+        covariates = .nullIfCLIString(args$covariates),
+        fdr_thres = args$fdr_thres,
+        output_file = args$output_file
+    ))
+}
+
+#' Command Line Interface for BSseq DMP Calling
+#'
+#' @param args Argument list from optparse containing command line parameters.
+#' @return Invisibly returns the DMP data frame after writing `args$output_file`.
+findDMPsBSSeqCLI <- function(args) {
+    .requireCLIOptions(args, c("bsseq", "samplesheet", "output_file"))
+    invisible(CMEnt::findDMPsBSSeq(
+        bsseq = args$bsseq,
+        samplesheet = args$samplesheet,
+        samplesheet_sep = args$samplesheet_sep,
+        group_col = args$group_col,
+        id_col = args$id_col,
+        chr = args$chr,
+        case_group = .nullIfCLIString(args$case_group),
+        covariates = .nullIfCLIString(args$covariates),
+        fdr_thres = args$fdr_thres,
+        output_file = args$output_file,
+        njobs = args$njobs
+    ))
 }
 
 launchCMEntViewerCLI <- function(args) {
-    invisible(launchCMEntViewer(
+    invisible(CMEnt::launchCMEntViewer(
         output_prefix = args$output_prefix,
         launch_browser = args$launch_browser,
         port = args$port,
@@ -300,6 +395,12 @@ launchCMEntViewerCLI <- function(args) {
         findDMRsFromSeeds = "findDMRsFromSeeds",
         find = "findDMRsFromSeeds",
         find_dmrs_from_seeds = "findDMRsFromSeeds",
+        findDMPsArray = "findDMPsArray",
+        find_dmps_array = "findDMPsArray",
+        array_dmps = "findDMPsArray",
+        findDMPsBSSeq = "findDMPsBSSeq",
+        find_dmps_bsseq = "findDMPsBSSeq",
+        bsseq_dmps = "findDMPsBSSeq",
         launchCMEntViewer = "launchCMEntViewer",
         viewer = "launchCMEntViewer",
         launch_cment_viewer = "launchCMEntViewer"
@@ -336,7 +437,9 @@ launchCMEntViewerCLI <- function(args) {
         paste0("  ", script_name, " <command> [options]"),
         "",
         "Commands:",
-        "  findDMRsFromSeeds      Identify DMRs from genomic seeds.",
+        "  findDMRsFromSeeds   Identify DMRs from genomic seeds.",
+        "  findDMPsArray       Identify DMPs from array beta values.",
+        "  findDMPsBSSeq       Identify DMPs from BSseq objects.",
         "  launchCMEntViewer   Launch the interactive viewer for saved outputs.",
         "",
         "Compatibility:",
@@ -344,6 +447,8 @@ launchCMEntViewerCLI <- function(args) {
         "",
         "Examples:",
         paste0("  ", script_name, " findDMRsFromSeeds --beta beta.tsv.gz --seeds_file seeds.tsv --samplesheet samplesheet.tsv"),
+        paste0("  ", script_name, " findDMPsArray --beta beta.tsv.gz --samplesheet samplesheet.tsv --output_file dmps.tsv.gz"),
+        paste0("  ", script_name, " findDMPsBSSeq --bsseq bsseq.rds --samplesheet samplesheet.tsv --output_file dmps.tsv.gz"),
         paste0("  ", script_name, " launchCMEntViewer --output_prefix results/my_analysis"),
         "",
         paste0("Run '", script_name, " help <command>' for command-specific options."),
@@ -410,7 +515,7 @@ launchCMEntViewerCLI <- function(args) {
 }
 
 .makeCMEntCLIParser <- function(command, script_name = NULL) {
-    .assertPackagesInstalled(
+    CMEnt:::.assertPackagesInstalled(
         pkg_names = "optparse",
         context = ".makeCMEntCLIParser()",
         reason = "CMEnt CLI support is implemented with the optparse package."
@@ -430,6 +535,18 @@ launchCMEntViewerCLI <- function(args) {
             description = "Identify differentially methylated regions from genomic seeds.",
             option_list = .findDMRsFromSeedsCLIOptionList()
         ),
+        findDMPsArray = optparse::OptionParser(
+            usage = "usage: %prog findDMPsArray [options]",
+            prog = script_name,
+            description = "Identify differentially methylated positions from array beta values.",
+            option_list = .findDMPsArrayCLIOptionList()
+        ),
+        findDMPsBSSeq = optparse::OptionParser(
+            usage = "usage: %prog findDMPsBSSeq [options]",
+            prog = script_name,
+            description = "Identify differentially methylated positions from BSseq objects.",
+            option_list = .findDMPsBSSeqCLIOptionList()
+        ),
         launchCMEntViewer = optparse::OptionParser(
             usage = "usage: %prog launchCMEntViewer [options]",
             prog = script_name,
@@ -438,6 +555,13 @@ launchCMEntViewerCLI <- function(args) {
         ),
         stop("Unsupported CMEnt command '", command, "'.", call. = FALSE)
     )
+}
+
+.nullIfCLIString <- function(x) {
+    if (.isMissingCLIValue(x) || (is.character(x) && tolower(x[[1L]]) == "null")) {
+        return(NULL)
+    }
+    x
 }
 
 .isMissingCLIValue <- function(x) {
@@ -484,9 +608,25 @@ launchCMEntViewerCLI <- function(args) {
             .requireCLIOptions(parsed_args, c("beta", "seeds_file", "samplesheet"))
             invisible(findDMRsFromSeedsCLI(parsed_args))
         },
+        findDMPsArray = {
+            .requireCLIOptions(parsed_args, c("beta", "samplesheet", "output_file"))
+            invisible(findDMPsArrayCLI(parsed_args))
+        },
+        findDMPsBSSeq = {
+            .requireCLIOptions(parsed_args, c("bsseq", "samplesheet", "output_file"))
+            invisible(findDMPsBSSeqCLI(parsed_args))
+        },
         launchCMEntViewer = {
             .requireCLIOptions(parsed_args, "output_prefix")
             invisible(launchCMEntViewerCLI(parsed_args))
         }
     )
 }
+
+
+
+
+CMEnt:::.runCMEntCLI(
+    cli_args = commandArgs(trailingOnly = TRUE),
+    script_name = commandArgs(FALSE)[1]
+)

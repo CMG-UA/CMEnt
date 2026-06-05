@@ -862,7 +862,7 @@ scoreDMRs <- function(
     old_setting <- options("CMEnt.verbose" = verbose)
     on.exit(options(old_setting), add = TRUE)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
-    dmrs <- convertToGRanges(dmrs, genome = genome)
+    dmrs <- .convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     beta_col_names <- beta_handler$getBetaColNames()
     missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
@@ -950,7 +950,7 @@ scoreDMRs <- function(
 
     dmrs <- dmrs[order(mcols(dmrs)$score, decreasing = TRUE)]
     if (df_provided) {
-        dmrs <- convertToDataFrame(dmrs)
+        dmrs <- .convertToDataFrame(dmrs)
     }
     dmrs
 }

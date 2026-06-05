@@ -56,4 +56,4 @@ RUN Rscript -e "pak::pkg_install('R6', upgrade = TRUE)"
 RUN Rscript -e "devtools::install()"
 RUN apt clean && rm -rf /var/lib/apt/lists/*
 
-ENTRYPOINT ["inst/bin/run_cment.R"]
+ENTRYPOINT ["./run_cment.R"]

@@ -263,7 +263,7 @@ launchCMEntViewer <- function(
 
     .log_step("Loading DMRs from ", files$dmrs_file, "...", level = 1)
     dmrs_df <- data.table::fread(files$dmrs_file, sep = "\t", header = TRUE, data.table = FALSE)
-    dmrs <- convertToGRanges(dmrs_df, genome = genome)
+    dmrs <- .convertToGRanges(dmrs_df, genome = genome)
     .log_success("Loaded ", length(dmrs), " DMRs", level = 1)
 
     .log_step("Loading beta values from ", files$beta_file, "...", level = 1)

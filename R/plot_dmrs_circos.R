@@ -453,7 +453,7 @@
                                     max_components = 30,
                                     query_components_with_jaspar = TRUE,
                                     verbose = NULL) {
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
             stop("max_components must be NULL or a single numeric value.")
@@ -1595,7 +1595,7 @@ plotDMRsCircos <- function(dmrs,
                            output_file = NULL,
                            verbose = NULL,
                            ...) {
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
             stop("max_components must be NULL or a single numeric value.")
@@ -1653,8 +1653,8 @@ plotDMRsCircos <- function(dmrs,
     }
 
     if (!is.null(region_df)) {
-        beta_locs <- convertToDataFrame(.filterDMRsByScopeForCircos(
-            convertToGRanges(beta_locs, genome),
+        beta_locs <- .convertToDataFrame(.filterDMRsByScopeForCircos(
+            .convertToGRanges(beta_locs, genome),
             chromosomes = requested_chrs,
             region_df = region_df
         ))
@@ -1729,9 +1729,9 @@ plotDMRsCircos <- function(dmrs,
 
     heatmap_df <- heatmap_data$heatmap_df
     if (!is.null(region_df)) {
-        heatmap_df <- convertToDataFrame(
+        heatmap_df <- .convertToDataFrame(
             .filterDMRsByScopeForCircos(
-                convertToGRanges(heatmap_df, genome),
+                .convertToGRanges(heatmap_df, genome),
                 chromosomes = requested_chrs,
                 region_df = region_df
             )
@@ -2259,7 +2259,7 @@ plotAutoDMRsCircos <- function(dmrs,
         stop("plotAutoDMRsCircos() manages `region` directly. Pass only plotDMRsCircos()-specific arguments through `...`.")
     }
     method <- match.arg(method)
-    dmrs_gr <- convertToGRanges(dmrs, genome = genome)
+    dmrs_gr <- .convertToGRanges(dmrs, genome = genome)
     if (!is.null(chromosomes)) {
         dmrs_gr <- dmrs_gr[as.character(GenomicRanges::seqnames(dmrs_gr)) %in% chromosomes]
     }

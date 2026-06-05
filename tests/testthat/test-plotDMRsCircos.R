@@ -79,7 +79,7 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
     }
 
     dmrs_subset <- dmrs[seq_len(min(3, length(dmrs)))]
-    dmrs_df <- convertToDataFrame(dmrs_subset)
+    dmrs_df <- .convertToDataFrame(dmrs_subset)
 
     expect_no_error(
         plotDMRsCircos(

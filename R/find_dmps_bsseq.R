@@ -64,13 +64,7 @@ findDMPsBSSeq <- function(
         context = "findDMPsBSSeq()",
         reason = "DMP calling from BSseq objects is delegated to DSS."
     )
-    if (chr == "auto") {
-        chr <- paste0("chr", seq_len(22L))
-    } else if (chr == "all") {
-        chr <- c(paste0("chr", seq_len(22L)), "chrX", "chrY")
-    } else {
-        chr <- trimws(unlist(strsplit(chr, ",")))
-    }
+    chr <- .normalizeDMPsChromosomes(chr)
     if (is.character(bsseq)) {
         bsseq_obj <- readRDS(bsseq)
     } else if (inherits(bsseq, "BSseq")) {
@@ -84,14 +78,7 @@ findDMPsBSSeq <- function(
     if (length(seqn) == 0L) {
         stop("No loci remain after chromosome filtering.")
     }
-    if (is.character(samplesheet)) {
-        pheno <- read.table(samplesheet, header = TRUE, stringsAsFactors = FALSE, sep = samplesheet_sep, check.names = FALSE)
-    } else if (is.data.frame(samplesheet)) {
-        pheno <- samplesheet
-    } else {
-        stop("samplesheet argument must be a file path or a data frame.")
-    }
-    colnames(pheno) <- trimws(colnames(pheno))
+    pheno <- .readDMPsSampleSheet(samplesheet, samplesheet_sep)
 
     if (!all(c(group_col, id_col) %in% colnames(pheno))) {
         stop("Group column ", group_col, " or ID column ", id_col, " not found in samplesheet.")
@@ -124,16 +111,7 @@ findDMPsBSSeq <- function(
     pheno <- pheno[match(colnames(bsseq_obj), pheno[[id_col]]), , drop = FALSE]
     rownames(pheno) <- pheno[[id_col]]
 
-    if (!is.null(covariates)) {
-        if (length(covariates) == 1 && is.character(covariates)) {
-            covariates <- unlist(strsplit(covariates, ","))
-        }
-        covariates <- trimws(as.character(covariates))
-        covariates <- covariates[nzchar(covariates)]
-        if (length(covariates) == 0) {
-            covariates <- NULL
-        }
-    }
+    covariates <- .normalizeDMPsCovariates(covariates)
     if (!is.null(covariates)) {
         missing_covariates <- setdiff(covariates, colnames(pheno))
         if (length(missing_covariates) > 0) {
@@ -300,25 +278,7 @@ findDMPsBSSeq <- function(
         dmps <- dmps[order(dmps$chr, dmps$start, na.last = TRUE), , drop = FALSE]
     }
     if (!is.null(output_file)) {
-        dmps_out <- dmps
-        dmps_out$delta_beta <- formatC(dmps_out$delta_beta, format = "f", digits = 2)
-        dmps_out$score <- formatC(dmps_out$score, format = "f", digits = 2)
-        dmps_out$pval <- formatC(dmps_out$pval, format = "e", digits = 2)
-        dmps_out$qval <- formatC(dmps_out$qval, format = "e", digits = 2)
-
-        if (grepl("\\.gz$", output_file, ignore.case = TRUE)) {
-            con <- gzfile(output_file, open = "wt")
-            tryCatch(
-                {
-                    write.table(dmps_out, con, sep = "\t", quote = FALSE, row.names = FALSE)
-                },
-                finally = {
-                    close(con)
-                }
-            )
-        } else {
-            write.table(dmps_out, output_file, sep = "\t", quote = FALSE, row.names = FALSE)
-        }
+        .writeDMPsTable(dmps, output_file)
     }
     dmps
 }

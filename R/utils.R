@@ -722,6 +722,25 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
     invisible(output_h5file)
 }
 
+
+.writeDMPsTable <- function(dmps, output_file) {
+    dmps_out <- dmps
+    dmps_out$delta_beta <- formatC(dmps_out$delta_beta, format = "f", digits = 2)
+    dmps_out$score <- formatC(dmps_out$score, format = "f", digits = 2)
+    dmps_out$pval <- formatC(dmps_out$pval, format = "e", digits = 2)
+    dmps_out$qval <- formatC(dmps_out$qval, format = "e", digits = 2)
+    if (grepl("\\.gz$", output_file, ignore.case = TRUE)) {
+        con <- gzfile(output_file, open = "wt")
+        tryCatch(
+            utils::write.table(dmps_out, con, sep = "\t", quote = FALSE, row.names = FALSE),
+            finally = close(con)
+        )
+    } else {
+        utils::write.table(dmps_out, output_file, sep = "\t", quote = FALSE, row.names = FALSE)
+    }
+}
+
+
 .postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
     if (!is.null(select)) {
         df <- df[, select, drop = FALSE]
@@ -838,676 +857,6 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     sorted_locs
 }
 
-
-#' Read and Process Custom Methylation BED Data
-#'
-#' @description Reads methylation data from a custom BED file format, converts it to
-#' a tabix-indexed format for efficient random access, and creates genomic location
-#' indices. This function is designed to handle custom methylation array data or
-#' sequencing-based methylation data in BED format, making it compatible with the
-#' CMEnt workflow.
-#'
-#' @param bed_file Character. Path to the input BED file containing methylation data.
-#'   The file should have chromosome and position columns, plus sample columns with
-#'   methylation values. Can be gzipped (default: NULL)
-#' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
-#'   present in both the pheno rownames and BED file header will be processed
-#' @param genome Character. Genome version to use (e.g., "hg38", "hg19", "hs1") (default: "hg38")
-#' @param chrom_col Character. Name of the chromosome column in the BED file
-#'   (default: "#chrom")
-#' @param start_col Character. Name of the start position column in the BED file
-#'   (default: "start")
-#' @param output_dir Character. Directory for caching processed files. If NULL, uses
-#'   a temporary working directory unless `output_prefix` is provided (default: NULL)
-#' @param chunk_size Integer. Number of rows to process in each chunk for memory
-#'   efficiency (default: 50000)
-#' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
-#'   artifacts next to analysis outputs.
-#'
-#' @return A list with two elements:
-#' \itemize{
-#'   \item tabix_file: Character path to the created tabix-indexed BED file
-#'   \item locations: Disk-backed genomic location registry
-#' }
-#'
-#' @details
-#' The function performs the following workflow:
-#' \enumerate{
-#'   \item Validates that tabix and bgzip are available in the system PATH
-#'   \item Checks the BED file header for required columns and sample IDs
-#'   \item Processes the BED file in chunks to minimize memory usage
-#'   \item Normalizes the BED format with standard BED6 columns (#chrom, start, end, id, score, strand)
-#'   \item Converts chromosomes to integer factors for efficient sorting
-#'   \item Creates a tabix-indexed compressed file for fast random access
-#'   \item Persists derived artifacts under `output_prefix` when provided
-#' }
-#'
-#' @section Requirements:
-#' This function requires tabix and bgzip command-line tools to be installed and
-#' available in the system PATH. These tools are part of the HTSlib/samtools suite.
-#'
-#' @section Memory Management:
-#' The function uses chunk-based processing to handle large BED files without
-#' loading the entire dataset into memory. The genomic locations are stored in
-#' a Registry object that can exceed available RAM by using disk-backed
-#' storage.
-#'
-#' @examples
-#' # Create a simple phenotype data frame
-#' pheno <- data.frame(
-#'     sample_group = c("case", "control"),
-#'     row.names = c("Sample1", "Sample2")
-#' )
-#'
-#' if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
-#'     bed_file <- tempfile(fileext = ".bed")
-#'     writeLines(c(
-#'         "#chrom\tstart\tSample1\tSample2",
-#'         "chr1\t100\t0.2\t0.8",
-#'         "chr1\t200\t0.3\t0.7"
-#'     ), bed_file)
-#'     result <- readCustomMethylationBedData(bed_file, pheno)
-#'     result$tabix_file
-#' }
-#'
-#' @seealso
-#' \code{\link{convertBetaToTabix}} for converting standard beta files to tabix format
-#' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
-#'
-#' @export
-readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
-                                         output_prefix = NULL) {
-    tabix_available <- tryCatch(
-        {
-            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
-            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
-            TRUE
-        },
-        error = function(e) FALSE,
-        warning = function(w) FALSE
-    )
-
-    if (!tabix_available) {
-        stop("tabix/bgzip not found in PATH. Cannot process BED file.")
-    }
-
-    cache_dir <- .getTabixCacheDir(output_dir)
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    hash <- .getFileHash(bed_file)
-    normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
-
-    # Read BED file header
-    bed_header <- base::strsplit(readLines(bed_file, n = 1), "\t")[[1]]
-    # Ensure required columns are present
-    required_cols <- c(chrom_col, start_col)
-    missing_cols <- setdiff(required_cols, bed_header)
-    if (length(missing_cols) > 0) {
-        stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
-    }
-    sample_ids <- rownames(pheno)
-    existing_ids <- intersect(sample_ids, bed_header)
-
-    # Map existing sample IDs to BED file rows
-    id_mapping <- match(existing_ids, bed_header)
-    id_mapping <- id_mapping[!is.na(id_mapping)]
-    if (length(id_mapping) == 0) {
-        stop("None of the provided sample IDs were found in the BED file header.")
-    }
-    if (length(id_mapping) < length(sample_ids)) {
-        missing_ids <- setdiff(sample_ids, bed_header)
-        .log_warn(length(missing_ids), " out of ", length(sample_ids), " sample IDs were not found in the BED file header and will be ignored. The IDs are: ", paste(missing_ids, collapse = ", "))
-    }
-
-    # Quickly read number of rows in BED file
-    tmp_con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
-    num_rows <- sum(vapply(readLines(tmp_con), function(x) nchar(x) > 0, logical(1))) - 1
-    close(tmp_con)
-    .log_info("Processing BED file with ", num_rows, " rows and ", length(existing_ids), " matching sample IDs.", level = 2)
-
-
-    # Read chunks of the BED file to minimize memory usage
-    con <- if (endsWith(bed_file, ".gz")) gzfile(bed_file, "r") else file(bed_file, "r")
-    # Write normalized header to new BED file
-    norm_bed_header <- c("#chrom", "start", "end", "id", "score", "strand", existing_ids)
-    writeLines(paste(norm_bed_header, collapse = "\t"), normalized_bed_file)
-    # Skip header line
-    readLines(con, n = 1)
-    count <- 0
-    while (length(chunk <- readLines(con, n = chunk_size)) > 0) {
-        bed_data <- data.table::fread(paste(chunk, collapse = "\n"), sep = "\t", header = FALSE, data.table = FALSE)
-        colnames(bed_data) <- bed_header
-        bed_data$chr <- bed_data[[chrom_col]]
-        bed_data$start <- as.integer(bed_data[[start_col]])
-        bed_data$end <- bed_data$start + 1
-        bed_data$score <- "."
-        bed_data$id <- seq(count + 1, count + nrow(bed_data))
-        bed_data$strand <- "*"
-
-        # Write normalized BED data
-        bed_subset <- bed_data[, c("chr", "start", "end", "id", "score", "strand", existing_ids), drop = FALSE]
-        data.table::fwrite(
-            bed_subset,
-            file = normalized_bed_file,
-            sep = "\t",
-            quote = FALSE,
-            row.names = FALSE,
-            col.names = FALSE,
-            append = TRUE
-        )
-        count <- count + nrow(bed_data)
-    }
-    close(con)
-
-    hash <- .getFileHash(bed_file)
-    tabix_file_path <- .getDerivedOutputPath(output_prefix, ".input_beta.tabix.bed.gz")
-    if (is.null(tabix_file_path)) {
-        tabix_file_path <- file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz"))
-    }
-    # Convert to tabix
-    convertBetaToTabix(
-        .bed_file = normalized_bed_file,
-        output_file = tabix_file_path,
-        chunk_size = chunk_size,
-        njobs = 1,
-        output_prefix = output_prefix
-    )
-    locations_h5_file <- .getDerivedOutputPath(output_prefix, ".input_beta.locations.h5")
-    locations <- genomicLocsFromTabix(
-        tabix_file_path,
-        num_rows = num_rows,
-        hash = hash,
-        output_dir = cache_dir,
-        chunk_size = chunk_size,
-        output_h5file = locations_h5_file
-    )
-
-
-    list(
-        tabix_file = tabix_file_path,
-        locations = locations
-    )
-}
-
-
-#' Convert Beta File to Tabix-Indexed Format
-#'
-#' @description Converts a methylation beta values file to a tabix-indexed BED format
-#' for faster random access during DMR analysis. The function uses a memory-efficient
-#' chunk-based approach to handle large files and can persist the derived tabix file
-#' next to analysis outputs when `output_prefix` is supplied.
-#'
-#' @param beta_file Character. Path to the input beta values file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
-#'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
-#' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
-#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
-#' @param locations_file Character. Optional path to an explicit genomic locations file passed through to `getSortedGenomicLocs()`.
-#' @param output_file Character. Path for the output tabix file. If NULL, a temporary
-#'   file is used unless `output_prefix` is supplied.
-#' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
-#' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
-#' @param .bed_file Character. Internal precomputed BED path used to skip beta-to-BED conversion.
-#' @param output_prefix Character. Optional prefix used to persist derived tabix
-#'   artifacts next to analysis outputs.
-#'
-#' @return Character. Path to the created tabix file, or NULL if conversion failed
-#'
-#' @details
-#' The function performs the following steps:
-#' \enumerate{
-#'   \item Checks if tabix and bgzip tools are available in the system PATH
-#'   \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
-#'   \item Converts beta values to BED format with genomic coordinates
-#'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
-#'   \item Persists the derived file if an explicit output path or `output_prefix` is provided
-#' }
-#'
-#' @examples
-#' if (nzchar(Sys.which("tabix")) && nzchar(Sys.which("bgzip"))) {
-#'     beta_file <- tempfile(fileext = ".tsv")
-#'     writeLines(c("\tsample1", "cg1\t0.5"), beta_file)
-#'     locs <- data.frame(chr = "chr1", start = 100L, row.names = "cg1")
-#'     tabix_file <- convertBetaToTabix(beta_file, sorted_locs = locs)
-#' }
-#'
-#' @export
-convertBetaToTabix <- function(beta_file,
-                               sorted_locs = NULL,
-                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = "hg38",
-                               locations_file = NULL,
-                               output_file = NULL,
-                               chunk_size = 50000,
-                               njobs = 1,
-                               .bed_file = NULL,
-                               output_prefix = NULL) {
-    # Check if tabix/bgzip are available
-    tabix_available <- tryCatch(
-        {
-            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
-            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
-            TRUE
-        },
-        error = function(e) FALSE,
-        warning = function(w) FALSE
-    )
-
-    if (!tabix_available) {
-        .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
-        return(NULL)
-    }
-
-    if (is.null(output_file)) {
-        output_file <- .getDerivedOutputPath(output_prefix, ".input_beta.tabix.bed.gz")
-        if (is.null(output_file)) {
-            beta_hash <- .getFileHash(beta_file)
-            output_file <- file.path(tempdir(), paste0("beta_", beta_hash, ".bed.gz"))
-        }
-    }
-    dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
-
-    .log_step("Converting beta file to tabix format...", level = 1)
-
-    tryCatch(
-        {
-            if (is.null(.bed_file)) {
-                array <- strex::match_arg(array, ignore_case = TRUE)
-                # Get sorted locations if not provided
-                if (is.null(sorted_locs)) {
-                    sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
-                }
-                # Read header to get column names
-                .log_step("Reading beta file header...", level = 2)
-
-                header_info <- .getBetaFileHeaderInfo(beta_file)
-                col_names <- header_info$file_beta_col_names
-
-                # Get total number of rows for progress tracking
-                .log_step("Counting rows in beta file...", level = 2)
-
-                # Count lines efficiently (cross-platform)
-                if (endsWith(beta_file, ".gz")) {
-                    conn <- gzfile(beta_file, "r")
-                } else {
-                    conn <- file(beta_file, "r")
-                }
-                n_lines <- length(readLines(conn))
-                close(conn)
-                n_rows <- n_lines - 1 # Exclude header
-
-                .log_info("Processing ", n_rows, " site sites...", level = 2)
-
-                # Create temporary BED file for writing chunks
-                temp_bed <- tempfile(fileext = ".bed")
-                withr::defer(unlink(temp_bed))
-
-                # Write header to temp BED file with 6 mandatory BED columns
-                bed_header <- c("#chrom", "start", "end", "id", "score", "strand", header_info$sample_col_names)
-                writeLines(paste(bed_header, collapse = "\t"), temp_bed)
-
-                # Process file in chunks to avoid memory issues
-
-                skip_rows <- 1 # Start after header
-                rows_processed <- 0
-
-                while (rows_processed < n_rows) {
-                    .log_info("Processing rows ", rows_processed + 1, " to ",
-                        min(rows_processed + chunk_size, n_rows), "...",
-                        level = 3
-                    )
-
-                    # Read chunk
-                    chunk_data <- data.table::fread(
-                        beta_file,
-                        header = FALSE,
-                        skip = skip_rows,
-                        nrows = chunk_size,
-                        data.table = FALSE,
-                        showProgress = FALSE
-                    )
-
-                    if (nrow(chunk_data) == 0) break
-
-                    # Set column names
-                    colnames(chunk_data) <- col_names
-
-                    site_ids <- chunk_data[[1]]
-
-                    # Match with genomic locations
-                    common_sites <- intersect(site_ids, rownames(sorted_locs))
-
-                    if (length(common_sites) > 0) {
-                        # Create BED format for this chunk with 6 mandatory columns
-                        bed_chunk <- as.data.frame(sorted_locs[common_sites, c("chr", "start"), drop = FALSE])
-                        # Tabix requires plain integer coordinates; fwrite may emit
-                        # scientific notation for doubles like 45000000 ("4.5e+07"),
-                        # which tabix then parses as 4 and rejects as an invalid BED interval.
-                        bed_chunk$start <- as.integer(round(bed_chunk$start))
-                        bed_chunk$end <- bed_chunk$start + 1L
-                        bed_chunk$id <- rownames(bed_chunk)
-                        bed_chunk$score <- 0
-                        bed_chunk$strand <- "*"
-                        bed_chunk <- bed_chunk[, c("chr", "start", "end", "id", "score", "strand")]
-
-                        # Add beta values as additional columns
-                        beta_subset <- chunk_data[match(common_sites, site_ids), header_info$sample_col_names, drop = FALSE]
-                        bed_chunk <- cbind(bed_chunk, beta_subset)
-
-                        # Append to temp BED file
-                        data.table::fwrite(
-                            bed_chunk,
-                            file = temp_bed,
-                            sep = "\t",
-                            quote = FALSE,
-                            row.names = FALSE,
-                            col.names = FALSE,
-                            append = TRUE
-                        )
-                    }
-
-                    rows_processed <- rows_processed + nrow(chunk_data)
-                    skip_rows <- skip_rows + nrow(chunk_data)
-                }
-
-                .log_success("Processed ", rows_processed, " rows", level = 2)
-
-                # Check if any data was written
-                if (file.info(temp_bed)$size <= length(paste(bed_header, collapse = "\t")) + 1) {
-                    .log_warn("No common sites found between beta file and genomic locations")
-                    return(NULL)
-                }
-            } else {
-                temp_bed <- .bed_file
-                .log_info("Using provided BED file for tabix conversion: ", temp_bed, level = 2)
-            }
-
-            # Sort, compress with bgzip, and index with tabix
-            .log_step("Sorting BED file...", level = 2)
-            temp_sorted <- tempfile(fileext = ".bed")
-
-            # Platform-specific sorting
-            is_windows <- .Platform$OS.type == "windows"
-
-            if (is_windows) {
-                # Windows: use external sorting for large files
-                # Read and write header first
-                header_line <- readLines(temp_bed, n = 1)
-                writeLines(header_line, temp_sorted)
-
-                # Process file in chunks, sort each chunk, write to temp files
-                chunk_files <- character()
-                skip <- 1
-                chunk_num <- 0
-                chunk_sort_size <- 100000 # rows per chunk
-
-                repeat {
-                    chunk <- data.table::fread(temp_bed,
-                        skip = skip, nrows = chunk_sort_size,
-                        header = FALSE, data.table = TRUE
-                    )
-                    if (nrow(chunk) == 0) break
-
-                    # Sort chunk by chr (col 1) then position (col 2)
-                    data.table::setorderv(chunk, cols = c(1, 2), order = c(1, 1))
-
-                    # Write sorted chunk to temp file
-                    chunk_num <- chunk_num + 1
-                    chunk_file <- tempfile(fileext = paste0("_chunk", chunk_num, ".txt"))
-                    data.table::fwrite(chunk, chunk_file,
-                        sep = "\t", quote = FALSE,
-                        row.names = FALSE, col.names = FALSE
-                    )
-                    chunk_files <- c(chunk_files, chunk_file)
-
-                    skip <- skip + nrow(chunk)
-                }
-
-                # K-way merge of sorted chunks
-                if (length(chunk_files) > 0) {
-                    # Helper function to compare two BED lines (chr:start)
-                    compare_bed_lines <- function(line1, line2) {
-                        parts1 <- base::strsplit(line1, "\t", fixed = TRUE)[[1]]
-                        parts2 <- base::strsplit(line2, "\t", fixed = TRUE)[[1]]
-
-                        chr1 <- parts1[1]
-                        chr2 <- parts2[1]
-
-                        # Compare chromosomes
-                        if (chr1 != chr2) {
-                            return(chr1 < chr2)
-                        }
-
-                        # Same chromosome, compare positions
-                        pos1 <- as.numeric(parts1[2])
-                        pos2 <- as.numeric(parts2[2])
-                        pos1 < pos2
-                    }
-
-                    # Open all chunk files and read first line from each
-                    connections <- lapply(chunk_files, function(f) file(f, "r"))
-
-                    heap <- list()
-
-                    for (i in seq_along(connections)) {
-                        line <- readLines(connections[[i]], n = 1)
-                        if (length(line) > 0) {
-                            heap[[length(heap) + 1]] <- list(line = line, chunk_idx = i)
-                        }
-                    }
-
-                    out_conn <- file(temp_sorted, "a")
-
-                    # Merge: repeatedly extract minimum, write it, and refill from same chunk
-                    while (length(heap) > 0) {
-                        # Find minimum element in heap
-                        min_idx <- 1
-                        for (i in seq_along(heap)) {
-                            if (i > 1 && compare_bed_lines(heap[[i]]$line, heap[[min_idx]]$line)) {
-                                min_idx <- i
-                            }
-                        }
-
-                        # Write minimum line
-                        writeLines(heap[[min_idx]]$line, out_conn)
-
-                        # Read next line from the same chunk
-                        chunk_idx <- heap[[min_idx]]$chunk_idx
-                        next_line <- readLines(connections[[chunk_idx]], n = 1)
-
-                        if (length(next_line) > 0) {
-                            # Replace with new line from same chunk
-                            heap[[min_idx]]$line <- next_line
-                        } else {
-                            # This chunk is exhausted, remove from heap
-                            heap[[min_idx]] <- NULL
-                        }
-                    }
-
-                    close(out_conn)
-                    # Close all chunk file connections
-                    lapply(connections, close)
-                    # Clean up chunk files
-                    lapply(chunk_files, unlink)
-                }
-            } else {
-                # Unix/Linux/Mac: use efficient system sort
-                sort_cmd <- sprintf(
-                    "(head -n 1 %s && tail -n +2 %s | sort --parallel=%d -V -k1,1 -k2,2n) > %s",
-                    shQuote(temp_bed), shQuote(temp_bed), njobs, shQuote(temp_sorted)
-                )
-                system2("sh", c("-c", shQuote(sort_cmd)))
-            }
-            unlink(temp_bed)
-            # Compress with bgzip
-            .log_step("Compressing with bgzip...", level = 2)
-            .log_info("Expected output compressed file: ", output_file, level = 3)
-            error_file <- tempfile(fileext = ".log")
-            status_code <- system2("bgzip", args = c("-c", shQuote(temp_sorted)), stdout = output_file, stderr = error_file)
-            unlink(temp_sorted)
-            if (status_code != 0) {
-                con <- file(error_file, "r")
-                error <- readLines(con)
-                close(con)
-                stop("bgzip compression failed with exit code ", status_code, ": ", error)
-            }
-            # Index with tabix
-            .log_step("Creating tabix index...", level = 2)
-            error_file <- tempfile(fileext = ".log")
-
-            status_code <- system2("tabix", args = c("-f", "-p", "bed", shQuote(output_file)), stderr = error_file, stdout = NULL)
-            if (status_code != 0) {
-                con <- file(error_file, "r")
-                error <- readLines(con)
-                close(con)
-                stop("tabix indexing failed with exit code ", status_code, ": ", error)
-            }
-
-            # Clean up temp files
-
-            if (file.exists(output_file) && file.exists(paste0(output_file, ".tbi"))) {
-                .log_success("Tabix file created: ", output_file, level = 1)
-                return(output_file)
-            } else {
-                .log_warn("Failed to create tabix index")
-                NULL
-            }
-        },
-        error = function(e) {
-            .log_warn("Error converting to tabix: ", e$message)
-            NULL
-        }
-    )
-}
-
-
-#' Sort Beta File by Genomic Coordinates
-#'
-#' @description This helper function sorts a methylation beta values file by genomic coordinates
-#' (chromosome and position) as required by the findDMRsFromSeeds function. The function reads
-#' the beta file, sorts the site sites according to their genomic positions using array annotation,
-#' and writes the sorted data to a new file.
-#'
-#' @param beta_file Character. Path to the input beta values file to be sorted
-#' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
-#' @param array Character. Array platform type (default: "450K")
-#' @param genome Character. Genome version (default: "hg38")
-#' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
-#' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
-#'
-#' @return Character. Path to the sorted output file
-#'
-#' @details The function performs the following steps:
-#' \enumerate{
-#'   \item Reads the beta values file
-#'   \item Loads the appropriate array annotation (450K or EPIC)
-#'   \item Sorts site sites by genomic coordinates (chr:start)
-#'   \item Writes the sorted data to a new file
-#'   \item Validates that the output is properly sorted
-#' }
-#' @note If you want to convert to tabix, consider using the convertBetaToTabix function instead directly, sorting is done internally.
-#'
-#' @examples
-#' beta_file <- tempfile(fileext = ".tsv")
-#' writeLines(c("sample1", "cg2\t0.2", "cg1\t0.1"), beta_file)
-#' locs <- data.frame(
-#'     chr = c("chr1", "chr1"),
-#'     start = c(100L, 200L),
-#'     row.names = c("cg1", "cg2")
-#' )
-#' sorted_file <- sortBetaFileByCoordinates(beta_file, genomic_locs = locs)
-#'
-#' @export
-sortBetaFileByCoordinates <- function(beta_file,
-                                      output_file = NULL,
-                                      array = c("450K", "27K", "EPIC", "EPICv2"),
-                                      genome = "hg38",
-                                      genomic_locs = NULL,
-                                      overwrite = FALSE) {
-    # Validate inputs
-    if (!file.exists(beta_file)) {
-        stop("Beta file does not exist: ", beta_file)
-    }
-
-    # Set default output file name
-    if (is.null(output_file)) {
-        file_ext <- tools::file_ext(beta_file)
-        file_base <- tools::file_path_sans_ext(beta_file)
-        output_file <- paste0(file_base, "_sorted.", file_ext)
-    }
-
-    # Check if output file exists
-    if (file.exists(output_file) && !overwrite) {
-        stop(
-            "Output file already exists: ", output_file,
-            ". Set overwrite=TRUE to overwrite or choose a different output_file name."
-        )
-    }
-
-    .log_step("Reading beta file", beta_file, level = 2)
-    # Read the beta file
-    beta_data <- .readBetaFileData(
-        beta_file,
-        data_table = FALSE,
-        showProgress = getOption("CMEnt.verbose", 0) > 1
-    )
-
-    # Get row names (site IDs) from first column
-    site_ids <- beta_data[[1]]
-    beta_values <- beta_data[, -1, drop = FALSE]
-    rownames(beta_values) <- site_ids
-    .log_success("Beta loaded: ", nrow(beta_values), " sites across ", ncol(beta_values), " samples", level = 2)
-
-    sorted_locs <- genomic_locs
-    if (is.null(sorted_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
-        sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
-    }
-
-
-    # Find sites that are present in both the beta file and array annotation
-    common_sites <- intersect(site_ids, rownames(sorted_locs))
-    missing_from_annotation <- setdiff(site_ids, rownames(sorted_locs))
-    if (length(missing_from_annotation) > 0) {
-        stop(
-            "Found ", length(missing_from_annotation), " site sites in beta file that are not in ",
-            array, " annotation. First 5 missing: ", paste(head(missing_from_annotation, 5), collapse = ", ")
-        )
-    }
-
-    missing_from_beta <- setdiff(rownames(sorted_locs), site_ids)
-    if (length(missing_from_beta) > 0) {
-        .log_info("Note: ", length(missing_from_beta), " sites in ", array, " annotation are missing from beta file", level = 2)
-    }
-
-    final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_sites]
-
-    # Reorder beta values
-    sorted_beta_values <- beta_values[final_order, , drop = FALSE]
-
-    # Prepare output data frame
-    output_data <- data.frame(
-        ID = rownames(sorted_beta_values),
-        sorted_beta_values,
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-    )
-    .log_step("Writing sorted beta file", output_file, level = 2)
-
-    # Write sorted file
-    data.table::fwrite(
-        output_data,
-        file = output_file,
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE,
-        col.names = TRUE
-    )
-
-    output_file
-}
 
 .prepareCovariateModel <- function(pheno, covariates = NULL) {
     if (is.null(covariates) || length(covariates) == 0L || is.null(pheno)) {
@@ -1711,7 +1060,7 @@ sortBetaFileByCoordinates <- function(beta_file,
             paste0(
                 "BiocManager::install(c(",
                 paste(sprintf("\"%s\"", groups$bioc), collapse = ", "),
-                "))"
+                "), ask = FALSE, update = FALSE)"
             )
         )
     }
@@ -1733,24 +1082,8 @@ sortBetaFileByCoordinates <- function(beta_file,
 
 
 .installDependencyPackages <- function(pkg_names) {
-    groups <- .dependencyInstallGroups(unique(pkg_names))
-
-    if (length(groups$cran) > 0L) {
-        utils::install.packages(groups$cran)
-    }
-    if (length(groups$bioc) > 0L) {
-        if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            utils::install.packages("BiocManager")
-        }
-        BiocManager::install(groups$bioc, ask = FALSE, update = FALSE)
-    }
-    if (length(groups$github) > 0L) {
-        if (!requireNamespace("devtools", quietly = TRUE)) {
-            utils::install.packages("devtools")
-        }
-        for (repo in groups$github) {
-            devtools::install_github(repo)
-        }
+    for (cmd in .formatInstallInstructions(pkg_names)) {
+        eval(parse(text = cmd), envir = .GlobalEnv)
     }
     invisible(pkg_names)
 }
@@ -1825,6 +1158,8 @@ sortBetaFileByCoordinates <- function(beta_file,
     missing_pkgs <- unique(missing_reqs$pkg_name)
 
     if (isTRUE(getOption("CMEnt.auto_install_dep_if_missing", FALSE))) {
+        # This is a hidden option only used by the dockerrized version of CMEnt to automatically install missing dependencies without user intervention.
+        # It is not recommended to set this option in interactive use as it may lead to unintended package installations.
         .installDependencyPackages(missing_pkgs)
         missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
         if (!any(missing_mask)) {
@@ -2245,7 +1580,7 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
-    locs <- convertToDataFrame(locs)
+    locs <- .convertToDataFrame(locs)
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
@@ -2479,114 +1814,9 @@ orderByLoc <- function(x,
     )
 }
 
-#' Extract DNA Sequences for DMRs
-#'
-#' @description Retrieves the DNA sequences corresponding to genomic regions
-#' specified in a GRanges object. This function is useful for extracting the
-#' actual DNA sequence of identified DMRs for downstream analyses such as
-#' motif finding or sequence composition analysis.
-#'
-#' @param dmrs GRanges object containing genomic coordinates of DMRs
-#' @param genome Character. Genome version to use for sequence extraction, .e.g. "hg38" or "hs1".
-#' @param use_online Logical. If TRUE, forces use of online UCSC API instead of
-#'   BSgenome packages. If FALSE (default), uses BSgenome packages with online
-#'   fallback when packages are unavailable (default: FALSE)
-#' @param uflank_size Integer. Number of base pairs to add as flanking regions
-#'   upstream of each DMR (default: 0)
-#' @param dflank_size Integer. Number of base pairs to add as flanking regions
-#'   downstream of each DMR (default: 0)
-#' @param batch_size Integer. For online API, number of regions to process per batch (default: 100)
-#' @param njobs Integer. For online API, number of cores for parallel processing (default: 1)
-#' @return A Character vector containing DNA sequences for each DMR
-#'
-#' @details
-#' The function first attempts to use genome-appropriate BSgenome packages:
-#' \itemize{
-#'   \item hg19: BSgenome.Hsapiens.UCSC.hg19
-#'   \item hg38: BSgenome.Hsapiens.UCSC.hg38
-#'   \item hs1: BSgenome.Hsapiens.UCSC.hs1
-#'   \item mm10: BSgenome.Mmusculus.UCSC.mm10
-#'   \item mm39: BSgenome.Mmusculus.UCSC.mm39
-#' }
-#'
-#' If the required BSgenome package is not installed, the function raises an
-#' error with installation instructions. Set `use_online = TRUE` to query
-#' sequences from the UCSC Genome Browser REST API instead. The online method
-#' processes sequences in batches with optional parallel processing for
-#' improved performance with large datasets.
-#'
-#' For large numbers of DMRs (>10k), consider using parallel processing by setting
-#' njobs > 1 when using the online API, or install the appropriate BSgenome package
-#' for much faster local sequence retrieval.
-#'
-#' @examples
-#' dmrs <- GenomicRanges::GRanges("chr1", IRanges::IRanges(100000, 100100))
-#' \donttest{
-#' # Extract sequences for DMRs using BSgenome packages
-#' sequences <- getDMRSequences(dmrs, "hg19")
-#'
-#' # Force use of online UCSC API with parallel processing
-#' sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
-#'
-#' # Calculate GC content
-#' gc_content <- vapply(sequences, function(s) {
-#'     (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
-#' }, numeric(1))
-#' }
-#'
-#' @importFrom BSgenome getSeq
-#' @importFrom rtracklayer import.chain liftOver
-#' @export
-getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
-                            batch_size = 100, njobs = 1) {
-    if (!use_online) {
-        pkg_name <- .assertBSGenomePackageInstalled(genome, context = "getDMRSequences()")
-        use_bsgenome <- TRUE
-    } else {
-        pkg_name <- NULL
-        use_bsgenome <- FALSE
-    }
-    extended_ret <- .extendGRangesWithFlanks(dmrs, uflank_size, dflank_size)
-    dmrs <- extended_ret$granges
-    add_na_to_the_start <- extended_ret$start_off_limit
-    add_na_to_the_end <- extended_ret$end_off_limit
-
-    if (use_bsgenome) {
-        .log_info("Querying sequences using BSgenome package...", level = 2)
-        if (!isNamespaceLoaded(pkg_name)) {
-            loadNamespace(pkg_name)
-        }
-        seq_db <- getExportedValue(pkg_name, pkg_name)
-        sequences <- Biostrings::getSeq(seq_db, dmrs, as.character = TRUE)
-        if (is.list(sequences)) {
-            sequences <- vapply(sequences, function(x) paste(x, collapse = ""), character(1))
-        }
-    } else {
-        .log_info("Querying sequences from UCSC Genome Browser API...", level = 2)
-        sequences <- .getSequencesFromUCSC(dmrs, genome, batch_size = batch_size, njobs = njobs)
-    }
-    off_bound_mask <- add_na_to_the_start > 0 | add_na_to_the_end > 0
-    if (any(off_bound_mask)) {
-        .log_info("  Found ", sum(off_bound_mask), " regions with out-of-bound flanking extensions", level = 2)
-        .log_info("Adding 'N' padding for out-of-bound flanking regions...", level = 2)
-        sequences[off_bound_mask] <- mapply(function(seq, na_start, na_end) {
-            if (is.na(seq)) {
-                return(NA_character_)
-            }
-            seq <- paste0(
-                paste(rep("N", na_start), collapse = ""),
-                seq,
-                paste(rep("N", na_end), collapse = "")
-            )
-            seq
-        }, sequences[off_bound_mask], add_na_to_the_start[off_bound_mask], add_na_to_the_end[off_bound_mask], SIMPLIFY = TRUE)
-    }
-    sequences
-}
-
 #' @keywords internal
 #' @noRd
-getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
+.getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = TRUE) {
     pkg_name <- .getBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         sequences <- getDMRSequences(regions, genome, use_online = TRUE, njobs = njobs)
@@ -2806,224 +2036,9 @@ getSiteBackgroundCounts <- function(regions, genome, njobs = 1, canonical_chr = 
     annotations
 }
 
-#' Annotate DMRs with Gene Information
-#'
-#' @description Annotates DMRs with overlapping gene promoters and gene bodies
-#' using TxDb annotations. For each DMR, identifies genes whose promoters or
-#' gene bodies overlap with the DMR coordinates.
-#'
-#' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
-#' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
-#'   define promoter region (default: 2000)
-#' @param promoter_downstream Integer. Number of base pairs downstream of TSS
-#'   to define promoter region (default: 200)
-#' @param njobs Integer. Number of parallel jobs used to annotate promoter and
-#'   gene-body overlaps (default: `getOption("CMEnt.njobs")`)
-#'
-#' @return The input Dataframe/GRanges object with additional metadata columns:
-#' \itemize{
-#'   \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
-#'   \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
-#' }
-#'
-#' @details
-#' The function uses genome-appropriate TxDb packages. For `hs1`, CMEnt
-#' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
-#' Gene symbols are retrieved from the appropriate org.*.eg.db package.
-#' Multiple overlapping genes are concatenated with commas.
-#'
-#' @examples
-#' # Annotate DMRs with gene information
-#' dmrs <- data.frame(
-#'     chr = c("chr1", "chr2"),
-#'     start = c(1000000, 2000000),
-#'     end = c(1001000, 2001000)
-#' )
-#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
-#'
-#' # Use custom promoter definition
-#' dmrs_annotated <- annotateDMRsWithGenes(
-#'     dmrs,
-#'     genome = "hg38",
-#'     promoter_upstream = 5000,
-#'     promoter_downstream = 1000,
-#'     njobs = 2
-#' )
-#'
-#' @export
-annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
-                                  promoter_upstream = 2000,
-                                  promoter_downstream = 200,
-                                  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
-    cache_dir <- getOption(
-        "CMEnt.annotation_cache_dir",
-        .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
-    )
-    dmrs_df_provided <- is.data.frame(dmrs)
-    dmrs <- convertToGRanges(dmrs, genome)
-
-    target_genome <- tolower(genome)
-    annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
-    annotation_pkgs <- .assertGeneAnnotationPackagesInstalled(
-        genome = genome,
-        context = "annotateDMRsWithGenes()"
-    )
-    txdb_pkg <- unname(annotation_pkgs[["txdb"]])
-    orgdb_pkg <- unname(annotation_pkgs[["orgdb"]])
-    if (annotation_source_genome != target_genome) {
-        .log_info(
-            "Using ", annotation_source_genome,
-            " gene models lifted to ", target_genome, " for annotation.",
-            level = 2
-        )
-    }
-    .log_step("Loading gene annotations for ", genome, "...", level = 2)
-
-    # Load TxDb namespace
-    if (!isNamespaceLoaded(txdb_pkg)) {
-        loadNamespace(txdb_pkg)
-    }
-
-    # Load TxDb - the main object has the same name as the package
-    txdb <- getExportedValue(txdb_pkg, txdb_pkg)
-
-    # Get genes and promoters
-    # Load them from cache if available
-    suppressMessages({
-        genes_key <- paste0("genes_", genome)
-        genes <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
-            .readBiocFileCacheRDS(cache_dir, genes_key)
-        } else {
-            NULL
-        }
-        if (!is.null(genes)) {
-            .log_info("Loading cached genes from ", genes_key, level = 2)
-        } else {
-            genes <- GenomicFeatures::genes(txdb)
-            # get genes only within standard chromosomes
-            std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::seqinfo(txdb))
-            genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% std_chroms]
-            if (annotation_source_genome != target_genome) {
-                genes <- .liftOverFromGenomeToGenome(genes, annotation_source_genome, target_genome)
-                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
-                genes <- genes[as.character(GenomeInfoDb::seqnames(genes)) %in% target_std_chroms]
-            }
-            tryCatch(
-                {
-                    .saveBiocFileCacheRDS(genes, cache_dir, genes_key)
-                },
-                warning = function(w) {
-                    .log_warn(
-                        "Could not write annotation cache entry '", genes_key,
-                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
-                    )
-                },
-                error = function(e) {
-                    .log_warn(
-                        "Could not write annotation cache entry '", genes_key,
-                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
-                    )
-                }
-            )
-        }
-        promoters_key <- paste0("promoters_", genome)
-        promoters <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
-            .readBiocFileCacheRDS(cache_dir, promoters_key)
-        } else {
-            NULL
-        }
-        if (!is.null(promoters)) {
-            .log_info("Loading cached promoters from ", promoters_key, level = 2)
-        } else {
-            transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
-            transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
-            promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
-            promoters <- stack(promoters)
-            if (annotation_source_genome != target_genome) {
-                promoters <- .liftOverFromGenomeToGenome(promoters, annotation_source_genome, target_genome)
-                target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
-                promoters <- promoters[as.character(GenomeInfoDb::seqnames(promoters)) %in% target_std_chroms]
-            }
-            tryCatch(
-                {
-                    .saveBiocFileCacheRDS(promoters, cache_dir, promoters_key)
-                },
-                warning = function(w) {
-                    .log_warn(
-                        "Could not write annotation cache entry '", promoters_key,
-                        "' (warning: ", conditionMessage(w), "). Continuing without cache persistence."
-                    )
-                },
-                error = function(e) {
-                    .log_warn(
-                        "Could not write annotation cache entry '", promoters_key,
-                        "' (error: ", conditionMessage(e), "). Continuing without cache persistence."
-                    )
-                }
-            )
-        }
-    })
-    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
-    .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
-    .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
-    annotation_specs <- list(
-        list(
-            column = "in_promoter_of",
-            features = promoters,
-            feature_type = "promoter"
-        ),
-        list(
-            column = "in_gene_body_of",
-            features = genes,
-            feature_type = "gene_body"
-        )
-    )
-    if (!is.null(njobs) && is.finite(njobs) && as.integer(njobs) > 1L) {
-        withr::local_options(list(CMEnt.njobs = as.integer(njobs)))
-        .setupParallel()
-        on.exit(.finalizeParallel(), add = TRUE)
-        annotation_results <- future.apply::future_lapply(
-            annotation_specs,
-            function(spec) {
-                list(
-                    column = spec$column,
-                    values = .annotateDMRsWithGeneFeature(
-                        dmrs = dmrs,
-                        features = spec$features,
-                        orgdb_pkg = orgdb_pkg,
-                        feature_type = spec$feature_type
-                    )
-                )
-            },
-            future.seed = TRUE,
-            future.stdout = NA,
-            future.globals = c(".annotateDMRsWithGeneFeature", "dmrs", "orgdb_pkg")
-        )
-    } else {
-        annotation_results <- lapply(annotation_specs, function(spec) {
-            list(
-                column = spec$column,
-                values = .annotateDMRsWithGeneFeature(
-                    dmrs = dmrs,
-                    features = spec$features,
-                    orgdb_pkg = orgdb_pkg,
-                    feature_type = spec$feature_type
-                )
-            )
-        })
-    }
-    for (annotation_result in annotation_results) {
-        S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
-    }
-    .log_success("Gene symbols mapped", level = 2)
-    if (dmrs_df_provided) {
-        dmrs <- convertToDataFrame(dmrs)
-    }
-    dmrs
-}
-
-convertToGRanges <- function(obj, genome) {
+#' @keywords internal
+#' @noRd
+.convertToGRanges <- function(obj, genome) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
         obj <- .decodeSerializedOutputColumns(obj)
@@ -3059,6 +2074,28 @@ convertToGRanges <- function(obj, genome) {
         }
     }
     obj
+}
+
+#' @keywords internal
+#' @noRd
+.convertToDataFrame <- function(gr) {
+    if (is.data.frame(gr)) {
+        return(gr)
+    }
+    chr_prefix_added <- FALSE
+    if ("chr_prefix_added" %in% names(mcols(gr))) {
+        chr_prefix_added <- TRUE
+    }
+    df <- as.data.frame(gr, stringsAsFactors = FALSE)
+    colnames(df)[colnames(df) == "seqnames"] <- "chr"
+    if ("original_location" %in% colnames(df)) {
+        df <- df[, c("original_location", setdiff(colnames(df), c("chr", "original_location")))]
+        colnames(df)[colnames(df) == "original_location"] <- "chr"
+    }
+    if (chr_prefix_added) {
+        df$chr <- sub("^chr", "", df$chr)
+    }
+    df
 }
 
 .serializedOutputPrefix <- "CMEnt:serialized_base64:"
@@ -3130,25 +2167,6 @@ convertToGRanges <- function(obj, genome) {
     decoded_df
 }
 
-convertToDataFrame <- function(gr) {
-    if (is.data.frame(gr)) {
-        return(gr)
-    }
-    chr_prefix_added <- FALSE
-    if ("chr_prefix_added" %in% names(mcols(gr))) {
-        chr_prefix_added <- TRUE
-    }
-    df <- as.data.frame(gr, stringsAsFactors = FALSE)
-    colnames(df)[colnames(df) == "seqnames"] <- "chr"
-    if ("original_location" %in% colnames(df)) {
-        df <- df[, c("original_location", setdiff(colnames(df), c("chr", "original_location")))]
-        colnames(df)[colnames(df) == "original_location"] <- "chr"
-    }
-    if (chr_prefix_added) {
-        df$chr <- sub("^chr", "", df$chr)
-    }
-    df
-}
 
 .already_logged_dir <- tempdir()
 .already_logged_file <- file.path(.already_logged_dir, "cment_already_logged_parallel.txt")
@@ -3434,42 +2452,6 @@ convertToDataFrame <- function(gr) {
     )
 }
 
-#' Load CMEnt Example Resources
-#'
-#' @description Load one or more example resources from the
-#' \pkg{DMRsegaldata} ExperimentHub package and assign them into the caller's
-#' environment using their resource names.
-#'
-#' @param ... Names of the resources to load, or none to load all available
-#' resources. Available resources:
-#' \itemize{
-#'   \item "beta": Example beta values matrix
-#'   \item "pheno": Example phenotype data
-#'   \item "dmps": Example differentially methylated positions
-#'   \item "array_type": Example array type annotation
-#' }
-#'
-#' @return Invisibly returns the loaded object when a single resource is
-#' requested, or a named list of loaded objects when multiple resources are
-#' requested.
-#'
-#' @examples
-#'
-#' # Load phenotype data into the current environment
-#' loadExampleInputData("pheno")
-#' head(pheno)
-#'
-#' # Load multiple resources at once
-#' loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
-#' dim(beta)
-#'
-#' @export
-loadExampleInputData <- function(...) {
-    .assignExampleInputData(
-        resources = .normalizeExampleInputResources(list(...)),
-        envir = parent.frame()
-    )
-}
 
 .loadExampleInputDataSubset <- function(..., subset, envir) {
     resources <- .normalizeExampleInputResources(list(...))
@@ -3577,24 +2559,3 @@ loadExampleInputData <- function(...) {
     invisible(if (length(values) == 1L) values[[1L]] else values)
 }
 
-#' @rdname loadExampleInputData
-#' @description Compatibility wrapper returning the chr5/chr11 example subset.
-#' @export
-loadExampleInputDataChr5And11 <- function(...) {
-    .loadExampleInputDataSubset(
-        ...,
-        subset = c("chr5", "chr11"),
-        envir = parent.frame()
-    )
-}
-
-#' @rdname loadExampleInputData
-#' @description Compatibility wrapper returning the chr21/chr22 example subset.
-#' @export
-loadExampleInputDataChr21And22 <- function(...) {
-    .loadExampleInputDataSubset(
-        ...,
-        subset = c("chr21", "chr22"),
-        envir = parent.frame()
-    )
-}

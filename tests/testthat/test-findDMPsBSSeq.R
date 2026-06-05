@@ -30,6 +30,7 @@ test_that("findDMPsBSSeq handles HDF5-backed BSseq methylation matrices", {
         Sample_Group = rep(c("control", "case"), each = 3L)
     )
 
+    output_file <- tempfile(fileext = ".tsv.gz")
     dmps <- CMEnt::findDMPsBSSeq(
         bsseq = bs_hdf5,
         samplesheet = pheno,
@@ -38,9 +39,13 @@ test_that("findDMPsBSSeq handles HDF5-backed BSseq methylation matrices", {
         chr = "all",
         case_group = "case",
         fdr_thres = 1,
+        output_file = output_file,
         njobs = 1
     )
 
     expect_equal(nrow(dmps), n_sites)
     expect_true(all(is.finite(dmps$delta_beta)))
+    written <- utils::read.table(output_file, header = TRUE, sep = "\t", check.names = FALSE)
+    expect_equal(colnames(written), colnames(dmps))
+    expect_equal(nrow(written), nrow(dmps))
 })

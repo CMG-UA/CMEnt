@@ -215,7 +215,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         } else {
             sorted_locs <- .sorted_locs
         }
-        sorted_locs <- convertToGRanges(sorted_locs, genome)
+        sorted_locs <- .convertToGRanges(sorted_locs, genome)
         # Array annotations store sites as width-2 "CG" ranges, but motif windows in
         # this workflow are anchored on the site start base plus one downstream base.
         # Resize to width 1 so the extracted background windows match extractDMRMotifs().
@@ -315,7 +315,7 @@ extractDMRMotifs <- function(
     dmrs, genome="hg38", array = "450k", beta_locs = NULL, motif_site_flank_size = 5, plot_dir = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     .assertDependencyRequirements(
         requirements = .motifDependencyRequirements(
             genome = genome,
@@ -404,7 +404,7 @@ extractDMRMotifs <- function(
     mcols(dmrs)$pwm <- pwms
     mcols(dmrs)$consensus_seq <- consensus_seq
     if (input_is_df) {
-        dmrs <- convertToDataFrame(dmrs)
+        dmrs <- .convertToDataFrame(dmrs)
     }
     invisible(dmrs)
 }
@@ -515,7 +515,7 @@ computeDMRsInteraction <- function(
     output_prefix = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     if (isTRUE(find_components) && isTRUE(query_components_with_jaspar)) {
         .assertDependencyRequirements(
             requirements = .jasparDependencyRequirements(),
@@ -528,7 +528,7 @@ computeDMRsInteraction <- function(
         return(list(
             interactions = data.frame(),
             components = data.frame(),
-            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
+            dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
     if (!"pwm" %in% colnames(mcols(dmrs))) {
@@ -549,7 +549,7 @@ computeDMRsInteraction <- function(
         return(list(
             interactions = data.frame(),
             components = data.frame(),
-            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
+            dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
     similarity_matrix <- .extractMotifsSimilarity(dmrs, motif_site_flank_size = motif_site_flank_size)
@@ -581,7 +581,7 @@ computeDMRsInteraction <- function(
         return(list(
             interactions = interactions_df,
             components = components_df,
-            dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
+            dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
     has_score <- inherits(dmrs, "GRanges") && "score" %in% colnames(mcols(dmrs))
@@ -701,6 +701,6 @@ computeDMRsInteraction <- function(
     list(
         interactions = interactions_df,
         components = components_df,
-        dmrs = if (input_is_df) convertToDataFrame(dmrs) else dmrs
+        dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
     )
 }

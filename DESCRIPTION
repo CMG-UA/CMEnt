@@ -68,6 +68,7 @@ Imports:
     inline,
     IRanges,
     jsonlite,
+    limma,
     matrixStats,
     methods,
     plotly,
@@ -127,21 +128,27 @@ Suggests:
     pkgload
 Config/testthat/edition: 3
 Collate:
-    'utils.R'
+    'annotate_dmrs_with_genes.R'
+    'augment_bsseq.R'
     'beta_handler.R'
+    'CMEnt-package.R'
+    'combine_pvalues.R'
+    'convert_beta_to_tabix.R'
     'dmrs_finder_from_seeds.R'
     'dmrs_interaction.R'
     'dmrs_scoring.R'
-    'cli.R'
-    'CMEnt-package.R'
+    'find_dmps_array.R'
+    'find_dmps_bsseq.R'
+    'get_dmr_sequences.R'
+    'load_example_input_data.R'
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
-    'shiny_modules.R'
+    'read_custom_methylation_bed_data.R'
     'shiny_app.R'
-    'augment_bsseq.R'
-    "combine_pvalues.R"
+    'shiny_modules.R'
     'simulate_dmrs.R'
-    'find_dmps_bsseq.R'
+    'sort_beta_file_by_coordinates.R'
+    'utils.R'
     'zzz.R'
 NeedsCompilation: no
 Config/roxygen2/version: 8.0.0

@@ -987,7 +987,7 @@ plotDMRs <- function(dmrs,
     if (is.null(beta_locs)) {
         array <- strex::match_arg(array, ignore_case = TRUE)
     }
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     if (is.null(dmr_indices)) {
         score <- minmaxscale(abs(mcols(dmrs)$delta_beta))
         ord <- order(score, decreasing = TRUE)
@@ -1107,7 +1107,7 @@ plotDMR <- function(dmrs,
         (!is.na(input_dmrs_n) && dmr_index > input_dmrs_n)) {
         stop("dmr_index (", dmr_index, ") is out of bounds. There are only ", input_dmrs_n, " DMRs available.")
     }
-    dmrs <- convertToGRanges(dmrs, genome)
+    dmrs <- .convertToGRanges(dmrs, genome)
     if (!is.null(array)) {
         if (length(array) > 1) {
             array <- array[[1]]
@@ -1586,7 +1586,7 @@ plotDMR <- function(dmrs,
 #' @param dmrs GRanges object or data frame. DMR results from `findDMRsFromSeeds`
 #' or `scoreDMRs`.
 #' @param chromosome Character. Chromosome to inspect (e.g., `"chr7"` or `"7"`).
-#' @param genome Character. Genome version passed to `convertToGRanges`
+#' @param genome Character. Genome version passed to `.convertToGRanges`
 #' (default: `"hg38"`).
 #' @param k_neighbors Integer. Number of nearest neighbors used in adaptive Gaussian
 #' smoothing (default: `5`).
@@ -1632,7 +1632,7 @@ plotDMRBlockFormation <- function(dmrs,
                                   block_gap_max_bp = 5000000,
                                   point_alpha = 0.7,
                                   point_size = 1.0) {
-    dmrs <- convertToGRanges(dmrs, genome = genome)
+    dmrs <- .convertToGRanges(dmrs, genome = genome)
     if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("Column 'score' not found in DMR metadata.")
     }
@@ -1889,7 +1889,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @param region Optional plotting scope. Can be NULL for full-chromosome plotting,
 #' a GRanges, a string in the form `"chr:start-end"`, or a data.frame/list with
 #' `chr`, `start`, and `end`.
-#' @param genome Character. Genome version passed to `convertToGRanges` (default: `"hg38"`).
+#' @param genome Character. Genome version passed to `.convertToGRanges` (default: `"hg38"`).
 #' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
 #' @param point_size Numeric. Point size (default: `1.1`).
@@ -1927,7 +1927,7 @@ plotDMRsManhattan <- function(dmrs,
                               output_file = NULL,
                               width = 12,
                               height = 6) {
-    dmrs <- convertToGRanges(dmrs, genome = genome)
+    dmrs <- .convertToGRanges(dmrs, genome = genome)
     if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("Column 'score' not found in DMR metadata.")
     }

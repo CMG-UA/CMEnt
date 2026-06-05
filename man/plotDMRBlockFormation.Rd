@@ -26,7 +26,7 @@ or \code{scoreDMRs}.}
 
 \item{chromosome}{Character. Chromosome to inspect (e.g., \code{"chr7"} or \code{"7"}).}
 
-\item{genome}{Character. Genome version passed to \code{convertToGRanges}
+\item{genome}{Character. Genome version passed to \code{.convertToGRanges}
 (default: \code{"hg38"}).}
 
 \item{k_neighbors}{Integer. Number of nearest neighbors used in adaptive Gaussian
