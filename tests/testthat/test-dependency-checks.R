@@ -137,6 +137,29 @@ test_that("findDMRsFromSeeds aggregates optional dependencies before running", {
     expect_match(conditionMessage(err), "BSgenome\\.Hsapiens\\.UCSC\\.hg19")
 })
 
+test_that("dependency assertions can auto-install missing packages", {
+    installed <- new.env(parent = emptyenv())
+    installed$pkgs <- "AlreadyPkg"
+    installed_called <- character()
+
+    local_mocked_bindings(
+        .isPackageInstalled = function(pkg_name) pkg_name %in% installed$pkgs,
+        .installDependencyPackages = function(pkg_names) {
+            installed_called <<- pkg_names
+            installed$pkgs <- union(installed$pkgs, pkg_names)
+            invisible(pkg_names)
+        },
+        .package = "CMEnt"
+    )
+    withr::local_options(list(CMEnt.auto_install_dep_if_missing = TRUE))
+
+    reqs <- CMEnt:::.makeDependencyRequirements(c("MissingPkg", "AlreadyPkg"), "reason")
+    pkgs <- CMEnt:::.assertDependencyRequirements(reqs, "test context")
+
+    expect_equal(installed_called, "MissingPkg")
+    expect_equal(pkgs, reqs$pkg_name)
+})
+
 test_that("findDMPsBSSeq reports DSS as a required dependency", {
     local_mocked_bindings(
         .isPackageInstalled = function(pkg_name) {

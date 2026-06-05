@@ -1,7 +1,8 @@
-name: Render and deploy notebooks
+name: Render and deploy notebooks to GitHub Pages
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

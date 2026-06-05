@@ -66,7 +66,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-extra
 
 # Install tabix (through samtools) from the builder stage
-COPY --from=builder /opt/samtools /opt/samtools
 COPY --link --from=builder /opt/samtools/bin/* /usr/local/bin/
 COPY --link --from=builder /opt/samtools/lib/* /usr/local/lib/
 

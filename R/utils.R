@@ -1672,56 +1672,87 @@ sortBetaFileByCoordinates <- function(beta_file,
 }
 
 
+.dependencyInstallGroups <- function(pkg_names) {
+    specs <- lapply(pkg_names, .packageInstallSpec)
+    spec_types <- vapply(specs, `[[`, character(1), "type")
+    spec_values <- vapply(specs, `[[`, character(1), "value")
+
+    list(
+        cran = unique(spec_values[spec_types == "cran"]),
+        bioc = unique(spec_values[spec_types == "bioc"]),
+        github = unique(spec_values[spec_types == "github"])
+    )
+}
+
+
 .formatInstallInstructions <- function(pkg_names) {
     if (length(pkg_names) == 0L) {
         return(character(0))
     }
 
-    specs <- lapply(pkg_names, .packageInstallSpec)
-    spec_types <- vapply(specs, `[[`, character(1), "type")
-    spec_values <- vapply(specs, `[[`, character(1), "value")
+    groups <- .dependencyInstallGroups(pkg_names)
     lines <- character(0)
 
-    cran_pkgs <- unique(spec_values[spec_types == "cran"])
-    bioc_pkgs <- unique(spec_values[spec_types == "bioc"])
-    github_repos <- unique(spec_values[spec_types == "github"])
-
-    if (length(cran_pkgs) > 0L) {
+    if (length(groups$cran) > 0L) {
         lines <- c(
             lines,
             paste0(
                 "install.packages(c(",
-                paste(sprintf("\"%s\"", cran_pkgs), collapse = ", "),
+                paste(sprintf("\"%s\"", groups$cran), collapse = ", "),
                 "))"
             )
         )
     }
 
-    if (length(bioc_pkgs) > 0L) {
+    if (length(groups$bioc) > 0L) {
         lines <- c(
             lines,
             "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\")",
             paste0(
                 "BiocManager::install(c(",
-                paste(sprintf("\"%s\"", bioc_pkgs), collapse = ", "),
+                paste(sprintf("\"%s\"", groups$bioc), collapse = ", "),
                 "))"
             )
         )
     }
 
-    if (length(github_repos) > 0L) {
-        if (!"devtools" %in% cran_pkgs) {
+    if (length(groups$github) > 0L) {
+        if (!"devtools" %in% groups$cran) {
             lines <- c(lines, "install.packages(\"devtools\")")
         }
         lines <- c(
             lines,
-            vapply(github_repos, function(repo) {
+            vapply(groups$github, function(repo) {
                 paste0("devtools::install_github(\"", repo, "\")")
             }, character(1))
         )
     }
 
     lines
+}
+
+
+.installDependencyPackages <- function(pkg_names) {
+    groups <- .dependencyInstallGroups(unique(pkg_names))
+
+    if (length(groups$cran) > 0L) {
+        utils::install.packages(groups$cran)
+    }
+    if (length(groups$bioc) > 0L) {
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            utils::install.packages("BiocManager")
+        }
+        BiocManager::install(groups$bioc, ask = FALSE, update = FALSE)
+    }
+    if (length(groups$github) > 0L) {
+        if (!requireNamespace("devtools", quietly = TRUE)) {
+            utils::install.packages("devtools")
+        }
+        for (repo in groups$github) {
+            devtools::install_github(repo)
+        }
+    }
+    invisible(pkg_names)
 }
 
 
@@ -1792,6 +1823,17 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     missing_reqs <- requirements[missing_mask, , drop = FALSE]
     missing_pkgs <- unique(missing_reqs$pkg_name)
+
+    if (isTRUE(getOption("CMEnt.auto_install_dep_if_missing", FALSE))) {
+        .installDependencyPackages(missing_pkgs)
+        missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
+        if (!any(missing_mask)) {
+            return(invisible(requirements$pkg_name))
+        }
+        missing_reqs <- requirements[missing_mask, , drop = FALSE]
+        missing_pkgs <- unique(missing_reqs$pkg_name)
+    }
+
     missing_reasons <- unique(missing_reqs$reason[nzchar(missing_reqs$reason)])
     msg <- c(
         paste0(

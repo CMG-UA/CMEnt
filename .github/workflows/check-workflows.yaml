@@ -1,0 +1,64 @@
+name: Check GitHub Actions workflows
+
+on:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-workflows:
+    name: Check workflows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+
+      - name: Run actionlint
+        run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Check YAML duplicate keys
+        shell: ruby {0}
+        run: |
+          require "psych"
+
+          def check_node(node, path)
+            return if node.nil?
+
+            if node.is_a?(Psych::Nodes::Mapping)
+              seen = {}
+
+              node.children.each_slice(2) do |key_node, value_node|
+                key = key_node.respond_to?(:value) ? key_node.value : key_node.to_s
+                current_path = "#{path}/#{key}"
+                line = key_node.start_line + 1
+
+                if seen.key?(key)
+                  warn "duplicate key #{current_path} at line #{line}, previous line #{seen[key]}"
+                  exit 1
+                end
+
+                seen[key] = line
+                check_node(value_node, current_path)
+              end
+            elsif node.respond_to?(:children)
+              (node.children || []).each { |child| check_node(child, path) }
+            end
+          end
+
+          Dir[".github/workflows/*.{yaml,yml}"].sort.each do |file|
+            check_node(Psych.parse_file(file), file)
+          end

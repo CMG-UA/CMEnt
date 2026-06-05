@@ -1,0 +1,68 @@
+name: CMEnt CI, including package checks, Docker image build, and notebook rendering
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/prepare-cment-env-image.yaml"
+      - ".github/workflows/test-package.yaml"
+      - ".github/docker/cment-env/**"
+      - "Dockerfile"
+      - "DESCRIPTION"
+      - "NAMESPACE"
+      - "R/**"
+      - "man/**"
+      - "tests/**"
+      - "vignettes/**"
+      - "inst/**"
+      - "src/**"
+  push:
+    branches:
+      - master
+      - devel
+    paths:
+      - ".github/workflows/prepare-cment-env-image.yaml"
+      - ".github/workflows/test-package.yaml"
+      - ".github/workflows/make-docker.yaml"
+      - ".github/workflows/make-github-pages.yaml"
+      - ".github/docker/cment-env/**"
+      - "Dockerfile"
+      - "DESCRIPTION"
+      - "NAMESPACE"
+      - "R/**"
+      - "man/**"
+      - "tests/**"
+      - "notebooks/**"
+      - "vignettes/**"
+      - "inst/**"
+      - "src/**"
+
+permissions:
+  contents: read
+  packages: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+  R_KEEP_PKG_SOURCE: yes
+  CI: true
+
+jobs:
+  test-package:
+    name: Test package
+    uses: ./.github/workflows/test-package.yaml
+  make-docker:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
+    name: Make CMEnt Docker image
+    needs: test-package
+    uses: ./.github/workflows/make-docker.yaml
+  make-github-pages:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
+    name: Render notebooks and deploy to GitHub Pages
+    needs: test-package
+    uses: ./.github/workflows/make-github-pages.yaml
