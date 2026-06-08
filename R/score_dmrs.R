@@ -877,16 +877,21 @@ scoreDMRs <- function(
     nfold <- getOption("CMEnt.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     if (! "sites" %in% colnames(mcols(dmrs))) {
+        .log_step("Inferring DMR sites from genomic overlaps", level = 3)
         beta_locs <- .convertToGRanges(beta_handler$getBetaLocs(), genome = genome)
         beta_site_ids <- names(beta_locs)
-        mcols(dmrs)$sites <- vapply(seq_along(dmrs), function(i) {
-            dmr_i <- dmrs[i]
-            hits <- S4Vectors::subjectHits(GenomicRanges::findOverlaps(dmr_i, beta_locs))
-            if (length(hits) == 0L) {
-                return("")
-            }
-            paste0(beta_site_ids[hits], collapse = ",")
-        }, character(1))
+        hits <- GenomicRanges::findOverlaps(dmrs, beta_locs)
+        sites <- rep("", length(dmrs))
+        if (length(hits) > 0L) {
+            hits_by_dmr <- split(S4Vectors::subjectHits(hits), S4Vectors::queryHits(hits))
+            sites[as.integer(names(hits_by_dmr))] <- vapply(
+                hits_by_dmr,
+                function(i) paste0(beta_site_ids[i], collapse = ","),
+                character(1)
+            )
+        }
+        mcols(dmrs)$sites <- sites
+        .log_success("DMR sites inferred from genomic overlaps", level = 3)
     }
     dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)

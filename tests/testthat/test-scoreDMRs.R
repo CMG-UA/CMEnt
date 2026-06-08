@@ -94,8 +94,8 @@ test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
         row.names = colnames(beta_small)
     )
     dmrs_no_sites <- GenomicRanges::GRanges(
-        seqnames = "chr1",
-        ranges = IRanges::IRanges(start = 20, end = 30)
+        seqnames = rep("chr1", 2),
+        ranges = IRanges::IRanges(start = c(20, 40), end = c(30, 50))
     )
     GenomeInfoDb::genome(dmrs_no_sites) <- "hg19"
 
@@ -109,7 +109,7 @@ test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
         njobs = 1
     )
 
-    expect_equal(as.character(S4Vectors::mcols(scoring_dmrs)$sites), "cg2,cg3")
+    expect_setequal(as.character(S4Vectors::mcols(scoring_dmrs)$sites), c("cg2,cg3", "cg4,cg5"))
     expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs)))
 })
 
