@@ -1277,7 +1277,7 @@ if (!file.exists(scored_dmrs_file)) {
         }
         cat(sprintf("Scoring DMRs for method: %s\n", method))
         scored_methods_list[[method]] <- CMEnt::scoreDMRs(
-            dmrs, beta_handler, pheno, locs,
+            dmrs=dmrs, beta=beta_handler, pheno=pheno,
             sample_group_col = sample_group_col,
             array = array_type, genome = genome,
             njobs = min(8, parallel::detectCores() - 1),
@@ -1299,7 +1299,14 @@ top_scoring_tbl <- do.call(rbind, lapply(names(scored_methods_list), function(me
 }))
 knitr::kable(top_scoring_tbl, digits = 4, caption = "Top DMR Score by Method")
 ```
-
+## DMR Interactions Circos visualization
+```{r, fig.width=10, fig.height=10}
+CMEnt::plotDMRsCircos(
+    cment_dmrs,
+    genome = "hg19",
+    array = array_type
+)
+```
 
 
 ## Summary Statistics

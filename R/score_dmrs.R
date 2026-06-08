@@ -853,6 +853,7 @@ scoreDMRs <- function(
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- .convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
+    .log_step("Preparing metadata for DMR scoring", level = 3)
     beta_col_names <- beta_handler$getBetaColNames()
     pheno <- as.data.frame(pheno)
     missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
@@ -889,6 +890,7 @@ scoreDMRs <- function(
     }
     dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    .log_step("Loading beta values for DMR scoring", level = 3)
     dmr_beta <- beta_handler$getBeta(
         row_names = unique(unlist(dmr_sites)),
         col_names = beta_col_names
