@@ -528,11 +528,11 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 ```{r probeLasso}
 probelasso_file <- get_method_cache_file("probeLasso")
 
-run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
+run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K", genome = "hg19") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
         warning("ChAMP not installed. probeLasso requires ChAMP.")
         warning("Install with: BiocManager::install('ChAMP')")
-        return(GRanges())
+        return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome)))
     }
 
     library(ChAMP)
@@ -575,19 +575,20 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 seqnames.field = "seqnames",
                 start.field = "start",
                 end.field = "end",
+                seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
                 keep.extra.columns = TRUE
             ))
         },
         error = function(e) {
             warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
-            GRanges()
+            GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome))
         }
     )
 }
 
 if (!file.exists(probelasso_file)) {
     start_time <- Sys.time()
-    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K")
+    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K", genome = genome)
     end_time <- Sys.time()
     time_probelasso <- end_time - start_time
     saveRDS(list(dmrs = dmrs_probelasso, time = time_probelasso), probelasso_file)
