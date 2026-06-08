@@ -45,22 +45,22 @@ suppressPackageStartupMessages({
     library(GenomicRanges)
 })
 
-get_benchmark_file <- function(filename) {
+getBenchmarkFile <- function(filename) {
     benchmark_file <- ""
-    folder <- "simulated_microarray"
+    folder <- "simulated_microarray450k"
     if (getwd() == "notebooks") {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     } else if ("NAMESPACE" %in% dir()) {
-        benchmark_file <- file.path("notebooks", "benchmarks", folder, filename)
+        benchmark_file <- file.path("notebooks", "cached_results", folder, filename)
     } else {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
 }
 
 get_method_cache_file <- function(method) {
-    get_benchmark_file(sprintf("dmrs.%s.rds", method))
+    getBenchmarkFile(sprintf("dmrs.%s.rds", method))
 }
 ```
 
@@ -110,29 +110,32 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 ## Load Data
 
 ```{r}
-sim_beta_path <- get_benchmark_file("sim_beta_500.tsv")
-sim_truth_path <- get_benchmark_file("sim_dmrs_500.tsv")
+sim_beta_path <- getBenchmarkFile("GSE40279_sim_beta_values.tsv.gz")
+sim_truth_path <- getBenchmarkFile("GSE40279_sim_dmrs.tsv")
+sim_pheno_path <- getBenchmarkFile("GSE40279_sim_samplesheet.tsv")
+covariate_cols <- c("age..y..ch1", "predictedSex")
 array_type <- "450K"
 genome <- "hg19"
-
+zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
 if (!file.exists(sim_beta_path)) {
-    # curl::curl_download(
-    #     url = "https://zenodo.org/records/19663986/files/microarray_sim_beta_500.tsv?download=1",
-    #     destfile = sim_beta_path
-    # )
-    controls <- get_benchmark_file("controls.tsv")
-    set.seed(42)
-    ret <- CMEnt::simulateDMRs(controls, num_dmrs = 500, genome = genome, array = array_type)
-    ret$simulated <- round(ret$simulated, 5)
-    data.table::fwrite(as.data.frame(ret$simulated), sim_beta_path, sep = "\t", quote = FALSE, row.names = TRUE, col.names = TRUE)
-    data.table::fwrite(ret$truth, sim_truth_path, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+    curl::curl_download(
+        url = paste0(zenodo_base_url, basename(sim_beta_path), "?download=1"),
+        destfile = sim_beta_path
+    )
 }
 if (!file.exists(sim_truth_path)) {
-    # curl::curl_download(
-    #     url = "https://zenodo.org/records/19663986/files/microarray_sim_dmrs_500.tsv?download=1",
-    #     destfile = sim_truth_path
-    # )
+    curl::curl_download(
+        url = paste0(zenodo_base_url, basename(sim_truth_path), "?download=1"),
+        destfile = sim_truth_path
+    )
 }
+if (!file.exists(sim_pheno_path)) {
+    curl::curl_download(
+        url = paste0(zenodo_base_url, basename(sim_pheno_path), "?download=1"),
+        destfile = sim_pheno_path
+    )
+}
+
 truth_df <- data.table::fread(sim_truth_path)
 truth_dmrs <- makeGRangesFromDataFrame(
     truth_df,
@@ -145,15 +148,14 @@ truth_dmrs <- makeGRangesFromDataFrame(
 beta_handler <- CMEnt::getBetaHandler(sim_beta_path, array = array_type, genome = genome)
 
 sample_ids <- beta_handler$getBetaColNames()
-pheno <- data.frame(
-    Sample_Group = ifelse(
-        grepl("Condition1", sample_ids, ignore.case = TRUE),
-        "normal",
-        "cancer"
-    ),
-    row.names = sample_ids,
-    stringsAsFactors = FALSE
-)
+pheno <- data.table::fread(sim_pheno_path, data.table = FALSE)
+rownames(pheno) <- pheno$V1
+
+if (!all(sample_ids %in% rownames(pheno))) {
+    stop("The simulated phenotype file does not contain all simulated beta samples.")
+}
+pheno <- pheno[sample_ids, , drop = FALSE]
+pheno$Sample_Group <- factor(pheno$Sample_Group, levels = c("control", "case"))
 
 beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
@@ -181,17 +183,18 @@ if (truth_overlap_n < 0.9 * length(truth_dmrs)) {
 }
 logit2 <- function(x) log2(x) - log2(1 - x)
 mvalues <- logit2(beta_mat)
-pheno$casecontrol <- pheno$Sample_Group == "cancer"
+pheno$casecontrol <- pheno$Sample_Group == "case"
 ```
 
 ## Find Differentially Methylated Positions
 
 ```{r}
-dmps <- suppressWarnings(dmpFinder(mvalues,
-    pheno = pheno$casecontrol,
-    type = "categorical",
-    shrinkVar = TRUE
-))
+dmps <- CMEnt::findDMPsArray(beta_handler,
+    pheno,
+    group_col = "Sample_Group",
+    id_col = "V1"
+)
+rownames(dmps) <- dmps$site_id
 # sort DMPs by location
 dmps <- dmps[!is.na(dmps$pval), ]
 dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
@@ -202,13 +205,7 @@ ctrl_idx <- which(!pheno$casecontrol)
 dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
     rowMeans(beta_mat[rownames(dmps), ctrl_idx, drop = FALSE])
 
-# Correct using lag and lead p-values to account for spatial correlation in microarray data
-dmps$pval_adj <- CMEnt::combinePvalues(
-    pvals = dmps$pval,
-    positions = dmp_locs$start,
-    max_dist = 500,
-    method = "fdr"
-)
+dmps$qval <- stats::p.adjust(dmps$pval, method = "fdr")
 
 dmps_gr <- makeGRangesFromDataFrame(
     data.frame(
@@ -217,8 +214,7 @@ dmps_gr <- makeGRangesFromDataFrame(
         end = dmp_locs$end,
         id = rownames(dmps),
         pval = dmps$pval,
-        qval = dmps$pval_adj,
-        stat = dmps$qval,
+        qval = dmps$qval,
         delta_beta = dmps$delta_beta
     ),
     keep.extra.columns = TRUE
@@ -238,55 +234,75 @@ cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.05)\n", leng
 
 ```{r CMEnt_params}
 cment_params <- list(
-    max_bridge_seeds_gaps = 1,
+    sample_group_col = "Sample_Group",
+    casecontrol_col = "casecontrol",
+    max_bridge_seeds_gaps = 0,
     max_bridge_extension_gaps = 1,
     min_seeds = 2,
-    min_sites = 5,
+    min_sites = 3,
     ext_site_delta_beta = 0.1,
     max_lookup_dist = 500,
     max_pval = 0.05,
+    testing_mode = "parametric",
     entanglement = "weak"
 )
 cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
 options("CMEnt.njobs" = cment_njobs)
-cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
-cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
 ```
 
 ### Assessing DMPs seeds connectivity alone
 
 ```{r CMEnt_seeds, eval=FALSE}
 # only chr21
-max_lookup_dist <- 5000
-max_pval <- 0.05
 truth_dmrs_21 <- truth_dmrs[seqnames(truth_dmrs) == "chr21", ]
 seeds_gr_21 <- subset(seeds_gr, seqnames(seeds_gr) == "chr21")
-gt_seeds_gr_21 <- subsetByOverlaps(seeds_gr_21, truth_dmrs, ignore.strand = TRUE)
-gt_seeds_21 <- mcols(gt_seeds_gr_21)$id
-seeds_beta_21 <- beta_mat[mcols(gt_seeds_gr_21)$id, , drop = FALSE]
-seeds_dmrs_cment <- CMEnt::findDMRsFromSeeds(
+seeds_21 <- mcols(seeds_gr_21)$id
+seeds_beta_21 <- beta_mat[mcols(seeds_gr_21)$id, , drop = FALSE]
+gt_seeds_gr_21 <- subsetByOverlaps(seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
+seeds_dmrs_cment <- do.call(CMEnt::buildDMRs, c(cment_params, list(
     beta = seeds_beta_21,
-    seeds = gt_seeds_21,
+    seeds = seeds_21,
     pheno = pheno,
-    sample_group_col = "Sample_Group",
-    ignored_sample_groups  = "control",
-    casecontrol_col = "casecontrol",
-    testing_mode  = "parametric",
-    max_bridge_seeds_gaps = 0,
-    max_bridge_extension_gaps = 0,
-    min_seeds = 2,
-    min_adj_seeds = cment_params$min_adj_seeds,
-    min_sites = 2,
-    ext_site_delta_beta = NA,
-    max_lookup_dist = max_lookup_dist,
-    max_pval = max_pval,
-    entanglement = "weak",
+    verbose = 2,
     .score_dmrs = FALSE,
     extract_motifs = FALSE,
-    annotate_with_genes = FALSE,
-    njobs = cment_njobs,
-    verbose = 2
+    annotate_with_genes = FALSE)))
+```
+```{r chr21_gt_check, eval=FALSE}
+seeds_in_truth <- subsetByOverlaps(gt_seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
+
+seeds_in_dmrs <- subsetByOverlaps(gt_seeds_gr_21, seeds_dmrs_cment, ignore.strand = TRUE)
+seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE)
+seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE, invert = TRUE)
+
+
+
+seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs_21, ignore.strand = TRUE)
+truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs_21))
+seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs_21, ignore.strand = TRUE)
+
+
+truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs_21))
+truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
+
+recoverable_truth <- truth_seed_total >= 2L
+recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
+recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
+
+stage1_quality <- data.frame(
+    Truth_DMRs_Total = length(truth_dmrs_21),
+    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
+    Truth_DMRs_2plusSeeds = sum(recoverable_truth),
+    Truth_DMRs_With2plusCapturedSeeds = sum(recoverable_with2captured),
+    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
+    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
+    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
 )
+
+for (col in colnames(stage1_quality)) {
+    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
+}
+
 
 ```
 ```{r CMEnt_connectivity, eval=FALSE}
@@ -295,7 +311,6 @@ seeds_beta_21_handler <- CMEnt::getBetaHandler(
     genome = genome,
     array = array_type
 )
-max_lookup_dist <- 500
 group_inds <- split(seq_len(nrow(pheno)), pheno$Sample_Group)
 testing_mode_per_group <- rep("parametric", length(group_inds))
 names(testing_mode_per_group) <- names(group_inds)
@@ -309,11 +324,10 @@ connectivity_array_21 <- CMEnt:::.buildConnectivityArray(
     testing_mode_per_group = testing_mode_per_group,
     empirical_strategy_per_group = empirical_strategy_per_group,
     col_names = NULL,
-    max_pval = max_pval,
+    max_pval = cment_params$max_pval,
     ext_site_delta_beta = NA_real_,
-    covariates = NULL,
-    max_lookup_dist = max_lookup_dist,
-    entanglement = "weak",
+    max_lookup_dist = cment_params$max_lookup_dist,
+    entanglement = cment_params$entanglement,
     njobs = cment_njobs,
     max_bridge_gaps = 1,
     verbose = 3
@@ -325,11 +339,10 @@ connectivity_array_21_no_gaps <- CMEnt:::.buildConnectivityArray(
     testing_mode_per_group = testing_mode_per_group,
     empirical_strategy_per_group = empirical_strategy_per_group,
     col_names = NULL,
-    max_pval = max_pval,
+    max_pval = cment_params$max_pval,
     ext_site_delta_beta = NA_real_,
-    covariates = NULL,
-    max_lookup_dist = max_lookup_dist,
-    entanglement = "weak",
+    max_lookup_dist = cment_params$max_lookup_dist,
+    entanglement = cment_params$entanglement,
     njobs = cment_njobs,
     max_bridge_gaps = 0,
     verbose = 2
@@ -404,29 +417,17 @@ if (!cment_cache_valid) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.njobs" = cment_njobs)
     cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
-    cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
     start_time <- Sys.time()
-    dmrs_cment <- CMEnt::findDMRsFromSeeds(
-        beta = beta_handler,
-        seeds = seeds,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        casecontrol_col = "casecontrol",
-        testing_mode  = "parametric",
-        max_bridge_seeds_gaps = cment_params$max_bridge_seeds_gaps,
-        max_bridge_extension_gaps = cment_params$max_bridge_extension_gaps,
-        min_seeds = cment_params$min_seeds,
-        min_adj_seeds = cment_params$min_adj_seeds,
-        min_sites = cment_params$min_sites,
-        ext_site_delta_beta = cment_params$ext_site_delta_beta,
-        max_lookup_dist = cment_params$max_lookup_dist,
-        max_pval = cment_params$max_pval,
-        entanglement = cment_params$entanglement,
-        extract_motifs = FALSE,
-        annotate_with_genes = FALSE,
-        .score_dmrs = FALSE,
-        njobs = cment_njobs,
-        verbose = 2
+    dmrs_cment <- do.call(CMEnt::buildDMRs,
+        c(list(
+            beta = beta_handler,
+            seeds = seeds,
+            pheno = pheno,
+            verbose = 2,
+            .score_dmrs = FALSE,
+            extract_motifs = FALSE,
+            annotate_with_genes = FALSE
+        ), cment_params)
     )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
@@ -543,7 +544,7 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 pheno = pheno$Sample_Group,
                 arraytype = array_type,
                 method = "ProbeLasso",
-                minProbes = 3,
+                minProbes = cment_params$min_sites,
                 adjPvalDmr = 0.05,
                 adjPvalProbe = 0.1,
                 meanLassoRadius = 500,
@@ -606,35 +607,21 @@ dmrcate_file <- get_method_cache_file("dmrcate")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
     start_time <- Sys.time()
-    design <- model.matrix(~Sample_Group, data = pheno)
+    formula_str <- "~Sample_Group"
+    design <- model.matrix(stats::as.formula(formula_str), data = pheno)
+    coef_col <- which(colnames(design) == "Sample_Groupcase")
+    colnames(design)[1] <- "(Intercept)"
+    colnames(design)[coef_col] <- "case_vs_control"
 
-    dmrs_dmrcate <- tryCatch(
-        {
-            if (ncol(design) < 2L) {
-                warning("DMRcate requires at least two groups in Sample_Group; returning empty set.")
-                GenomicRanges::GRanges()
-            } else {
-                coef_col <- ncol(design)
-                colnames(design)[1] <- "(Intercept)"
-                if (coef_col == 2L) {
-                    colnames(design)[2] <- "cancer_vs_normal"
-                }
-
-                myannotation <- cpg.annotate("array", mvalues,
-                    what = "M", arraytype = "450K",
-                    analysis.type = "differential", design = design,
-                    coef = coef_col, fdr = 0.05
-                )
-
-                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
-                extractRanges(dmrcate_results, genome = genome)
-            }
-        },
-        error = function(e) {
-            warning(sprintf("DMRcate failed: %s. Returning empty set.", e$message))
-            GenomicRanges::GRanges()
-        }
+    myannotation <- cpg.annotate("array", mvalues,
+        what = "M", arraytype = "450K",
+        analysis.type = "differential", design = design,
+        coef = coef_col, fdr = 0.05
     )
+
+    dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
+    dmrs_dmrcate <- extractRanges(dmrcate_results, genome = genome)
+
 
     end_time <- Sys.time()
     time_dmrcate <- end_time - start_time
@@ -658,12 +645,17 @@ if (!file.exists(bumphunter_file)) {
         library(doParallel)
     })
     start_time <- Sys.time()
-    bh_cores <- max(1L, min(4L, future::availableCores() - 1L))
+    bh_cores <- max(1L, min(8L, future::availableCores() - 1L))
     bh_b <- 100L
-    bh_max_dmrs <- 1000000L
+    bh_max_dmrs <- 100000L
     bh_max_gap <- 2000L
     bh_min_l <- 2L
     bh_region_p <- 0.05
+    formula_str <- "~Sample_Group"
+    design <- model.matrix(stats::as.formula(formula_str), data = pheno)
+    coef_col <- which(colnames(design) == "Sample_Groupcase")
+    colnames(design)[1] <- "(Intercept)"
+    colnames(design)[coef_col] <- "case_vs_control"
 
     doParallel::registerDoParallel(cores = bh_cores)
     on.exit({
@@ -671,7 +663,6 @@ if (!file.exists(bumphunter_file)) {
         gc()
     }, add = TRUE)
 
-    design <- model.matrix(~Sample_Group, data = pheno)
     bh_cluster <- bumphunter::clusterMaker(
         chr = as.character(locs$chr),
         pos = locs$start,
@@ -688,7 +679,7 @@ if (!file.exists(bumphunter_file)) {
             nullMethod = "bootstrap",
             B = B,
             type = "Beta",
-            coef = 2
+            coef = coef_col
         )
     }
     has_informative_bumphunter_null <- function(fit) {

@@ -1,5 +1,5 @@
 ---
-title: "Benchmarking CMEnt on True Microarray Data"
+title: "Benchmarking CMEnt on True high-level aberration Microarray 450K Data"
 subtitle: "CMEnt vs comb-p, probeLasso, DMRcate, and Bumphunter"
 author: "CMEnt Package"
 date: "`r Sys.Date()`"
@@ -36,7 +36,10 @@ We evaluate these methods on:
 - Overlap and concordance between methods
 - Biological relevance of detected regions
 
-The dataset used is CMEntdata, which contains methylation profiles for 5 cancer vs 5 normal samples.
+The dataset used is GSE63409 from GEO, which contains Illumina 450K methylation data from 15 AML patients.
+Samples included 20 leukemia stem cells, 24 blast cells and 30 normal hematopoietic stem and progenitor cells
+(6 different types from 5 normal bone marrows). 
+
 
 ## Setup and Dependencies
 
@@ -51,15 +54,15 @@ suppressPackageStartupMessages({
     library(GenomicRanges)
 })
 
-get_benchmark_file <- function(filename) {
+getBenchmarkFile <- function(filename) {
     benchmark_file <- ""
-    folder <- "microarray"
+    folder <- "microarray450k"
     if (getwd() == "notebooks") {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     } else if ("NAMESPACE" %in% dir()) {
-        benchmark_file <- file.path("notebooks", "benchmarks", folder, filename)
+        benchmark_file <- file.path("notebooks", "cached_results", folder, filename)
     } else {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
@@ -109,10 +112,36 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 }
 ```
 
-## Load Example Data
-
+## Load Data
+Covariates are:
+ - predictedSex: the sex predicted from methylation data, which can be a strong confounder in methylation analyses.
+ - subject.id.ch1: the patient ID
+ - source_name_ch1: the cell type
 ```{r}
-loadExampleInputData()
+covariates <- c("predictedSex", "subject.id.ch1", "source_name_ch1")
+sample_group_col <- "subject.status.ch1"
+
+beta <- getBenchmarkFile("GSE63409_beta_values.tsv.gz")
+samplesheet <- getBenchmarkFile("GSE63409_samplesheet.tsv")
+
+zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
+if (!file.exists(beta)) {
+    curl::curl_download(
+        url = paste0(zenodo_base_url, basename(beta), "?download=1"),
+        destfile = beta
+    )
+}
+if (!file.exists(samplesheet)) {
+    curl::curl_download(
+        url = paste0(zenodo_base_url, basename(samplesheet), "?download=1"),
+        destfile = samplesheet
+    )
+}
+
+
+pheno <- fread(samplesheet)
+pheno[[sample_group_col]] <- factor(pheno[[sample_group_col]], levels = c("normal", "AML"))
+array_type <- "450K"
 genome <- "hg19"
 
 beta_handler <- CMEnt::getBetaHandler(beta, array = array_type, genome = genome)
@@ -120,64 +149,77 @@ beta_mat <- as.matrix(beta_handler$getBeta())
 locs <- beta_handler$getBetaLocs()
 logit2 <- function(x) log2(x) - log2(1 - x)
 mvalues <- logit2(beta_mat)
-pheno$casecontrol <- pheno$Sample_Group == "cancer"
+pheno$casecontrol <- pheno[[sample_group_col]] == "AML"
 ```
 
 ## Find Differentially Methylated Positions
 
 ```{r}
-dmps <- suppressWarnings(dmpFinder(mvalues,
-    pheno = pheno$casecontrol,
-    type = "categorical",
-    shrinkVar = TRUE
-))
-# sort DMPs by location
-dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
-dmps <- dmps[rownames(dmp_locs), , drop = FALSE]
-dmps <- dmps[!is.na(dmps$pval), ]
-dmps$pval_adj <- p.adjust(dmps$pval, method = "BH")
+dmps_file <- getBenchmarkFile("dmps.rds")
+if (!file.exists(dmps_file)) {
+    dmps <- CMEnt::findDMPsArray(
+        beta_handler,
+        pheno,
+        group_col = sample_group_col,
+        id_col = "V1",
+        covariates = covariates,
+        array = array_type,
+        genome = genome,
+        njobs = max(1L, min(8L, future::availableCores() - 1L))
+    )
+    # sort DMPs by location
+    rownames(dmps) <- dmps$site_id
+    dmps <- dmps[rownames(locs), , drop = FALSE]
+    dmps <- dmps[!is.na(dmps$pval), ]
+    dmps$qval <- p.adjust(dmps$pval, method = "BH")
 
-case_idx <- which(pheno$casecontrol)
-ctrl_idx <- which(!pheno$casecontrol)
-dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
-    rowMeans(beta_mat[rownames(dmps), ctrl_idx, drop = FALSE])
+    case_idx <- which(pheno$casecontrol)
+    ctrl_idx <- which(!pheno$casecontrol)
+    dmps$delta_beta <- rowMeans(beta_mat[rownames(dmps), case_idx, drop = FALSE]) -
+        rowMeans(beta_mat[rownames(dmps), ctrl_idx, drop = FALSE])
 
-sig_dmps <- dmps[dmps$pval_adj < 0.01 & abs(dmps$delta_beta) >= 0.05, ]
-cat(sprintf("Found %d significant DMPs (FDR < 0.01, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
-dmps_gr <- makeGRangesFromDataFrame(
-    data.frame(
-        chr = locs$chr,
-        start = locs$start,
-        end = locs$end,
-        pval = dmps$pval,
-        qval = dmps$pval_adj,
-        stat = dmps$qval
-    ),
-    keep.extra.columns = TRUE
-)
-names(dmps_gr) <- rownames(dmps)
+    dmps_gr <- makeGRangesFromDataFrame(
+        data.frame(
+            chr = locs$chr,
+            start = locs$start,
+            end = locs$end,
+            pval = dmps$pval,
+            qval = dmps$qval,
+            stat = dmps$qval,
+            delta_beta = dmps$delta_beta
+        ),
+        keep.extra.columns = TRUE
+    )
+    names(dmps_gr) <- rownames(dmps)
+    saveRDS(dmps_gr, dmps_file)
+} else {
+    dmps_gr <- readRDS(dmps_file)
+}
+dmps <- as.data.frame(dmps_gr)
+sig_dmps <- dmps[dmps$qval < 0.05 & abs(dmps$delta_beta) >= 0.05, ]
+cat(sprintf("Found %d significant DMPs (FDR < 0.05, |delta beta| >= 0.05)\n", nrow(sig_dmps)))
 ```
 
 ## Method 1: CMEnt
 
 ```{r CMEnt}
-cment_file <-  get_benchmark_file("dmrs.CMEnt.rds")
+cment_file <- getBenchmarkFile("dmrs.CMEnt.rds")
 if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
     options("CMEnt.verbose" = 1)
     options("CMEnt.njobs" = cment_njobs)
     cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
     cat(sprintf("future::availableCores(): %d\n", future::availableCores()))
-    cat("Starting CMEnt::findDMRsFromSeeds()...\n")
+    cat("Starting CMEnt::buildDMRs()...\n")
     flush.console()
     start_time <- Sys.time()
-    dmrs_cment <- CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::buildDMRs(
         beta = beta_handler,
         seeds = sig_dmps,
         pheno = pheno,
-        sample_group_col = "Sample_Group",
+        sample_group_col = sample_group_col,
         casecontrol_col = "casecontrol",
-        covariates = c("Age", "Gender"),
+        covariates = covariates,
         max_bridge_seeds_gaps  = 1,
         max_bridge_extension_gaps = 3,
         min_seeds = 2,
@@ -186,7 +228,6 @@ if (!file.exists(cment_file)) {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
-        .score_dmrs = TRUE,
         njobs = cment_njobs,
         verbose = 1
     )
@@ -206,7 +247,7 @@ cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as
 ## Method 2: comb-p
 
 ```{r comb-p}
-combp_file <- get_benchmark_file("dmrs.combp.rds")
+combp_file <- getBenchmarkFile("dmrs.combp.rds")
 
 run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     if (Sys.which("bedtools") == "") {
@@ -292,7 +333,7 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 
 ## Method 3: probeLasso
 ```{r probeLasso}
-probelasso_file <- get_benchmark_file("dmrs.probeLasso.rds")
+probelasso_file <- getBenchmarkFile("dmrs.probeLasso.rds")
 
 run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
@@ -307,7 +348,7 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
         {
             result <- champ.DMR(
                 beta = beta_mat,
-                pheno = pheno$Sample_Group,
+                pheno = pheno[[sample_group_col]],
                 arraytype = array_type,
                 method = "ProbeLasso",
                 minProbes = 3,
@@ -369,39 +410,25 @@ cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso)
 ## Method 4: DMRcate
 
 ```{r dmrcate}
-dmrcate_file <- get_benchmark_file("dmrs.dmrcate.rds")
+dmrcate_file <- getBenchmarkFile("dmrs.dmrcate.rds")
 if (!file.exists(dmrcate_file)) {
     library(DMRcate)
     start_time <- Sys.time()
-    design <- model.matrix(~Sample_Group, data = pheno)
+    formula_str <- paste("~", paste(c(sample_group_col, covariates), collapse = " + "))
+    design <- model.matrix(stats::as.formula(formula_str), data = pheno)
+    coef_col <- which(startsWith(colnames(design), sample_group_col))
 
-    dmrs_dmrcate <- tryCatch(
-        {
-            if (ncol(design) < 2L) {
-                warning("DMRcate requires at least two groups in Sample_Group; returning empty set.")
-                GenomicRanges::GRanges()
-            } else {
-                coef_col <- ncol(design)
-                colnames(design)[1] <- "(Intercept)"
-                if (coef_col == 2L) {
-                    colnames(design)[2] <- "cancer_vs_normal"
-                }
+    colnames(design)[1] <- "(Intercept)"
+    colnames(design)[coef_col] <- "aml_vs_normal"
 
-                myannotation <- cpg.annotate("array", mvalues,
-                    what = "M", arraytype = "450K",
-                    analysis.type = "differential", design = design,
-                    coef = coef_col, fdr = 0.05
-                )
-
-                dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
-                extractRanges(dmrcate_results, genome = "hg19")
-            }
-        },
-        error = function(e) {
-            warning(sprintf("DMRcate failed: %s. Returning empty set.", e$message))
-            GenomicRanges::GRanges()
-        }
+    myannotation <- cpg.annotate("array", mvalues,
+        what = "M", arraytype = "450K",
+        analysis.type = "differential", design = design,
+        coef = coef_col, fdr = 0.05
     )
+
+    dmrcate_results <- dmrcate(myannotation, C = coef_col, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
+    dmrs_dmrcate <- extractRanges(dmrcate_results, genome = "hg19")
 
     end_time <- Sys.time()
     time_dmrcate <- end_time - start_time
@@ -418,16 +445,16 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 ## Method 5: Bumphunter
 
 ```{r bumphunter}
-bumphunter_file <- get_benchmark_file("dmrs.bumphunter.rds")
+bumphunter_file <- getBenchmarkFile("dmrs.bumphunter.rds")
 if (!file.exists(bumphunter_file)) {
     suppressPackageStartupMessages({
         library(bumphunter)
         library(doParallel)
     })
     start_time <- Sys.time()
-    bh_cores <- max(1L, min(4L, future::availableCores() - 1L))
+    bh_cores <- min(future::availableCores() - 1L, 8L)
     bh_b <- 100L
-    bh_max_dmrs <- 1000000L
+    bh_max_dmrs <- 100000L
     bh_max_gap <- 2000L
     bh_min_l <- 2L
     bh_region_p <- 0.05
@@ -438,7 +465,25 @@ if (!file.exists(bumphunter_file)) {
         gc()
     }, add = TRUE)
 
-    design <- model.matrix(~Sample_Group, data = pheno)
+    formula_str <- paste("~", paste(c(sample_group_col, covariates), collapse = " + "))
+
+    design <- model.matrix(stats::as.formula(formula_str), data = pheno)
+    coef_col <- which(startsWith(colnames(design), sample_group_col))
+    if (length(coef_col) != 1L) {
+        stop("Could not identify a unique Bumphunter contrast column for ", sample_group_col, ".")
+    }
+    coef_name <- colnames(design)[coef_col]
+    design_qr <- qr(design)
+    if (design_qr$rank < ncol(design)) {
+        keep_cols <- sort(design_qr$pivot[seq_len(design_qr$rank)])
+        collinear_cols <- setdiff(colnames(design), colnames(design)[keep_cols])
+        if (coef_name %in% collinear_cols) {
+            stop("The Bumphunter contrast is collinear with the design and cannot be estimated.")
+        }
+        cat("Bumphunter: removing collinear design columns: ", paste(collinear_cols, collapse = ", "), "\n", sep = "")
+        design <- design[, keep_cols, drop = FALSE]
+        coef_col <- match(coef_name, colnames(design))
+    }
     bh_cluster <- bumphunter::clusterMaker(
         chr = as.character(locs$chr),
         pos = locs$start,
@@ -455,7 +500,7 @@ if (!file.exists(bumphunter_file)) {
             nullMethod = "bootstrap",
             B = B,
             type = "Beta",
-            coef = 2
+            coef = coef_col
         )
     }
     has_informative_bumphunter_null <- function(fit) {
@@ -834,7 +879,7 @@ print(p4)
 ### Effect Size Analysis (Delta Beta)
 
 ```{r, results='asis'}
-calculate_mean_delta_beta <- function(dmrs, beta_mat, pheno, locs, group_col = "Sample_Group", max_dmrs = 5000) {
+calculate_mean_delta_beta <- function(dmrs, beta_mat, pheno, locs, group_col = sample_group_col, max_dmrs = 5000) {
     if (length(dmrs) == 0) {
         return(NA)
     }
@@ -844,8 +889,8 @@ calculate_mean_delta_beta <- function(dmrs, beta_mat, pheno, locs, group_col = "
         dmrs <- dmrs[sample(length(dmrs), max_dmrs)]
     }
 
-    case_samples <- colnames(beta_mat)[pheno[[group_col]] == "cancer"]
-    control_samples <- colnames(beta_mat)[pheno[[group_col]] == "normal"]
+    case_samples <- colnames(beta_mat)[pheno[[group_col]] == "AML"]
+    control_samples <- colnames(beta_mat)[pheno[[group_col]] != "AML"]
 
     site_gr <- makeGRangesFromDataFrame(locs)
     names(site_gr) <- rownames(beta_mat)

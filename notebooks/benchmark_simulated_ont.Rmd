@@ -22,7 +22,11 @@ knitr::opts_chunk$set(
 
 ## Introduction
 
-This vignette benchmarks DMR detection on simulated ONT-style methylation data with known ground truth.
+This vignette cached_results DMR detection on simulated ONT-style methylation data with known ground truth. 
+The dataset used is a simulated ONT dataset, based on an in-house dataset of 5 samples from neuroendocrine islets, 
+augmented to 20 samples using CMEnt::augmentBSSeq, subset to chromosomes 20 and 21,
+and with 1000 DMRs spiked in using CMEnt::simulateDMRs, with max delta beta (delta_max) 
+set to 0.3 and expected within-dmr correlation (expected_corr) set to 0.7. 
 
 Methods:
 
@@ -30,11 +34,6 @@ Methods:
 - **DMRcate** Gaussian Kernel smoothing-based DMR detection
 - **dmrseq** BSseq-native region-level inference
 - **hummingbird** HMM-based DMR detection
-
-Data:
-
-- BSseq object: `"https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1"`
-- Ground-truth DMRs: `"https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1"`
 
 Primary goal:
 
@@ -56,15 +55,15 @@ suppressPackageStartupMessages({
     library(S4Vectors)
 })
 
-get_benchmark_file <- function(filename) {
+getBenchmarkFile <- function(filename) {
     benchmark_file <- ""
     folder <- "simulated_ont"
     if (getwd() == "notebooks") {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     } else if ("NAMESPACE" %in% dir()) {
-        benchmark_file <- file.path("notebooks", "benchmarks", folder, filename)
+        benchmark_file <- file.path("notebooks", "cached_results", folder, filename)
     } else {
-        benchmark_file <- file.path("benchmarks", folder, filename)
+        benchmark_file <- file.path("cached_results", folder, filename)
     }
     dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
     benchmark_file
@@ -115,57 +114,51 @@ if (!requireNamespace("tidyr", quietly = TRUE)) {
 ## Load Simulated Data and Ground Truth
 
 ```{r}
-cment_file <- get_benchmark_file(sprintf("dmrs.CMEnt.%s.rds", method_cache_tag))
-dmrcate_file <- get_benchmark_file(sprintf("dmrs.DMRcate.%s.rds", method_cache_tag))
-dmrseq_file <- get_benchmark_file(sprintf("dmrs.dmrseq.%s.rds", method_cache_tag))
-hummingbird_file <- get_benchmark_file(sprintf("dmrs.hummingbird.%s.rds", method_cache_tag))
-pheno_file <- get_benchmark_file("phenotype.tsv")
-seeds_file <- get_benchmark_file(sprintf("seeds.p%s.tsv.gz", gsub("[^0-9]+", "", sprintf("%.3f", max_pval))))
+cment_file <- getBenchmarkFile(sprintf("dmrs.CMEnt.%s.rds", method_cache_tag))
+dmrcate_file <- getBenchmarkFile(sprintf("dmrs.DMRcate.%s.rds", method_cache_tag))
+dmrseq_file <- getBenchmarkFile(sprintf("dmrs.dmrseq.%s.rds", method_cache_tag))
+hummingbird_file <- getBenchmarkFile(sprintf("dmrs.hummingbird.%s.rds", method_cache_tag))
+pheno_file <- getBenchmarkFile("ont_sim_samplesheet.tsv")
+seeds_file <- getBenchmarkFile(sprintf("seeds.p%s.tsv.gz", gsub("[^0-9]+", "", sprintf("%.3f", max_pval))))
 
 computation_needed <- !file.exists(cment_file) || !file.exists(dmrcate_file) || !file.exists(dmrseq_file) || !file.exists(hummingbird_file) || !file.exists(pheno_file) || !file.exists(seeds_file)
+zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
 
-sim_truth_path <- get_benchmark_file("sim_dmrs_1000.tsv")
+sim_truth_path <- getBenchmarkFile("ont_sim_dmrs.tsv")
 if (computation_needed) {
     dir.create("data", showWarnings = FALSE, recursive = TRUE)
-    sim_bs_path <- get_benchmark_file("sim_bs_1000.rds")
-    sim_bs_hdf5_path <- get_benchmark_file("sim_bs_1000.h5")
-    if (file.exists(sim_bs_hdf5_path)) {
-        sim_bs <- HDF5Array::loadHDF5SummarizedExperiment(sim_bs_hdf5_path)
+    ont_sim_bs_path <- getBenchmarkFile("ont_sim_bs.rds")
+    ont_sim_bs_hdf5_path <- getBenchmarkFile("ont_sim_bs.h5")
+    if (file.exists(ont_sim_bs_hdf5_path)) {
+        ont_sim_bs <- HDF5Array::loadHDF5SummarizedExperiment(ont_sim_bs_hdf5_path)
     } else {
 
-        if (!file.exists(sim_bs_path)) {
-            controls <- get_benchmark_file("bsseq_augmented.rds")
-            set.seed(42)
-            ret <- CMEnt::simulateDMRs(controls, num_dmrs = 1000, min_sites = ceiling(0.8 * min_sites), genome = "hg38", truth_min_delta_beta = 0.1)
-            saveRDS(ret$simulated, sim_bs_path)
-            data.table::fwrite(ret$truth, sim_truth_path, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
-
-            # curl::curl_download(
-            #     url = "https://zenodo.org/records/19663986/files/sim_bs_1000.rds?download=1",
-            #     destfile = sim_bs_path
-            # )
+        if (!file.exists(ont_sim_bs_path)) {
+            curl::curl_download(
+                url = paste0(zenodo_base_url, basename(ont_sim_bs_path), "?download=1"),
+                destfile = ont_sim_bs_path
+            )
         }
 
-        sim_bs <- readRDS(sim_bs_path)
-        sim_bs <- sort(sim_bs)
+        ont_sim_bs <- readRDS(ont_sim_bs_path)
+        ont_sim_bs <- sort(ont_sim_bs)
 
-        sim_bs <- HDF5Array::saveHDF5SummarizedExperiment(
-            sim_bs,
-            dir = sim_bs_hdf5_path,
+        ont_sim_bs <- HDF5Array::saveHDF5SummarizedExperiment(
+            ont_sim_bs,
+            dir = ont_sim_bs_hdf5_path,
             replace = TRUE
         )
     }
-    
 
 
-    stopifnot(inherits(sim_bs, "BSseq"))
-    cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(sim_bs), ncol(sim_bs)))
+    stopifnot(inherits(ont_sim_bs, "BSseq"))
+    cat(sprintf("Loaded BSseq with %d sites and %d samples\n", nrow(ont_sim_bs), ncol(ont_sim_bs)))
 
 }
 
 if (!file.exists(sim_truth_path)) {
     curl::curl_download(
-        url = "https://zenodo.org/records/19663986/files/sim_dmrs_1000.tsv?download=1",
+        url = paste0(zenodo_base_url, basename(sim_truth_path), "?download=1"),
         destfile = sim_truth_path
     )
 }
@@ -189,7 +182,7 @@ cat(sprintf("Loaded %d ground-truth DMRs\n", length(truth_dmrs)))
 
 ```{r}
 if (!file.exists(pheno_file)) {
-    sample_ids <- colnames(sim_bs)
+    sample_ids <- colnames(ont_sim_bs)
     sample_group <- ifelse(grepl("^Condition1", sample_ids), "Condition1", "Condition2")
 
     pheno <- data.frame(
@@ -204,8 +197,8 @@ if (!file.exists(pheno_file)) {
     pheno <- data.table::fread(pheno_file, data.table = FALSE)
 }
 if (computation_needed) {
-    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
-    sim_bs  <- sort(sim_bs)
+    colData(ont_sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    ont_sim_bs  <- sort(ont_sim_bs)
 }
 knitr::kable(
     table(pheno$Sample_Group),
@@ -243,15 +236,15 @@ We use a DSS approach to identify candidate seeds based on differential methylat
 ```{r seeds_calculation}
 if (!file.exists(seeds_file)) {
     seeds <- findDMPsBSSeq(
-        bsseq = sim_bs,
+        bsseq = ont_sim_bs,
         samplesheet = pheno,
         group_col = "Sample_Group",
         id_col = "Sample_ID",
         case_group = "Condition2",
         covariates = NULL,
-        fdr_thres = max_pval,
         output_file = seeds_file
     )
+    seeds <- seeds[seeds$qval < max_pval, , drop = FALSE]
 } else {
     seeds <- data.table::fread(seeds_file)
     rownames(seeds) <- seeds$site_id
@@ -407,10 +400,10 @@ if (!file.exists(cment_file)) {
     start_time <- Sys.time()
 
     beta_handler <- CMEnt::getBetaHandler(
-        beta = sim_bs
+        beta = ont_sim_bs
     )
     gc(verbose = FALSE)
-    dmrs_cment <- CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::buildDMRs(
         beta = beta_handler,
         seeds = seeds,
         pheno = pheno,
@@ -436,7 +429,7 @@ if (!file.exists(cment_file)) {
     time_cment <- end_time - start_time
     saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
     rm(beta_handler)
-    colData(sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
+    colData(ont_sim_bs) <- S4Vectors::DataFrame(pheno, row.names = pheno$Sample_ID)
     gc(verbose = FALSE)
 } else {
     ret <- readRDS(cment_file)
@@ -630,8 +623,8 @@ run_dmrcate_bsseq <- function(
 
 if (!file.exists(dmrcate_file)) {
     start_time <- Sys.time()
-    design <- model.matrix(~ Sample_Group, data = colData(sim_bs))
-    dmrs_dmrcate <- run_dmrcate_bsseq(sim_bs, design)
+    design <- model.matrix(~ Sample_Group, data = colData(ont_sim_bs))
+    dmrs_dmrcate <- run_dmrcate_bsseq(ont_sim_bs, design)
     end_time <- Sys.time()
     time_dmrcate <- end_time - start_time
     saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
@@ -787,7 +780,7 @@ run_dmrseq_bsseq <- function(
 
 if (!file.exists(dmrseq_file)) {
     start_time <- Sys.time()
-    dmrs_dmrseq <- run_dmrseq_bsseq(sim_bs)
+    dmrs_dmrseq <- run_dmrseq_bsseq(ont_sim_bs)
     end_time <- Sys.time()
     time_dmrseq <- end_time - start_time
     saveRDS(list(dmrs = dmrs_dmrseq, time = time_dmrseq), dmrseq_file)
@@ -911,7 +904,7 @@ run_hummingbird_bsseq <- function(
 
 if (!file.exists(hummingbird_file)) {
     start_time <- Sys.time()
-    dmrs_hummingbird <- run_hummingbird_bsseq(sim_bs, min_sites = min_sites, max_gap = 300L)
+    dmrs_hummingbird <- run_hummingbird_bsseq(ont_sim_bs, min_sites = min_sites, max_gap = 300L)
     end_time <- Sys.time()
     time_hummingbird <- end_time - start_time
     saveRDS(list(dmrs = dmrs_hummingbird, time = time_hummingbird), hummingbird_file)
