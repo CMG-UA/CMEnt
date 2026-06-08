@@ -52,8 +52,6 @@ Imports:
     DT,
     e1071,
     FNN,
-    future,
-    future.apply,
     GenomeInfoDb,
     GenomicFeatures,
     GenomicRanges,

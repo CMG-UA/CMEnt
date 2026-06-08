@@ -166,7 +166,9 @@ jobs:
             ${{ runner.temp }}/package
           if-no-files-found: ignore
 
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
+        env:
+          CODECOV_SKIP_VALIDATION=true
         if: ${{ hashFiles('cobertura.xml') != '' }}
         with:
           fail_ci_if_error: ${{ github.event_name != 'pull_request' || secrets.CODECOV_TOKEN }}

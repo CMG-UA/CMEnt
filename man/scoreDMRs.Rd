@@ -19,7 +19,7 @@ scoreDMRs(
   block_gap_multiplier = 1.5,
   block_gap_min_bp = 2500,
   block_gap_max_bp = 50000,
-  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
   verbose = getOption("CMEnt.verbose", 1L)
 )
 }

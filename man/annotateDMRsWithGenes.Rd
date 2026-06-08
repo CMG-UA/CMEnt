@@ -9,7 +9,7 @@ annotateDMRsWithGenes(
   genome = "hg38",
   promoter_upstream = 2000,
   promoter_downstream = 200,
-  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))
+  njobs = getOption("CMEnt.njobs", .defaultNJobs())
 )
 }
 \arguments{

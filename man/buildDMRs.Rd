@@ -31,7 +31,7 @@ buildDMRs(
   aggfun = c("median", "mean"),
   ignored_sample_groups = NULL,
   output_prefix = NULL,
-  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
   .score_dmrs = TRUE,

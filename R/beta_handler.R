@@ -1008,7 +1008,7 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
                            chrom_col = "#chrom",
                            start_col = "start",
                            output_prefix = NULL,
-                           njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
+                           njobs = getOption("CMEnt.njobs", .defaultNJobs())) {
     if (inherits(beta, "BetaHandler")) {
         return(invisible(beta))
     }

@@ -112,7 +112,7 @@ simulateDMRs <- function(
     beta_row_names_file = NULL,
     chrom_col = "#chrom",
     start_col = "start",
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     verbose = getOption("CMEnt.verbose", 1)
 ) {
     

@@ -47,7 +47,7 @@
 annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200,
-                                  njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1))) {
+                                  njobs = getOption("CMEnt.njobs", .defaultNJobs())) {
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
@@ -171,29 +171,14 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
             feature_type = "gene_body"
         )
     )
-    if (!is.null(njobs) && is.finite(njobs) && as.integer(njobs) > 1L) {
-        withr::local_options(list(CMEnt.njobs = as.integer(njobs)))
-        .setupParallel()
-        on.exit(.finalizeParallel(), add = TRUE)
-        annotation_results <- future.apply::future_lapply(
-            annotation_specs,
-            function(spec) {
-                list(
-                    column = spec$column,
-                    values = .annotateDMRsWithGeneFeature(
-                        dmrs = dmrs,
-                        features = spec$features,
-                        orgdb_pkg = orgdb_pkg,
-                        feature_type = spec$feature_type
-                    )
-                )
-            },
-            future.seed = TRUE,
-            future.stdout = NA,
-            future.globals = c(".annotateDMRsWithGeneFeature", "dmrs", "orgdb_pkg")
-        )
-    } else {
-        annotation_results <- lapply(annotation_specs, function(spec) {
+    bp_param <- .makeBiocParallelParam(
+        njobs,
+        n_tasks = length(annotation_specs),
+        progressbar = getOption("CMEnt.verbose", 0) > 0L
+    )
+    annotation_results <- BiocParallel::bplapply(
+        annotation_specs,
+        function(spec) {
             list(
                 column = spec$column,
                 values = .annotateDMRsWithGeneFeature(
@@ -203,8 +188,9 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                     feature_type = spec$feature_type
                 )
             )
-        })
-    }
+        },
+        BPPARAM = bp_param
+    )
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }

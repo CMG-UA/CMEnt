@@ -258,7 +258,7 @@ dmrs <- buildDMRs(
 
 ### `njobs`
 **Type:** Integer  
-**Default:** `getOption("CMEnt.njobs", min(8, future::availableCores() - 1))`  
+**Default:** `getOption("CMEnt.njobs", .defaultNJobs())`  
 **Description:** Number of parallel jobs to use for computation.
 
 **Recommendation:**
@@ -348,7 +348,7 @@ CMEnt uses several global options that can be set using the `options()` function
 
 ### Option: `CMEnt.njobs`
 **Type:** Integer  
-**Default:** `min(8, future::availableCores() - 1)`  
+**Default:** `min(8, parallel::detectCores(logical = TRUE) - 1)`  
 **Description:** Number of parallel jobs (defaults to the minimum of 8 and one less than the number of available CPU cores).
 
 ```{r njobs_option}

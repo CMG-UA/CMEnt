@@ -662,7 +662,7 @@
     block_gap_min_bp = 250000,
     block_gap_max_bp = 5000000,
     return_details = FALSE,
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
     if (!inherits(dmrs, "GRanges")) {
@@ -724,23 +724,12 @@
     if (length(chromosomes) == 0L) {
         warning("No valid chromosomes found in DMRs for block assignment.")
     } else {
-        if (njobs > 1L && length(chromosomes) > 1L) {
-            .setupParallel()
-            ret <- future.apply::future_lapply(
-                chromosomes,
-                fun,
-                future.seed = TRUE,
-                future.stdout = NA,
-                future.globals = c(
-                    "chr_values", "scores", "midpoints", ".computeDMRBlockFormationForChromosome",
-                    "k_neighbors", "min_segment_size", "block_gap_mode", "block_gap_fixed_bp",
-                    "block_gap_quantile", "block_gap_multiplier", "block_gap_min_bp", "block_gap_max_bp",
-                    "njobs", "verbose"
-                )
-            )
-        } else {
-            ret <- lapply(chromosomes, fun)
-        }
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = length(chromosomes),
+            progressbar = verbose > 0L
+        )
+        ret <- BiocParallel::bplapply(chromosomes, fun, BPPARAM = bp_param)
     }
     details <- list()
     for (res in ret) {
@@ -856,7 +845,7 @@ scoreDMRs <- function(
     block_gap_multiplier = 1.5,
     block_gap_min_bp = 2500,
     block_gap_max_bp = 50000,
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
     old_setting <- options("CMEnt.verbose" = verbose)
@@ -865,6 +854,7 @@ scoreDMRs <- function(
     dmrs <- .convertToGRanges(dmrs, genome = genome)
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     beta_col_names <- beta_handler$getBetaColNames()
+    pheno <- as.data.frame(pheno)
     missing_pheno_samples <- setdiff(beta_col_names, rownames(pheno))
     if (length(missing_pheno_samples) > 0) {
         stop(
@@ -906,11 +896,6 @@ scoreDMRs <- function(
     .log_step("Transforming beta values for DMR scoring", level = 3)
     dmrs_m <- .transformBeta(dmr_beta, pheno = pheno, covariate_model = covariate_model)
     .log_success("Beta values transformed", level = 3)
-    if (njobs > 1L) {
-        .setupParallel()
-        on.exit(.finalizeParallel(), add = TRUE)
-    }
-
     .log_step("Extracting DMR-specific beta matrices for classification", level = 3)
     dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
         dmr_sites_i <- dmr_sites[[i]]
@@ -921,25 +906,18 @@ scoreDMRs <- function(
     })
     .log_success("DMR-specific beta matrices extracted", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
-    if (njobs > 1L) {
-        cv_metrics <- future.apply::future_lapply(
-            dmrs_m_values,
-            function(m) {
-                .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
-            },
-            future.seed = TRUE,
-            future.globals = c(
-                "pheno", "beta_col_names",
-                ".performCrossPrediction",
-                "groups", "folds", "nfold"
-            ),
-            future.stdout = NA
-        )
-    } else {
-        cv_metrics <- lapply(dmrs_m_values, function(m) {
+    bp_param <- .makeBiocParallelParam(
+        njobs,
+        n_tasks = length(dmrs_m_values),
+        progressbar = verbose > 0L
+    )
+    cv_metrics <- BiocParallel::bplapply(
+        dmrs_m_values,
+        function(m) {
             .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
-        })
-    }
+        },
+        BPPARAM = bp_param
+    )
     cv_metrics <- do.call(rbind, cv_metrics)
 
     .log_success("Cross-validated classification scores computed", level = 3)

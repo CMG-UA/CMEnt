@@ -3001,7 +3001,7 @@ buildDMRs <- function(
     aggfun = c("median", "mean"),
     ignored_sample_groups = NULL,
     output_prefix = NULL,
-    njobs = getOption("CMEnt.njobs", min(8, future::availableCores() - 1)),
+    njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
     .score_dmrs = TRUE,
@@ -3113,15 +3113,13 @@ buildDMRs <- function(
     testing_mode <- strex::match_arg(testing_mode, ignore_case = TRUE)
     empirical_strategy <- strex::match_arg(empirical_strategy, ignore_case = TRUE)
     entanglement <- strex::match_arg(entanglement, ignore_case = TRUE)
-    options(CMEnt.verbose = verbose, future.globals.maxSize = Inf, "CMEnt.njobs" = njobs)
+    options(CMEnt.verbose = verbose, "CMEnt.njobs" = njobs)
     if (Sys.info()[["sysname"]] != "Windows") {
         includes <- "#include <sys/wait.h>"
         code <- "int wstat; while (waitpid(-1, &wstat, WNOHANG) > 0) {};"
         wait <- inline::cfunction(body = code, includes = includes, convention = ".C")
         withr::defer(wait())
     }
-    .cleanupParallelState()
-    withr::defer(.cleanupParallelState(), envir = environment())
 
     .log_step("Preparing chromosome-sequential DMR input...")
     seeds_ret <- .readSeeds(seeds, seeds_id_col)

@@ -508,15 +508,23 @@
 
 #' @keywords internal
 #' @noRd
+.defaultNJobs <- function(max_workers = 8L) {
+    cores <- tryCatch(
+        parallel::detectCores(logical = TRUE),
+        error = function(e) NA_integer_
+    )
+    cores <- suppressWarnings(as.integer(cores))
+    if (length(cores) == 0L || is.na(cores) || cores < 1L) {
+        cores <- 1L
+    }
+    max(1L, min(as.integer(max_workers), cores - 1L))
+}
+
+#' @keywords internal
+#' @noRd
 .log_info <- function(..., .envir = parent.frame(), level = 1) {
     if (getOption("CMEnt.verbose", 0) < level) {
         return(invisible())
-    }
-    # Suppress output from parallel workers
-    if (!is.null(getOption("future.fork.enable")) && getOption("future.fork.enable", TRUE)) {
-        if (exists(".Random.seed", envir = .GlobalEnv) && !identical(Sys.getpid(), getOption("future.main.pid", Sys.getpid()))) {
-            return(invisible())
-        }
     }
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$info, "blue")
@@ -2189,98 +2197,6 @@ orderByLoc <- function(x,
     decoded_df
 }
 
-
-.already_logged_dir <- tempdir()
-.already_logged_file <- file.path(.already_logged_dir, "cment_already_logged_parallel.txt")
-#' @keywords internal
-#' @noRd
-.cleanupParallelState <- function() {
-    # Reset plan first so current backend gets torn down by future.
-    tryCatch(
-        future::plan(future::sequential),
-        error = function(e) invisible(NULL)
-    )
-
-    # Optional deep cleanup for stale multisession clusters.
-    # Disabled by default because stopping dead clusters may block.
-    if (isTRUE(getOption("CMEnt.force_cluster_cleanup", FALSE))) {
-        reg <- tryCatch(
-            getFromNamespace("clusterRegistry", "future"),
-            error = function(e) NULL
-        )
-        if (is.list(reg) && is.function(reg$stopCluster)) {
-            timeout_sec <- getOption("CMEnt.cluster_cleanup_timeout_sec", 2)
-            # Keep cleanup bounded so we don't stall before any progress is shown.
-            setTimeLimit(elapsed = timeout_sec, transient = TRUE)
-            on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
-            tryCatch(
-                reg$stopCluster(),
-                error = function(e) invisible(NULL)
-            )
-        }
-    }
-
-    gc(verbose = FALSE)
-    invisible()
-}
-
-#' @keywords internal
-#' @noRd
-.setupParallel <- function() {
-    if (!dir.exists(.already_logged_dir)) {
-        dir.create(.already_logged_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    if (nzchar(Sys.getenv("CI"))) {
-        # CI-safe future backend
-        .log_info("Running in CI environment, using sequential processing to avoid parallel issues in CI", level = 2)
-        future::plan(future::sequential)
-        return()
-    }
-    njobs <- getOption("CMEnt.njobs")
-    if (njobs < 0) {
-        njobs <- future::availableCores() + njobs
-    }
-    if (njobs > 1) {
-        parallel_backend <- getOption("CMEnt.parallel_backend", "auto")
-        parallel_backend <- as.character(parallel_backend)[1]
-        if (is.na(parallel_backend) || !nzchar(parallel_backend)) {
-            parallel_backend <- "auto"
-        }
-        parallel_backend <- tolower(parallel_backend)
-        if (!parallel_backend %in% c("auto", "multicore", "multisession")) {
-            warning("Unsupported CMEnt.parallel_backend='", parallel_backend, "'. Falling back to 'auto'.")
-            parallel_backend <- "auto"
-        }
-        use_multicore <- parallel_backend == "multicore" ||
-            (parallel_backend == "auto" && future::availableCores("multicore") > 1L)
-        if (use_multicore) {
-            if (!file.exists(.already_logged_file)) {
-                .log_info("Using multicore parallelization with ", njobs, " workers", level = 2)
-                writeLines("TRUE", con = .already_logged_file)
-            }
-            future::plan(future::multicore, workers = njobs)
-        } else {
-            if (!file.exists(.already_logged_file)) {
-                .log_info("Using multisession parallelization with ", njobs, " workers", level = 2)
-                writeLines("TRUE", con = .already_logged_file)
-            }
-            future::plan(future::multisession, workers = njobs)
-        }
-        withr::defer(future::plan(future::sequential), envir = parent.frame())
-    } else {
-        if (!file.exists(.already_logged_file)) {
-            .log_info("Using sequential processing (njobs=1)", level = 2)
-            writeLines("TRUE", con = .already_logged_file)
-        }
-        future::plan(future::sequential)
-    }
-}
-
-#' @keywords internal
-#' @noRd
-.finalizeParallel <- function() {
-    future::plan(future::sequential)
-}
 
 #' @keywords internal
 #' @noRd

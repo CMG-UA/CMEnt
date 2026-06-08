@@ -386,14 +386,14 @@ knitr::kable(
 ```{r cment}
 
 if (!file.exists(cment_file)) {
-    default_cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    default_cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     cment_njobs <- suppressWarnings(as.integer(
         Sys.getenv("CMENT_BENCHMARK_NJOBS", as.character(default_cment_njobs))
     ))
     if (!is.finite(cment_njobs) || is.na(cment_njobs) || cment_njobs < 1L) {
         cment_njobs <- default_cment_njobs
     }
-    cment_njobs <- max(1L, min(cment_njobs, future::availableCores()))
+    cment_njobs <- max(1L, min(cment_njobs, parallel::detectCores(logical = TRUE)))
     options("CMEnt.njobs" = cment_njobs)
     options("CMEnt.verbose" = 3)
     cat(sprintf("CMEnt benchmark jobs: %d\n", cment_njobs))
@@ -671,7 +671,7 @@ run_dmrseq_bsseq <- function(
 
     dmrs_by_chr <- vector("list", length(chr_vec))
     names(dmrs_by_chr) <- chr_vec
-    bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, future::availableCores() - 1L)), progressbar = TRUE)
+    bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
     .runDMRSeq <- function(chunk_bs, chr_name, chunk_i, core_start_pos = NA_integer_, core_end_pos = NA_integer_) {
         chunk_out <- tryCatch(
             {
