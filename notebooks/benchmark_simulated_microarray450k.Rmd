@@ -246,7 +246,7 @@ cment_params <- list(
     testing_mode = "parametric",
     entanglement = "weak"
 )
-cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
 options("CMEnt.njobs" = cment_njobs)
 ```
 
@@ -414,7 +414,7 @@ if (file.exists(cment_file)) {
     }
 }
 if (!cment_cache_valid) {
-    cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     options("CMEnt.njobs" = cment_njobs)
     cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
     start_time <- Sys.time()
@@ -645,7 +645,7 @@ if (!file.exists(bumphunter_file)) {
         library(doParallel)
     })
     start_time <- Sys.time()
-    bh_cores <- max(1L, min(8L, future::availableCores() - 1L))
+    bh_cores <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     bh_b <- 100L
     bh_max_dmrs <- 100000L
     bh_max_gap <- 2000L

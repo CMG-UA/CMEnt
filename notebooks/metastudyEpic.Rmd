@@ -272,7 +272,7 @@ ggplot(sig_dmps, aes(x = delta_beta_available)) +
 ```{r cment-run}
 cment_file <- getBenchmarkFile("dmrs.CMEnt.meta_reported_dmps.rds")
 if (!file.exists(cment_file)) {
-    cment_njobs <- max(1L, min(8L, future::availableCores() - 1L))
+    cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     options("CMEnt.verbose" = 1)
     options("CMEnt.njobs" = cment_njobs)
     cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
