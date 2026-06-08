@@ -1,4 +1,4 @@
-makeSyntheticFindDMRsFixture <- function() {
+makeSyntheticBuildDMRsFixture <- function() {
     site_ids <- paste0("cg", LETTERS[1:6])
     beta <- matrix(
         c(
@@ -43,7 +43,7 @@ makeSyntheticFindDMRsFixture <- function() {
     )
 }
 
-runSyntheticFindDMRs <- function(fixture = makeSyntheticFindDMRsFixture(),
+runSyntheticBuildDMRs <- function(fixture = makeSyntheticBuildDMRsFixture(),
                                  beta = fixture$beta_handler,
                                  seeds = fixture$seeds,
                                  ...) {
@@ -66,10 +66,10 @@ runSyntheticFindDMRs <- function(fixture = makeSyntheticFindDMRsFixture(),
         njobs = 1
     )
     args <- utils::modifyList(args, list(...))
-    suppressWarnings(do.call(findDMRsFromSeeds, args))
+    suppressWarnings(do.call(buildDMRs, args))
 }
 
-makeSyntheticSeedsWithIds <- function(fixture = makeSyntheticFindDMRsFixture(),
+makeSyntheticSeedsWithIds <- function(fixture = makeSyntheticBuildDMRsFixture(),
                                       include_chr_prefix = TRUE,
                                       id_col = "ID") {
     ids <- paste0(
@@ -126,7 +126,7 @@ writeSyntheticBedFile <- function(fixture,
 }
 
 makeSyntheticPlotFixture <- function() {
-    fixture <- makeSyntheticFindDMRsFixture()
+    fixture <- makeSyntheticBuildDMRsFixture()
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr2"),
         ranges = IRanges::IRanges(start = c(100L, 100L), end = c(300L, 200L)),

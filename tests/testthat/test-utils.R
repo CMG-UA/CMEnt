@@ -180,20 +180,43 @@ test_that("covariate transformation residualizes nonsingular covariates", {
     model <- CMEnt:::.prepareCovariateModel(pheno, covariates = c("batch", "age"))
     expect_false(model$is_singular)
     expect_equal(dim(model$covariate_matrix), c(4, 3))
+    expect_true("batchB" %in% colnames(model$covariate_matrix))
     expect_error(
         CMEnt:::.prepareCovariateModel(pheno, covariates = "missing"),
         "Not all covariates"
+    )
+    expect_error(
+        CMEnt:::.prepareCovariateModel(data.frame(batch = c("A", NA)), covariates = "batch"),
+        "missing values"
     )
 
     transformed <- CMEnt:::.transformBeta(beta, pheno, covariate_model = model)
     expect_equal(dim(transformed), dim(beta))
     expect_false(anyNA(transformed))
 
-    singular <- CMEnt:::.prepareCovariateModel(
-        data.frame(batch = c("A", "A", "A")),
-        covariates = "batch"
+    constant <- NULL
+    expect_warning(
+        constant <- CMEnt:::.prepareCovariateModel(
+            data.frame(batch = c("A", "A", "A")),
+            covariates = "batch"
+        ),
+        "collinear"
     )
-    expect_true(singular$is_singular)
+    expect_false(constant$is_singular)
+    expect_equal(dim(constant$covariate_matrix), c(3, 1))
+    expect_equal(constant$dropped_columns, "batch")
+
+    aliased <- NULL
+    expect_warning(
+        aliased <- CMEnt:::.prepareCovariateModel(
+            data.frame(batch = c("A", "B", "C", "A"), duplicate_batch = c("A", "B", "C", "A")),
+            covariates = c("batch", "duplicate_batch")
+        ),
+        "collinear"
+    )
+    expect_equal(nrow(aliased$covariate_matrix), 4)
+    expect_false(aliased$is_singular)
+    expect_true(length(aliased$dropped_columns) > 0)
     expect_equal(
         CMEnt:::.remove_confounder_effect(beta, covariate_matrix = matrix(, nrow = 4, ncol = 0)),
         beta

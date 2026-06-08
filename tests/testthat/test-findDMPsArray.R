@@ -38,7 +38,6 @@ test_that("findDMPsArray returns BSseq-like DMP columns sorted by location", {
         sorted_locs = fixture$locs,
         case_group = "case",
         covariates = "Age",
-        fdr_thres = 1,
         chr = "all"
     )
 
@@ -68,7 +67,6 @@ test_that("findDMPsArray writes the same output shape, including gzipped files",
         samplesheet = fixture$pheno,
         sorted_locs = fixture$locs,
         case_group = "case",
-        fdr_thres = 1,
         chr = "chr1",
         output_file = output_file
     )
@@ -79,21 +77,32 @@ test_that("findDMPsArray writes the same output shape, including gzipped files",
     expect_true(all(written$chr == "chr1"))
 })
 
-test_that("findDMPsArray returns an empty BSseq-like table when no sites pass FDR", {
-    fixture <- make_array_dmp_fixture()
 
-    dmps <- findDMPsArray(
+test_that("findDMPsArray drops collinear covariate columns without dropping samples", {
+    fixture <- make_array_dmp_fixture()
+    fixture$pheno$Batch <- ifelse(fixture$pheno$Sample_Group == "case", "case_batch", "control_batch")
+
+    unadjusted <- findDMPsArray(
         beta = fixture$beta,
         samplesheet = fixture$pheno,
         sorted_locs = fixture$locs,
         case_group = "case",
-        fdr_thres = 0,
         chr = "all"
     )
-
-    expect_equal(nrow(dmps), 0L)
-    expect_equal(
-        colnames(dmps),
-        c("chr", "start", "end", "site_id", "pval", "qval", "delta_beta", "score")
+    adjusted <- NULL
+    expect_warning(
+        adjusted <- findDMPsArray(
+            beta = fixture$beta,
+            samplesheet = fixture$pheno,
+            sorted_locs = fixture$locs,
+            case_group = "case",
+            covariates = "Batch",
+            chr = "all"
+        ),
+        "design columns are collinear"
     )
+
+    expect_equal(adjusted$site_id, unadjusted$site_id)
+    expect_equal(adjusted$pval, unadjusted$pval, tolerance = 1e-12)
+    expect_equal(adjusted$delta_beta, unadjusted$delta_beta, tolerance = 1e-12)
 })

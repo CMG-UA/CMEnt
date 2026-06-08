@@ -160,3 +160,22 @@ test_that("BetaHandler file fallback refreshes row order after sorting", {
     )
     expect_error(beta_handler$getBeta(row_names = "missing"), "not found")
 })
+
+test_that("BetaHandler subset uses exact row-name matching for genomic locations", {
+    beta <- matrix(
+        c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6),
+        nrow = 3,
+        dimnames = list(c("cg1", "cg10", "cg2"), c("Sample1", "Sample2"))
+    )
+    sorted_locs <- data.frame(
+        chr = rep("chr1", 3),
+        start = c(100L, 200L, 300L),
+        end = c(101L, 201L, 301L),
+        row.names = c("cg1", "cg10", "cg2")
+    )
+
+    beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
+    subset_handler <- beta_handler$subset(row_names = c("cg1", "cg10"))
+
+    expect_equal(rownames(subset_handler$getBetaLocs()), c("cg1", "cg10"))
+})

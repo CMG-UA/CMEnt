@@ -231,7 +231,11 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {
-            .log_warn(sum(!valid_site_center), " background motif windows were not centered on C and were ignored.")
+            .log_info(sum(!valid_site_center), " background motif windows were not centered on C and were ignored.", level = 2)
+            .log_info("The center base distribution of the background motif windows was: ", paste0(
+                names(table(site_center_base)), "=", as.vector(table(site_center_base)),
+                collapse = ", "
+            ), level = 3)
         }
         site_seqs <- site_seqs[valid_site_center]
         if (length(site_seqs) == 0) {

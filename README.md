@@ -103,8 +103,8 @@ Here’s a basic example of how to use CMEnt:
 
     suppressPackageStartupMessages(library(CMEnt))
     loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
-    # Find DMRs using parallel processing
-    dmrs <- findDMRsFromSeeds(
+    # Build DMRs using parallel processing
+    dmrs <- buildDMRs(
         beta = beta,
         seeds = dmps,
         pheno = pheno,

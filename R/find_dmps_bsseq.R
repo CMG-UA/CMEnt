@@ -10,7 +10,6 @@
 #' @param chr A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
 #' @param case_group The specific group label in the group_col to treat as the "case" group for comparison. If NULL, the first unique group in group_col will be used as the case group. Default is NULL.
 #' @param covariates A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).
-#' @param fdr_thres The false discovery rate threshold for calling DMPs. Default is 0.05.
 #' @param output_file An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
 #' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is 1.
 #'
@@ -37,7 +36,6 @@
 #'        id_col = "Sample_ID",
 #'        case_group = "Condition2",
 #'        covariates = "Age",
-#'        fdr_thres = 0.05,
 #'        output_file = NULL,
 #'        njobs = 4
 #'     )
@@ -55,7 +53,6 @@ findDMPsBSSeq <- function(
     chr = "auto",
     case_group = NULL,
     covariates = NULL,
-    fdr_thres = 0.05,
     output_file = NULL,
     njobs = 1L
 ) {
@@ -245,8 +242,7 @@ findDMPsBSSeq <- function(
     dml_test$score <- -log10(dml_test$pvals + .Machine$double.xmin) * abs(dml_test$delta_beta)
     dml_test$score <- (dml_test$score - min(dml_test$score)) / (max(dml_test$score) - min(dml_test$score) + .Machine$double.xmin)
 
-    dml_sig <- dml_test[dml_test$fdrs <= fdr_thres, , drop = FALSE]
-    if (nrow(dml_sig) == 0) {
+    if (nrow(dml_test) == 0) {
         dmps <- data.frame(
             chr = character(),
             start = integer(),
@@ -259,18 +255,16 @@ findDMPsBSSeq <- function(
             stringsAsFactors = FALSE
         )
     } else {
-        ord_score <- order(-dml_sig$score, dml_sig$pvals, na.last = NA)
-        dml_sig <- dml_sig[ord_score, , drop = FALSE]
 
         dmps <- data.frame(
-            chr = as.character(dml_sig$chr),
-            start = as.integer(dml_sig$pos),
-            end = as.integer(dml_sig$pos),
-            site_id = dml_sig$site_id,
-            pval = dml_sig$pvals,
-            qval = dml_sig$fdrs,
-            delta_beta = dml_sig$delta_beta,
-            score = dml_sig$score,
+            chr = as.character(dml_test$chr),
+            start = as.integer(dml_test$pos),
+            end = as.integer(dml_test$pos),
+            site_id = dml_test$site_id,
+            pval = dml_test$pvals,
+            qval = dml_test$fdrs,
+            delta_beta = dml_test$delta_beta,
+            score = dml_test$score,
             stringsAsFactors = FALSE
         )
     }

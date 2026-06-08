@@ -1,7 +1,7 @@
 #' Launch CMEnt Interactive Viewer
 #'
 #' Launches a Shiny application for interactive exploration of DMR analysis
-#' results from \code{\link{findDMRsFromSeeds}}.
+#' results from \code{\link{buildDMRs}}.
 #'
 #' @param output_prefix Character. Prefix used when saving DMR analysis results.
 #'   The function will look for files: \code{{output_prefix}.dmrs.tsv.gz},
@@ -24,7 +24,7 @@
 #'   \item \strong{Block Formation}: Diagnostic view of DMR block detection, if `diagnostic = TRUE`
 #' }
 #'
-#' The function expects the following output files from \code{findDMRsFromSeeds}:
+#' The function expects the following output files from \code{buildDMRs}:
 #' \itemize{
 #'   \item \code{{output_prefix}.dmrs.tsv.gz} - Main DMR results (required)
 #'   \item \code{{output_prefix}.seeds_beta.tsv.gz} - Beta values for seeds (required)
@@ -35,13 +35,13 @@
 #'
 #' @examples
 #' if (interactive()) {
-#'     # After running findDMRsFromSeeds with output_prefix = "my_analysis"
+#'     # After running buildDMRs with output_prefix = "my_analysis"
 #'     launchCMEntViewer(
 #'       output_prefix = "results/my_analysis"
 #'     )
 #' }
 #'
-#' @seealso \code{\link{findDMRsFromSeeds}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}
+#' @seealso \code{\link{buildDMRs}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}
 #'
 #' @export
 launchCMEntViewer <- function(
@@ -158,7 +158,7 @@ launchCMEntViewer <- function(
             paste(
                 "Viewer metadata file not found:",
                 files$meta_file,
-                "- re-run findDMRsFromSeeds() with output_prefix to create it"
+                "- re-run buildDMRs() with output_prefix to create it"
             )
         )
     }
@@ -227,12 +227,12 @@ launchCMEntViewer <- function(
         stop("Viewer metadata phenotype table must have non-empty row names.")
     }
 
-    genome <- .normalizeFindDMRsGenome(meta$genome)
+    genome <- .normalizeBuildDMRsGenome(meta$genome)
     if (is.null(genome)) {
         stop("Viewer metadata file must contain a valid `genome` entry.")
     }
 
-    array <- .normalizeFindDMRsArray(meta$array)
+    array <- .normalizeBuildDMRsArray(meta$array)
     sample_group_col <- .resolveViewerSampleGroupCol(meta$pheno, meta$sample_group_col)
     if (!identical(meta$sample_group_col, sample_group_col)) {
         .log_info(

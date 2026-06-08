@@ -52,6 +52,13 @@ tmp/
 data
 
 CMEnt_*.tar.gz
-notebooks/benchmarks/simulated_microarray/controls.tsv
-notebooks/benchmarks/simulated_ont/sim_bs_1000.h5
-notebooks/benchmarks/simulated_ont/bsseq_augmented.rds
+notebooks/cached_results/simulated_microarray/sim_microarray_controls.tsv
+notebooks/cached_results/simulated_ont/ont_*
+notebooks/cached_results/simulated_ont/bsseq_augmented.rds
+notebooks/cached_results/microarray450k/GSE63409*
+notebooks/cached_results/metastudyEpic/GSE244696*
+notebooks/cached_results/simulated_microarray450k/GSE40279*
+
+notebooks/metastudy_files
+notebooks/metastudy_cache
+

@@ -96,7 +96,7 @@ test_that("annotateDMRsWithGenes reports TxDb and OrgDb requirements clearly", {
     )
 })
 
-test_that("findDMRsFromSeeds aggregates optional dependencies before running", {
+test_that("buildDMRs aggregates optional dependencies before running", {
     local_mocked_bindings(
         .isPackageInstalled = function(pkg_name) FALSE,
         .package = "CMEnt"
@@ -119,7 +119,7 @@ test_that("findDMRsFromSeeds aggregates optional dependencies before running", {
     )
 
     err <- expect_error(
-        findDMRsFromSeeds(
+        buildDMRs(
             beta = beta,
             seeds = seeds,
             pheno = pheno,
@@ -183,7 +183,7 @@ test_that("CLI parser reports missing optparse clearly", {
     )
 
     expect_error(
-        CMEnt:::.makeCMEntCLIParser("findDMRsFromSeeds"),
+        CMEnt:::.makeCMEntCLIParser("buildDMRs"),
         "optparse"
     )
 })

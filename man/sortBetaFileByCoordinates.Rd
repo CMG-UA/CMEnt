@@ -31,7 +31,7 @@ Character. Path to the sorted output file
 }
 \description{
 This helper function sorts a methylation beta values file by genomic coordinates
-(chromosome and position) as required by the findDMRsFromSeeds function. The function reads
+(chromosome and position) as required by the buildDMRs function. The function reads
 the beta file, sorts the site sites according to their genomic positions using array annotation,
 and writes the sorted data to a new file.
 }

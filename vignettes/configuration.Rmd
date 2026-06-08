@@ -97,7 +97,7 @@ loadExampleInputDataChr5And11("pheno")
 
 **Example:**
 ```{r basic_usage, eval=FALSE}
-dmrs <- findDMRsFromSeeds(
+dmrs <- buildDMRs(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
@@ -202,7 +202,7 @@ Set to `<= 0` to compute connectivity genome-wide.
 
 **Example:**
 ```{r bsseq_usage, eval=FALSE}
-dmrs <- findDMRsFromSeeds(
+dmrs <- buildDMRs(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
@@ -469,7 +469,7 @@ options("CMEnt.scoring_nfold" = 3)
 ## Example 1: High-Confidence DMRs with Strict Filtering
 
 ```{r scoring_example, eval=FALSE}
-dmrs <- findDMRsFromSeeds(
+dmrs <- buildDMRs(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
@@ -488,7 +488,7 @@ dmrs <- findDMRsFromSeeds(
 ## Example 2: Broad Region Detection with Relaxed Parameters
 
 ```{r custom_bed_example, eval=FALSE}
-dmrs <- findDMRsFromSeeds(
+dmrs <- buildDMRs(
     beta = beta,
     seeds = seeds,
     pheno = pheno,
@@ -504,7 +504,7 @@ dmrs <- findDMRsFromSeeds(
 ## Example 3: Empirical P-values for Small Sample Sizes
 
 ```{r custom_locations_example, eval=FALSE}
-dmrs <- findDMRsFromSeeds(
+dmrs <- buildDMRs(
     beta = beta,
     seeds = seeds,
     pheno = pheno,

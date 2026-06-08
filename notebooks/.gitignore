@@ -1,3 +1,3 @@
-benchmarks/simulated_ont/sim_bs_1000.rds
-benchmarks/simulated_ont/sim_bs_1000_hdf5
-benchmarks/simulated_microarray/sim_beta_500.tsv
+cached_results/simulated_ont/ont_sim_bs.rds
+cached_results/simulated_ont/ont_sim_bs_hdf5
+cached_results/simulated_microarray/sim_microarray_beta_500.tsv

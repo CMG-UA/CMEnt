@@ -10,16 +10,19 @@ simulateDMRs(
   delta_max0 = 0.4,
   groups = NULL,
   case_group = NULL,
+  samplesheet = NULL,
+  samplesheet_sep = "\\t",
+  sample_group_col = "Sample_Group",
+  covariates = NULL,
   max_gap = 500L,
   min_sites = 5L,
   max_sites = 500L,
-  truth_min_delta_beta = 0.2,
+  truth_min_delta_beta = 0,
   delta_jitter = 1/3,
   expected_correlation = 0.7,
   neighbor_window = 5L,
   profile_degree = 4L,
   flank_fraction = 0.2,
-  rename_samples = TRUE,
   resample_counts = TRUE,
   array = c("450K", "27K", "EPIC", "EPICv2"),
   genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
@@ -48,6 +51,20 @@ samples are assigned to \code{Condition1} and the remaining samples to
 \item{case_group}{Group receiving the differential shift. Defaults to the
 second group level.}
 
+\item{samplesheet}{Optional data frame or path to a tab-delimited sample
+sheet with covariates. Row names, a \code{Sample_ID} column, or an unnamed first
+column must identify samples.}
+
+\item{samplesheet_sep}{Separator for samplesheet files. Default is tab.}
+
+\item{sample_group_col}{Name of the phenotype column added to the returned
+samplesheet. Values are \code{"case"} for perturbed samples and \code{"control"} for
+all other samples.}
+
+\item{covariates}{Optional covariate columns in \code{samplesheet} to regress out
+on the logit methylation scale before DMRs are simulated. The per-site
+baseline is retained.}
+
 \item{max_gap}{Maximum gap, in bp, used to form candidate site segments.}
 
 \item{min_sites}{Minimum number of sites per candidate DMR segment.}
@@ -55,8 +72,9 @@ second group level.}
 \item{max_sites}{Maximum number of sites per candidate DMR segment.}
 
 \item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
-site to define the reported truth interval. Set to \code{0} to report the full
-selected segment.}
+site to define the reported truth interval. The default, \code{0}, reports the
+full selected segment so simulated flanks are not treated as false
+positives during benchmarking.}
 
 \item{delta_jitter}{Width of the random effect-size jitter around
 \code{delta_max0}.}
@@ -73,11 +91,6 @@ uses up to two upstream and two downstream neighboring sites.}
 
 \item{flank_fraction}{Fraction of the selected segment width added on both
 sides before evaluating the triweight profile.}
-
-\item{rename_samples}{If \code{TRUE}, samples are reordered and renamed using the
-\code{dmrseq::simDMRs()} convention: controls first as \code{Condition1_Rep1},
-\code{Condition1_Rep2}, etc., followed by cases as \code{Condition2_Rep1},
-\code{Condition2_Rep2}, etc.}
 
 \item{resample_counts}{If \code{TRUE}, methylated counts in touched regions are
 redrawn from shifted probabilities and coverage. If \code{FALSE}, counts are
@@ -106,7 +119,8 @@ non-BSseq file inputs.}
 }
 \value{
 A list with simulated output (\code{simulated}), optional genomic
-locations for non-BSseq inputs (\code{beta_locs}), and dmrseq-like metadata:
+locations for non-BSseq inputs (\code{beta_locs}), phenotype data (\code{pheno}),
+and dmrseq-like metadata:
 \code{gr.dmrs}, \code{dmr.mncov}, \code{dmr.L}, \code{delta}, \code{truth}, \code{selected_regions},
 \code{groups}, and \code{case_group}. For reproducible simulations, call
 \code{set.seed()} before \code{simulateDMRs()}.

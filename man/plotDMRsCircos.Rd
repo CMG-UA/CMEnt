@@ -6,8 +6,8 @@
 \usage{
 plotDMRsCircos(
   dmrs,
-  beta,
-  pheno,
+  beta = NULL,
+  pheno = NULL,
   genome = "hg38",
   array = "450K",
   sorted_locs = NULL,
@@ -33,12 +33,12 @@ plotDMRsCircos(
 )
 }
 \arguments{
-\item{dmrs}{GRanges object or data frame. DMR results from findDMRsFromSeeds.}
+\item{dmrs}{GRanges object or data frame. DMR results from buildDMRs.}
 
-\item{beta}{BetaHandler object, character path to beta file, or beta values matrix.}
+\item{beta}{BetaHandler object, character path to beta file, or beta values matrix. If not provided, beta heatmap track will be omitted.}
 
 \item{pheno}{Data frame or character path to phenotype file. Sample information with
-rownames matching beta column names (required for beta track).}
+rownames matching beta column names (required for beta track, if not provided beta track will not be shown).}
 
 \item{genome}{Character. Genome version (e.g., "hg38").}
 

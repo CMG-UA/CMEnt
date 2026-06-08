@@ -17,7 +17,7 @@
 )
 }
 \arguments{
-\item{dmrs}{GRanges object. Output from findDMRsFromSeeds containing DMR information.}
+\item{dmrs}{GRanges object. Output from buildDMRs containing DMR information.}
 
 \item{dmr_index}{Integer. Which DMR to plot (default: 1).}
 
@@ -40,7 +40,7 @@ A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a l
 }
 \description{
 Visualizes the structure of Differentially Methylated Regions (DMRs)
-identified by findDMRsFromSeeds, showing the underlying seeds as stem plots connected
+identified by buildDMRs, showing the underlying seeds as stem plots connected
 by horizontal lines to form DMRs, with extended site regions shown as vertical lines.
 The plot distinguishes between seeds (differentially methylated positions), supporting
 sites that extend the DMR, and non-supporting sites in the surrounding region.

@@ -12,7 +12,7 @@
 #' @param samplesheet A data frame or file path to a tab-delimited sample sheet.
 #' @param samplesheet_sep Separator for samplesheet files. Default is tab.
 #' @param group_col Column in `samplesheet` containing group labels.
-#' @param id_col Column in `samplesheet` containing sample IDs.
+#' @param id_col Column in `samplesheet` containing sample IDs. row.names can also be used by specifying `id_col = "row.names"`.
 #' @param array Array platform passed to [getSortedGenomicLocs()] when
 #'   `sorted_locs` is not supplied.
 #' @param genome Genome passed to [getSortedGenomicLocs()] when `sorted_locs` is
@@ -27,7 +27,6 @@
 #'   `group_col` is used.
 #' @param covariates Optional covariate column names, or a comma-separated
 #'   string, to include in the limma model.
-#' @param fdr_thres FDR threshold for returned DMPs. Default is 0.05.
 #' @param output_file Optional tab-delimited output path. Files ending in `.gz`
 #'   are gzipped.
 #'
@@ -49,7 +48,6 @@ findDMPsArray <- function(
     chr = "auto",
     case_group = NULL,
     covariates = NULL,
-    fdr_thres = 0.05,
     output_file = NULL
 ) {
     .assertPackagesInstalled(
@@ -65,6 +63,9 @@ findDMPsArray <- function(
         .assertPackagesInstalled("minfi", "findDMPsArray()", "minfi objects must be converted to beta values.")
         beta <- minfi::getBeta(beta)
     }
+    genome <- match.arg(genome)
+    array <- match.arg(array)
+
     beta_handler <- getBetaHandler(
         beta = beta,
         array = array,
@@ -107,8 +108,15 @@ findDMPsArray <- function(
     if (!coef_name %in% colnames(design)) {
         stop("Could not construct case/control contrast from the provided samplesheet.")
     }
-    if (qr(design)$rank < ncol(design)) {
-        stop("The array DMP model is rank deficient; remove collinear covariates.")
+    design_qr <- qr(design)
+    if (design_qr$rank < ncol(design)) {
+        keep_cols <- sort(design_qr$pivot[seq_len(design_qr$rank)])
+        collinear_covs <- setdiff(colnames(design), colnames(design)[keep_cols])
+        if (coef_name %in% collinear_covs) {
+            stop("The case/control contrast is collinear with the design and cannot be estimated.")
+        }
+        warning("The following design columns are collinear and will be removed: ", paste(collinear_covs, collapse = ", "))
+        design <- design[, keep_cols, drop = FALSE]
     }
 
     fit <- limma::eBayes(limma::lmFit(m_values, design))
@@ -122,22 +130,21 @@ findDMPsArray <- function(
     tab$site_id <- rownames(beta_mat)
     tab$chr <- locs$chr
     tab$start <- as.integer(locs$start)
-    tab$qval <- stats::p.adjust(tab$P.Value, method = "BH")
 
     tab <- tab[
         is.finite(tab$P.Value) &
-            is.finite(tab$qval) &
             is.finite(tab$delta_beta),
         ,
         drop = FALSE
     ]
+    tab$qval <- stats::p.adjust(tab$P.Value, method = "BH")
+
     if (nrow(tab) == 0L) {
         stop("limma returned no usable sites for DMP generation.")
     }
     tab$score <- -log10(tab$P.Value + .Machine$double.xmin) * abs(tab$delta_beta)
     tab$score <- (tab$score - min(tab$score)) / (max(tab$score) - min(tab$score) + .Machine$double.xmin)
 
-    tab <- tab[tab$qval <= fdr_thres, , drop = FALSE]
     dmps <- data.frame(
         chr = as.character(tab$chr),
         start = as.integer(tab$start),
@@ -163,6 +170,11 @@ findDMPsArray <- function(
 .readDMPsSampleSheet <- function(samplesheet, samplesheet_sep) {
     if (is.character(samplesheet) && length(samplesheet) == 1L) {
         pheno <- utils::read.table(samplesheet, header = TRUE, stringsAsFactors = FALSE, sep = samplesheet_sep, check.names = FALSE)
+        # If the samplesheet first column is unnamed, assume it's row names and move to row names
+        if ((ncol(pheno) > 0L) && (colnames(pheno)[1L] == "")) {
+            rownames(pheno) <- pheno[[1L]]
+            pheno <- pheno[, -1L, drop = FALSE]
+        }
     } else if (is.data.frame(samplesheet)) {
         pheno <- samplesheet
     } else {
@@ -173,6 +185,12 @@ findDMPsArray <- function(
 }
 
 .prepareDMPsPheno <- function(pheno, sample_ids, group_col, id_col, case_group, covariates) {
+    if (id_col == "row.names") {
+        if (is.null(rownames(pheno))) {
+            stop("ID column is specified as 'row.names' but the samplesheet has no row names.")
+        }
+        pheno[[id_col]] <- rownames(pheno)
+    }
     if (!all(c(group_col, id_col) %in% colnames(pheno))) {
         stop("Group column ", group_col, " or ID column ", id_col, " not found in samplesheet.")
     }
@@ -181,6 +199,8 @@ findDMPsArray <- function(
         stop("Duplicate sample IDs found in the samplesheet ID column.")
     }
     if (!all(sample_ids %in% pheno[[id_col]])) {
+        missing_samples <- setdiff(sample_ids, pheno[[id_col]])
+        warning("The following samples are in beta but not in the samplesheet: ", paste(missing_samples, collapse = ", "))
         stop("Not all samples in beta are present in the samplesheet.")
     }
     if (is.null(case_group)) {

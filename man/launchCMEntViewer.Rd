@@ -31,7 +31,7 @@ Invisibly returns the Shiny app object.
 }
 \description{
 Launches a Shiny application for interactive exploration of DMR analysis
-results from \code{\link{findDMRsFromSeeds}}.
+results from \code{\link{buildDMRs}}.
 }
 \details{
 The viewer provides interactive access to all visualization functions in the package:
@@ -43,7 +43,7 @@ The viewer provides interactive access to all visualization functions in the pac
 \item \strong{Block Formation}: Diagnostic view of DMR block detection, if \code{diagnostic = TRUE}
 }
 
-The function expects the following output files from \code{findDMRsFromSeeds}:
+The function expects the following output files from \code{buildDMRs}:
 \itemize{
 \item \code{{output_prefix}.dmrs.tsv.gz} - Main DMR results (required)
 \item \code{{output_prefix}.seeds_beta.tsv.gz} - Beta values for seeds (required)
@@ -54,7 +54,7 @@ The function expects the following output files from \code{findDMRsFromSeeds}:
 }
 \examples{
 if (interactive()) {
-    # After running findDMRsFromSeeds with output_prefix = "my_analysis"
+    # After running buildDMRs with output_prefix = "my_analysis"
     launchCMEntViewer(
       output_prefix = "results/my_analysis"
     )
@@ -62,5 +62,5 @@ if (interactive()) {
 
 }
 \seealso{
-\code{\link{findDMRsFromSeeds}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}
+\code{\link{buildDMRs}}, \code{\link{plotDMR}}, \code{\link{plotDMRsCircos}}
 }

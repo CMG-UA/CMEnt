@@ -22,7 +22,7 @@ plotDMRsManhattan(
 )
 }
 \arguments{
-\item{dmrs}{GRanges object or data frame. DMR results from findDMRsFromSeeds.}
+\item{dmrs}{GRanges object or data frame. DMR results from buildDMRs.}
 
 \item{region}{Optional plotting scope. Can be NULL for full-chromosome plotting,
 a GRanges, a string in the form \code{"chr:start-end"}, or a data.frame/list with

@@ -22,7 +22,7 @@ if (output_prefix == "") {
                 h4("CMEnt Viewer Configuration"),
                 p("Please set the following environment variable before running this app:"),
                 tags$ul(
-                    tags$li(tags$code("CMENT_OUTPUT_PREFIX"), " - Path prefix for output files created by findDMRsFromSeeds()")
+                    tags$li(tags$code("CMENT_OUTPUT_PREFIX"), " - Path prefix for output files created by buildDMRs()")
                 ),
                 hr(),
                 p("The viewer loads phenotype, array, and genome information from ", tags$code(".meta.rds"), " automatically."),
@@ -50,7 +50,7 @@ if (output_prefix == "") {
                     p("The configured output prefix is missing required viewer files:"),
                     tags$ul(lapply(validation$errors, tags$li)),
                     hr(),
-                    p("Re-run ", tags$code("findDMRsFromSeeds()"), " with ", tags$code("output_prefix"), " to regenerate the viewer outputs.")
+                    p("Re-run ", tags$code("buildDMRs()"), " with ", tags$code("output_prefix"), " to regenerate the viewer outputs.")
                 )
             )
         )

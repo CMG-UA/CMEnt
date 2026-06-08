@@ -26,7 +26,7 @@ plotDMR(
 )
 }
 \arguments{
-\item{dmrs}{GRanges object. Output from findDMRsFromSeeds.}
+\item{dmrs}{GRanges object. Output from buildDMRs.}
 
 \item{dmr_index}{Integer. Which DMR to plot.}
 

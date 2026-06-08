@@ -19,12 +19,23 @@
 #'   `Condition2`.
 #' @param case_group Group receiving the differential shift. Defaults to the
 #'   second group level.
+#' @param samplesheet Optional data frame or path to a tab-delimited sample
+#'   sheet with covariates. Row names, a `Sample_ID` column, or an unnamed first
+#'   column must identify samples.
+#' @param samplesheet_sep Separator for samplesheet files. Default is tab.
+#' @param sample_group_col Name of the phenotype column added to the returned
+#'   samplesheet. Values are `"case"` for perturbed samples and `"control"` for
+#'   all other samples.
+#' @param covariates Optional covariate columns in `samplesheet` to regress out
+#'   on the logit methylation scale before DMRs are simulated. The per-site
+#'   baseline is retained.
 #' @param max_gap Maximum gap, in bp, used to form candidate site segments.
 #' @param min_sites Minimum number of sites per candidate DMR segment.
 #' @param max_sites Maximum number of sites per candidate DMR segment.
 #' @param truth_min_delta_beta Minimum intended beta-scale perturbation for a
-#'   site to define the reported truth interval. Set to `0` to report the full
-#'   selected segment.
+#'   site to define the reported truth interval. The default, `0`, reports the
+#'   full selected segment so simulated flanks are not treated as false
+#'   positives during benchmarking.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
 #' @param expected_correlation Minimum within-DMR expected correlation target.
@@ -36,10 +47,6 @@
 #' @param profile_degree Degree used by the triweight profile.
 #' @param flank_fraction Fraction of the selected segment width added on both
 #'   sides before evaluating the triweight profile.
-#' @param rename_samples If `TRUE`, samples are reordered and renamed using the
-#'   `dmrseq::simDMRs()` convention: controls first as `Condition1_Rep1`,
-#'   `Condition1_Rep2`, etc., followed by cases as `Condition2_Rep1`,
-#'   `Condition2_Rep2`, etc.
 #' @param resample_counts If `TRUE`, methylated counts in touched regions are
 #'   redrawn from shifted probabilities and coverage. If `FALSE`, counts are
 #'   rounded deterministically.
@@ -58,7 +65,8 @@
 #'   `getOption("CMEnt.verbose")`.
 #'
 #' @return A list with simulated output (`simulated`), optional genomic
-#'   locations for non-BSseq inputs (`beta_locs`), and dmrseq-like metadata:
+#'   locations for non-BSseq inputs (`beta_locs`), phenotype data (`pheno`),
+#'   and dmrseq-like metadata:
 #'   `gr.dmrs`, `dmr.mncov`, `dmr.L`, `delta`, `truth`, `selected_regions`,
 #'   `groups`, and `case_group`. For reproducible simulations, call
 #'   `set.seed()` before `simulateDMRs()`.
@@ -84,16 +92,19 @@ simulateDMRs <- function(
     delta_max0 = 0.4,
     groups = NULL,
     case_group = NULL,
+    samplesheet = NULL,
+    samplesheet_sep = "\t",
+    sample_group_col = "Sample_Group",
+    covariates = NULL,
     max_gap = 500L,
     min_sites = 5L,
     max_sites = 500L,
-    truth_min_delta_beta = 0.2,
+    truth_min_delta_beta = 0,
     delta_jitter = 1 / 3,
     expected_correlation = 0.7,
     neighbor_window = 5L,
     profile_degree = 4L,
     flank_fraction = 0.2,
-    rename_samples = TRUE,
     resample_counts = TRUE,
     array = c("450K", "27K", "EPIC", "EPICv2"),
     genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
@@ -187,18 +198,30 @@ simulateDMRs <- function(
     }
 
     sample_names <- input$sample_names
-    output_order <- seq_len(n_samples)
-    output_groups <- as.character(groups)
-    output_case_group <- case_group
-    if (isTRUE(rename_samples)) {
-        output_order <- c(control_samples, case_samples)
-        output_groups <- c(
-            rep("Condition1", length(control_samples)),
-            rep("Condition2", length(case_samples))
-        )
-        output_case_group <- "Condition2"
-        sample_names <- .makeSimulationSampleNames(output_groups)
+    output_groups <- ifelse(
+        seq_len(n_samples) %in% case_samples,
+        "case",
+        "control"
+    )
+    output_case_group <- "case"
+    if (anyNA(sample_names) || any(!nzchar(sample_names))) {
+        stop("Input sample names must be non-empty.")
     }
+    if (anyDuplicated(sample_names) > 0L) {
+        stop("Input sample names must be unique.")
+    }
+    covariates <- .normalizeSimulationCovariates(covariates)
+    if (!is.null(covariates) && is.null(samplesheet)) {
+        stop("'samplesheet' must be provided when 'covariates' are supplied.")
+    }
+    colnames(meth_mat) <- colnames(cov_mat) <- sample_names
+    pheno <- .prepareSimulationPheno(
+        samplesheet = samplesheet,
+        samplesheet_sep = samplesheet_sep,
+        sample_names = sample_names,
+        sample_groups = output_groups,
+        sample_group_col = sample_group_col
+    )
 
     meth_mat[is.na(meth_mat)] <- 0
     cov_mat[is.na(cov_mat)] <- 0
@@ -208,6 +231,15 @@ simulateDMRs <- function(
     meth_mat[meth_mat < 0] <- 0
     meth_over_cov <- meth_mat > cov_mat
     meth_mat[meth_over_cov] <- cov_mat[meth_over_cov]
+    if (!is.null(covariates)) {
+        meth_mat <- .residualizeSimulationCounts(
+            meth = meth_mat,
+            cov = cov_mat,
+            pheno = pheno,
+            covariates = covariates,
+            sample_group_col = sample_group_col
+        )
+    }
 
     collapsed_input <- .collapseSimulationDuplicateLoci(
         meth = meth_mat,
@@ -411,8 +443,6 @@ simulateDMRs <- function(
     GenomicRanges::mcols(gr_dmrs)$corr_metric_estimate <- corr_metric_estimate
     GenomicRanges::mcols(gr_dmrs)$neighbor_window <- neighbor_window
 
-    meth_mat <- meth_mat[, output_order, drop = FALSE]
-    cov_mat <- cov_mat[, output_order, drop = FALSE]
     colnames(meth_mat) <- colnames(cov_mat) <- sample_names
     .log_step("Building output object...", level = 1)
     output <- .buildSimulationOutputObject(
@@ -424,8 +454,7 @@ simulateDMRs <- function(
         end_pos = end_pos,
         row_ids = row_ids,
         sample_names = sample_names,
-        output_groups = output_groups,
-        output_case_group = output_case_group
+        pheno = pheno
     )
 
     result <- list(
@@ -433,6 +462,7 @@ simulateDMRs <- function(
         dmr.mncov = dmr_mncov,
         dmr.L = dmr_lengths,
         simulated = output$simulated,
+        pheno = pheno,
         assay = input$assay,
         delta = deltas,
         truth = truth,
@@ -446,7 +476,8 @@ simulateDMRs <- function(
         corr_sd_used = corr_sd_used,
         corr_metric_estimate = corr_metric_estimate,
         neighbor_window = neighbor_window,
-        input_groups = stats::setNames(as.character(groups)[output_order], sample_names),
+        covariates = covariates,
+        input_groups = stats::setNames(as.character(groups), sample_names),
         input_case_group = case_group,
         duplicate_loci_collapsed = collapsed_input$n_collapsed
     )
@@ -602,8 +633,7 @@ simulateDMRs <- function(
                                          end_pos,
                                          row_ids,
                                          sample_names,
-                                         output_groups,
-                                         output_case_group) {
+                                         pheno) {
     if (identical(input$assay, "BSseq")) {
         bs_new <- bsseq::BSseq(
             chr = chr,
@@ -616,9 +646,7 @@ simulateDMRs <- function(
             GenomeInfoDb::seqinfo(bs_new) <- input$seqinfo
         }
         SummarizedExperiment::colData(bs_new) <- S4Vectors::DataFrame(
-            Sample_ID = sample_names,
-            Sample_Group = output_groups,
-            casecontrol = output_groups == output_case_group,
+            pheno,
             row.names = sample_names
         )
         return(list(
@@ -642,6 +670,134 @@ simulateDMRs <- function(
         simulated = beta_new,
         beta_locs = beta_locs
     )
+}
+
+.prepareSimulationPheno <- function(samplesheet,
+                                    samplesheet_sep,
+                                    sample_names,
+                                    sample_groups,
+                                    sample_group_col) {
+    if (length(sample_group_col) != 1L || is.na(sample_group_col) || !nzchar(sample_group_col)) {
+        stop("'sample_group_col' must be a non-empty character scalar.")
+    }
+
+    if (is.null(samplesheet)) {
+        pheno <- stats::setNames(
+            data.frame(sample_groups, stringsAsFactors = FALSE),
+            sample_group_col
+        )
+        rownames(pheno) <- sample_names
+        return(pheno)
+    }
+
+    if (is.character(samplesheet) && length(samplesheet) == 1L) {
+        pheno <- utils::read.table(
+            samplesheet,
+            header = TRUE,
+            stringsAsFactors = FALSE,
+            sep = samplesheet_sep,
+            check.names = FALSE
+        )
+        if (ncol(pheno) > 0L && colnames(pheno)[[1L]] == "") {
+            rownames(pheno) <- as.character(pheno[[1L]])
+            pheno <- pheno[, -1L, drop = FALSE]
+        }
+    } else if (is.data.frame(samplesheet)) {
+        pheno <- as.data.frame(samplesheet)
+    } else {
+        stop("'samplesheet' must be NULL, a file path, or a data frame.")
+    }
+
+    colnames(pheno) <- trimws(colnames(pheno))
+    if (.simulationHasDefaultRowNames(pheno) && "Sample_ID" %in% colnames(pheno)) {
+        rownames(pheno) <- as.character(pheno$Sample_ID)
+    }
+    if (.simulationHasDefaultRowNames(pheno)) {
+        stop("'samplesheet' must have sample row names or a 'Sample_ID' column.")
+    }
+    if (anyNA(rownames(pheno)) || any(!nzchar(rownames(pheno)))) {
+        stop("'samplesheet' row names must be non-empty sample names.")
+    }
+    if (anyDuplicated(rownames(pheno)) > 0L) {
+        stop("'samplesheet' sample names must be unique.")
+    }
+
+    missing_samples <- setdiff(sample_names, rownames(pheno))
+    if (length(missing_samples) > 0L) {
+        stop(
+            "The following input samples are missing from samplesheet: ",
+            paste(head(missing_samples, 10), collapse = ", "),
+            if (length(missing_samples) > 10L) " ..." else ""
+        )
+    }
+
+    pheno <- pheno[sample_names, , drop = FALSE]
+    pheno[[sample_group_col]] <- sample_groups
+    pheno
+}
+
+.simulationHasDefaultRowNames <- function(x) {
+    identical(rownames(x), as.character(seq_len(nrow(x))))
+}
+
+.normalizeSimulationCovariates <- function(covariates) {
+    if (is.null(covariates)) {
+        return(NULL)
+    }
+    if (length(covariates) == 1L && is.character(covariates)) {
+        covariates <- unlist(strsplit(covariates, ","))
+    }
+    covariates <- trimws(as.character(covariates))
+    covariates <- covariates[nzchar(covariates)]
+    if (length(covariates) == 0L) {
+        return(NULL)
+    }
+    unique(covariates)
+}
+
+.residualizeSimulationCounts <- function(meth,
+                                         cov,
+                                         pheno,
+                                         covariates,
+                                         sample_group_col) {
+    if (is.null(covariates)) {
+        return(meth)
+    }
+    if (is.null(pheno)) {
+        stop("'samplesheet' must be provided when 'covariates' are supplied.")
+    }
+    if (sample_group_col %in% covariates) {
+        stop("'covariates' must not include 'sample_group_col'.")
+    }
+    covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
+    if (is.null(covariate_model) || isTRUE(covariate_model$is_singular)) {
+        return(meth)
+    }
+    non_intercept <- colnames(covariate_model$covariate_matrix) != "(Intercept)"
+    if (!any(non_intercept)) {
+        return(meth)
+    }
+    if (ncol(meth) != nrow(covariate_model$covariate_matrix)) {
+        stop("Input samples and covariate rows must have the same length.")
+    }
+
+    signal <- .convertCountsToLogits(meth = meth, cov = cov)
+    signal[!is.finite(signal)] <- 0
+    coef <- t(covariate_model$pseudo_solution %*% t(signal))
+    fitted_covariates <- coef[, non_intercept, drop = FALSE] %*%
+        t(covariate_model$covariate_matrix[, non_intercept, drop = FALSE])
+    residualized_signal <- signal - fitted_covariates
+    residualized_signal <- residualized_signal +
+        rowMeans(signal, na.rm = TRUE) -
+        rowMeans(residualized_signal, na.rm = TRUE)
+    residualized_prob <- plogis(residualized_signal)
+    residualized_meth <- round(residualized_prob * cov)
+    residualized_meth[cov <= 0] <- 0
+    residualized_meth[residualized_meth < 0] <- 0
+    over_cov <- residualized_meth > cov
+    residualized_meth[over_cov] <- cov[over_cov]
+    dimnames(residualized_meth) <- dimnames(meth)
+    residualized_meth
 }
 
 .collapseSimulationDuplicateLoci <- function(meth, cov, chr, pos, end = NULL, row_ids = NULL) {
@@ -730,12 +886,6 @@ simulateDMRs <- function(
     }
     attr(groups, "case_group") <- case_group
     groups
-}
-
-#' @importFrom stats ave
-.makeSimulationSampleNames <- function(groups) {
-    reps <- ave(seq_along(groups), groups, FUN = seq_along)
-    paste0(groups, "_Rep", as.integer(reps))
 }
 
 .findContiguousSegments <- function(chr, pos, max_gap) {

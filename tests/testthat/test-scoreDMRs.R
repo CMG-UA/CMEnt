@@ -28,9 +28,9 @@ test_that("scoreDMRs adds score column to DMRs", {
     expect_equal(length(dmrs), length(scoring_dmrs))
 })
 
-test_that("scoreDMRs works when called from findDMRsFromSeeds with .score_dmrs=TRUE", {
+test_that("scoreDMRs works when called from buildDMRs with .score_dmrs=TRUE", {
 
-    dmrs <- findDMRsFromSeeds(
+    dmrs <- buildDMRs(
         .score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
@@ -65,9 +65,57 @@ test_that("scoreDMRs accepts a BetaHandler input", {
     expect_true("cv_accuracy" %in% names(mcols(scoring_dmrs)))
 })
 
+test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
+    old_options <- options(CMEnt.scoring_nfold = 2)
+    on.exit(options(old_options), add = TRUE)
+    set.seed(1)
+
+    site_ids <- paste0("cg", seq_len(5))
+    beta_small <- matrix(
+        c(
+            0.20, 0.22, 0.18, 0.21,
+            0.10, 0.12, 0.88, 0.90,
+            0.15, 0.17, 0.85, 0.87,
+            0.30, 0.28, 0.31, 0.29,
+            0.40, 0.41, 0.39, 0.42
+        ),
+        nrow = length(site_ids),
+        byrow = TRUE,
+        dimnames = list(site_ids, paste0("s", seq_len(4)))
+    )
+    locs <- data.frame(
+        chr = "chr1",
+        start = seq(10, 50, by = 10),
+        end = seq(10, 50, by = 10),
+        row.names = site_ids
+    )
+    pheno_small <- data.frame(
+        Sample_Group = c("control", "control", "case", "case"),
+        row.names = colnames(beta_small)
+    )
+    dmrs_no_sites <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(start = 20, end = 30)
+    )
+    GenomeInfoDb::genome(dmrs_no_sites) <- "hg19"
+
+    scoring_dmrs <- scoreDMRs(
+        dmrs = dmrs_no_sites,
+        beta = beta_small,
+        pheno = pheno_small,
+        sorted_locs = locs,
+        genome = "hg19",
+        sample_group_col = "Sample_Group",
+        njobs = 1
+    )
+
+    expect_equal(as.character(S4Vectors::mcols(scoring_dmrs)$sites), "cg2,cg3")
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs)))
+})
+
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
 
-    dmrs <- findDMRsFromSeeds(
+    dmrs <- buildDMRs(
         .score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,

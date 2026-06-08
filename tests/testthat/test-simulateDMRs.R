@@ -77,9 +77,13 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     expect_s4_class(sim$gr.dmrs, "GRanges")
     expect_equal(length(sim$gr.dmrs), 4)
     expect_equal(ncol(sim$simulated), ncol(bs))
+    expect_equal(colnames(sim$simulated), colnames(bs))
+    expect_equal(rownames(sim$pheno), colnames(bs))
+    expect_equal(colnames(sim$pheno), "Sample_Group")
+    expect_equal(sim$pheno$Sample_Group, c(rep("control", 3), rep("case", 3)))
     expect_equal(
-        colnames(sim$simulated),
-        c(paste0("Condition1_Rep", seq_len(3)), paste0("Condition2_Rep", seq_len(3)))
+        as.data.frame(SummarizedExperiment::colData(sim$simulated)),
+        sim$pheno
     )
     expect_equal(nrow(sim$truth), 4)
     expect_true(all(c("seqnames", "start", "end", "delta_beta", "num_sites") %in% colnames(sim$truth)))
@@ -113,6 +117,22 @@ test_that("simulateDMRs fits and stores correlation calibration metadata", {
     finite_bg <- is.finite(sim$truth$background_corr_target)
     expect_true(all(sim$truth$corr_target[finite_bg] >= sim$truth$background_corr_target[finite_bg]))
     expect_true(all(sim$truth$neighbor_window == 5L))
+})
+
+test_that("simulateDMRs reports full touched regions by default", {
+    bs <- create_simulation_bsseq()
+    set.seed(456)
+    sim <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20
+    )
+
+    expect_equal(as.character(GenomicRanges::seqnames(sim$gr.dmrs)), as.character(GenomicRanges::seqnames(sim$selected_regions)))
+    expect_equal(sim$truth$start, GenomicRanges::start(sim$selected_regions))
+    expect_equal(sim$truth$end, GenomicRanges::end(sim$selected_regions))
 })
 
 test_that("simulateDMRs uses expected correlation as a local-background floor", {
@@ -203,7 +223,7 @@ test_that("simulateDMRs reorders collapsed loci before segmenting", {
     expect_equal(lengths(split(ordered$pos, segments)), c("1" = 3L, "2" = 3L))
 })
 
-test_that("simulateDMRs uses simDMRs sample names for custom groups", {
+test_that("simulateDMRs keeps sample names and returns case/control phenotype", {
     bs <- create_simulation_bsseq()
     groups <- c("untreated", "treated", "untreated", "treated", "untreated", "treated")
     set.seed(42)
@@ -216,14 +236,15 @@ test_that("simulateDMRs uses simDMRs sample names for custom groups", {
         max_sites = 20
     )
 
+    expect_equal(colnames(sim$simulated), colnames(bs))
     expect_equal(
-        colnames(sim$simulated),
-        c(paste0("Condition1_Rep", seq_len(3)), paste0("Condition2_Rep", seq_len(3)))
+        as.character(SummarizedExperiment::colData(sim$simulated)$Sample_Group),
+        c("control", "case", "control", "case", "control", "case")
     )
-    expect_equal(as.character(SummarizedExperiment::colData(sim$simulated)$Sample_Group), rep(c("Condition1", "Condition2"), each = 3))
-    expect_equal(sim$case_group, "Condition2")
+    expect_equal(sim$pheno$Sample_Group, c("control", "case", "control", "case", "control", "case"))
+    expect_equal(sim$case_group, "case")
     expect_equal(sim$input_case_group, "treated")
-    expect_equal(unname(sim$input_groups), c("untreated", "untreated", "untreated", "treated", "treated", "treated"))
+    expect_equal(unname(sim$input_groups), groups)
 })
 
 test_that("simulateDMRs supports microarray beta input", {
@@ -243,9 +264,84 @@ test_that("simulateDMRs supports microarray beta input", {
     expect_true(is.matrix(sim$simulated))
     expect_true(is.data.frame(sim$beta_locs))
     expect_equal(ncol(sim$simulated), ncol(array_input$beta))
+    expect_equal(colnames(sim$simulated), colnames(array_input$beta))
+    expect_equal(rownames(sim$pheno), colnames(array_input$beta))
+    expect_equal(colnames(sim$pheno), "Sample_Group")
     expect_equal(length(sim$gr.dmrs), 4)
     expect_equal(rownames(sim$beta_locs), rownames(sim$simulated))
     expect_true(all(sim$simulated >= 0 & sim$simulated <= 1, na.rm = TRUE))
+})
+
+test_that("simulateDMRs extends an existing samplesheet with case/control groups", {
+    array_input <- create_simulation_microarray()
+    samplesheet <- data.frame(
+        age = seq(40, 45),
+        batch = rep(c("A", "B"), 3),
+        row.names = rev(colnames(array_input$beta)),
+        stringsAsFactors = FALSE
+    )
+
+    set.seed(321)
+    sim <- simulateDMRs(
+        beta = array_input$beta,
+        sorted_locs = array_input$sorted_locs,
+        samplesheet = samplesheet,
+        sample_group_col = "condition",
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 4,
+        max_sites = 20,
+        max_gap = 500L
+    )
+
+    expect_equal(rownames(sim$pheno), colnames(array_input$beta))
+    expect_equal(colnames(sim$pheno), c("age", "batch", "condition"))
+    expect_equal(sim$pheno$age, samplesheet[colnames(array_input$beta), "age"])
+    expect_equal(sim$pheno$condition, c(rep("control", 3), rep("case", 3)))
+})
+
+test_that("simulateDMRs residualizes covariates before simulation", {
+    array_input <- create_simulation_microarray(n_sites = 90, n_samples = 8)
+    batch <- rep(c("A", "A", "B", "B"), 2)
+    groups <- rep(c("control", "case"), 4)
+    batch_effect <- ifelse(batch == "B", 1.5, 0)
+    beta <- plogis(qlogis(array_input$beta) + matrix(
+        batch_effect,
+        nrow = nrow(array_input$beta),
+        ncol = length(batch),
+        byrow = TRUE
+    ))
+    colnames(beta) <- colnames(array_input$beta)
+    rownames(beta) <- rownames(array_input$beta)
+    samplesheet <- data.frame(
+        batch = batch,
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+
+    set.seed(321)
+    sim <- simulateDMRs(
+        beta = beta,
+        sorted_locs = array_input$sorted_locs,
+        groups = groups,
+        case_group = "case",
+        samplesheet = samplesheet,
+        covariates = "batch",
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 4,
+        max_sites = 20,
+        max_gap = 500L,
+        resample_counts = FALSE
+    )
+
+    before <- qlogis(CMEnt:::.clampSimulationBeta(beta))
+    after <- qlogis(CMEnt:::.clampSimulationBeta(sim$simulated))
+    before_batch_delta <- mean(before[, batch == "B"]) - mean(before[, batch == "A"])
+    after_batch_delta <- mean(after[, batch == "B"]) - mean(after[, batch == "A"])
+    expect_lt(abs(after_batch_delta), abs(before_batch_delta) * 0.25)
+    expect_equal(sim$pheno$batch, samplesheet[colnames(beta), "batch"])
+    expect_equal(sim$covariates, "batch")
 })
 
 test_that("simulateDMRs supports BSseq input provided as an rds path", {
@@ -297,7 +393,6 @@ test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs
         min_sites = length(pos),
         max_sites = length(pos),
         truth_min_delta_beta = 0,
-        rename_samples = FALSE,
         resample_counts = FALSE
     )
 

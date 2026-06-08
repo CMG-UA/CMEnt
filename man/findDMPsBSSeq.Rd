@@ -13,7 +13,6 @@ findDMPsBSSeq(
   chr = "auto",
   case_group = NULL,
   covariates = NULL,
-  fdr_thres = 0.05,
   output_file = NULL,
   njobs = 1L
 )
@@ -34,8 +33,6 @@ findDMPsBSSeq(
 \item{case_group}{The specific group label in the group_col to treat as the "case" group for comparison. If NULL, the first unique group in group_col will be used as the case group. Default is NULL.}
 
 \item{covariates}{A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).}
-
-\item{fdr_thres}{The false discovery rate threshold for calling DMPs. Default is 0.05.}
 
 \item{output_file}{An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).}
 
@@ -68,7 +65,6 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
        id_col = "Sample_ID",
        case_group = "Condition2",
        covariates = "Age",
-       fdr_thres = 0.05,
        output_file = NULL,
        njobs = 4
     )

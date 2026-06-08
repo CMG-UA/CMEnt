@@ -865,22 +865,41 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     if (!all(covariates %in% colnames(pheno))) {
         stop("Not all covariates are present in pheno.")
     }
-    xc <- as.data.frame(pheno[, covariates, drop = FALSE])
-    xc <- data.frame(`(Intercept)` = 1, xc, check.names = FALSE)
-    for (col in colnames(xc)) {
-        if (is.character(xc[[col]]) || is.factor(xc[[col]])) {
-            xc[[col]] <- as.numeric(as.factor(xc[[col]]))
-        }
+    covariate_df <- as.data.frame(pheno[, covariates, drop = FALSE], check.names = FALSE)
+    if (anyNA(covariate_df)) {
+        stop("Covariates contain missing values; cannot residualize without dropping samples. Perform imputation or drop samples with missing covariate values before running CMEnt")
     }
-    xc <- as.matrix(xc)
+    varying_covariates <- covariates[vapply(covariate_df, function(x) length(unique(x)) > 1L, logical(1))]
+    dropped_columns <- setdiff(covariates, varying_covariates)
+    if (length(varying_covariates) == 0L) {
+        xc <- matrix(1, nrow = nrow(covariate_df), ncol = 1L)
+        colnames(xc) <- "(Intercept)"
+    } else {
+        xc <- stats::model.matrix(stats::reformulate(varying_covariates), data = covariate_df)
+    }
     storage.mode(xc) <- "double"
+    design_qr <- qr(xc)
+    if (design_qr$rank < ncol(xc)) {
+        keep_cols <- sort(design_qr$pivot[seq_len(design_qr$rank)])
+        aliased_columns <- setdiff(colnames(xc), colnames(xc)[keep_cols])
+        dropped_columns <- c(dropped_columns, aliased_columns)
+        xc <- xc[, keep_cols, drop = FALSE]
+    }
+    if (length(dropped_columns) > 0L) {
+        warning(
+            "The following covariate design columns are collinear and will be removed: ",
+            paste(dropped_columns, collapse = ", "),
+            call. = FALSE
+        )
+    }
     xtx_inv <- tryCatch(solve(crossprod(xc)), error = function(e) NULL)
     pseudo_solution <- if (is.null(xtx_inv)) NULL else xtx_inv %*% t(xc)
     list(
         covariate_matrix = xc,
         t_covariate_matrix = t(xc),
         pseudo_solution = pseudo_solution,
-        is_singular = is.null(xtx_inv)
+        is_singular = is.null(xtx_inv),
+        dropped_columns = dropped_columns
     )
 }
 
@@ -918,6 +937,9 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     if (!is.null(covariate_model)) {
         if (isTRUE(covariate_model$is_singular)) {
             return(m_values)
+        }
+        if (ncol(m_values) != nrow(covariate_model$covariate_matrix)) {
+            stop("Beta columns and covariate model rows must have the same length.")
         }
         m_values <- .remove_confounder_effect(
             m_values,
@@ -1423,7 +1445,7 @@ supportedOrganisms <- function() {
 }
 
 
-.findDMRsDependencyRequirements <- function(beta, array, genome,
+.buildDMRsDependencyRequirements <- function(beta, array, genome,
                                             annotate_with_genes = TRUE,
                                             extract_motifs = TRUE,
                                             bed_provided = FALSE) {
@@ -2558,4 +2580,3 @@ orderByLoc <- function(x,
     list2env(values, envir = envir)
     invisible(if (length(values) == 1L) values[[1L]] else values)
 }
-

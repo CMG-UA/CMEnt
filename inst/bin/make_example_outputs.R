@@ -14,7 +14,7 @@ for (case in names(files_to_make)) {
     cment_file <- files_to_make[[case]]
     loadExampleInputDataChr5And11()
     pheno[, "casecontrol"] <- pheno$Sample_Group == "cancer"
-    dmrs_cment <- CMEnt::findDMRsFromSeeds(
+    dmrs_cment <- CMEnt::buildDMRs(
         beta = beta,
         seeds = dmps,
         pheno = pheno,

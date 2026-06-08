@@ -38,7 +38,6 @@ test_that("findDMPsBSSeq handles HDF5-backed BSseq methylation matrices", {
         id_col = "Sample_ID",
         chr = "all",
         case_group = "case",
-        fdr_thres = 1,
         output_file = output_file,
         njobs = 1
     )

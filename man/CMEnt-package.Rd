@@ -14,7 +14,7 @@ statistical significance and biological relevance of methylation changes.
 \section{Main Functions}{
 
 \itemize{
-\item \code{\link{findDMRsFromSeeds}}: Identify DMRs from genomic seeds
+\item \code{\link{buildDMRs}}: Identify DMRs from genomic seeds
 \item \code{\link{extractDMRMotifs}}: Extract sequence motifs from DMRs
 \item \code{\link{computeDMRsInteraction}}: Compute motif-based DMR interactions
 \item \code{\link{plotDMR}}: Visualize individual DMRs with structure, beta values, and motifs

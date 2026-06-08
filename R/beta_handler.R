@@ -421,11 +421,23 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     }
                 } else {
                     # Sort in-memory beta data when genomic locations come from an external annotation.
+                    beta_row_names <- rownames(private$.beta_file_in_memory)
+                    keep <- beta_row_names %in% rownames(sorted_locs)
+                    if (!any(keep)) {
+                        stop("No beta row names were found in genomic locations.")
+                    }
+                    if (any(!keep)) {
+                        .log_warn(
+                            "Dropping ", sum(!keep),
+                            " beta rows absent from genomic locations during validation.",
+                            level = 2
+                        )
+                    }
                     private$.beta_file_in_memory <- private$.beta_file_in_memory[
-                        orderByLoc(rownames(private$.beta_file_in_memory),
+                        beta_row_names[keep][orderByLoc(beta_row_names[keep],
                             genome = self$genome,
                             genomic_locs = sorted_locs
-                        ), ,
+                        )], ,
                         drop = FALSE
                     ]
                 }
@@ -448,7 +460,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 return(sorted_locs)
             }
             beta_row_names <- self$getBetaRowNames()
-            private$.beta_locs <- sorted_locs[beta_row_names, , drop = FALSE]
+            row_idx <- match(beta_row_names, rownames(sorted_locs))
+            if (anyNA(row_idx)) {
+                missing_rows <- unique(beta_row_names[is.na(row_idx)])
+                stop(
+                    "Beta row names not found in genomic locations: ",
+                    paste(head(missing_rows, 10), collapse = ", "),
+                    if (length(missing_rows) > 10L) " ..." else ""
+                )
+            }
+            private$.beta_locs <- sorted_locs[row_idx, , drop = FALSE]
             private$.beta_locs
         },
         #' @description Get the chunk size used for beta subsetting
@@ -550,7 +571,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 subset_locs <- all_locs[row_match, , drop = FALSE]
                 rownames(subset_locs) <- subset_row_names
             } else {
-                subset_locs <- all_locs[subset_row_names, , drop = FALSE]
+                subset_locs <- all_locs[match(subset_row_names, rownames(all_locs)), , drop = FALSE]
             }
 
             if (!is.null(private$.beta_file_in_memory) || .bsseqIsInMemory(private$.bsseq_object)) {

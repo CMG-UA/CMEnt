@@ -21,7 +21,7 @@ plotDMRBlockFormation(
 )
 }
 \arguments{
-\item{dmrs}{GRanges object or data frame. DMR results from \code{findDMRsFromSeeds}
+\item{dmrs}{GRanges object or data frame. DMR results from \code{buildDMRs}
 or \code{scoreDMRs}.}
 
 \item{chromosome}{Character. Chromosome to inspect (e.g., \code{"chr7"} or \code{"7"}).}

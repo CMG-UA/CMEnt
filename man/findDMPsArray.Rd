@@ -17,7 +17,6 @@ findDMPsArray(
   chr = "auto",
   case_group = NULL,
   covariates = NULL,
-  fdr_thres = 0.05,
   output_file = NULL
 )
 }
@@ -32,7 +31,7 @@ are also accepted and converted to beta values.}
 
 \item{group_col}{Column in \code{samplesheet} containing group labels.}
 
-\item{id_col}{Column in \code{samplesheet} containing sample IDs.}
+\item{id_col}{Column in \code{samplesheet} containing sample IDs. row.names can also be used by specifying \code{id_col = "row.names"}.}
 
 \item{array}{Array platform passed to \code{\link[=getSortedGenomicLocs]{getSortedGenomicLocs()}} when
 \code{sorted_locs} is not supplied.}
@@ -54,8 +53,6 @@ chr1-chr22 plus chrX and chrY.}
 
 \item{covariates}{Optional covariate column names, or a comma-separated
 string, to include in the limma model.}
-
-\item{fdr_thres}{FDR threshold for returned DMPs. Default is 0.05.}
 
 \item{output_file}{Optional tab-delimited output path. Files ending in \code{.gz}
 are gzipped.}

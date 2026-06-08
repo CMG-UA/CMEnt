@@ -93,6 +93,46 @@ test_that("plotDMRsCircos handles data frame DMRs input", {
     )
 })
 
+test_that("plotDMRsCircos omits beta track when beta is not provided", {
+    skip_if_not_installed("mockery")
+    library(mockery)
+
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(start = 100L, width = 80L),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg19")
+    )
+    S4Vectors::mcols(dmrs)$delta_beta <- 0.3
+    S4Vectors::mcols(dmrs)$sites <- "cg1,cg2"
+    S4Vectors::mcols(dmrs)$seeds <- "cg1,cg2"
+    S4Vectors::mcols(dmrs)$pwm <- list(matrix(0.25, nrow = 4, ncol = 10))
+
+    stub(plotDMRsCircos, ".prepareCircosLinkData", function(...) NULL)
+    stub(
+        plotDMRsCircos,
+        ".getCytobandData",
+        function(genome) {
+            data.frame(
+                V1 = "chr1",
+                V2 = 1L,
+                V3 = 1e6L,
+                V4 = "p",
+                V5 = "gneg"
+            )
+        }
+    )
+
+    expect_no_error(
+        plotDMRsCircos(
+            dmrs = dmrs,
+            beta = NULL,
+            pheno = NULL,
+            genome = "hg19",
+            query_components_with_jaspar = FALSE
+        )
+    )
+})
+
 test_that("plotDMRsCircos validates inputs", {
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))

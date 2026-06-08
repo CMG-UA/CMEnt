@@ -473,13 +473,18 @@
     }
 
     cytoband <- .getCytobandData(genome)
-    beta_handler <- getBetaHandler(
-        beta = beta,
-        array = array,
-        genome = genome,
-        sorted_locs = sorted_locs
-    )
-    beta_locs <- beta_handler$getBetaLocs()
+    show_beta_track <- !is.null(beta) && !is.null(pheno)
+    beta_handler <- if (is.null(beta)) {
+        NULL
+    } else {
+        getBetaHandler(
+            beta = beta,
+            array = array,
+            genome = genome,
+            sorted_locs = sorted_locs
+        )
+    }
+    beta_locs <- if (!is.null(beta_handler)) beta_handler$getBetaLocs() else sorted_locs
 
     has_precomputed_interaction_state <- is.data.frame(components) &&
         nrow(components) > 0 &&
@@ -498,33 +503,41 @@
         .log_info("Using precomputed Circos interactions; skipping DMR motif extraction.", level = 2)
     }
 
-    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-        pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
-    }
-    if (!is.data.frame(pheno)) {
-        stop("pheno must be a data frame or a valid file path to a phenotype table")
-    }
-    if (!(sample_group_col %in% colnames(pheno))) {
-        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    if (show_beta_track) {
+        if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+        }
+        if (!is.data.frame(pheno)) {
+            stop("pheno must be a data frame or a valid file path to a phenotype table")
+        }
+        if (!(sample_group_col %in% colnames(pheno))) {
+            stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+        }
     }
 
     .log_step("Preparing data for Circos plot...")
 
-    .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
-    heatmap_dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
-    .log_success("DMRs filtered for Circos plot heatmap", level = 2)
-    .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
+    heatmap_dmrs <- NULL
+    if (show_beta_track) {
+        .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
+        heatmap_dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
+        .log_success("DMRs filtered for Circos plot heatmap", level = 2)
+        .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
+    }
 
     .log_step("Preparing DMRs data...", level = 2)
     arc_data <- .prepareCircosArcData(dmrs)
     .log_success("DMR arcs data prepared", level = 2)
 
-    .log_step("Preparing heatmap data...", level = 2)
-    heatmap_data <- .prepareCircosHeatmapData(
-        heatmap_dmrs, beta_handler, pheno, sample_group_col,
-        max_sites_per_dmr, max_num_samples_per_group
-    )
-    .log_success("Heatmap data prepared", level = 2)
+    heatmap_data <- list(heatmap_df = NULL, reduced_pheno = NULL)
+    if (show_beta_track) {
+        .log_step("Preparing heatmap data...", level = 2)
+        heatmap_data <- .prepareCircosHeatmapData(
+            heatmap_dmrs, beta_handler, pheno, sample_group_col,
+            max_sites_per_dmr, max_num_samples_per_group
+        )
+        .log_success("Heatmap data prepared", level = 2)
+    }
     .log_info(
         "Total heatmap entries: ",
         if (is.null(heatmap_data$heatmap_df)) 0L else nrow(heatmap_data$heatmap_df),
@@ -1522,10 +1535,10 @@
 #' ideogram track with chromosome bands, DMR arcs colored by delta beta,
 #' beta value heatmaps for each sample, and motif-based interaction links between DMRs.
 #'
-#' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
-#' @param beta BetaHandler object, character path to beta file, or beta values matrix.
+#' @param dmrs GRanges object or data frame. DMR results from buildDMRs.
+#' @param beta BetaHandler object, character path to beta file, or beta values matrix. If not provided, beta heatmap track will be omitted.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
-#'   rownames matching beta column names (required for beta track).
+#'   rownames matching beta column names (required for beta track, if not provided beta track will not be shown).
 #' @param genome Character. Genome version (e.g., "hg38").
 #' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
@@ -1571,8 +1584,8 @@
 #' @importFrom circlize circos.genomicLink circos.clear colorRamp2 circos.rect circos.link CELL_META
 #' @export
 plotDMRsCircos <- function(dmrs,
-                           beta,
-                           pheno,
+                           beta = NULL,
+                           pheno = NULL,
                            genome = "hg38",
                            array = "450K",
                            sorted_locs = NULL,
@@ -1634,14 +1647,19 @@ plotDMRsCircos <- function(dmrs,
         on.exit(options(old_setting), add = TRUE)
     }
     verbose <- getOption("CMEnt.verbose", default = 2)
-    beta_handler <- getBetaHandler(
-        beta = beta,
-        array = array,
-        genome = genome,
-        sorted_locs = sorted_locs
-    )
+    show_beta_track <- !is.null(beta) && !is.null(pheno)
+    beta_handler <- if (is.null(beta)) {
+        NULL
+    } else {
+        getBetaHandler(
+            beta = beta,
+            array = array,
+            genome = genome,
+            sorted_locs = sorted_locs
+        )
+    }
 
-    beta_locs <- beta_handler$getBetaLocs()
+    beta_locs <- if (!is.null(beta_handler)) beta_handler$getBetaLocs() else sorted_locs
     region_df <- .normalizeCircosRegion(region, cytoband)
     dmrs_for_motif_prep <- .subsetDMRsByScopeForCircos(
         dmrs,
@@ -1652,7 +1670,7 @@ plotDMRsCircos <- function(dmrs,
         stop("No DMRs remain after applying chromosome/region filters.")
     }
 
-    if (!is.null(region_df)) {
+    if (!is.null(region_df) && !is.null(beta_locs)) {
         beta_locs <- .convertToDataFrame(.filterDMRsByScopeForCircos(
             .convertToGRanges(beta_locs, genome),
             chromosomes = requested_chrs,
@@ -1693,22 +1711,27 @@ plotDMRsCircos <- function(dmrs,
         }
     }
 
-    if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-        pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
-    }
-    if (!is.data.frame(pheno)) {
-        stop("pheno must be a data frame or a valid file path to a phenotype table")
-    }
-    if (!(sample_group_col %in% colnames(pheno))) {
-        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    if (show_beta_track) {
+        if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+        }
+        if (!is.data.frame(pheno)) {
+            stop("pheno must be a data frame or a valid file path to a phenotype table")
+        }
+        if (!(sample_group_col %in% colnames(pheno))) {
+            stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+        }
     }
 
     .log_step("Preparing data for Circos plot...")
 
-    .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
-    heatmap_dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
-    .log_success("DMRs filtered for Circos plot heatmap", level = 2)
-    .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
+    heatmap_dmrs <- NULL
+    if (show_beta_track) {
+        .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
+        heatmap_dmrs <- .filterDMRsForCircos(dmrs, max_dmrs_per_chr)
+        .log_success("DMRs filtered for Circos plot heatmap", level = 2)
+        .log_info("Total DMRs to plot on heatmap: ", length(heatmap_dmrs), level = 2)
+    }
 
     cytoband_subset <- .subsetCytobandForCircos(cytoband, unique_chrs, region_df = region_df)
 
@@ -1721,14 +1744,17 @@ plotDMRsCircos <- function(dmrs,
         write.table(arc_data, file = "debug/circos_arc_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
     }
 
-    .log_step("Preparing heatmap data...", level = 2)
-    heatmap_data <- .prepareCircosHeatmapData(
-        heatmap_dmrs, beta_handler, pheno, sample_group_col,
-        max_sites_per_dmr, max_num_samples_per_group
-    )
+    heatmap_data <- list(heatmap_df = NULL, reduced_pheno = NULL)
+    if (show_beta_track) {
+        .log_step("Preparing heatmap data...", level = 2)
+        heatmap_data <- .prepareCircosHeatmapData(
+            heatmap_dmrs, beta_handler, pheno, sample_group_col,
+            max_sites_per_dmr, max_num_samples_per_group
+        )
+    }
 
     heatmap_df <- heatmap_data$heatmap_df
-    if (!is.null(region_df)) {
+    if (!is.null(region_df) && !is.null(heatmap_df)) {
         heatmap_df <- .convertToDataFrame(
             .filterDMRsByScopeForCircos(
                 .convertToGRanges(heatmap_df, genome),
@@ -1743,9 +1769,11 @@ plotDMRsCircos <- function(dmrs,
         ord_heatmap <- order(match(heatmap_df$chr, unique_chrs), heatmap_df$start, heatmap_df$end)
         heatmap_df <- heatmap_df[ord_heatmap, , drop = FALSE]
     }
-    .log_success("Heatmap data prepared", level = 2)
-    .log_info("Total heatmap entries: ", nrow(heatmap_df), level = 2)
-    if (getOption("CMEnt.make_debug_dir", FALSE)) {
+    if (show_beta_track) {
+        .log_success("Heatmap data prepared", level = 2)
+    }
+    .log_info("Total heatmap entries: ", if (is.null(heatmap_df)) 0L else nrow(heatmap_df), level = 2)
+    if (getOption("CMEnt.make_debug_dir", FALSE) && !is.null(heatmap_df)) {
         .log_info("Saving heatmap data to debug/circos_heatmap_data.tsv", level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(heatmap_df, file = "debug/circos_heatmap_data.tsv", sep = "\t", row.names = FALSE, quote = FALSE)

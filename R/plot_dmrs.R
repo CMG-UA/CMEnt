@@ -98,12 +98,12 @@
 #' Plot DMR Structure with seeds and Extended sites
 #'
 #' @description Visualizes the structure of Differentially Methylated Regions (DMRs)
-#' identified by findDMRsFromSeeds, showing the underlying seeds as stem plots connected
+#' identified by buildDMRs, showing the underlying seeds as stem plots connected
 #' by horizontal lines to form DMRs, with extended site regions shown as vertical lines.
 #' The plot distinguishes between seeds (differentially methylated positions), supporting
 #' sites that extend the DMR, and non-supporting sites in the surrounding region.
 #'
-#' @param dmrs GRanges object. Output from findDMRsFromSeeds containing DMR information.
+#' @param dmrs GRanges object. Output from buildDMRs containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
 #' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.
 #' @param genome Character. Genome version (default: "hg38"). Ignored if beta_locs is provided.
@@ -926,9 +926,10 @@ minmaxscale <- function(x) {
 #' @description Creates a grid of DMR plots for multiple regions. Can optionally
 #' include beta value heatmaps if beta and pheno data are provided.
 #'
-#' @param dmrs GRanges object. Output from findDMRsFromSeeds.
+#' @param dmrs GRanges object. Output from buildDMRs.
 #' @param dmr_indices Integer vector. Which DMRs to plot. If NULL, selects top_n DMRs based on delta_beta and p-value score.
 #' @param top_n Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).
+#' @param score_by Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta" or "score" (default: "delta_beta").
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
@@ -962,6 +963,7 @@ minmaxscale <- function(x) {
 plotDMRs <- function(dmrs,
                      dmr_indices = NULL,
                      top_n = 4,
+                     score_by = c("delta_beta", "score"),
                      beta = NULL,
                      pheno = NULL,
                      sample_group_col = "Sample_Group",
@@ -989,7 +991,7 @@ plotDMRs <- function(dmrs,
     }
     dmrs <- .convertToGRanges(dmrs, genome)
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(mcols(dmrs)$delta_beta))
+        score <- minmaxscale(abs(mcols(dmrs)[[strex::match_arg(score_by)]]))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -1040,7 +1042,7 @@ plotDMRs <- function(dmrs,
 #' Additionally, if motif information is available or can be extracted, a sequence logo
 #' plot is added showing the nucleotide composition and information content around site sites in the DMR.
 #'
-#' @param dmrs GRanges object. Output from findDMRsFromSeeds.
+#' @param dmrs GRanges object. Output from buildDMRs.
 #' @param dmr_index Integer. Which DMR to plot.
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
@@ -1583,7 +1585,7 @@ plotDMR <- function(dmrs,
 #' layering raw scores, smoothed scores, piecewise-linear segments, slope-based
 #' candidate blocks, distance-based split boundaries, and final accepted blocks.
 #'
-#' @param dmrs GRanges object or data frame. DMR results from `findDMRsFromSeeds`
+#' @param dmrs GRanges object or data frame. DMR results from `buildDMRs`
 #' or `scoreDMRs`.
 #' @param chromosome Character. Chromosome to inspect (e.g., `"chr7"` or `"7"`).
 #' @param genome Character. Genome version passed to `.convertToGRanges`
@@ -1885,7 +1887,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @description Creates a Manhattan-style genome-wide scatter plot of DMR scores.
 #' DMRs are colored by their dominant genomic region class inferred from DMR annotations.
 #'
-#' @param dmrs GRanges object or data frame. DMR results from findDMRsFromSeeds.
+#' @param dmrs GRanges object or data frame. DMR results from buildDMRs.
 #' @param region Optional plotting scope. Can be NULL for full-chromosome plotting,
 #' a GRanges, a string in the form `"chr:start-end"`, or a data.frame/list with
 #' `chr`, `start`, and `end`.
