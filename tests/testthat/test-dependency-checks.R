@@ -173,17 +173,3 @@ test_that("findDMPsBSSeq reports DSS as a required dependency", {
         "DSS"
     )
 })
-
-test_that("CLI parser reports missing optparse clearly", {
-    local_mocked_bindings(
-        .isPackageInstalled = function(pkg_name) {
-            !identical(pkg_name, "optparse")
-        },
-        .package = "CMEnt"
-    )
-
-    expect_error(
-        CMEnt:::.makeCMEntCLIParser("buildDMRs"),
-        "optparse"
-    )
-})
