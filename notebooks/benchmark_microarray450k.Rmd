@@ -334,11 +334,11 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 ```{r probeLasso}
 probelasso_file <- getBenchmarkFile("dmrs.probeLasso.rds")
 
-run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
+run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K", genome = "hg19") {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
         warning("ChAMP not installed. probeLasso requires ChAMP.")
         warning("Install with: BiocManager::install('ChAMP')")
-        return(GRanges())
+        return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome)))
     }
 
     library(ChAMP)
@@ -381,19 +381,20 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K") {
                 seqnames.field = "seqnames",
                 start.field = "start",
                 end.field = "end",
+                seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
                 keep.extra.columns = TRUE
             ))
         },
         error = function(e) {
             warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
-            GRanges()
+            GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome))
         }
     )
 }
 
 if (!file.exists(probelasso_file)) {
     start_time <- Sys.time()
-    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K")
+    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K", genome = genome)
     end_time <- Sys.time()
     time_probelasso <- end_time - start_time
     saveRDS(list(dmrs = dmrs_probelasso, time = time_probelasso), probelasso_file)
@@ -1277,7 +1278,7 @@ if (!file.exists(scored_dmrs_file)) {
         }
         cat(sprintf("Scoring DMRs for method: %s\n", method))
         scored_methods_list[[method]] <- CMEnt::scoreDMRs(
-            dmrs=dmrs, beta=beta_handler, pheno=pheno,
+            dmrs = dmrs, beta = beta_handler, pheno = pheno,
             sample_group_col = sample_group_col,
             array = array_type, genome = genome,
             njobs = min(8, parallel::detectCores() - 1),
@@ -1302,7 +1303,7 @@ knitr::kable(top_scoring_tbl, digits = 4, caption = "Top DMR Score by Method")
 ## DMR Interactions Circos visualization
 ```{r, fig.width=10, fig.height=10}
 CMEnt::plotDMRsCircos(
-    cment_dmrs,
+    dmrs_cment,
     genome = "hg19",
     array = array_type
 )

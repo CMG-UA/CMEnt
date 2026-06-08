@@ -2093,11 +2093,14 @@ orderByLoc <- function(x,
             stop("dmrs must be a data.frame or GRanges object")
         }
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
-        grs_genome <- GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))[[1]]
-        if (is.na(grs_genome)) {
+        grs_genome <- unique(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj)))
+        grs_genome <- grs_genome[!is.na(grs_genome)]
+        if (length(grs_genome) == 0L) {
             .log_warn("Input GRanges object has no genome information. Assuming genome: ", genome)
             grs_genome <- genome
-            GenomeInfoDb::seqinfo(obj) <- GenomeInfoDb::Seqinfo(genome = genome)
+            GenomeInfoDb::genome(obj) <- genome
+        } else if (length(grs_genome) > 1L) {
+            stop("Input GRanges object has multiple genome values: ", paste(grs_genome, collapse = ", "), call. = FALSE)
         }
         if (grs_genome != genome) {
             obj <- .liftOverFromGenomeToGenome(obj, grs_genome, genome)

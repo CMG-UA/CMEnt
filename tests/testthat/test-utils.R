@@ -234,3 +234,19 @@ test_that("small pure utility helpers handle edge cases", {
     expect_equal(CMEnt:::.resolveBSGenomePackage("mm39"), "BSgenome.Mmusculus.UCSC.mm39")
     expect_null(CMEnt:::.resolveBSGenomePackage("unknown"))
 })
+
+test_that("convertToGRanges fills missing GRanges genome without replacing seqlevels", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr2"),
+        ranges = IRanges::IRanges(start = c(10L, 20L), width = 5L)
+    )
+    old_seqlevels <- GenomeInfoDb::seqlevels(dmrs)
+
+    expect_warning(
+        converted <- CMEnt:::.convertToGRanges(dmrs, genome = "hg19"),
+        "no genome information"
+    )
+
+    expect_equal(GenomeInfoDb::seqlevels(converted), old_seqlevels)
+    expect_true(all(GenomeInfoDb::genome(converted) == "hg19"))
+})
