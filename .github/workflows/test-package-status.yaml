@@ -9,7 +9,7 @@ on:
         type: string
   workflow_run:
     workflows:
-      - CMEnt CI, including package checks, Docker image build, and notebook rendering
+      - CMEnt CI
     types:
       - completed
 
