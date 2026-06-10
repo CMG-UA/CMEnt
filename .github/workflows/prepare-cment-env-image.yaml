@@ -134,7 +134,7 @@ jobs:
           echo "requirements_hash=${HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Upload generated requirements
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cment-env-requirements
           path: |
@@ -150,7 +150,7 @@ jobs:
 
     steps:
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -189,7 +189,7 @@ jobs:
           path: ${{ inputs.docker_dir }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
