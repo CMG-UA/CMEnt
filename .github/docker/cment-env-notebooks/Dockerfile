@@ -3,7 +3,9 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS final
 
 FROM continuumio/miniconda3:latest AS builder
-RUN conda install -y -c conda-forge -c bioconda combined-pvalues bedtools && \
+ARG COMBP_SHA=c18e137ef42e32d9ec6acdde7562d2338db0be14
+RUN conda install -y -c conda-forge -c bioconda bedtools && \
+    python -m pip install --no-cache-dir "https://github.com/brentp/combined-pvalues/archive/${COMBP_SHA}.tar.gz" && \
     conda clean -afy
 
 FROM final
