@@ -16,15 +16,15 @@ knitr::opts_chunk$set(
     dev = "pdf",
     warning = FALSE,
     message = FALSE,
-    fig.width = 7,
-    fig.height = 4,
+    fig.width = 8,
+    fig.height = 6,
     dpi = 300
 )
 
 try(assignInNamespace("plot_crop", function(x, quiet = TRUE) x, ns = "knitr"), silent = TRUE)
 ```
 
-## Rationale
+## Introduction
 
 GSE244696 (doi: https://doi.org/10.1016/j.trsl.2024.05.005) is a PDAC MethylationEPIC study comparing tumor-cell enriched
 ("Tumor") and stroma-cell enriched ("Stroma") compartments. The GEO deposition
@@ -32,7 +32,7 @@ does not include the complete raw IDAT set used by the original study, so a
 head-to-head DMR caller benchmark on the locally available beta matrix would be
 unfair. This notebook therefore uses CMEnt in a meta-analysis mode: the
 published DMP list (Supplementary table 1) is treated as the external evidence, and CMEnt uses the
-available beta matrix to assemble and score coherent DMRs around those known
+available beta matrix to assemble coherent DMRs around those known
 signals. The only external DMR comparison retained here is the Bumphunter DMR table (Supplementary table 2)
 provided by the original researchers. 
 
@@ -341,7 +341,7 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, row.names = FALSE, caption = "DMR set summary")
 ```
 ```{r}
-cment_fields <- c("n_sites", "n_seeds", "score", "cv_accuracy", "mean_delta_beta", "median_delta_beta", "pval")
+cment_fields <- c("n_sites", "n_seeds", "pval", "qval", "score", "cv_accuracy", "mean_delta_beta", "median_delta_beta")
 cment_meta_summary <- metadata_numeric_summary(dmrs_cment, cment_fields)
 if (nrow(cment_meta_summary) > 0L) {
     knitr::kable(cment_meta_summary, digits = 3, row.names = FALSE, caption = "CMEnt numeric metadata summary")
@@ -445,11 +445,17 @@ if (length(overlap_hits) > 0L) {
 ```
 ## CMEnt-specific plots
 ```{r cment-specific-plots-plot-dmr, fig.width=10, fig.height=5}
-cat("Top CMEnt DMR based on score:\n")
+dmr_rank_table <- as.data.frame(dmrs_cment)
+top_dmr_idx <- if ("qval" %in% colnames(dmr_rank_table) && any(is.finite(dmr_rank_table$qval))) {
+    which.min(dmr_rank_table$qval)
+} else {
+    delta_col <- intersect(c("median_delta_beta", "mean_delta_beta", "delta_beta"), colnames(dmr_rank_table))[1]
+    if (is.na(delta_col)) 1L else order(abs(dmr_rank_table[[delta_col]]), decreasing = TRUE)[1]
+}
+cat("Top CMEnt DMR prioritized by DMR q-value when available; SVM score is complementary:\n")
 CMEnt::plotDMRs(
     dmrs_cment,
-    top_n = 1,
-    score_by = "score",
+    dmr_indices = top_dmr_idx,
     beta = beta_handler,
     pheno = pheno,
     sample_group_col = "tissue.ch1",

@@ -11,11 +11,13 @@ output:
 ```{r, include=FALSE}
 knitr::opts_chunk$set(
     results = "asis",
+    cache = TRUE,
     echo = TRUE,
+    dev = "pdf",
     warning = FALSE,
     message = FALSE,
-    fig.width = 6,
-    fig.height = 4,
+    fig.width = 8,
+    fig.height = 6,
     dpi = 300
 )
 ```
@@ -191,7 +193,7 @@ pheno$casecontrol <- pheno$Sample_Group == "case"
 ```{r}
 dmps <- CMEnt::findDMPsArray(beta_handler,
     pheno,
-    group_col = "Sample_Group",
+    sample_group_col = "Sample_Group",
     id_col = "V1"
 )
 rownames(dmps) <- dmps$site_id
