@@ -1,0 +1,9 @@
+doParallel
+readxl
+data.table
+devtools
+dplyr
+ggplot2
+tidyr
+scales
+svglite

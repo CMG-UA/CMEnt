@@ -5,8 +5,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/prepare-cment-env-image.yaml"
+      - ".github/workflows/prepare-cment-env-notebooks-image.yaml"
       - ".github/workflows/test-package.yaml"
       - ".github/docker/cment-env/**"
+      - ".github/docker/cment-env-notebooks/**"
       - "Dockerfile"
       - "DESCRIPTION"
       - "NAMESPACE"
@@ -23,10 +25,12 @@ on:
     paths:
       - ".github/workflows/ci.yaml"
       - ".github/workflows/prepare-cment-env-image.yaml"
+      - ".github/workflows/prepare-cment-env-notebooks-image.yaml"
       - ".github/workflows/test-package.yaml"
       - ".github/workflows/make-docker.yaml"
       - ".github/workflows/make-github-pages.yaml"
       - ".github/docker/cment-env/**"
+      - ".github/docker/cment-env-notebooks/**"
       - "Dockerfile"
       - "DESCRIPTION"
       - "NAMESPACE"

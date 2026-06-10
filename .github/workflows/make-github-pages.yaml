@@ -16,12 +16,12 @@ concurrency:
 
 jobs:
   prepare-image:
-    uses: ./.github/workflows/prepare-cment-env-image.yaml
+    uses: ./.github/workflows/prepare-cment-env-notebooks-image.yaml
     with:
-      dockerfile: ".github/docker/cment-env/Dockerfile"
+      dockerfile: ".github/docker/cment-env-notebooks/Dockerfile"
       docker_context: "."
-      docker_dir: ".github/docker/cment-env"
-      image_suffix: "cment-env"
+      docker_dir: ".github/docker/cment-env-notebooks"
+      image_suffix: "cment-env-notebooks"
   render:
     runs-on: ubuntu-latest
 

@@ -1,0 +1,15 @@
+BiocStyle
+bumphunter
+ChAMP
+DMRcate
+dmrseq
+hummingbird
+minfi
+GenomicRanges
+annotatr
+missMethyl
+org.Hs.eg.db
+TxDb.Hsapiens.UCSC.hg19.knownGene
+IlluminaHumanMethylationEPICanno.ilm10b4.hg19
+clusterProfiler
+ReactomePA

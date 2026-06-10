@@ -27,7 +27,6 @@
 ^_site$
 ^build_and_push\.sh$
 ^Dockerfile$
-^envs$
 ^tmp$
 ^Rplots\.pdf$
 ^tests/testthat/Rplots\.pdf$
