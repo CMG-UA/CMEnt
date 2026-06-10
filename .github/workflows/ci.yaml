@@ -21,6 +21,7 @@ on:
       - master
       - devel
     paths:
+      - ".github/workflows/ci.yaml"
       - ".github/workflows/prepare-cment-env-image.yaml"
       - ".github/workflows/test-package.yaml"
       - ".github/workflows/make-docker.yaml"
