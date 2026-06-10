@@ -1,4 +1,4 @@
-name: CMEnt CI, including package checks, Docker image build, and notebook rendering
+name: CMEnt CI
 
 on:
   workflow_dispatch:
