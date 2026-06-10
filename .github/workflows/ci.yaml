@@ -56,13 +56,17 @@ jobs:
   test-package:
     name: Test package
     uses: ./.github/workflows/test-package.yaml
+    secrets: inherit
   make-docker:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
     name: Make CMEnt Docker image
     needs: test-package
     uses: ./.github/workflows/make-docker.yaml
+    secrets: inherit
+
   make-github-pages:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
     name: Render notebooks and deploy to GitHub Pages
     needs: test-package
     uses: ./.github/workflows/make-github-pages.yaml
+    secrets: inherit
