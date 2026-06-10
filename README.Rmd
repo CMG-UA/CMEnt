@@ -17,7 +17,8 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![BioC status](http://www.bioconductor.org/shields/build/devel/bioc/CMEnt.svg)](https://bioconductor.org/checkResults/devel/bioc-LATEST/CMEnt)
-[![Tests](https://github.com/CMG-UA/CMEnt/actions/workflows/test-package.yaml/badge.svg)](https://github.com/CMG-UA/CMEnt/actions/workflows/test-package.yaml)
+[![Tests](https://github.com/CMG-UA/CMEnt/actions/workflows/test-package-status.yaml/badge.svg)](https://github.com/CMG-UA/CMEnt/actions/workflows/ci.yaml)
+[![CMEnt CI](https://github.com/CMG-UA/CMEnt/actions/workflows/ci.yaml/badge.svg)](https://github.com/CMG-UA/CMEnt/actions/workflows/ci.yaml)
 [![Codecov test coverage](https://codecov.io/gh/CMG-UA/CMEnt/graph/badge.svg?token=58D9F1XJHY)](https://codecov.io/gh/CMG-UA/CMEnt)
 [![Downloads](http://www.bioconductor.org/shields/downloads/devel/CMEnt.svg)](https://bioconductor.org/packages/stats/bioc/CMEnt)
 <!-- badges: end -->
