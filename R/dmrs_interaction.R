@@ -339,7 +339,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
 extractDMRMotifs <- function(
-    dmrs, genome="hg38", array = "450k", beta_locs = NULL, motif_site_flank_size = 5, plot_dir = NULL
+    dmrs, genome = "hg38", array = "450k", beta_locs = NULL, motif_site_flank_size = 5, plot_dir = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- .convertToGRanges(dmrs, genome)

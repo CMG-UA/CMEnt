@@ -832,7 +832,7 @@
 #'
 #' # score DMRs
 #' scoring_dmrs <- scoreDMRs(
-#'     dmrs = dmrs,
+#'     dmrs = dmrs[1],
 #'     beta = beta,
 #'     pheno = pheno,
 #'     sample_group_col = "Sample_Group"
