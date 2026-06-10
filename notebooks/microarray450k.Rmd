@@ -466,17 +466,17 @@ if (exists("site_context_df")) {
             Source = factor(Source, levels = c("Significant DMPs", "Sites inside CMEnt DMRs"))
         )
     diff_df <- plot_context_df |>
-        select(Source, Relation_to_Island, Sites) |>
+        dplyr::select(Source, Relation_to_Island, Sites) |>
         tidyr::pivot_wider(names_from = Source, values_from = Sites, values_fill = 0) |>
-        mutate(
+        dplyr::mutate(
             Difference = `Sites inside CMEnt DMRs` - `Significant DMPs`,
             Label = paste0("Delta=", scales::comma(Difference)),
             Label_x = pmax(`Significant DMPs`, `Sites inside CMEnt DMRs`)
         )
 
     ggplot(plot_context_df, aes(x = Sites, y = Relation_to_Island, fill = Source)) +
-        geom_col(data = filter(plot_context_df, Source == "Significant DMPs"), width = 0.78, alpha = 0.45) +
-        geom_col(data = filter(plot_context_df, Source == "Sites inside CMEnt DMRs"), width = 0.48, alpha = 0.9) +
+        geom_col(data = dplyr::filter(plot_context_df, Source == "Significant DMPs"), width = 0.78, alpha = 0.45) +
+        geom_col(data = dplyr::filter(plot_context_df, Source == "Sites inside CMEnt DMRs"), width = 0.48, alpha = 0.9) +
         geom_text(data = diff_df, aes(x = Label_x, y = Relation_to_Island, label = Label), inherit.aes = FALSE, hjust = -0.05, size = 3) +
         scale_x_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.2))) +
         scale_fill_manual(values = c("Significant DMPs" = "grey65", "Sites inside CMEnt DMRs" = "#0072B2")) +
@@ -729,7 +729,7 @@ if (!"score" %in% colnames(dmr_table)) {
 top_dmrs <- dmr_table |>
     filter(has_text(in_promoter_of) | has_text(in_gene_body_of)) |>
     arrange(desc(svm_score_for_ranking), qval, desc(abs_delta_beta)) |>
-    select(
+    dplyr::select(
         DMR,
         width,
         score,
