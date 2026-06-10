@@ -508,6 +508,13 @@
 
 #' @keywords internal
 #' @noRd
+.limitCoresForCheck <- function() {
+    value <- Sys.getenv("_R_CHECK_LIMIT_CORES_", unset = NA_character_)
+    !is.na(value) && !tolower(value) %in% c("false", "no")
+}
+
+#' @keywords internal
+#' @noRd
 .defaultNJobs <- function(max_workers = 8L) {
     cores <- tryCatch(
         parallel::detectCores(logical = TRUE),
@@ -516,6 +523,9 @@
     cores <- suppressWarnings(as.integer(cores))
     if (length(cores) == 0L || is.na(cores) || cores < 1L) {
         cores <- 1L
+    }
+    if (.limitCoresForCheck()) {
+        max_workers <- min(as.integer(max_workers), 2L)
     }
     max(1L, min(as.integer(max_workers), cores - 1L))
 }
@@ -563,6 +573,9 @@
         if (length(n_tasks) > 0L && !is.na(n_tasks) && n_tasks > 0L) {
             workers <- min(workers, n_tasks)
         }
+    }
+    if (.limitCoresForCheck()) {
+        workers <- min(workers, 2L)
     }
 
     if (workers <= 1L) {
@@ -2390,13 +2403,22 @@ orderByLoc <- function(x,
 .loadExampleInputDataSubset <- function(..., subset, envir) {
     resources <- .normalizeExampleInputResources(list(...))
     values <- .fetchExampleInputData(resources)
+    subset_locs <- NULL
+    get_subset_locs <- function() {
+        if (is.null(subset_locs)) {
+            locs <- getSortedGenomicLocs(array = "450k")
+            subset_locs <<- locs[locs$chr %in% subset, , drop = FALSE]
+        }
+        subset_locs
+    }
 
     if ("beta" %in% resources) {
-        values[["beta"]] <- getBetaHandler(values[["beta"]], array = "450k")$getBeta(chr = subset)
+        locs <- get_subset_locs()
+        keep <- rownames(locs)[rownames(locs) %in% rownames(values[["beta"]])]
+        values[["beta"]] <- values[["beta"]][keep, , drop = FALSE]
     }
     if ("dmps" %in% resources) {
-        locs <- getSortedGenomicLocs(array = "450k")
-        locs <- locs[locs$chr %in% subset, , drop = FALSE]
+        locs <- get_subset_locs()
         keep <- rownames(locs)[rownames(locs) %in% rownames(values[["dmps"]])]
         values[["dmps"]] <- values[["dmps"]][keep, , drop = FALSE]
     }

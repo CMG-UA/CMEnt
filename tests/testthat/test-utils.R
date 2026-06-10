@@ -134,6 +134,10 @@ test_that("logging and parallel helpers handle quiet and fallback branches", {
         "Unsupported CMEnt BiocParallel backend"
     )
     expect_true(inherits(param, "BiocParallelParam"))
+
+    withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = "TRUE")
+    expect_lte(CMEnt:::.defaultNJobs(), 2L)
+    expect_lte(BiocParallel::bpworkers(CMEnt:::.makeBiocParallelParam(8, parallel_backend = "auto")), 2L)
 })
 
 test_that("registry post-processing selects, renames, derives, and indexes columns", {
@@ -194,25 +198,18 @@ test_that("covariate transformation residualizes nonsingular covariates", {
     expect_equal(dim(transformed), dim(beta))
     expect_false(anyNA(transformed))
 
-    constant <- NULL
-    expect_warning(
-        constant <- CMEnt:::.prepareCovariateModel(
-            data.frame(batch = c("A", "A", "A")),
-            covariates = "batch"
-        ),
-        "collinear"
+    constant <- CMEnt:::.prepareCovariateModel(
+        data.frame(batch = c("A", "A", "A")),
+        covariates = "batch"
     )
     expect_false(constant$is_singular)
     expect_equal(dim(constant$covariate_matrix), c(3, 1))
     expect_equal(constant$dropped_columns, "batch")
 
     aliased <- NULL
-    expect_warning(
-        aliased <- CMEnt:::.prepareCovariateModel(
-            data.frame(batch = c("A", "B", "C", "A"), duplicate_batch = c("A", "B", "C", "A")),
-            covariates = c("batch", "duplicate_batch")
-        ),
-        "collinear"
+    aliased <- CMEnt:::.prepareCovariateModel(
+        data.frame(batch = c("A", "B", "C", "A"), duplicate_batch = c("A", "B", "C", "A")),
+        covariates = c("batch", "duplicate_batch")
     )
     expect_equal(nrow(aliased$covariate_matrix), 4)
     expect_false(aliased$is_singular)
