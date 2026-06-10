@@ -929,7 +929,7 @@ minmaxscale <- function(x) {
 #' @param dmrs GRanges object. Output from buildDMRs.
 #' @param dmr_indices Integer vector. Which DMRs to plot. If NULL, selects top_n DMRs using `score_by`.
 #' @param top_n Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).
-#' @param score_by Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta", "score", or "pval" (default: "delta_beta").
+#' @param score_by Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta" or "score" (default: "delta_beta").
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
 #' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
@@ -963,7 +963,7 @@ minmaxscale <- function(x) {
 plotDMRs <- function(dmrs,
                      dmr_indices = NULL,
                      top_n = 4,
-                     score_by = c("delta_beta", "score", "pval"),
+                     score_by = c("delta_beta", "score"),
                      beta = NULL,
                      pheno = NULL,
                      sample_group_col = "Sample_Group",
