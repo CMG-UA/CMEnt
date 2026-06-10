@@ -277,7 +277,6 @@ dmr_delta_col <- if ("sites_delta_beta" %in% colnames(mcols(dmrs_cment))) {
 }
 dmr_delta <- as.numeric(mcols(dmrs_cment)[[dmr_delta_col]])
 dmr_direction <- ifelse(dmr_delta > 0, "Hypermethylated in AML", "Hypomethylated in AML")
-
 dmr_summary <- data.frame(
     DMRs = length(dmrs_cment),
     Median_width_bp = median(width(dmrs_cment)),
@@ -293,16 +292,17 @@ knitr::kable(dmr_summary, caption = "CMEnt DMR summary for AML versus normal sam
 ```
 
 ```{r, fig.width=9, fig.height=4}
+dmrs_cment_only_promoter_or_gene_body <- dmrs_cment[!(is.finite(mcols(dmrs_cment)$delta_beta_promoter) & is.finite(mcols(dmrs_cment)$delta_beta_gene_body))]
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
-        Width = width(dmrs_cment),
-        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_promoter)
+        Width = width(dmrs_cment_only_promoter_or_gene_body),
+        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_promoter)
     ),
     data.frame(
         Region = "Gene-body-overlapping DMRs",
-        Width = width(dmrs_cment),
-        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_gene_body)
+        Width = width(dmrs_cment_only_promoter_or_gene_body),
+        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_gene_body)
     )
 ) |>
     filter(is.finite(Delta_beta)) |>
@@ -311,20 +311,96 @@ dmr_effect_df <- bind_rows(
         levels = c("Hypermethylated in AML", "Hypomethylated in AML")
     ))
 
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+ignore_abs_delta <- !is.finite(dmr_effect_df$Delta_beta) | abs(dmr_effect_df$Delta_beta) < 0.05
+dmr_effect_df <- dmr_effect_df[!ignore_abs_delta,]
+# Summary per Region and Direction
+dmr_summary <- dmr_effect_df %>%
+  group_by(Region, Direction) %>%
+  summarise(
+    median_delta_beta = median(Delta_beta, na.rm = TRUE),
+    n_dmrs = n(),
+    .groups = "drop"
+  )
+
+# Define two y-levels for the two summary bars
+y_max <- max(dmr_effect_df$Width, na.rm = TRUE)
+
+dmr_summary <- dmr_summary %>%
+  mutate(
+    bar_y = case_when(
+      Direction == "Hypermethylated in AML" ~ y_max * 2.0,
+      Direction == "Hypomethylated in AML"  ~ y_max * 3.2
+    ),
+    label_y = bar_y * 1.12
+  )
+
+# Expand y-range so the bars and labels fit
+y_upper <- max(dmr_summary$label_y) * 1.15
+
 ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
-    geom_hline(yintercept = median(dmr_effect_df$Width), linewidth = 0.2, color = "grey70") +
-    geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
-    geom_point(alpha = 0.55, size = 1.2) +
-    facet_wrap(~Region, nrow = 1) +
-    scale_y_log10(labels = scales::comma) +
-    scale_color_manual(values = c("Hypermethylated in AML" = "#B8405E", "Hypomethylated in AML" = "#247BA0")) +
-    theme_minimal() +
-    labs(
-        title = "CMEnt DMR Effect Size and Width by Gene Context",
-        x = "Context-specific delta beta (AML - normal)",
-        y = "DMR width (bp, log scale)",
-        color = ""
+  geom_hline(
+    yintercept = median(dmr_effect_df$Width, na.rm = TRUE),
+    linewidth = 0.2,
+    color = "grey70"
+  ) +
+  geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
+  geom_point(alpha = 0.55, size = 1.2) +
+
+  # Separate horizontal bars for hypo and hyper
+  geom_segment(
+    data = dmr_summary,
+    aes(
+      x = 0,
+      xend = median_delta_beta,
+      y = bar_y,
+      yend = bar_y,
+      color = Direction
+    ),
+    inherit.aes = FALSE,
+    linewidth = 5,
+    lineend = "butt"
+  ) +
+
+  # Labels for each bar
+  geom_text(
+    data = dmr_summary,
+    aes(
+      x = median_delta_beta,
+      y = label_y,
+      label = paste0(
+        "median Δβ = ", round(median_delta_beta, 3),
+        "\nDMRs = ", n_dmrs
+      )
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 3,
+    hjust = ifelse(dmr_summary$median_delta_beta >= 0, -0.05, 1.05)
+  ) +
+
+  facet_wrap(~Region, nrow = 1) +
+  scale_y_log10(
+    limits = c(min(dmr_effect_df$Width[dmr_effect_df$Width > 0], na.rm = TRUE), y_upper),
+    labels = comma
+  ) +
+  scale_color_manual(
+    values = c(
+      "Hypermethylated in AML" = "#B8405E",
+      "Hypomethylated in AML" = "#247BA0"
     )
+  ) +
+  coord_cartesian(clip = "off") +
+  theme_minimal() +
+  labs(
+    title = "CMEnt DMR Effect Size and Width by Gene Context",
+    x = "Context-specific delta beta (AML - normal)",
+    y = "DMR width (bp, log scale)",
+    color = ""
+  )
 ```
 
 ## CpG and Gene Context
@@ -672,6 +748,7 @@ knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overl
 CMEnt::plotDMRs(
     dmrs_cment,
     top_n = 1,
+    score_by = "score",
     beta = beta_handler,
     pheno = pheno,
     sample_group_col = sample_group_col,
@@ -696,6 +773,68 @@ CMEnt::plotDMRsCircos(
 )
 ```
 
+
+## Insights and Interpretation
+This CMEnt re-analysis of GSE63409 extends the original Hu et al. 
+study from a gene-level methylation and expression biomarker analysis into a region-level interpretation 
+of AML-associated methylation architecture. Whereas the original publication 
+integrated methylation and expression data to nominate AML-relevant pathways
+and three prognostic genes, ATP11A, ITGAM, and ZNRF2, this notebook shows that 
+the same methylation dataset contains a broad and spatially coherent regional
+signal: 72,556 significant DMPs were assembled into 8,654 CMEnt DMRs,
+covering about 15.1 Mb of the genome, with a slight excess of hypermethylated regions in AML.
+
+A main new observation is that the regional signal is not randomly distributed across
+gene annotation space. Most CMEnt DMRs overlap annotated genes, especially gene bodies,
+and many overlap both promoter and gene-body annotations. This suggests that AML-associated 
+methylation changes in this dataset are not limited to isolated promoter CpGs, but frequently 
+form extended regulatory blocks spanning transcriptional units. The effect-size plot
+further indicates that both promoter-overlapping and gene-body-overlapping DMRs contain
+clear hypermethylated and hypomethylated subclasses, with gene-body DMRs contributing
+the larger number of region-level events.
+
+Although significant DMPs are most frequent in OpenSea regions,
+CpGs retained inside CMEnt DMRs are strongly enriched in CpG islands and shores.
+This indicates that CMEnt preferentially captures locally coherent methylation
+changes in CpG-dense regulatory neighborhoods, rather than simply preserving the
+genome-wide distribution of significant single CpGs. In practical terms,
+the analysis reframes part of the AML methylation signal as coordinated regional
+dysregulation around CpG island-associated loci.
+
+The targeted AML gene scan also supports biological relevance while adding
+positional detail. CMEnt DMRs overlap several AML-associated regulatory
+and differentiation genes, including HOXA9, HOXA10, RUNX1, STAT3, CD34,
+and GATA2. This partly recapitulates the original study’s emphasis
+on hematopoietic differentiation and AML-relevant signaling, 
+but adds information about whether these signals occur as promoter,
+gene-body, or mixed regional methylation events. Notably, RUNX1 and STAT3
+show strong hypomethylated DMR signals, while HOXA10 and CD34 show
+hypermethylated regional signals, suggesting that AML-associated methylation
+changes are directionally heterogeneous across disease-relevant loci.
+
+The enrichment results further reinforce the biological interpretation. 
+The strongest GO terms are broad developmental, cell-periphery, cell-signaling,
+and differentiation categories, while AML-context terms include cell differentiation,
+regulation of differentiation, stem-cell pluripotency signaling, hematopoietic cell lineage,
+and cytokine-related pathways. Compared with the original study’s pathway-level analysis, 
+CMEnt adds the observation that these biological themes are supported by coherent DMR structures 
+rather than only by individually significant CpGs or methylation-expression gene intersections.
+
+Finally, the candidate-region and visualization figures provide concrete follow-up loci.
+The top-scoring DMR overlaps CD247 on chromosome 1, shows clear group separation with
+cross-validation accuracy of 0.85, and is hypomethylated in AML.
+Other high-ranking regions include PVT1, RUNX1-associated regulatory candidates
+through the AML scan, POU5F1, SH3PXD2A, TLE7, KCNQ1, PLIN5, and MAFG/SIRT7-associated loci.
+The Manhattan and circos plots show that high-scoring DMRs are distributed across many chromosomes,
+with 115 identified DMR blocks and recurrent motif-interaction patterns involving factors such as
+KLF-family motifs and AHR::ARNT-like motifs.
+
+Overall, this analysis supports the original conclusion that AML is associated with dysregulated
+methylation in genes and pathways linked to hematopoietic differentiation,
+immune signaling, and development. Its main added value is that it converts
+the single-CpG signal into interpretable regional methylation structures,
+revealing CpG island-enriched DMR organization, promoter and gene-body-specific
+effect patterns, and candidate loci that can be prioritized for biological validation.
 
 ## Session Info
 
