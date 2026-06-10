@@ -84,7 +84,7 @@ COPY .github/docker/cment-env/install-requirements.R install-requirements.R
 
 RUN Rscript install-requirements.R
 # Install additional packages that are not in the requirements files but are needed for testing and development
-RUN Rscript -e "install_deps(packages=c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), bioc_packages=c('BiocCheck', 'IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'))"
+RUN Rscript -e "install_deps(packages=c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'pkgdown', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), bioc_packages=c('BiocCheck', 'IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'))"
 
 RUN apt-get clean \
     && rm -rf /var/lib/apt/lists/*

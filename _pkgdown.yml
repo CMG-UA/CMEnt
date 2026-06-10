@@ -1,0 +1,77 @@
+url: https://cmg-ua.github.io/CMEnt/
+destination: _site
+
+template:
+  bootstrap: 5
+  light-switch: true
+
+reference:
+- title: Differential Methylation Analysis
+  contents:
+  - buildDMRs
+  - scoreDMRs
+  - findDMPsArray
+  - findDMPsBSSeq
+  - simulateDMRs
+- title: Data handling
+  contents:
+  - BetaHandler
+  - getBetaHandler
+  - convertBetaToTabix
+  - sortBetaFileByCoordinates
+  - readCustomMethylationBedData
+  - augmentBSSeq
+  - loadExampleInputData
+  - getSortedGenomicLocs
+  - orderByLoc
+- title: Annotation and interpretation
+  contents:
+  - annotateDMRsWithGenes
+  - combinePvalues
+  - getDMRSequences
+  - extractDMRMotifs
+  - computeDMRsInteraction
+- title: Visualization and apps
+  contents:
+  - plotDMR
+  - plotDMRs
+  - plotDMRBlockFormation
+  - plotDMRsManhattan
+  - plotDMRsCircos
+  - plotAutoDMRsCircos
+  - launchCMEntViewer
+- title: Package
+  contents:
+  - CMEnt-package
+
+articles:
+- title: Package guides
+  navbar: Guides
+  contents:
+  - cment_example
+  - configuration
+- title: Analysis reports
+  navbar: Reports
+  contents:
+  - microarray450k
+  - metastudyEpic
+  - benchmark_simulated_ont
+  - benchmark_simulated_microarray450k
+
+external-articles:
+- name: microarray450k
+  title: AML 450K Analysis
+  description: Biological interpretation of GSE63409 with CMEnt.
+  href: articles/microarray450k.html
+- name: metastudyEpic
+  title: EPIC Meta-Analysis
+  description: CMEnt meta-analysis of GSE244696 and comparison with published regions.
+  href: articles/metastudyEpic.html
+- name: benchmark_simulated_ont
+  title: Simulated ONT Benchmark
+  description: CMEnt comparison against DMRcate, dmrseq, and hummingbird.
+  href: articles/benchmark_simulated_ont.html
+- name: benchmark_simulated_microarray450k
+  title: Simulated 450K Benchmark
+  description: CMEnt comparison against comb-p, probeLasso, DMRcate, and Bumphunter.
+  href: articles/benchmark_simulated_microarray450k.html

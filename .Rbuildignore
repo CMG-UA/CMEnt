@@ -24,7 +24,9 @@
 ^inst/extdata/example_output\.seeds_beta\.tsv\.gz$
 ^inst/extdata/example_output\.meta\.rds$
 ^notebooks($|/)
+^_pkgdown\.yml$
 ^_site$
+^docs$
 ^build_and_push\.sh$
 ^Dockerfile$
 ^tmp$

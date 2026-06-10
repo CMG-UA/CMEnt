@@ -1,4 +1,4 @@
-name: Render and deploy notebooks to GitHub Pages
+name: Build and deploy documentation to GitHub Pages
 
 on:
   workflow_dispatch:
@@ -42,12 +42,18 @@ jobs:
         run: |
           R CMD INSTALL .
 
-      - name: Render notebooks
+      - name: Build pkgdown site and render notebooks
         shell: Rscript {0}
         run: |
           site_dir <- "_site"
           articles_dir <- file.path(site_dir, "articles")
 
+          pkgdown::build_site(
+            examples = FALSE,
+            install = FALSE,
+            new_process = TRUE,
+            quiet = FALSE
+          )
           dir.create(articles_dir, recursive = TRUE, showWarnings = FALSE)
 
           notebooks <- list.files(
@@ -69,49 +75,14 @@ jobs:
 
               rmarkdown::render(
                 input = nb,
-                output_format = "html_document",
                 output_dir = articles_dir,
                 output_file = out_file,
+                output_options = list(code_folding = "hide"),
                 envir = new.env(parent = globalenv()),
                 quiet = FALSE
               )
             }
           }
-
-          html_files <- list.files(
-            articles_dir,
-            pattern = "\\.html$",
-            full.names = FALSE
-          )
-
-          links <- if (length(html_files) > 0L) {
-            paste0(
-              '<li><a href="articles/', html_files, '">',
-              tools::file_path_sans_ext(html_files),
-              "</a></li>",
-              collapse = "\n"
-            )
-          } else {
-            "<li>No rendered notebooks found.</li>"
-          }
-
-          index <- paste0(
-            '<!DOCTYPE html>\n',
-            '<html>\n',
-            '<head>\n',
-            '  <meta charset="utf-8">\n',
-            '  <title>Extended notebooks</title>\n',
-            '</head>\n',
-            '<body>\n',
-            '  <h1>Extended notebooks</h1>\n',
-            '  <ul>\n',
-            links,
-            '\n  </ul>\n',
-            '</body>\n',
-            '</html>\n'
-          )
-
-          writeLines(index, file.path(site_dir, "index.html"))
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

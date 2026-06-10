@@ -21,7 +21,7 @@ Description: CMEnt implements a correlation-based method for identifying
     provides DMR interaction analysis via motif similarity, and includes 
     comprehensive visualization tools including circos plots and beta value 
     heatmaps.
-URL: https://github.com/CMG-UA/CMEnt
+URL: https://cmg-ua.github.io/CMEnt/, https://github.com/CMG-UA/CMEnt
 BugReports: https://github.com/CMG-UA/CMEnt/issues
 License: GPL (>= 2)
 Encoding: UTF-8
@@ -99,6 +99,7 @@ Suggests:
     devtools,
     DSS,
     knitr,
+    pkgdown,
     rmarkdown,
     BiocStyle,
     magick,

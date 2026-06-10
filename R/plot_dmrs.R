@@ -114,6 +114,8 @@
 #' @param .ret_details Logical. Internal parameter to return additional details (breaks, labels, chromosome, locations) for use by plotDMR (default: FALSE).
 #'
 #' @return A ggplot2 object showing the DMR structure. If .ret_details is TRUE, returns a list containing the plot and additional information.
+#' @keywords internal
+#' @noRd
 .plotDMRStructure <- function(dmrs,
                               dmr_index = 1,
                               array = c("450K", "27K", "EPIC", "EPICv2"),
