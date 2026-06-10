@@ -1759,11 +1759,17 @@ orderByLoc <- function(x,
     x
 }
 
-.getBiocFileCache <- function(cache_dir) {
-    if (!dir.exists(cache_dir)) {
-        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+.getBiocFileCache <- function(cache) {
+    if (methods::is(cache, "BiocFileCache")) {
+        return(cache)
     }
-    BiocFileCache::BiocFileCache(cache_dir, ask = FALSE)
+    if (is.character(cache) && length(cache) == 1L) {
+        cache <- normalizePath(cache, mustWork = FALSE)
+    } else {
+        stop("Cache must be a single string path or a BiocFileCache object.", call. = FALSE)
+    }
+    dir.create(cache, recursive = TRUE, showWarnings = FALSE)
+    BiocFileCache::BiocFileCache(cache, ask = FALSE)
 }
 
 .getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE) {

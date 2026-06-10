@@ -122,11 +122,19 @@ comparePWMToJaspar <- function(pwm_queries) {
         "CMEnt.jaspar_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
     )
+    empty_jaspar_matches <- data.frame(
+        jaspar_names = rep(NA_character_, length(pwm_queries)),
+        jaspar_ids = rep(NA_character_, length(pwm_queries)),
+        jaspar_corr = rep(NA_real_, length(pwm_queries)),
+        stringsAsFactors = FALSE
+    )
     tax_group <- getOption("CMEnt.jaspar_tax_group", "vertebrates")
     jaspar_version <- getOption("CMEnt.jaspar_version", 2024)
     corr_threshold <- getOption("CMEnt.jaspar_corr_threshold", 0.9)
     cache_key <- paste0("jaspar", jaspar_version, "_", tax_group, "_pwms")
-    jaspar_pwms <- .readBiocFileCacheRDS(cache, cache_key)
+    bfc <- .getBiocFileCache(cache)
+    jaspar_pwms <- .readBiocFileCacheRDS(bfc, cache_key)
+
     if (!is.null(jaspar_pwms)) {
         .log_info("Loading JASPAR PWMs from cache...", level = 3)
     } else {
@@ -136,12 +144,26 @@ comparePWMToJaspar <- function(pwm_queries) {
         )
         .log_info("Downloading JASPAR PWMs...", level = 2)
         jaspar_pkg <- paste0("JASPAR", jaspar_version)
-        db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
+        ntries <- 3
+        db <- NULL
+        for (i in seq_len(ntries)) {
+            db <- try(getExportedValue(jaspar_pkg, jaspar_pkg)()@db, silent = TRUE)
+            if (!inherits(db, "try-error")) {
+                break
+            }
+            db <- NULL
+            try(BiocFileCache::bfcremove(bfc, BiocFileCache::bfcquery(bfc, jaspar_pkg)$rid), silent = TRUE)
+            Sys.sleep(3)
+        }
+        if (is.null(db)) {
+            .log_warn("Failed to load JASPAR PWMs after multiple attempts. Returning no matches.", level = 2)
+            return(empty_jaspar_matches)
+        }
         opts <- list()
         opts[["tax_group"]] <- tax_group
         vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
         vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
-        .saveBiocFileCacheRDS(vertebrate_pwms, cache, cache_key)
+        .saveBiocFileCacheRDS(vertebrate_pwms, bfc, cache_key)
         jaspar_pwms <- vertebrate_pwms
     }
     jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
@@ -207,7 +229,8 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     cache_key <- paste0("bgpwm_", genome, "_", array, "_", motif_site_flank_size)
-    bg_pwm <- .readBiocFileCacheRDS(cache_dir, cache_key)
+    bfc <- .getBiocFileCache(cache_dir)
+    bg_pwm <- .readBiocFileCacheRDS(bfc, cache_key)
     if (is.null(bg_pwm)) {
         .log_info("Background array motif pwm not existing in cache, computing it..", level = 2)
         if (is.null(.sorted_locs)) {
@@ -245,7 +268,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
         bg_frequencies <- as.matrix(apply(site_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES))))
         bg_pwm <- bg_frequencies / colSums(bg_frequencies) # row: position, column: base
         tryCatch(
-            .saveBiocFileCacheRDS(bg_pwm, cache_dir, cache_key),
+            .saveBiocFileCacheRDS(bg_pwm, bfc, cache_key),
             error = function(e) {
                 .log_info("Could not cache background motif PWM: ", e$message, level = 3)
             }

@@ -6,8 +6,13 @@ test_that("BiocFileCache RDS helpers always resolve paths inside the cache direc
     withr::local_dir(work_dir)
 
     CMEnt:::.saveBiocFileCacheRDS(list(value = 1L), cache_dir, "test_entry")
+    expect_error(CMEnt:::.getBiocFileCache(10), "Cache must be") # test that invalid cache input throws an error
+    cache <- CMEnt:::.getBiocFileCache(cache_dir)
+    expect_true(is(cache, "BiocFileCache")) # test that a cache object is returned
+    cache <- CMEnt:::.getBiocFileCache(cache) # test that retrieving an existing cache works
+    expect_true(is(cache, "BiocFileCache")) # test that a cache object is returned
     cache_file <- CMEnt:::.getBiocFileCachePath(
-        CMEnt:::.getBiocFileCache(cache_dir),
+        cache,
         rname = "test_entry",
         ext = ".rds",
         create = FALSE

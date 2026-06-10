@@ -43,6 +43,48 @@ then synthetic samples are drawn through chromosome-local Gaussian copula
 fields whose dependence is estimated from adjacent sites in the observed data.
 For reproducible synthetic samples, call \code{set.seed()} before \code{augmentBSSeq()}.
 }
+\details{
+The input is first sorted, duplicate loci are collapsed by summing
+methylated and coverage counts, and sites are retained only when at least
+\code{min_samples} samples have positive coverage. Synthetic coverage and
+methylation are then modeled separately, but with genomic dependence restored
+through latent Gaussian fields.
+
+For coverage, each site \code{i} receives a Poisson mean
+\code{lambda_i = mean(C_ij | C_ij > 0)}, with a fallback of 1. A chromosome-local
+latent Gaussian field \code{Z^C} is converted to uniforms by \code{Phi(Z^C_i)}
+and then to coverage counts by \code{qpois(Phi(Z^C_i), lambda_i)}, with a lower
+bound of 1 for synthetic samples.
+
+For methylation, covered observations are smoothed as
+\code{p_ij = (M_ij + 0.5) / (C_ij + 1)}. The site mean is estimated with the same
+Jeffreys-style pseudocounts, and the across-sample variance of \code{p_ij} is
+converted to a Beta concentration
+\code{kappa_i = p_i * (1 - p_i) / var(p_ij) - 1}. Site concentrations are shrunk
+toward an empirical prior, then bounded to avoid extreme under- or
+over-dispersion. This gives \code{alpha_i = p_i * kappa_i} and
+\code{beta_i = (1 - p_i) * kappa_i}, with small positive lower bounds.
+
+Local correlation is represented by an exponential Gaussian copula. For
+adjacent sites separated by gap \code{g}, the latent correlation is
+\code{phi = exp(-g / ell)}, so within each chromosome
+\code{Z_i = phi_i * Z_{i-1} + sqrt(1 - phi_i^2) * epsilon_i}. Separate length
+scales \code{ell} are estimated for coverage from adjacent-site correlations of
+\code{log1p(C)} and for methylation from adjacent-site correlations of
+\code{qlogis(p_ij)}.
+
+If \code{calibrate_correlation = TRUE}, the initial length scales are refined by
+bisection against the observed median adjacent-site correlation after passing
+simulated latent pairs through the same Poisson, Beta, and Binomial sampling
+layers used for final augmentation. This compensates for correlation
+attenuation caused by the marginal sampling steps.
+
+Final synthetic samples are generated as
+\code{C_i ~ Poisson(lambda_i)}, \code{theta_i ~ Beta(alpha_i, beta_i)}, and
+\code{M_i ~ Binomial(C_i, theta_i)}, with both \code{C_i} and \code{theta_i}
+driven by their calibrated chromosome-local latent fields. The returned object
+combines the retained original sites and samples with the synthetic samples.
+}
 \examples{
 if (requireNamespace("bsseqData", quietly = TRUE)) {
     data(BS.cancer.ex, package = "bsseqData")
