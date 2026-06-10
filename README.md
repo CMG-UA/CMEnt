@@ -24,7 +24,10 @@ changes.
 ## Features
 
 - Correlation-based model-free region expansion from genomic seeds
-- DMRs scoring based on 5-fold SVM predictions
+- DMR-level Stouffer meta-p-values and FDR q-values from supporting
+  seed p-values
+- Optional SVM-based DMR scoring as a complementary discriminative
+  ranking measure
 - Motif discovery within DMRs
 - DMRs motif-based interactions
 - lookup of DMRs motifs matching binding factors on JASPAR database
@@ -46,6 +49,10 @@ changes.
   adjustment. It is recommended to preprocess beta files using
   established pipelines (e.g. minfi, meffil) before using CMEnt for DMR
   identification.
+- When seed p-values are provided, DMR `pval`/`qval` are the primary
+  statistical evidence columns. The optional SVM `score` is useful as a
+  complementary measure of sample-level discriminative strength, not as a
+  replacement for statistical significance and effect size.
 
 ## Installation
 

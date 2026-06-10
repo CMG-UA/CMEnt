@@ -5,10 +5,10 @@
 #' @param bsseq A BSseq object or a file path to a saved BSseq object (RDS format).
 #' @param samplesheet A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.
 #' @param samplesheet_sep The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").
-#' @param group_col The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".
+#' @param sample_group_col The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".
 #' @param id_col The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".
 #' @param chr A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
-#' @param case_group The specific group label in the group_col to treat as the "case" group for comparison. If NULL, the first unique group in group_col will be used as the case group. Default is NULL.
+#' @param case_group The specific group label in the sample_group_col to treat as the "case" group for comparison. If NULL, the first unique group in sample_group_col will be used as the case group. Default is NULL.
 #' @param covariates A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).
 #' @param output_file An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
 #' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is 1.
@@ -32,7 +32,7 @@
 #'     dmps <- findDMPsBSSeq(
 #'        bsseq = BS.cancer.ex,
 #'        samplesheet = samplesheet,
-#'        group_col = "Sample_Group",
+#'        sample_group_col = "Sample_Group",
 #'        id_col = "Sample_ID",
 #'        case_group = "Condition2",
 #'        covariates = "Age",
@@ -48,7 +48,7 @@ findDMPsBSSeq <- function(
     bsseq,
     samplesheet,
     samplesheet_sep = "\t",
-    group_col = "Sample_Group",
+    sample_group_col = "Sample_Group",
     id_col = "Sample_ID",
     chr = "auto",
     case_group = NULL,
@@ -77,8 +77,8 @@ findDMPsBSSeq <- function(
     }
     pheno <- .readDMPsSampleSheet(samplesheet, samplesheet_sep)
 
-    if (!all(c(group_col, id_col) %in% colnames(pheno))) {
-        stop("Group column ", group_col, " or ID column ", id_col, " not found in samplesheet.")
+    if (!all(c(sample_group_col, id_col) %in% colnames(pheno))) {
+        stop("Group column ", sample_group_col, " or ID column ", id_col, " not found in samplesheet.")
     }
 
     pheno[[id_col]] <- as.character(pheno[[id_col]])
@@ -89,14 +89,14 @@ findDMPsBSSeq <- function(
         stop("Duplicate sample IDs found in the samplesheet ID column.")
     }
 
-    if (!is.null(case_group) && !case_group %in% pheno[[group_col]]) {
-        stop("Specified case group ", case_group, " not found in group column ", group_col)
+    if (!is.null(case_group) && !case_group %in% pheno[[sample_group_col]]) {
+        stop("Specified case group ", case_group, " not found in group column ", sample_group_col)
     }
     if (!all(colnames(bsseq_obj) %in% pheno[[id_col]])) {
         stop("Not all samples in BSseq object are present in the samplesheet.")
     }
     if (is.null(case_group)) {
-        case_group <- unique(pheno[[group_col]])[[1]]
+        case_group <- unique(pheno[[sample_group_col]])[[1]]
     }
 
     njobs <- as.integer(njobs)
@@ -120,7 +120,7 @@ findDMPsBSSeq <- function(
     }
 
     pheno$condition <- factor(
-        pheno[[group_col]] == case_group,
+        pheno[[sample_group_col]] == case_group,
         levels = c(FALSE, TRUE),
         labels = c("control", "case")
     )

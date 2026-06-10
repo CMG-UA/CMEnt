@@ -14,6 +14,30 @@ test_that("buildDMRs accepts covariates without changing synthetic DMR calls", {
     expect_identical(as.integer(S4Vectors::mcols(adjusted)$seeds_num), 3L)
 })
 
+test_that("buildDMRs reuses prepared covariate models across connectivity passes", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    original_prepare <- CMEnt:::.prepareGroupCovariateModels
+    prepare_calls <- 0L
+    local_mocked_bindings(
+        .prepareGroupCovariateModels = function(...) {
+            prepare_calls <<- prepare_calls + 1L
+            original_prepare(...)
+        },
+        .package = "CMEnt"
+    )
+
+    dmrs <- runSyntheticBuildDMRs(
+        fixture,
+        covariates = c("Age", "Gender"),
+        entanglement = "weak",
+        max_bridge_extension_gaps = 1L,
+        max_bridge_seeds_gaps = 1L
+    )
+
+    expect_s4_class(dmrs, "GRanges")
+    expect_identical(prepare_calls, 1L)
+})
+
 test_that("buildDMRs normalizes scalar list columns in pheno", {
     fixture <- makeSyntheticBuildDMRsFixture()
     fixture$pheno$Sample_Group <- as.list(fixture$pheno$Sample_Group)
@@ -71,6 +95,24 @@ test_that("buildDMRs filters synthetic DMRs with min_seeds and max_pval", {
     )
     expect_identical(S4Vectors::mcols(strict_seed_filter)$id, "chr1:cgA-cgC")
     expect_identical(S4Vectors::mcols(strict_pval_filter)$id, "chr1:cgA-cgC")
+})
+
+test_that("buildDMRs adds Stouffer meta p-values and FDR q-values", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    dmrs <- runSyntheticBuildDMRs(fixture)
+    dmr_stats <- S4Vectors::mcols(dmrs)
+    seed_pvals <- fixture$seeds$pval[match(
+        CMEnt:::.splitCsvValues(dmr_stats$seeds[[1L]]),
+        rownames(fixture$seeds)
+    )]
+    expected_pval <- stats::pnorm(
+        sum(stats::qnorm(seed_pvals, lower.tail = FALSE)) / sqrt(length(seed_pvals)),
+        lower.tail = FALSE
+    )
+
+    expect_true(all(c("pval", "qval") %in% colnames(dmr_stats)))
+    expect_equal(dmr_stats$pval[[1L]], expected_pval)
+    expect_equal(dmr_stats$qval[[1L]], expected_pval)
 })
 
 test_that("DMR beta aggregation changes with aggfun while preserving effect direction", {

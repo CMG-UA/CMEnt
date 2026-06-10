@@ -893,13 +893,6 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
         dropped_columns <- c(dropped_columns, aliased_columns)
         xc <- xc[, keep_cols, drop = FALSE]
     }
-    if (length(dropped_columns) > 0L) {
-        warning(
-            "The following covariate design columns are collinear and will be removed: ",
-            paste(dropped_columns, collapse = ", "),
-            call. = FALSE
-        )
-    }
     xtx_inv <- tryCatch(solve(crossprod(xc)), error = function(e) NULL)
     pseudo_solution <- if (is.null(xtx_inv)) NULL else xtx_inv %*% t(xc)
     list(

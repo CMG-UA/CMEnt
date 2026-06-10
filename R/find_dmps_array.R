@@ -11,7 +11,7 @@
 #'   are also accepted and converted to beta values.
 #' @param samplesheet A data frame or file path to a tab-delimited sample sheet.
 #' @param samplesheet_sep Separator for samplesheet files. Default is tab.
-#' @param group_col Column in `samplesheet` containing group labels.
+#' @param sample_group_col Column in `samplesheet` containing group labels.
 #' @param id_col Column in `samplesheet` containing sample IDs. row.names can also be used by specifying `id_col = "row.names"`.
 #' @param array Array platform passed to [getSortedGenomicLocs()] when
 #'   `sorted_locs` is not supplied.
@@ -24,7 +24,7 @@
 #' @param chr Chromosomes to retain, `"auto"` for chr1-chr22, or `"all"` for
 #'   chr1-chr22 plus chrX and chrY.
 #' @param case_group Group label to treat as case. If `NULL`, the first group in
-#'   `group_col` is used.
+#'   `sample_group_col` is used.
 #' @param covariates Optional covariate column names, or a comma-separated
 #'   string, to include in the limma model.
 #' @param output_file Optional tab-delimited output path. Files ending in `.gz`
@@ -39,7 +39,7 @@ findDMPsArray <- function(
     beta,
     samplesheet,
     samplesheet_sep = "\t",
-    group_col = "Sample_Group",
+    sample_group_col = "Sample_Group",
     id_col = "Sample_ID",
     array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
     genome = c("hg19", "hg38", "hs1", "mm10", "mm39"),
@@ -82,7 +82,7 @@ findDMPsArray <- function(
     pheno <- .prepareDMPsPheno(
         pheno = pheno,
         sample_ids = sample_ids,
-        group_col = group_col,
+        sample_group_col = sample_group_col,
         id_col = id_col,
         case_group = case_group,
         covariates = covariates
@@ -184,15 +184,15 @@ findDMPsArray <- function(
     pheno
 }
 
-.prepareDMPsPheno <- function(pheno, sample_ids, group_col, id_col, case_group, covariates) {
+.prepareDMPsPheno <- function(pheno, sample_ids, sample_group_col, id_col, case_group, covariates) {
     if (id_col == "row.names") {
         if (is.null(rownames(pheno))) {
             stop("ID column is specified as 'row.names' but the samplesheet has no row names.")
         }
         pheno[[id_col]] <- rownames(pheno)
     }
-    if (!all(c(group_col, id_col) %in% colnames(pheno))) {
-        stop("Group column ", group_col, " or ID column ", id_col, " not found in samplesheet.")
+    if (!all(c(sample_group_col, id_col) %in% colnames(pheno))) {
+        stop("Group column ", sample_group_col, " or ID column ", id_col, " not found in samplesheet.")
     }
     pheno[[id_col]] <- as.character(pheno[[id_col]])
     if (anyDuplicated(pheno[[id_col]]) > 0L) {
@@ -204,9 +204,9 @@ findDMPsArray <- function(
         stop("Not all samples in beta are present in the samplesheet.")
     }
     if (is.null(case_group)) {
-        case_group <- unique(pheno[[group_col]])[[1L]]
-    } else if (!case_group %in% pheno[[group_col]]) {
-        stop("Specified case group ", case_group, " not found in group column ", group_col)
+        case_group <- unique(pheno[[sample_group_col]])[[1L]]
+    } else if (!case_group %in% pheno[[sample_group_col]]) {
+        stop("Specified case group ", case_group, " not found in group column ", sample_group_col)
     }
 
     covariates <- .normalizeDMPsCovariates(covariates)
@@ -218,7 +218,7 @@ findDMPsArray <- function(
     pheno <- pheno[match(sample_ids, pheno[[id_col]]), , drop = FALSE]
     rownames(pheno) <- pheno[[id_col]]
     pheno$condition <- factor(
-        pheno[[group_col]] == case_group,
+        pheno[[sample_group_col]] == case_group,
         levels = c(FALSE, TRUE),
         labels = c("control", "case")
     )

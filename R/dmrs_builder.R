@@ -1342,6 +1342,7 @@
             col_names = col_names,
             pheno = pheno,
             covariates = covariates,
+            covariate_models = covariate_models,
             max_lookup_dist = max_lookup_dist,
             max_pval = max_pval,
             ext_site_delta_beta = ext_site_delta_beta,
@@ -2135,6 +2136,28 @@
     ret
 }
 
+.stoufferPvalue <- function(pvals) {
+    pvals <- suppressWarnings(as.numeric(pvals))
+    pvals <- pvals[is.finite(pvals) & !is.na(pvals)]
+    if (length(pvals) == 0L) {
+        return(NA_real_)
+    }
+    if (length(pvals) == 1L) {
+        return(pvals[[1L]])
+    }
+    pvals <- pmin(pmax(pvals, .Machine$double.xmin), 1 - .Machine$double.eps)
+    stats::pnorm(sum(stats::qnorm(pvals, lower.tail = FALSE)) / sqrt(length(pvals)), lower.tail = FALSE)
+}
+
+.combineDMRSeedPvalues <- function(seed_lists, seed_pvals) {
+    if (is.null(seed_pvals)) {
+        return(rep(NA_real_, length(seed_lists)))
+    }
+    vapply(seed_lists, function(seeds) {
+        .stoufferPvalue(seed_pvals[.splitCsvValues(seeds)])
+    }, numeric(1))
+}
+
 .checkResult <- function(dmrs, stage, start_col = "start", end_col = "end") {
     end_less_than_start <- dmrs[[end_col]] - dmrs[[start_col]] < 0
 
@@ -2157,6 +2180,7 @@
     beta_handler,
     seed_ids,
     seed_beta_index,
+    seed_pvals,
     pheno_detection,
     group_inds,
     testing_mode_per_group,
@@ -2657,6 +2681,7 @@
     agg_df[, "supporting_sites_num"] <- vapply(agg_df$sites, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
+    agg_df[, "pval"] <- .combineDMRSeedPvalues(agg_df$seeds, seed_pvals)
     if (is.null(all_sites)) {
         agg_df[, "sites_num"] <- vapply(agg_df$sites, function(x) {
             length(.splitCsvValues(x))
@@ -2828,7 +2853,16 @@
     if (annotate_with_genes) {
         .advanceChromosomeProgress()
         .log_step("Annotating DMRs with gene information...", level = 2)
-        annotated_dmrs <- annotateDMRsWithGenes(annotated_dmrs, genome = genome, njobs = njobs)
+        site_delta_beta <- beta_stats$cases_beta - beta_stats$controls_beta
+        names(site_delta_beta) <- rownames(beta_stats)
+        annotated_dmrs <- annotateDMRsWithGenes(
+            annotated_dmrs,
+            genome = genome,
+            njobs = njobs,
+            site_locs = beta_handler$getBetaLocs()[all_selected_sites, , drop = FALSE],
+            site_delta_beta = site_delta_beta,
+            aggfun = aggfun
+        )
         .log_success("DMR annotation completed.", level = 2)
     }
 
@@ -2899,7 +2933,9 @@
 #'  and it will be converted to a tabix-indexed beta file internall,
 #'  with the locations separately saved and queried as a DelayedDataFrame. object.
 #' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
-#'  in a format like the one produced by dmpFinder.
+#'  in a format like the one produced by dmpFinder. If a `pval`, `P.Value`, `p.value`,
+#'  or `p_value` column is present, DMR-level `pval` is computed from supporting
+#'  seed p-values using Stouffer's method and `qval` is FDR-corrected globally.
 #' @param pheno Character. Path to the phenotype TSV file or the phenotype dataframe,
 #'  containing sample information including group labels and optionally covariates.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file.
@@ -2950,7 +2986,8 @@
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values.
 #'  If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param .score_dmrs Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.
+#' @param .score_dmrs Logical. Whether to add complementary cross-validated
+#'  SVM discrimination scores to DMRs. Default is TRUE.
 #' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
 #'  In case the input has a .bed extension, this will be set to TRUE automatically.
@@ -2960,7 +2997,8 @@
 #'  Default is retrieved from option "CMEnt.verbose".
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #'
-#' @return Data frame of identified DMRs.
+#' @return GRanges object of identified DMRs with metadata including DMR-level
+#'  `pval` and FDR-adjusted `qval` when seed p-values are available.
 #'
 #' @examples
 #' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
@@ -3099,6 +3137,33 @@ buildDMRs <- function(
             pheno_df[[casecontrol_col]] <- .coercePhenoColumn(pheno_df[[casecontrol_col]], casecontrol_col)
         }
         pheno_df
+    }
+    .seedPvalColumn <- function(seeds_df) {
+        candidates <- c("pval", "P.Value", "p.value", "p_value")
+        candidates[candidates %in% colnames(seeds_df)][1L]
+    }
+    .prepareSeedPvalues <- function(seeds_df, seeds_id_col) {
+        pval_col <- .seedPvalColumn(seeds_df)
+        if (is.na(pval_col)) {
+            return(NULL)
+        }
+        ids <- as.character(seeds_df[[seeds_id_col]])
+        raw_pvals <- seeds_df[[pval_col]]
+        if (is.list(raw_pvals)) {
+            raw_pvals <- vapply(raw_pvals, function(x) {
+                if (length(x) == 0L) NA_character_ else as.character(x[[1L]])
+            }, character(1))
+        }
+        pvals <- suppressWarnings(as.numeric(as.character(raw_pvals)))
+        invalid <- !is.na(pvals) & (pvals < 0 | pvals > 1)
+        if (any(invalid)) {
+            stop("Seed p-values in column '", pval_col, "' must be between 0 and 1.")
+        }
+        keep <- !is.na(ids) & nzchar(ids)
+        pvals_by_id <- tapply(pvals[keep], ids[keep], function(x) {
+            if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+        })
+        stats::setNames(as.numeric(pvals_by_id), names(pvals_by_id))
     }
     .addCaseControlColumn <- function(pheno_df) {
         sample_group_values <- pheno_df[[sample_group_col]]
@@ -3361,6 +3426,7 @@ buildDMRs <- function(
     rownames(seeds_locs) <- seed_ids
     seed_chr <- as.character(seeds_locs[, "chr"])
     chromosomes <- unique(seed_chr)
+    seed_pvals <- .prepareSeedPvalues(seeds_df, seeds_id_col)
     .log_info("Processing ", length(chromosomes), " chromosome(s): ", paste(chromosomes, collapse = ", "), level = 1)
 
     beta_row_ids_all <- if (is.null(beta_locs_rownames)) {
@@ -3377,6 +3443,7 @@ buildDMRs <- function(
         chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names)
         chr_seed_mask <- seed_chr == chr
         chr_seed_ids <- seed_ids[chr_seed_mask]
+        chr_seed_pvals <- if (is.null(seed_pvals)) NULL else seed_pvals[chr_seed_ids]
         chr_seed_beta_index <- if (use_numeric_sequencing_rows) {
             as.integer(seed_beta_index[chr_seed_mask] - chr_beta_idx[1L] + 1L)
         } else {
@@ -3387,6 +3454,7 @@ buildDMRs <- function(
                 beta_handler = chr_handler,
                 seed_ids = chr_seed_ids,
                 seed_beta_index = chr_seed_beta_index,
+                seed_pvals = chr_seed_pvals,
                 pheno_detection = pheno_detection,
                 group_inds = group_inds,
                 testing_mode_per_group = testing_mode_per_group,
@@ -3445,6 +3513,10 @@ buildDMRs <- function(
     .log_info("Total DMRs identified: ", length(final_dmrs_granges), level = 2)
     final_ord <- order(as.character(GenomicRanges::seqnames(final_dmrs_granges)), GenomicRanges::start(final_dmrs_granges), GenomicRanges::end(final_dmrs_granges))
     final_dmrs_granges <- final_dmrs_granges[final_ord]
+    S4Vectors::mcols(final_dmrs_granges)$qval <- stats::p.adjust(
+        S4Vectors::mcols(final_dmrs_granges)$pval,
+        method = "BH"
+    )
     final_ids <- as.character(S4Vectors::mcols(final_dmrs_granges)$id)
     if (length(final_ids) == length(final_dmrs_granges)) {
         names(final_dmrs_granges) <- make.unique(ifelse(is.na(final_ids) | !nzchar(final_ids), "dmr", final_ids))

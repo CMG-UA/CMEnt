@@ -34,7 +34,7 @@ test_that("findDMPsBSSeq handles HDF5-backed BSseq methylation matrices", {
     dmps <- CMEnt::findDMPsBSSeq(
         bsseq = bs_hdf5,
         samplesheet = pheno,
-        group_col = "Sample_Group",
+        sample_group_col = "Sample_Group",
         id_col = "Sample_ID",
         chr = "all",
         case_group = "case",

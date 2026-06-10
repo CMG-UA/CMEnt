@@ -19,5 +19,51 @@ test_that("annotateDMRsWithGenes matches between sequential and parallel executi
 
     expect_s4_class(sequential, "GRanges")
     expect_s4_class(parallel, "GRanges")
+    expect_true(all(
+        c("delta_beta_promoter", "delta_beta_gene_body") %in%
+            colnames(S4Vectors::mcols(sequential))
+    ))
     expect_identical(as.data.frame(sequential), as.data.frame(parallel))
+})
+
+test_that("feature-specific delta beta uses DMR sites within annotated regions", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100, 500), end = c(300, 700)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    S4Vectors::mcols(dmrs)$sites <- c("cg1,cg2,cg3", "cg4")
+
+    site_locs <- data.frame(
+        chr = "chr1",
+        start = c(110L, 160L, 250L, 600L),
+        end = c(110L, 160L, 250L, 600L),
+        row.names = paste0("cg", 1:4)
+    )
+    annotation_specs <- list(
+        list(
+            delta_column = "delta_beta_promoter",
+            features = GenomicRanges::GRanges("chr1", IRanges::IRanges(100, 175))
+        ),
+        list(
+            delta_column = "delta_beta_gene_body",
+            features = GenomicRanges::GRanges(
+                "chr1",
+                IRanges::IRanges(c(200, 590), c(300, 610))
+            )
+        )
+    )
+    delta_beta <- c(cg1 = 0.2, cg2 = 0.4, cg3 = -0.1, cg4 = 0.8)
+
+    annotated_delta <- CMEnt:::.annotateDMRSiteDeltaBetaByFeature(
+        dmrs = dmrs,
+        annotation_specs = annotation_specs,
+        site_locs = site_locs,
+        site_delta_beta = delta_beta,
+        aggfun = mean,
+        genome = "hg38"
+    )
+
+    expect_equal(annotated_delta$delta_beta_promoter, c(0.3, NA_real_))
+    expect_equal(annotated_delta$delta_beta_gene_body, c(-0.1, 0.8))
 })

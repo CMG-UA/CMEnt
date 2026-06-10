@@ -324,13 +324,13 @@ dmrs <- buildDMRs(
 ### `.score_dmrs`
 **Type:** Logical  
 **Default:** `TRUE`  
-**Description:** Whether to score DMRs based on their classification accuracy using cross-validated SVM. When enabled, each DMR is evaluated for its ability to discriminate between sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `accuracy` value represents how well the DMR's methylation pattern can classify samples into their correct groups.
+**Description:** Whether to add complementary SVM-based discrimination scores to DMRs. When enabled, each DMR is evaluated for its ability to separate sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `score` and `cv_accuracy` values summarize sample-level discriminative strength and should be read alongside DMR `pval`, `qval`, and effect-size columns, not as replacements for them.
 
 **Details:**
 - Uses stratified k-fold cross-validation (default: 5-fold)
 - Number of folds can be controlled with `options(CMEnt.scoring_nfold = 5)`
 - Reproducible fold assignments can be obtained with `set.seed(...)` before calling `scoreDMRs()`
-- Accuracy values range from 0 to 1, where higher values indicate better discriminative power
+- Higher `score` and `cv_accuracy` values indicate stronger discriminative power
 - Requires the `e1071` package for SVM classification
 
 ## Advanced Parameters

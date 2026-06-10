@@ -2,7 +2,7 @@
 % Please edit documentation in R/score_dmrs.R
 \name{scoreDMRs}
 \alias{scoreDMRs}
-\title{score DMRs Based on Classification Score}
+\title{Add Complementary Classification Scores to DMRs}
 \usage{
 scoreDMRs(
   dmrs,
@@ -63,7 +63,8 @@ gap threshold (bp). Default is \code{5000000}.}
 \item{verbose}{Numeric. Logging verbosity level. Default comes from \code{getOption("CMEnt.verbose")}.}
 }
 \value{
-GRanges object with DMRs ordered by score and additional metadata columns:
+GRanges object with DMRs ordered by complementary classification score
+and additional metadata columns:
 \itemize{
 \item score: Margin-sensitive cross-validated classification score for the DMR
 \item cv_accuracy: Raw cross-validated classification accuracy for the DMR
@@ -74,11 +75,13 @@ GRanges object with DMRs ordered by score and additional metadata columns:
 }
 }
 \description{
-scores Differentially Methylated Regions (DMRs) based on their ability to
+Scores Differentially Methylated Regions (DMRs) based on their ability to
 discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 classification. For each DMR, this function performs stratified k-fold cross-prediction
 using an RBF kernel SVM and computes a margin-sensitive classification score based on
-decision values, which serves as a measure of the DMR's discriminative power.
+decision values, which serves as a complementary measure of the DMR's discriminative
+power. Use this score alongside DMR-level \code{pval}, \code{qval}, and effect-size columns
+rather than as a replacement for statistical evidence.
 The scores are then smoothed along the genome using a Gaussian-kNN approach,
 and piecewise-linear segments are detected using the PELT algorithm, expecting a rising->plateau->decreasing pattern.
 Finally, DMRs are assigned to localized blocks based on the smoothed score profiles
@@ -93,8 +96,9 @@ reproducible fold assignments, call \code{set.seed()} before \code{scoreDMRs()}.
 
 The \code{score} combines classification correctness and margin confidence,
 making it more sensitive than plain cross-validated accuracy when many DMRs
-classify perfectly. The \code{cv_accuracy} column stores the raw cross-validated
-accuracy for reference. Blocks are detected from smoothed score profiles and
+classify perfectly. It is a complementary ranking and diagnostic measure,
+especially useful for sample-level separation. The \code{cv_accuracy} column stores
+the raw cross-validated accuracy for reference. Blocks are detected from smoothed score profiles and
 split at large midpoint gaps using the selected \code{block_gap_mode}.
 }
 \examples{

@@ -761,13 +761,15 @@
     dmrs
 }
 
-#' score DMRs Based on Classification Score
+#' Add Complementary Classification Scores to DMRs
 #'
-#' @description scores Differentially Methylated Regions (DMRs) based on their ability to
+#' @description Scores Differentially Methylated Regions (DMRs) based on their ability to
 #' discriminate between sample groups using cross-validated Support Vector Machine (SVM)
 #' classification. For each DMR, this function performs stratified k-fold cross-prediction
 #' using an RBF kernel SVM and computes a margin-sensitive classification score based on
-#' decision values, which serves as a measure of the DMR's discriminative power.
+#' decision values, which serves as a complementary measure of the DMR's discriminative
+#' power. Use this score alongside DMR-level `pval`, `qval`, and effect-size columns
+#' rather than as a replacement for statistical evidence.
 #' The scores are then smoothed along the genome using a Gaussian-kNN approach,
 #' and piecewise-linear segments are detected using the PELT algorithm, expecting a rising->plateau->decreasing pattern.
 #' Finally, DMRs are assigned to localized blocks based on the smoothed score profiles
@@ -796,7 +798,8 @@
 #' @param njobs Integer. Number of parallel jobs used for cross-validated scoring. Default comes from `getOption("CMEnt.njobs")`.
 #' @param verbose Numeric. Logging verbosity level. Default comes from `getOption("CMEnt.verbose")`.
 #'
-#' @return GRanges object with DMRs ordered by score and additional metadata columns:
+#' @return GRanges object with DMRs ordered by complementary classification score
+#' and additional metadata columns:
 #' \itemize{
 #'   \item score: Margin-sensitive cross-validated classification score for the DMR
 #'   \item cv_accuracy: Raw cross-validated classification accuracy for the DMR
@@ -815,8 +818,9 @@
 #'
 #' The `score` combines classification correctness and margin confidence,
 #' making it more sensitive than plain cross-validated accuracy when many DMRs
-#' classify perfectly. The `cv_accuracy` column stores the raw cross-validated
-#' accuracy for reference. Blocks are detected from smoothed score profiles and
+#' classify perfectly. It is a complementary ranking and diagnostic measure,
+#' especially useful for sample-level separation. The `cv_accuracy` column stores
+#' the raw cross-validated accuracy for reference. Blocks are detected from smoothed score profiles and
 #' split at large midpoint gaps using the selected `block_gap_mode`.
 #'
 #' @examples
@@ -916,7 +920,7 @@ scoreDMRs <- function(
     bp_param <- .makeBiocParallelParam(
         njobs,
         n_tasks = length(dmrs_m_values),
-        progressbar = verbose > 0L
+        progressbar = verbose >= 3L
     )
     cv_metrics <- BiocParallel::bplapply(
         dmrs_m_values,

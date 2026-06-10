@@ -72,7 +72,7 @@ print(head(pheno))
 cat(sprintf("Head of DMPs:\n"))
 print(head(dmps))
 
-# The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform the SVM-based scoring of the DMRs.
+# The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform optional SVM-based scoring of the DMRs.
 # It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
 # The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
@@ -80,7 +80,7 @@ beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
 ```
 
 ## DMR Assembly from Seeds
-The `buildDMRs` function is used to build DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. To keep the vignette fast and reproducible during package checks, we load a bundled example result generated with this workflow. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, as well as the delta-beta between the sample groups. The number of DMRs found is reported.
+The `buildDMRs` function is used to build DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. To keep the vignette fast and reproducible during package checks, we load a bundled example result generated with this workflow. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, delta-beta between sample groups, and DMR-level `pval`/`qval` when seed p-values were supplied. The number of DMRs found is reported.
 ```{r build_dmrs}
 pheno[, "case_control"] <- pheno$Sample_Group == "cancer"
 dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
@@ -90,8 +90,9 @@ cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", s
 ```
 
 ## DMR Summary
-The scoring of DMRs is based on a margin-sensitive score derived from the SVM CV prediction strategy, which reflects the predictive power of the DMR in distinguishing between sample groups. The CV accuracy is also included as a complementary metric. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots. The summary table includes the genomic coordinates, number of seeds and sites, delta-beta, score, CV accuracy, score, and block ID of each DMR.
+DMRs are primarily summarized by genomic support, DMR-level `pval`/`qval` when available, and methylation effect size. The optional SVM-derived `score` and `cv_accuracy` columns are complementary measures of how well the DMR methylation pattern discriminates sample groups. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots.
 ```{r dmr_summary}
+dmr_meta <- as.data.frame(mcols(dmrs))
 summary_tbl <- data.frame(
     chr = as.character(seqnames(dmrs)),
     start = start(dmrs),
@@ -100,12 +101,18 @@ summary_tbl <- data.frame(
     seeds_num = mcols(dmrs)$seeds_num,
     sites_num = mcols(dmrs)$sites_num,
     delta_beta = round(mcols(dmrs)$delta_beta, 4),
-    score = round(mcols(dmrs)$score, 4),
-    cv_accuracy = round(mcols(dmrs)$cv_accuracy, 4),
-    block_id = mcols(dmrs)$block_id
+    pval = if ("pval" %in% colnames(dmr_meta)) signif(dmr_meta$pval, 3) else NA_real_,
+    qval = if ("qval" %in% colnames(dmr_meta)) signif(dmr_meta$qval, 3) else NA_real_,
+    score = if ("score" %in% colnames(dmr_meta)) round(dmr_meta$score, 4) else NA_real_,
+    cv_accuracy = if ("cv_accuracy" %in% colnames(dmr_meta)) round(dmr_meta$cv_accuracy, 4) else NA_real_,
+    block_id = if ("block_id" %in% colnames(dmr_meta)) dmr_meta$block_id else NA_character_
 )
-summary_tbl <- summary_tbl[order(summary_tbl$score, decreasing = TRUE), ]
-knitr::kable(head(summary_tbl, 5), caption = "Top 5 scoring DMRs (margin-sensitive score + raw CV accuracy)")
+if (any(is.finite(summary_tbl$qval))) {
+    summary_tbl <- summary_tbl[order(summary_tbl$qval, -abs(summary_tbl$delta_beta), -summary_tbl$score, na.last = TRUE), ]
+} else {
+    summary_tbl <- summary_tbl[order(-abs(summary_tbl$delta_beta), -summary_tbl$score, na.last = TRUE), ]
+}
+knitr::kable(head(summary_tbl, 5), caption = "Top 5 DMRs by statistical evidence/effect size, with SVM score as a complementary measure")
 ```
 
 ## Motif Discovery
@@ -179,7 +186,7 @@ if (annotated_components > 0) {
 
 ### DMR Score Manhattan Plot
 
-A manhattan plot of the DMRs is drawn, showing their scores, produced by the SVM CV prediction strategy,
+A manhattan plot of the DMRs is drawn, showing complementary SVM scores,
 their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the scoring block extension. The DMRs that belong to both promoter and gene body are omitted.
 ```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
 plotDMRsManhattan(
@@ -235,7 +242,7 @@ plotDMR(
 A circos plot consisting of the extracted information from CMEnt is drawn along the genome or a specified region. 
 The information includes:
 
-- The DMRs and their scores (at most 40 DMRs per chromosome, scoring by score, are shown)
+- The DMRs and their complementary SVM scores (at most 40 DMRs per chromosome are shown)
 - Selected beta values of the DMRs (at most 5 sites per DMR, scoring by absolute delta-beta, are shown)
 - The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.

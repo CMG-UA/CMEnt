@@ -12,11 +12,17 @@
 #'   to define promoter region (default: 200)
 #' @param njobs Integer. Number of parallel jobs used to annotate promoter and
 #'   gene-body overlaps (default: `getOption("CMEnt.njobs")`)
+#' @param site_locs Optional data frame or GRanges with site coordinates used to
+#'   compute feature-specific delta beta values.
+#' @param site_delta_beta Optional named numeric vector of per-site delta beta values.
+#' @param aggfun Function used to aggregate per-site delta beta values.
 #'
 #' @return The input Dataframe/GRanges object with additional metadata columns:
 #' \itemize{
 #'   \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
 #'   \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+#'   \item delta_beta_promoter: Aggregated delta beta of DMR sites overlapping promoters, or NA
+#'   \item delta_beta_gene_body: Aggregated delta beta of DMR sites overlapping gene bodies, or NA
 #' }
 #'
 #' @details
@@ -47,7 +53,10 @@
 annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200,
-                                  njobs = getOption("CMEnt.njobs", .defaultNJobs())) {
+                                  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
+                                  site_locs = NULL,
+                                  site_delta_beta = NULL,
+                                  aggfun = stats::median) {
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
@@ -162,11 +171,13 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     annotation_specs <- list(
         list(
             column = "in_promoter_of",
+            delta_column = "delta_beta_promoter",
             features = promoters,
             feature_type = "promoter"
         ),
         list(
             column = "in_gene_body_of",
+            delta_column = "delta_beta_gene_body",
             features = genes,
             feature_type = "gene_body"
         )
@@ -194,9 +205,114 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
+    delta_beta_annotations <- .annotateDMRSiteDeltaBetaByFeature(
+        dmrs = dmrs,
+        annotation_specs = annotation_specs,
+        site_locs = site_locs,
+        site_delta_beta = site_delta_beta,
+        aggfun = aggfun,
+        genome = genome
+    )
+    for (delta_column in names(delta_beta_annotations)) {
+        S4Vectors::mcols(dmrs)[[delta_column]] <- delta_beta_annotations[[delta_column]]
+    }
     .log_success("Gene symbols mapped", level = 2)
     if (dmrs_df_provided) {
         dmrs <- .convertToDataFrame(dmrs)
     }
     dmrs
+}
+
+#' @keywords internal
+#' @noRd
+.annotateDMRSiteDeltaBetaByFeature <- function(dmrs, annotation_specs, site_locs,
+                                               site_delta_beta, aggfun, genome) {
+    out <- stats::setNames(
+        replicate(length(annotation_specs), rep(NA_real_, length(dmrs)), simplify = FALSE),
+        vapply(annotation_specs, `[[`, character(1), "delta_column")
+    )
+    if (length(dmrs) == 0L || is.null(site_locs) || is.null(site_delta_beta)) {
+        return(out)
+    }
+
+    site_names <- if (is.data.frame(site_locs)) {
+        rownames(site_locs)
+    } else {
+        names(site_locs)
+    }
+    site_locs <- .convertToGRanges(site_locs, genome)
+    if (!is.null(site_names) &&
+        length(site_names) == length(site_locs) &&
+        all(!is.na(site_names)) &&
+        all(nzchar(site_names))) {
+        names(site_locs) <- site_names
+    }
+    if (is.null(names(site_locs)) ||
+        anyNA(names(site_locs)) ||
+        any(!nzchar(names(site_locs)))) {
+        return(out)
+    }
+
+    site_delta_beta <- as.numeric(site_delta_beta)
+    if (is.null(names(site_delta_beta))) {
+        names(site_delta_beta) <- names(site_locs)[seq_along(site_delta_beta)]
+    }
+    keep <- names(site_locs) %in% names(site_delta_beta)
+    site_locs <- site_locs[keep]
+    if (length(site_locs) == 0L) {
+        return(out)
+    }
+    site_delta_beta <- site_delta_beta[names(site_locs)]
+
+    mcols_names <- colnames(S4Vectors::mcols(dmrs))
+    if ("sites" %in% mcols_names) {
+        dmr_site_ids <- lapply(as.character(S4Vectors::mcols(dmrs)$sites), .splitCsvValues)
+    } else {
+        site_hits <- GenomicRanges::findOverlaps(dmrs, site_locs, ignore.strand = TRUE)
+        dmr_site_ids <- vector("list", length(dmrs))
+        if (length(site_hits) > 0L) {
+            hits_by_dmr <- split(
+                S4Vectors::subjectHits(site_hits),
+                S4Vectors::queryHits(site_hits)
+            )
+            dmr_site_ids[as.integer(names(hits_by_dmr))] <- lapply(
+                hits_by_dmr,
+                function(i) names(site_locs)[i]
+            )
+        }
+    }
+
+    aggregate_delta <- function(ids) {
+        vals <- site_delta_beta[unique(ids)]
+        vals <- vals[is.finite(vals)]
+        if (length(vals) == 0L) {
+            return(NA_real_)
+        }
+        val <- tryCatch(
+            aggfun(vals, na.rm = TRUE),
+            error = function(e) aggfun(vals)
+        )
+        if (length(val) == 0L || !is.finite(val[1L])) {
+            return(NA_real_)
+        }
+        as.numeric(val[1L])
+    }
+
+    for (spec in annotation_specs) {
+        feature_hits <- GenomicRanges::findOverlaps(
+            site_locs,
+            spec$features,
+            ignore.strand = TRUE
+        )
+        if (length(feature_hits) == 0L) {
+            next
+        }
+        feature_site_ids <- unique(names(site_locs)[S4Vectors::queryHits(feature_hits)])
+        out[[spec$delta_column]] <- vapply(
+            dmr_site_ids,
+            function(ids) aggregate_delta(intersect(ids, feature_site_ids)),
+            numeric(1)
+        )
+    }
+    out
 }

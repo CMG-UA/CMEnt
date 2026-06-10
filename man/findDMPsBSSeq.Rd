@@ -8,7 +8,7 @@ findDMPsBSSeq(
   bsseq,
   samplesheet,
   samplesheet_sep = "\\t",
-  group_col = "Sample_Group",
+  sample_group_col = "Sample_Group",
   id_col = "Sample_ID",
   chr = "auto",
   case_group = NULL,
@@ -24,13 +24,13 @@ findDMPsBSSeq(
 
 \item{samplesheet_sep}{The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").}
 
-\item{group_col}{The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".}
+\item{sample_group_col}{The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".}
 
 \item{id_col}{The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".}
 
 \item{chr}{A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".}
 
-\item{case_group}{The specific group label in the group_col to treat as the "case" group for comparison. If NULL, the first unique group in group_col will be used as the case group. Default is NULL.}
+\item{case_group}{The specific group label in the sample_group_col to treat as the "case" group for comparison. If NULL, the first unique group in sample_group_col will be used as the case group. Default is NULL.}
 
 \item{covariates}{A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).}
 
@@ -61,7 +61,7 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
     dmps <- findDMPsBSSeq(
        bsseq = BS.cancer.ex,
        samplesheet = samplesheet,
-       group_col = "Sample_Group",
+       sample_group_col = "Sample_Group",
        id_col = "Sample_ID",
        case_group = "Condition2",
        covariates = "Age",

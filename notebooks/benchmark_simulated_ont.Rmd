@@ -11,7 +11,9 @@ output:
 ```{r, include=FALSE}
 knitr::opts_chunk$set(
     results = "asis",
+    cache = TRUE,
     echo = TRUE,
+    dev = "pdf",
     warning = FALSE,
     message = FALSE,
     fig.width = 8,
@@ -238,7 +240,7 @@ if (!file.exists(seeds_file)) {
     seeds <- findDMPsBSSeq(
         bsseq = ont_sim_bs,
         samplesheet = pheno,
-        group_col = "Sample_Group",
+        sample_group_col = "Sample_Group",
         id_col = "Sample_ID",
         case_group = "Condition2",
         covariates = NULL,

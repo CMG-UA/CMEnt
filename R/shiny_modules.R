@@ -109,7 +109,8 @@ NULL
             display_cols <- intersect(
                 c("id", "chr", "start", "end", "width", "sites_num", "seeds_num",
                   "delta_beta", "cases_beta", "controls_beta", "score", "block_id",
-                  "in_promoter_of", "in_gene_body_of"),
+                  "in_promoter_of", "in_gene_body_of", "delta_beta_promoter",
+                  "delta_beta_gene_body"),
                 colnames(dmrs_df)
             )
             DT::datatable(

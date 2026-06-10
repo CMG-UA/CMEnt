@@ -8,7 +8,7 @@ findDMPsArray(
   beta,
   samplesheet,
   samplesheet_sep = "\\t",
-  group_col = "Sample_Group",
+  sample_group_col = "Sample_Group",
   id_col = "Sample_ID",
   array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
   genome = c("hg19", "hg38", "hs1", "mm10", "mm39"),
@@ -29,7 +29,7 @@ are also accepted and converted to beta values.}
 
 \item{samplesheet_sep}{Separator for samplesheet files. Default is tab.}
 
-\item{group_col}{Column in \code{samplesheet} containing group labels.}
+\item{sample_group_col}{Column in \code{samplesheet} containing group labels.}
 
 \item{id_col}{Column in \code{samplesheet} containing sample IDs. row.names can also be used by specifying \code{id_col = "row.names"}.}
 
@@ -49,7 +49,7 @@ files.}
 chr1-chr22 plus chrX and chrY.}
 
 \item{case_group}{Group label to treat as case. If \code{NULL}, the first group in
-\code{group_col} is used.}
+\code{sample_group_col} is used.}
 
 \item{covariates}{Optional covariate column names, or a comma-separated
 string, to include in the limma model.}

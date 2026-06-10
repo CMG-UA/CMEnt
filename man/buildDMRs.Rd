@@ -51,7 +51,9 @@ and it will be converted to a tabix-indexed beta file internall,
 with the locations separately saved and queried as a DelayedDataFrame. object.}
 
 \item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
-in a format like the one produced by dmpFinder.}
+in a format like the one produced by dmpFinder. If a \code{pval}, \code{P.Value}, \code{p.value},
+or \code{p_value} column is present, DMR-level \code{pval} is computed from supporting
+seed p-values using Stouffer's method and \code{qval} is FDR-corrected globally.}
 
 \item{pheno}{Character. Path to the phenotype TSV file or the phenotype dataframe,
 containing sample information including group labels and optionally covariates.}
@@ -130,7 +132,8 @@ If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
-\item{.score_dmrs}{Logical. Whether to score DMRs based on cross-validated SVM predictions. Default is TRUE.}
+\item{.score_dmrs}{Logical. Whether to add complementary cross-validated
+SVM discrimination scores to DMRs. Default is TRUE.}
 
 \item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}
 
@@ -147,7 +150,8 @@ Default is retrieved from option "CMEnt.verbose".}
 \item{.load_debug}{Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.}
 }
 \value{
-Data frame of identified DMRs.
+GRanges object of identified DMRs with metadata including DMR-level
+\code{pval} and FDR-adjusted \code{qval} when seed p-values are available.
 }
 \description{
 This function assembles DMRs from a given set of seeds and a beta value file. It operates in three main stages:

@@ -9,7 +9,10 @@ annotateDMRsWithGenes(
   genome = "hg38",
   promoter_upstream = 2000,
   promoter_downstream = 200,
-  njobs = getOption("CMEnt.njobs", .defaultNJobs())
+  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
+  site_locs = NULL,
+  site_delta_beta = NULL,
+  aggfun = stats::median
 )
 }
 \arguments{
@@ -25,12 +28,21 @@ to define promoter region (default: 200)}
 
 \item{njobs}{Integer. Number of parallel jobs used to annotate promoter and
 gene-body overlaps (default: \code{getOption("CMEnt.njobs")})}
+
+\item{site_locs}{Optional data frame or GRanges with site coordinates used to
+compute feature-specific delta beta values.}
+
+\item{site_delta_beta}{Optional named numeric vector of per-site delta beta values.}
+
+\item{aggfun}{Function used to aggregate per-site delta beta values.}
 }
 \value{
 The input Dataframe/GRanges object with additional metadata columns:
 \itemize{
 \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
 \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+\item delta_beta_promoter: Aggregated delta beta of DMR sites overlapping promoters, or NA
+\item delta_beta_gene_body: Aggregated delta beta of DMR sites overlapping gene bodies, or NA
 }
 }
 \description{
