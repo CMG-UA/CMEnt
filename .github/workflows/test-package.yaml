@@ -38,7 +38,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Show session info
         shell: Rscript {0}
@@ -68,7 +68,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run BiocCheck
         id: bioccheck
@@ -139,7 +139,7 @@ jobs:
           # Install test dependencies
           Rscript -e 'install.packages(c("covr", "testthat"))'
       
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run coverage
         shell: Rscript {0}
         run: |
