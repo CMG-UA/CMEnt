@@ -500,6 +500,31 @@ test_that("motif similarity tolerates DMRs without valid PWMs", {
     expect_equal(sim[2, 1], 0)
 })
 
+test_that("comparePWMToJaspar gracefully handles BiocFileCache duplicate-entry errors", {
+    pwm <- matrix(
+        rep(c(1, 0, 0, 0), 12),
+        nrow = 4,
+        dimnames = list(Biostrings::DNA_BASES, NULL)
+    )
+
+    testthat::local_mocked_bindings(
+        .readBiocFileCacheRDS = function(...) NULL,
+        .assertDependencyRequirements = function(...) invisible(TRUE),
+        getExportedValue = function(...) function() {
+            stop("not all 'rnames' found or unique.")
+        },
+        .log_warn = function(...) invisible(NULL),
+        .package = "CMEnt"
+    )
+
+    out <- comparePWMToJaspar(list(pwm))
+
+    expect_s3_class(out, "data.frame")
+    expect_equal(colnames(out), c("jaspar_names", "jaspar_ids", "jaspar_corr"))
+    expect_equal(nrow(out), 1L)
+    expect_true(all(is.na(out[1, ])))
+})
+
 test_that("getBackgroundArrayMotif uses start-anchored site windows for array probes", {
     skip_if_missing_motif_extraction_deps(array = "450K", genome = "hg19")
 

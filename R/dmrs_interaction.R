@@ -118,6 +118,12 @@
 }
 
 comparePWMToJaspar <- function(pwm_queries) {
+    empty_jaspar_matches <- data.frame(
+        jaspar_names = rep(NA_character_, length(pwm_queries)),
+        jaspar_ids = rep(NA_character_, length(pwm_queries)),
+        jaspar_corr = rep(NA_character_, length(pwm_queries)),
+        stringsAsFactors = FALSE
+    )
     cache <- getOption(
         "CMEnt.jaspar_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
@@ -134,15 +140,29 @@ comparePWMToJaspar <- function(pwm_queries) {
             requirements = .jasparDependencyRequirements(),
             context = "comparePWMToJaspar()"
         )
-        .log_info("Downloading JASPAR PWMs...", level = 2)
-        jaspar_pkg <- paste0("JASPAR", jaspar_version)
-        db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
-        opts <- list()
-        opts[["tax_group"]] <- tax_group
-        vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
-        vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
-        .saveBiocFileCacheRDS(vertebrate_pwms, cache, cache_key)
-        jaspar_pwms <- vertebrate_pwms
+        jaspar_pwms <- tryCatch({
+            .log_info("Downloading JASPAR PWMs...", level = 2)
+            jaspar_pkg <- paste0("JASPAR", jaspar_version)
+            db <- getExportedValue(jaspar_pkg, jaspar_pkg)()@db
+            opts <- list()
+            opts[["tax_group"]] <- tax_group
+            vertebrate_pfms <- TFBSTools::getMatrixSet(db, opts)
+            vertebrate_pwms <- TFBSTools::toPWM(vertebrate_pfms, type = "prob")
+            .saveBiocFileCacheRDS(vertebrate_pwms, cache, cache_key)
+            vertebrate_pwms
+        }, error = function(e) {
+            if (grepl("not all 'rnames' found or unique", conditionMessage(e), fixed = TRUE)) {
+                .log_warn(
+                    "JASPAR motif lookup skipped due to a BiocFileCache cache-key conflict: ",
+                    conditionMessage(e)
+                )
+                return(NULL)
+            }
+            stop(e)
+        })
+        if (is.null(jaspar_pwms)) {
+            return(empty_jaspar_matches)
+        }
     }
     jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
