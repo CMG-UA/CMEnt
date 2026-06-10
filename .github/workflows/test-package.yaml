@@ -52,7 +52,8 @@ jobs:
           error-on: '"warning"'
           upload-results: always
           upload-snapshots: always
-          build_args: 'c("--no-manual", "--no-tests", "--compact-vignettes=gs+qpdf", "--output=/tmp")'
+          args:  'c("--no-tests")'
+          build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf", "--output=/tmp")'
 
   bioccheck:
     name: BiocCheck
