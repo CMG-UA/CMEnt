@@ -31,8 +31,7 @@ hematopoietic stem and progenitor cell controls from healthy bone marrow.
 The original study, Hu et al. 2019
 ([doi:10.21037/atm.2019.11.122](https://dx.doi.org/10.21037/atm.2019.11.122)),
 used GSE63409 together with an expression dataset to identify AML-relevant methylation/expression
-signals, immune and differentiation pathways, and candidate prognostic genes. Because this dataset does not contain a region-level ground truth, the notebook focuses on
-biological interpretation of CMEnt regions rather than comparisons with other DMR callers.
+signals, immune and differentiation pathways, and candidate prognostic genes.
 
 - CMEnt DMR size, promoter/gene-body effect size, and CpG context
 - AML marker and pathway DMR signals
