@@ -26,8 +26,8 @@ changes.
 ## Features
 
 - Correlation-based model-free region expansion from genomic seeds
-- DMR-level Stouffer meta-p-values and FDR q-values from supporting
-  seed p-values
+- DMR-level Stouffer meta-p-values and FDR q-values from supporting seed
+  p-values
 - Optional SVM-based DMR scoring as a complementary discriminative
   ranking measure
 - Motif discovery within DMRs
@@ -53,8 +53,8 @@ changes.
   identification.
 - When seed p-values are provided, DMR `pval`/`qval` are the primary
   statistical evidence columns. The optional SVM `score` is useful as a
-  complementary measure of sample-level discriminative strength, not as a
-  replacement for statistical significance and effect size.
+  complementary measure of sample-level discriminative strength, not as
+  a replacement for statistical significance and effect size.
 
 ## Installation
 
@@ -69,17 +69,17 @@ Another option is to use the Docker image available on DockerHub, which
 contains a pre-installed version of CMEnt along with all dependencies.
 You can pull the image using the following command:
 
-    docker pull vlemonidis/cment:latest
+    docker pull ghcr.io/cmg-ua/cment/cment:latest
 
 and run it using:
 
-    docker run --rm vlemonidis/cment:latest --help
+    docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
 
 To launch the packaged example output in `CMEntViewer`, publish the
 Shiny port from the container and bind the app to `0.0.0.0`:
 
     docker run --rm -p 3838:3838 \
-      vlemonidis/cment:latest \
+      ghcr.io/cmg-ua/cment/cment:latest \
       launchCMEntViewer \
       --output_prefix /CMEnt/inst/extdata/example_output \
       --launch_browser FALSE \
@@ -99,7 +99,7 @@ re-installing on-demand packages and cached annotations on every run:
       -v "$PWD:/work" -w /work \
       -v cment-r-lib:/usr/local/lib/R/site-library \
       -v cment-r-cache:/home/root/.cache/R \
-      vlemonidis/cment:latest \
+      ghcr.io/cmg-ua/cment/cment:latest \
       launchCMEntViewer \
       --output_prefix /work/path/to/output_prefix \
       --launch_browser FALSE \

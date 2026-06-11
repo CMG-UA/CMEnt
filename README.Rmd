@@ -58,17 +58,17 @@ devtools::install_github("CMG-UA/CMEnt")
 
 Another option is to use the Docker image available on DockerHub, which contains a pre-installed version of CMEnt along with all dependencies. You can pull the image using the following command:
 ```bash
-docker pull vlemonidis/cment:latest
+docker pull ghcr.io/cmg-ua/cment/cment:latest
 ```
 and run it using:
 ```bash
-docker run --rm vlemonidis/cment:latest --help
+docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
 ```
 
 To launch the packaged example output in `CMEntViewer`, publish the Shiny port from the container and bind the app to `0.0.0.0`:
 ```bash
 docker run --rm -p 3838:3838 \
-  vlemonidis/cment:latest \
+  ghcr.io/cmg-ua/cment/cment:latest \
   launchCMEntViewer \
   --output_prefix /CMEnt/inst/extdata/example_output \
   --launch_browser FALSE \
@@ -87,7 +87,7 @@ docker run --rm -p 3838:3838 \
   -v "$PWD:/work" -w /work \
   -v cment-r-lib:/usr/local/lib/R/site-library \
   -v cment-r-cache:/home/root/.cache/R \
-  vlemonidis/cment:latest \
+  ghcr.io/cmg-ua/cment/cment:latest \
   launchCMEntViewer \
   --output_prefix /work/path/to/output_prefix \
   --launch_browser FALSE \
