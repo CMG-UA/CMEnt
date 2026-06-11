@@ -49,8 +49,7 @@ CMEnt is an R package for identifying Differentially Methylated Regions (DMRs) f
 
 ## Installation
 
-You can install the development version of CMEnt from GitHub. Currently the repository is private,
-so you need to use the organization read-only access authentication key:
+You can install the development version of CMEnt from GitHub.
 ```{r eval=FALSE}
 # install.packages("devtools") # nolint
 devtools::install_github("CMG-UA/CMEnt")

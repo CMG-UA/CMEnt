@@ -58,9 +58,7 @@ changes.
 
 ## Installation
 
-You can install the development version of CMEnt from GitHub. Currently
-the repository is private, so you need to use the organization read-only
-access authentication key:
+You can install the development version of CMEnt from GitHub.
 
     # install.packages("devtools") # nolint
     devtools::install_github("CMG-UA/CMEnt")
