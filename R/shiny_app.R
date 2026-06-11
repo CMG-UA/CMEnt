@@ -99,7 +99,7 @@ launchCMEntViewer <- function(
     }
 
     file_size <- file_info$size
-    if (isTRUE(is.finite(file_size) && file_size <= 1)) {
+    if (isTRUE(is.finite(file_size) && file_size <= 2)) {
         .log_info("Loaded empty ", label, " cache from ", path, ".", level = 1)
         return(data.frame())
     }

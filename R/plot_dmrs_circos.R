@@ -2359,6 +2359,7 @@ plotAutoDMRsCircos <- function(dmrs,
         components = interaction_state$components
     )
     .log_info("Automatically selected Circos regions (", method, "): ", .formatCircosRegionSelection(region_df), level = 2)
+    selected_region_df <- region_df[, c("chr", "start", "end"), drop = FALSE]
 
     plotDMRsCircos(
         dmrs = dmrs_for_plot,
@@ -2373,12 +2374,12 @@ plotAutoDMRsCircos <- function(dmrs,
         motif_site_flank_size = motif_site_flank_size,
         min_component_size = min_component_size,
         chromosomes = chromosomes,
-        region = region_df,
+        region = selected_region_df,
         query_components_with_jaspar = query_components_with_jaspar,
         ...
     )
 
-    invisible(region_df)
+    invisible(selected_region_df)
 }
 
 .getCytobandData <- function(genome) {

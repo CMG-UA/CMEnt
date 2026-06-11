@@ -55,12 +55,41 @@ skip_if_missing_jaspar <- function(version = getOption("CMEnt.jaspar_version", 2
 }
 
 
+skip_if_experimenthub_unavailable <- function() {
+    skip_if_not_installed("ExperimentHub")
+    ok <- tryCatch(
+        {
+            suppressPackageStartupMessages(suppressMessages(ExperimentHub::ExperimentHub()))
+            TRUE
+        },
+        error = function(e) {
+            skip(paste("ExperimentHub is unavailable:", conditionMessage(e)))
+        }
+    )
+    invisible(ok)
+}
+
+
+.skip_if_example_input_unavailable <- function(expr) {
+    tryCatch(
+        expr,
+        error = function(e) {
+            msg <- conditionMessage(e)
+            if (grepl("ExperimentHub|AnnotationHub|HTTP|Hub", msg)) {
+                skip(paste("Example input data is unavailable:", msg))
+            }
+            stop(e)
+        }
+    )
+}
+
+
 loadExampleInputDataChr5And11 <- function(...) {
     resources <- unlist(list(...), use.names = FALSE)
     if ("dmps" %in% resources) {
         skip_if_missing_array_annotation(array = "450K", genome = "hg19")
     }
-    values <- CMEnt::loadExampleInputDataChr5And11(...)
+    values <- .skip_if_example_input_unavailable(CMEnt::loadExampleInputDataChr5And11(...))
     if (length(resources) == 1L) {
         values <- stats::setNames(list(values), resources)
     }
@@ -74,7 +103,7 @@ loadExampleInputDataChr21And22 <- function(...) {
     if ("dmps" %in% resources) {
         skip_if_missing_array_annotation(array = "450K", genome = "hg19")
     }
-    values <- CMEnt::loadExampleInputDataChr21And22(...)
+    values <- .skip_if_example_input_unavailable(CMEnt::loadExampleInputDataChr21And22(...))
     if (length(resources) == 1L) {
         values <- stats::setNames(list(values), resources)
     }
@@ -88,7 +117,7 @@ loadExampleInputData <- function(...) {
     if ("dmps" %in% resources) {
         skip_if_missing_array_annotation(array = "450K", genome = "hg19")
     }
-    values <- CMEnt::loadExampleInputData(...)
+    values <- .skip_if_example_input_unavailable(CMEnt::loadExampleInputData(...))
     if (length(resources) == 1L) {
         values <- stats::setNames(list(values), resources)
     }

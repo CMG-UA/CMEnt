@@ -1,5 +1,5 @@
 test_that("example input loaders assign into the caller environment", {
-    skip_if_not_installed("ExperimentHub")
+    skip_if_experimenthub_unavailable()
 
     direct_env <- new.env(parent = baseenv())
     evalq({
