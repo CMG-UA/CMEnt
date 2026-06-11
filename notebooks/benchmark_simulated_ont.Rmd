@@ -975,6 +975,37 @@ comparison_stats$Method <- as.character(comparison_stats$Method)
 knitr::kable(comparison_stats, digits = 2, caption = "Basic DMR Statistics")
 ```
 
+### DMR Count and Coverage Comparison
+
+```{r, fig.width=8, fig.height=3}
+viz_data <- comparison_stats |>
+    dplyr::select(Method, Number.of.DMRs, Total.Coverage.bp) |>
+    tidyr::pivot_longer(
+        cols = c(Number.of.DMRs, Total.Coverage.bp),
+        names_to = "Metric", values_to = "Value"
+    )
+
+viz_data$Metric <- ifelse(viz_data$Metric == "Number.of.DMRs",
+    "Number of DMRs",
+    "Total Coverage (bp)"
+)
+
+p1 <- ggplot(viz_data, aes(x = Method, y = Value, fill = Method)) +
+    geom_bar(stat = "identity") +
+    facet_wrap(~Metric, scales = "free_y") +
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none",
+        panel.grid.major.x = element_blank()
+    ) +
+    labs(
+        title = "DMR Detection: Count and Coverage Comparison",
+        y = "Value", x = ""
+    )
+
+print(p1)
+```
 ## Ground-Truth Evaluation
 
 ```{r}
