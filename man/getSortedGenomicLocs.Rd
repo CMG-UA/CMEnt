@@ -36,9 +36,9 @@ The function caches the results.
 locs_450k <- getSortedGenomicLocs("450K")
 
 # Get sorted locations for EPIC array with hg38
-locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
+# locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
 
 # Get sorted locations for EPICv2 array
-locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
+# locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 
 }

@@ -29,7 +29,7 @@ plotDMRs(
 
 \item{top_n}{Integer. Number of top DMRs to plot when dmr_indices is NULL (default: 4).}
 
-\item{score_by}{Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta" or the complementary SVM "score" (default: "delta_beta").}
+\item{score_by}{Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta" or "score" (default: "delta_beta").}
 
 \item{beta}{BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.}
 

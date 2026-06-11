@@ -52,9 +52,9 @@ through latent Gaussian fields.
 
 For coverage, each site \code{i} receives a Poisson mean
 \code{lambda_i = mean(C_ij | C_ij > 0)}, with a fallback of 1. A chromosome-local
-latent Gaussian field \code{Z^C} is converted to uniforms by \code{Phi(Z^C_i)}
-and then to coverage counts by \code{qpois(Phi(Z^C_i), lambda_i)}, with a lower
-bound of 1 for synthetic samples.
+latent Gaussian field \code{Z^C} is converted to uniforms by \code{Phi(Z^C_i)} and then
+to coverage counts by \code{qpois(Phi(Z^C_i), lambda_i)}, with a lower bound of 1
+for synthetic samples.
 
 For methylation, covered observations are smoothed as
 \code{p_ij = (M_ij + 0.5) / (C_ij + 1)}. The site mean is estimated with the same
@@ -68,7 +68,7 @@ over-dispersion. This gives \code{alpha_i = p_i * kappa_i} and
 Local correlation is represented by an exponential Gaussian copula. For
 adjacent sites separated by gap \code{g}, the latent correlation is
 \code{phi = exp(-g / ell)}, so within each chromosome
-\code{Z_i = phi_i * Z_{i-1} + sqrt(1 - phi_i^2) * epsilon_i}. Separate length
+\verb{Z_i = phi_i * Z_\{i-1\} + sqrt(1 - phi_i^2) * epsilon_i}. Separate length
 scales \code{ell} are estimated for coverage from adjacent-site correlations of
 \code{log1p(C)} and for methylation from adjacent-site correlations of
 \code{qlogis(p_ij)}.
@@ -81,9 +81,9 @@ attenuation caused by the marginal sampling steps.
 
 Final synthetic samples are generated as
 \code{C_i ~ Poisson(lambda_i)}, \code{theta_i ~ Beta(alpha_i, beta_i)}, and
-\code{M_i ~ Binomial(C_i, theta_i)}, with both \code{C_i} and \code{theta_i}
-driven by their calibrated chromosome-local latent fields. The returned object
-combines the retained original sites and samples with the synthetic samples.
+\code{M_i ~ Binomial(C_i, theta_i)}, with both \code{C_i} and \code{theta_i} driven by their
+calibrated chromosome-local latent fields. The returned object combines the
+retained original sites and samples with the synthetic samples.
 }
 \examples{
 if (requireNamespace("bsseqData", quietly = TRUE)) {

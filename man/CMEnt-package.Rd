@@ -61,6 +61,7 @@ The package supports methylation data from multiple platforms:
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://cmg-ua.github.io/CMEnt/}
   \item \url{https://github.com/CMG-UA/CMEnt}
   \item Report bugs at \url{https://github.com/CMG-UA/CMEnt/issues}
 }

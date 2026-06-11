@@ -134,24 +134,24 @@ counts are constructed first, then the same simulation mechanism is applied.
 }
 \details{
 All inputs are first represented as methylated counts \code{M} and coverage
-counts \code{C}, with beta values estimated as \code{(M + 0.5) / (C + 1)}.
-Non-BSseq beta matrices are converted to pseudo-counts with fixed coverage 100.
-If \code{covariates} are supplied, their linear effects are removed on the
-logit methylation scale while preserving each site's mean signal.
+counts \code{C}, with beta values estimated as \code{(M + 0.5) / (C + 1)}. Non-BSseq
+beta matrices are converted to pseudo-counts with fixed coverage 100. If
+\code{covariates} are supplied, their linear effects are removed on the logit
+methylation scale while preserving each site's mean signal.
 
 Candidate regions are contiguous genomic site segments: adjacent sites remain
 in the same segment when they are on the same chromosome and no more than
 \code{max_gap} bp apart. Eligible segments have between \code{min_sites} and
-\code{max_sites} sites. Segment sampling is mildly weighted toward regions
-whose median methylation is near 0.5, reducing floor and ceiling effects.
+\code{max_sites} sites. Segment sampling is mildly weighted toward regions whose
+median methylation is near 0.5, reducing floor and ceiling effects.
 
 For each selected DMR, a smooth regional effect profile is evaluated over the
 selected positions after expanding the segment by \code{flank_fraction} on both
-sides. With center \code{c}, expanded width \code{W}, and
-\code{d = profile_degree}, the site weight is
-\code{w_i = (1 - min(|pos_i - c| / (W / 2), 1)^d)^d}. A signed maximum effect
-is then drawn as \code{s * delta_max * w_i}, where \code{s} is chosen as hyper-
-or hypomethylating and is flipped when needed to avoid the beta-scale boundary.
+sides. With center \code{c}, expanded width \code{W}, and \code{d = profile_degree}, the
+site weight is
+\verb{w_i = (1 - min(|pos_i - c| / (W / 2), 1)^d)^d}. A signed maximum effect is
+then drawn as \code{s * delta_max * w_i}, where \code{s} is chosen as hyper- or
+hypomethylating and is flipped when needed to avoid the beta-scale boundary.
 
 Case-sample probabilities are shifted through the logit scale. For baseline
 probability \code{p_i}, intended beta-scale shift \code{a_i}, and correlated

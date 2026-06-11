@@ -25,11 +25,17 @@ plotDMRsCircos(
   region = NULL,
   query_components_with_jaspar = TRUE,
   unmatched_interaction_color = "#B3B3B3",
+  group_colors = NULL,
+  low_beta_color = "#2b83ba",
+  mid_beta_color = "#f7f7f7",
+  high_beta_color = "#d7191c",
+  neg_delta_color = "#055709",
+  zero_delta_color = "#f0ec10",
+  pos_delta_color = "#801414",
   legend_width_ratio = 0.34,
   degenerate_resolution = 1e+06,
   output_file = NULL,
-  verbose = NULL,
-  ...
+  verbose = NULL
 )
 }
 \arguments{
@@ -77,6 +83,20 @@ before plotting (default: \code{TRUE}). Set to \code{FALSE} to keep link computa
 \item{unmatched_interaction_color}{Character. Color used for interaction components without JASPAR matches.
 These links are shown but omitted from the interaction legend (default: \code{"#B3B3B3"}).}
 
+\item{group_colors}{Named character vector of colors for sample groups labels in the beta values track (names should match unique values in \code{pheno[[sample_group_col]]}). If not provided, default colors will be used.}
+
+\item{low_beta_color}{Character. Color for low beta values in the heatmap (default: "#2b83ba").}
+
+\item{mid_beta_color}{Character. Color for mid beta values in the heatmap (default: "#f7f7f7").}
+
+\item{high_beta_color}{Character. Color for high beta values in the heatmap (default: "#d7191c").}
+
+\item{neg_delta_color}{Character. Color for negative delta beta values in the DMR arcs (default: "#055709").}
+
+\item{zero_delta_color}{Character. Color for zero delta beta values in the DMR arcs (default: "#f7f7f7").}
+
+\item{pos_delta_color}{Character. Color for positive delta beta values in the DMR arcs (default: "#801414").}
+
 \item{legend_width_ratio}{Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).}
 
 \item{degenerate_resolution}{Integer. Resolution in base pairs for simplifying narrow glyphs:
@@ -86,8 +106,6 @@ are drawn as lines instead of rectangles below this span (default: 1e6).}
 \item{output_file}{Character or NULL. Optional PDF path for the plot.}
 
 \item{verbose}{Numeric. Optional verbosity override.}
-
-\item{...}{Additional arguments (currently unused).}
 }
 \value{
 \code{NULL} invisibly after drawing the plot.
