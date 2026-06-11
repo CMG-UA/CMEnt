@@ -622,7 +622,7 @@ launchCMEntViewerCLI <- function(args) {
 
 
 
-CMEnt:::.runCMEntCLI(
+.runCMEntCLI(
     cli_args = commandArgs(trailingOnly = TRUE),
     script_name = commandArgs(FALSE)[1]
 )
