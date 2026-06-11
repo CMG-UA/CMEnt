@@ -92,7 +92,13 @@ launchCMEntViewer <- function(
         return(NULL)
     }
 
-    file_size <- file.info(path)$size
+    file_info <- file.info(path)
+    if (isTRUE(file_info$isdir)) {
+        .log_warn("Failed to load ", label, ": path is a directory.", level = 1)
+        return(NULL)
+    }
+
+    file_size <- file_info$size
     if (isTRUE(is.finite(file_size) && file_size <= 1)) {
         .log_info("Loaded empty ", label, " cache from ", path, ".", level = 1)
         return(data.frame())

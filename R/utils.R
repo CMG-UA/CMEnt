@@ -844,11 +844,16 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     renaming <- c("chr", "start")
     names(renaming) <- c(chrom_col, start_col)
     if (is.null(output_h5file)) {
+        temp_cache <- is.null(output_dir)
         output_dir <- .getTabixCacheDir(output_dir)
         if (is.null(hash)) {
             hash <- .getFileHash(input_tabix)
         }
-        output_h5file <- file.path(output_dir, paste0("bed_locations_", hash, ".h5"))
+        output_h5file <- if (temp_cache) {
+            tempfile(paste0("bed_locations_", hash, "_"), tmpdir = output_dir, fileext = ".h5")
+        } else {
+            file.path(output_dir, paste0("bed_locations_", hash, ".h5"))
+        }
     }
     if (!use_id_as_rownames) {
         sorted_locs <- getRegistry(

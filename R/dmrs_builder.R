@@ -1824,6 +1824,8 @@
 
         # Compute correlations (fully vectorized)
         cors <- sum_xy / denom
+        zero_variance_cor <- g_mask & is.finite(sum_x2) & is.finite(sum_y2) &
+            (sum_x2 <= .Machine$double.eps | sum_y2 <= .Machine$double.eps)
 
         # Compute degrees of freedom (vectorized)
         # Count non-NA pairs for each row
@@ -1835,7 +1837,6 @@
         g_reasons[low_df] <- ifelse(g_reasons[low_df] == "", "df<1", g_reasons[low_df])
         g_mask[low_df] <- FALSE
 
-        zero_variance_cor <- is.na(cors) & !is.na(denom) & denom == 0 & g_mask
         cors[zero_variance_cor] <- 1
 
         na_r <- is.na(cors) & g_mask
