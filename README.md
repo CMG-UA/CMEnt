@@ -131,7 +131,7 @@ If you use CMEnt in your research, please cite:
 
         To cite package 'CMEnt' in publications use:
 
-          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.0.
+          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.1.
           University of Antwerp, Antwerp, Belgium.
 
         A BibTeX entry for LaTeX users is:
@@ -140,7 +140,7 @@ If you use CMEnt in your research, please cite:
             title = {From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement},
             author = {Vasileios Lemonidis, Ken op de Beeck, Joris R Vermeesch, Timon Vandamme, Guy Van Camp, Joe Ibrahim},
             year = {2026},
-            note = {R package version 0.99.0},
+            note = {R package version 0.99.1},
             url = {https://github.com/CMG-UA/CMEnt},
           }
 
