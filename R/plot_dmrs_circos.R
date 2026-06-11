@@ -573,10 +573,33 @@
     )
 }
 
+.getGroupColors <- function(groups, group_colors = NULL) {
+    if (is.null(group_colors)) {
+        group_colors <- colorspace::qualitative_hcl(length(unique(groups)), palette = "Pastel 1")
+        names(group_colors) <- unique(groups)
+    } else {
+        missing_groups <- setdiff(unique(groups), names(group_colors))
+        if (length(missing_groups) > 0) {
+            warning("The following sample groups are missing from group_colors and will be assigned default colors: ", paste(missing_groups, collapse = ", "))
+            new_colors <- colorspace::qualitative_hcl(length(missing_groups), palette = "Pastel 1")
+            names(new_colors) <- missing_groups
+            group_colors <<- c(group_colors, new_colors)
+        }
+    }
+    group_colors[groups]
+}
+
 .plotDMRsCircosFromPreparedState <- function(prepared_state,
                                              chromosomes = NULL,
                                              region = NULL,
                                              unmatched_interaction_color = "#B3B3B3",
+                                             group_colors = NULL,
+                                             low_beta_color = "#2b83ba",
+                                             mid_beta_color = "#f7f7f7",
+                                             high_beta_color = "#d7191c",
+                                             neg_delta_color = "#055709",
+                                             zero_delta_color = "#f7f7f7",
+                                             pos_delta_color = "#801414",
                                              legend_width_ratio = 0.34,
                                              degenerate_resolution = 1e6,
                                              output_file = NULL,
@@ -701,11 +724,11 @@
             vals_range <- range(valid_vals, na.rm = TRUE)
             if (vals_range[1] <= 0.5 && vals_range[2] >= 0.5) {
                 q <- sort(c(q[1], 0.5, q[2]))
-                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7", "#d7191c"))
+                col_fun <- circlize::colorRamp2(q, c(low_beta_color, mid_beta_color, high_beta_color))
             } else if (vals_range[2] < 0.5) {
-                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7"))
+                col_fun <- circlize::colorRamp2(q, c(low_beta_color, mid_beta_color))
             } else {
-                col_fun <- circlize::colorRamp2(q, c("#f7f7f7", "#d7191c"))
+                col_fun <- circlize::colorRamp2(q, c(mid_beta_color, high_beta_color))
             }
             heatmap_height <- 0.3
             heatmap_df_plot <- data.frame(
@@ -734,8 +757,8 @@
                     groups <- as.character(reduced_pheno[[prepared_state$sample_group_col]])
                     group_runs <- rle(groups)
                     unique_groups <- unique(group_runs$values)
-                    group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
-                    names(group_colors) <- unique_groups
+
+                    group_colors <- .getGroupColors(unique_groups, group_colors)
                     y_limits <- circlize::CELL_META$cell.ylim
                     n_samples <- sum(group_runs$lengths)
                     if (n_samples <= 0) {
@@ -812,7 +835,7 @@
                 pos_max <- max(1e-6, abs(neg_min) * 0.05)
             }
             q <- c(neg_min, 0, pos_max)
-            col_fun <- circlize::colorRamp2(q, c("#055709", "white", "#801414"))
+            col_fun <- circlize::colorRamp2(q, c(neg_delta_color, zero_delta_color, pos_delta_color))
         }
 
         if (!is.null(arc_data)) {
@@ -1559,13 +1582,19 @@
 #'   before plotting (default: `TRUE`). Set to `FALSE` to keep link computation cheaper.
 #' @param unmatched_interaction_color Character. Color used for interaction components without JASPAR matches.
 #'   These links are shown but omitted from the interaction legend (default: `"#B3B3B3"`).
+#' @param group_colors Named character vector of colors for sample groups labels in the beta values track (names should match unique values in `pheno[[sample_group_col]]`). If not provided, default colors will be used.
+#' @param low_beta_color Character. Color for low beta values in the heatmap (default: "#2b83ba").
+#' @param mid_beta_color Character. Color for mid beta values in the heatmap (default: "#f7f7f7").
+#' @param high_beta_color Character. Color for high beta values in the heatmap (default: "#d7191c").
+#' @param neg_delta_color Character. Color for negative delta beta values in the DMR arcs (default: "#055709").
+#' @param zero_delta_color Character. Color for zero delta beta values in the DMR arcs (default: "#f7f7f7").
+#' @param pos_delta_color Character. Color for positive delta beta values in the DMR arcs (default: "#801414").
 #' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
 #' @param degenerate_resolution Integer. Resolution in base pairs for simplifying narrow glyphs:
 #'   link ribbons are drawn as lines when both anchors are below this span, and DMR arcs
 #'   are drawn as lines instead of rectangles below this span (default: 1e6).
 #' @param output_file Character or NULL. Optional PDF path for the plot.
 #' @param verbose Numeric. Optional verbosity override.
-#' @param ... Additional arguments (currently unused).
 #'
 #' @return `NULL` invisibly after drawing the plot.
 #'
@@ -1583,31 +1612,39 @@
 #' @importFrom circlize circos.initializeWithIdeogram circos.trackPlotRegion circos.genomicHeatmap
 #' @importFrom circlize circos.genomicLink circos.clear colorRamp2 circos.rect circos.link CELL_META
 #' @export
-plotDMRsCircos <- function(dmrs,
-                           beta = NULL,
-                           pheno = NULL,
-                           genome = "hg38",
-                           array = "450K",
-                           sorted_locs = NULL,
-                           components = NULL,
-                           interactions = NULL,
-                           sample_group_col = "Sample_Group",
-                           min_similarity = 0.8,
-                           motif_site_flank_size = 5,
-                           max_num_samples_per_group = 5,
-                           max_dmrs_per_chr = 10,
-                           max_sites_per_dmr = 5,
-                           min_component_size = 2,
-                           max_components = 30,
-                           chromosomes = NULL,
-                           region = NULL,
-                           query_components_with_jaspar = TRUE,
-                           unmatched_interaction_color = "#B3B3B3",
-                           legend_width_ratio = 0.34,
-                           degenerate_resolution = 1e6,
-                           output_file = NULL,
-                           verbose = NULL,
-                           ...) {
+plotDMRsCircos <- function(
+    dmrs,
+    beta = NULL,
+    pheno = NULL,
+    genome = "hg38",
+    array = "450K",
+    sorted_locs = NULL,
+    components = NULL,
+    interactions = NULL,
+    sample_group_col = "Sample_Group",
+    min_similarity = 0.8,
+    motif_site_flank_size = 5,
+    max_num_samples_per_group = 5,
+    max_dmrs_per_chr = 10,
+    max_sites_per_dmr = 5,
+    min_component_size = 2,
+    max_components = 30,
+    chromosomes = NULL,
+    region = NULL,
+    query_components_with_jaspar = TRUE,
+    unmatched_interaction_color = "#B3B3B3",
+    group_colors = NULL,
+    low_beta_color = "#2b83ba",
+    mid_beta_color = "#f7f7f7",
+    high_beta_color = "#d7191c",
+    neg_delta_color = "#055709",
+    zero_delta_color = "#f0ec10",
+    pos_delta_color = "#801414",
+    legend_width_ratio = 0.34,
+    degenerate_resolution = 1e6,
+    output_file = NULL,
+    verbose = NULL
+) {
     dmrs <- .convertToGRanges(dmrs, genome)
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
@@ -1856,11 +1893,11 @@ plotDMRsCircos <- function(dmrs,
             vals_range <- range(valid_vals, na.rm = TRUE)
             if (vals_range[1] <= 0.5 && vals_range[2] >= 0.5) {
                 q <- sort(c(q[1], 0.5, q[2]))
-                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7", "#d7191c"))
+                col_fun <- circlize::colorRamp2(q, c(low_beta_color, mid_beta_color, high_beta_color))
             } else if (vals_range[2] < 0.5) {
-                col_fun <- circlize::colorRamp2(q, c("#2b83ba", "#f7f7f7"))
+                col_fun <- circlize::colorRamp2(q, c(low_beta_color, mid_beta_color))
             } else {
-                col_fun <- circlize::colorRamp2(q, c("#f7f7f7", "#d7191c"))
+                col_fun <- circlize::colorRamp2(q, c(mid_beta_color, high_beta_color))
             }
             heatmap_height <- 0.3
             heatmap_df_plot <- data.frame(
@@ -1889,8 +1926,7 @@ plotDMRsCircos <- function(dmrs,
                     groups <- as.character(reduced_pheno[[sample_group_col]])
                     group_runs <- rle(groups)
                     unique_groups <- unique(group_runs$values)
-                    group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Pastel 1")
-                    names(group_colors) <- unique_groups
+                    group_colors <- .getGroupColors(unique_groups, group_colors)
                     y_limits <- circlize::CELL_META$cell.ylim
                     n_samples <- sum(group_runs$lengths)
                     if (n_samples <= 0) {
@@ -1967,7 +2003,7 @@ plotDMRsCircos <- function(dmrs,
                 pos_max <- max(1e-6, abs(neg_min) * 0.05)
             }
             q <- c(neg_min, 0, pos_max)
-            col_fun <- circlize::colorRamp2(q, c("#055709", "white", "#801414"))
+            col_fun <- circlize::colorRamp2(q, c(neg_delta_color, zero_delta_color, pos_delta_color))
         }
 
         if (!is.null(arc_data)) {
