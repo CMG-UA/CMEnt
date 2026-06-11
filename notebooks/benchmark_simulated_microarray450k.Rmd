@@ -115,7 +115,6 @@ if (!requireNamespace("ChAMP", quietly = TRUE)) {
 sim_beta_path <- getBenchmarkFile("GSE40279_sim_beta_values.tsv.gz")
 sim_truth_path <- getBenchmarkFile("GSE40279_sim_dmrs.tsv")
 sim_pheno_path <- getBenchmarkFile("GSE40279_sim_samplesheet.tsv")
-covariate_cols <- c("age..y..ch1", "predictedSex")
 array_type <- "450K"
 genome <- "hg19"
 zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
