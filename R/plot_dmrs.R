@@ -1390,7 +1390,7 @@ plotDMR <- function(dmrs,
 
         grobs <- list(ggplot2::ggplotGrob(structure_plot))
         heights <- c(1)
-        gene_context_track <- .plotDMRGeneContextTrack(dmr, breaks)
+        gene_context_track <- .plotDMRGeneContextTrack(dmr, total_shown_positions, breaks, genome)
         if (!is.null(gene_context_track)) {
             grobs <- c(grobs, list(ggplot2::ggplotGrob(gene_context_track)))
             heights <- c(heights, 0.18)
