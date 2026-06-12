@@ -90,6 +90,39 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
+test_that("simulateDMRs respects genomic size bounds", {
+    bs <- create_simulation_bsseq()
+    set.seed(123)
+    sim <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 5,
+        max_sites = 20,
+        min_dmr_size = 550,
+        max_dmr_size = 570
+    )
+
+    selected_widths <- GenomicRanges::width(sim$selected_regions)
+    expect_true(all(selected_widths >= 550 & selected_widths <= 570))
+    expect_error(
+        simulateDMRs(
+            beta = bs,
+            num_dmrs = 1,
+            min_sites = 5,
+            max_sites = 20,
+            min_dmr_size = 550,
+            max_dmr_size = 560
+        ),
+        "eligible candidate genomic segments"
+    )
+    expect_error(
+        simulateDMRs(beta = bs, min_dmr_size = 100, max_dmr_size = 99),
+        "'max_dmr_size' must be an integer greater than or equal to 'min_dmr_size'",
+        fixed = TRUE
+    )
+})
+
 test_that("simulateDMRs fits and stores correlation calibration metadata", {
     bs <- create_simulation_bsseq()
     set.seed(456)

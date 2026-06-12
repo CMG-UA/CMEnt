@@ -17,6 +17,8 @@ simulateDMRs(
   max_gap = 500L,
   min_sites = 5L,
   max_sites = 500L,
+  min_dmr_size = 50L,
+  max_dmr_size = 2000L,
   truth_min_delta_beta = 0,
   delta_jitter = 1/3,
   expected_correlation = 0.7,
@@ -70,6 +72,10 @@ baseline is retained.}
 \item{min_sites}{Minimum number of sites per candidate DMR segment.}
 
 \item{max_sites}{Maximum number of sites per candidate DMR segment.}
+
+\item{min_dmr_size}{Minimum genomic width, in bp, per candidate DMR segment.}
+
+\item{max_dmr_size}{Maximum genomic width, in bp, per candidate DMR segment.}
 
 \item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
 site to define the reported truth interval. The default, \code{0}, reports the
@@ -142,7 +148,8 @@ methylation scale while preserving each site's mean signal.
 Candidate regions are contiguous genomic site segments: adjacent sites remain
 in the same segment when they are on the same chromosome and no more than
 \code{max_gap} bp apart. Eligible segments have between \code{min_sites} and
-\code{max_sites} sites. Segment sampling is mildly weighted toward regions whose
+\code{max_sites} sites and between \code{min_dmr_size} and \code{max_dmr_size} bp.
+Segment sampling is mildly weighted toward regions whose
 median methylation is near 0.5, reducing floor and ceiling effects.
 
 For each selected DMR, a smooth regional effect profile is evaluated over the

@@ -18,7 +18,8 @@
 #' Candidate regions are contiguous genomic site segments: adjacent sites remain
 #' in the same segment when they are on the same chromosome and no more than
 #' `max_gap` bp apart. Eligible segments have between `min_sites` and
-#' `max_sites` sites. Segment sampling is mildly weighted toward regions whose
+#' `max_sites` sites and between `min_dmr_size` and `max_dmr_size` bp.
+#' Segment sampling is mildly weighted toward regions whose
 #' median methylation is near 0.5, reducing floor and ceiling effects.
 #'
 #' For each selected DMR, a smooth regional effect profile is evaluated over the
@@ -70,6 +71,8 @@
 #' @param max_gap Maximum gap, in bp, used to form candidate site segments.
 #' @param min_sites Minimum number of sites per candidate DMR segment.
 #' @param max_sites Maximum number of sites per candidate DMR segment.
+#' @param min_dmr_size Minimum genomic width, in bp, per candidate DMR segment.
+#' @param max_dmr_size Maximum genomic width, in bp, per candidate DMR segment.
 #' @param truth_min_delta_beta Minimum intended beta-scale perturbation for a
 #'   site to define the reported truth interval. The default, `0`, reports the
 #'   full selected segment so simulated flanks are not treated as false
@@ -137,6 +140,8 @@ simulateDMRs <- function(
     max_gap = 500L,
     min_sites = 5L,
     max_sites = 500L,
+    min_dmr_size = 50L,
+    max_dmr_size = 2000L,
     truth_min_delta_beta = 0,
     delta_jitter = 1 / 3,
     expected_correlation = 0.7,
@@ -160,6 +165,8 @@ simulateDMRs <- function(
     max_gap <- as.integer(max_gap)
     min_sites <- as.integer(min_sites)
     max_sites <- as.integer(max_sites)
+    min_dmr_size <- as.integer(min_dmr_size)
+    max_dmr_size <- as.integer(max_dmr_size)
     neighbor_window <- as.integer(neighbor_window)
     profile_degree <- as.integer(profile_degree)
 
@@ -177,6 +184,12 @@ simulateDMRs <- function(
     }
     if (length(max_sites) != 1L || is.na(max_sites) || max_sites < min_sites) {
         stop("'max_sites' must be an integer greater than or equal to 'min_sites'.")
+    }
+    if (length(min_dmr_size) != 1L || is.na(min_dmr_size) || min_dmr_size < 1L) {
+        stop("'min_dmr_size' must be a positive integer.")
+    }
+    if (length(max_dmr_size) != 1L || is.na(max_dmr_size) || max_dmr_size < min_dmr_size) {
+        stop("'max_dmr_size' must be an integer greater than or equal to 'min_dmr_size'.")
     }
     if (length(truth_min_delta_beta) != 1L || !is.finite(truth_min_delta_beta) || truth_min_delta_beta < 0) {
         stop("'truth_min_delta_beta' must be a non-negative numeric scalar.")
@@ -299,12 +312,18 @@ simulateDMRs <- function(
     segments <- .findContiguousSegments(chr = chr, pos = pos, max_gap = max_gap)
     index_by_segment <- split(seq_along(segments), segments)
     segment_lengths <- lengths(index_by_segment)
-    eligible <- which(segment_lengths >= min_sites & segment_lengths <= max_sites)
+    segment_widths <- vapply(index_by_segment, function(idx) {
+        max(end_pos[idx]) - min(pos[idx]) + 1L
+    }, integer(1))
+    eligible <- which(
+        segment_lengths >= min_sites & segment_lengths <= max_sites &
+            segment_widths >= min_dmr_size & segment_widths <= max_dmr_size
+    )
     if (length(eligible) < num_dmrs) {
         stop(
             "Only ", length(eligible), " eligible candidate genomic segments found, but ",
             num_dmrs, " DMRs were requested. Decrease 'num_dmrs' or relax ",
-            "'min_sites'/'max_sites'/'max_gap'."
+            "'min_sites'/'max_sites'/'min_dmr_size'/'max_dmr_size'/'max_gap'."
         )
     }
     # Preferentially select segments with intermediate methylation levels, as these are more likely to yield the intended effect sizes and avoid floor/ceiling effects. 
