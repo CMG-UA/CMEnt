@@ -42,7 +42,7 @@ signals, immune and differentiation pathways, and candidate prognostic genes.
 
 ## Setup and Dependencies
 
-```{r, message=FALSE}
+```{r setup, message=FALSE}
 try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
     try(library(CMEnt), silent = TRUE)
@@ -83,7 +83,7 @@ short_label <- function(x, width = 65L) {
 
 ### Install External Dependencies
 
-```{r, eval=FALSE}
+```{r install, eval=FALSE}
 r <- getOption("repos")
 if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
@@ -122,7 +122,7 @@ Covariates are:
  - predictedSex: the sex predicted from methylation data, which can be a strong confounder in methylation analyses.
  - subject.id.ch1: the patient ID
  - source_name_ch1: the cell type
-```{r}
+```{r load_data}
 covariates <- c("predictedSex", "subject.id.ch1", "source_name_ch1")
 sample_group_col <- "subject.status.ch1"
 
@@ -161,7 +161,7 @@ pheno$casecontrol <- pheno[[sample_group_col]] == "AML"
 
 ## Find Differentially Methylated Positions
 
-```{r}
+```{r find_dmps}
 dmps_file <- getBenchmarkFile("dmps.rds")
 if (!file.exists(dmps_file)) {
     dmps <- CMEnt::findDMPsArray(
@@ -252,7 +252,7 @@ cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as
 
 ## CMEnt Region Summary
 
-```{r}
+```{r cment_summary}
 if (!all(c("in_promoter_of", "in_gene_body_of", "delta_beta_promoter", "delta_beta_gene_body") %in% colnames(mcols(dmrs_cment))) &&
     requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE) &&
     requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
@@ -275,7 +275,7 @@ dmr_delta_col <- if ("sites_delta_beta" %in% colnames(mcols(dmrs_cment))) {
     "delta_beta"
 }
 dmr_delta <- as.numeric(mcols(dmrs_cment)[[dmr_delta_col]])
-dmr_direction <- ifelse(dmr_delta > 0, "Hypermethylated in AML", "Hypomethylated in AML")
+dmr_direction <- ifelse(dmr_delta > 0, "Hyper", "Hypo")
 dmr_summary <- data.frame(
     DMRs = length(dmrs_cment),
     Median_width_bp = median(width(dmrs_cment)),
@@ -290,7 +290,7 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for AML versus normal samples")
 ```
 
-```{r, fig.width=9, fig.height=4}
+```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
 dmrs_cment_only_promoter_or_gene_body <- dmrs_cment[!(is.finite(mcols(dmrs_cment)$delta_beta_promoter) & is.finite(mcols(dmrs_cment)$delta_beta_gene_body))]
 dmr_effect_df <- bind_rows(
     data.frame(
@@ -306,8 +306,8 @@ dmr_effect_df <- bind_rows(
 ) |>
     filter(is.finite(Delta_beta)) |>
     mutate(Direction = factor(
-        ifelse(Delta_beta > 0, "Hypermethylated in AML", "Hypomethylated in AML"),
-        levels = c("Hypermethylated in AML", "Hypomethylated in AML")
+        ifelse(Delta_beta > 0, "Hyper", "Hypo"),
+        levels = c("Hyper", "Hypo")
     ))
 
 library(dplyr)
@@ -331,8 +331,8 @@ y_max <- max(dmr_effect_df$Width, na.rm = TRUE)
 dmr_summary <- dmr_summary %>%
   mutate(
     bar_y = case_when(
-      Direction == "Hypermethylated in AML" ~ y_max * 2.0,
-      Direction == "Hypomethylated in AML"  ~ y_max * 3.2
+      Direction == "Hyper" ~ y_max * 2.0,
+      Direction == "Hypo"  ~ y_max * 3.2
     ),
     label_y = bar_y * 1.12
   )
@@ -388,14 +388,15 @@ ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
   ) +
   scale_color_manual(
     values = c(
-      "Hypermethylated in AML" = "#B8405E",
-      "Hypomethylated in AML" = "#247BA0"
+      "Hyper" = "#B8405E",
+      "Hypo" = "#247BA0"
     )
   ) +
   coord_cartesian(clip = "off") +
   theme_minimal() +
+  theme(legend.position = "bottom") +
   labs(
-    title = "CMEnt DMR Effect Size and Width by Gene Context",
+    title = "DMR Effect Size and Width by Gene Context",
     x = "Context-specific delta beta (AML - normal)",
     y = "DMR width (bp, log scale)",
     color = ""
@@ -404,7 +405,7 @@ ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
 
 ## CpG and Gene Context
 
-```{r}
+```{r gene_context}
 gene_context_df <- data.frame(
     Context = c("Promoter", "Gene body", "Promoter and gene body", "No annotated gene overlap"),
     DMRs = c(
@@ -419,17 +420,17 @@ gene_context_df <- data.frame(
 knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
 ```
 
-```{r, fig.width=6, fig.height=3.5}
+```{r gene_context_plot, fig.width=6, fig.height=3.5}
 ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
     geom_col(width = 0.7) +
     coord_flip() +
     scale_y_continuous(labels = scales::comma) +
     theme_minimal() +
     theme(legend.position = "none") +
-    labs(title = "CMEnt DMR Gene Context", x = "", y = "DMRs")
+    labs(title = "DMR Gene Context", x = "", y = "DMRs")
 ```
 
-```{r}
+```{r cpg_island_context}
 if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
     library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
     anno <- as.data.frame(minfi::getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19))
@@ -441,18 +442,18 @@ if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = T
 
     site_context_df <- bind_rows(
         dmp_site_context |> mutate(Source = "Significant DMPs"),
-        dmr_site_context |> mutate(Source = "Sites inside CMEnt DMRs")
+        dmr_site_context |> mutate(Source = "Sites inside DMRs")
     ) |>
         count(Source, Relation_to_Island, name = "Sites") |>
         group_by(Source) |>
         mutate(Percentage = round(100 * Sites / sum(Sites), 1)) |>
         ungroup()
 
-    knitr::kable(site_context_df, caption = "CpG island context of significant DMPs and sites inside CMEnt DMRs")
+    knitr::kable(site_context_df, caption = "CpG island context of significant DMPs and sites inside DMRs")
 }
 ```
 
-```{r, fig.width=8, fig.height=4}
+```{r cpg_island_context_plot, fig.width=8, fig.height=4}
 if (exists("site_context_df")) {
     context_levels <- site_context_df |>
         group_by(Relation_to_Island) |>
@@ -462,24 +463,25 @@ if (exists("site_context_df")) {
     plot_context_df <- site_context_df |>
         mutate(
             Relation_to_Island = factor(Relation_to_Island, levels = context_levels),
-            Source = factor(Source, levels = c("Significant DMPs", "Sites inside CMEnt DMRs"))
+            Source = factor(Source, levels = c("Significant DMPs", "Sites inside DMRs"))
         )
     diff_df <- plot_context_df |>
         dplyr::select(Source, Relation_to_Island, Sites) |>
         tidyr::pivot_wider(names_from = Source, values_from = Sites, values_fill = 0) |>
         dplyr::mutate(
-            Difference = `Sites inside CMEnt DMRs` - `Significant DMPs`,
+            Difference = `Sites inside DMRs` - `Significant DMPs`,
             Label = paste0("Delta=", scales::comma(Difference)),
-            Label_x = pmax(`Significant DMPs`, `Sites inside CMEnt DMRs`)
+            Label_x = pmax(`Significant DMPs`, `Sites inside DMRs`)
         )
 
     ggplot(plot_context_df, aes(x = Sites, y = Relation_to_Island, fill = Source)) +
         geom_col(data = dplyr::filter(plot_context_df, Source == "Significant DMPs"), width = 0.78, alpha = 0.45) +
-        geom_col(data = dplyr::filter(plot_context_df, Source == "Sites inside CMEnt DMRs"), width = 0.48, alpha = 0.9) +
+        geom_col(data = dplyr::filter(plot_context_df, Source == "Sites inside DMRs"), width = 0.48, alpha = 0.9) +
         geom_text(data = diff_df, aes(x = Label_x, y = Relation_to_Island, label = Label), inherit.aes = FALSE, hjust = -0.05, size = 3) +
         scale_x_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.2))) +
-        scale_fill_manual(values = c("Significant DMPs" = "grey65", "Sites inside CMEnt DMRs" = "#0072B2")) +
+        scale_fill_manual(values = c("Significant DMPs" = "grey65", "Sites inside DMRs" = "#0072B2")) +
         theme_minimal() +
+        theme(legend.position = "bottom") +
         labs(title = "CpG Island Context", x = "Sites", y = "", fill = "")
 }
 ```
@@ -488,7 +490,7 @@ if (exists("site_context_df")) {
 
 The table below is a targeted DMR scan of AML genetics, signaling, and hematopoietic/myeloid marker genes.
 
-```{r}
+```{r aml_gene_scan}
 gene_pattern <- function(gene) {
     paste0("(^|,)", gene, "($|,)")
 }
@@ -532,7 +534,7 @@ prior_gene_table <- aml_prior_genes |>
 knitr::kable(prior_gene_table, digits = 4, caption = "Targeted AML gene scan using CMEnt DMRs")
 ```
 
-```{r, fig.width=8, fig.height=4}
+```{r aml_gene_plot, fig.width=8, fig.height=4}
 prior_plot_df <- prior_gene_table |>
     filter(Methylation_signal) |>
     mutate(Gene = reorder(Gene, CMEnt_DMRs))
@@ -621,7 +623,7 @@ if (requireNamespace("missMethyl", quietly = TRUE) &&
 }
 ```
 
-```{r}
+```{r enrichment_table}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     missmethyl_long <- missmethyl_long[is.finite(missmethyl_long$FDR), , drop = FALSE]
     missmethyl_long$NegLog10FDR <- -log10(pmax(missmethyl_long$FDR, .Machine$double.xmin))
@@ -664,7 +666,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
 }
 ```
 
-```{r}
+```{r focused_terms}
 focused_terms <- if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     missmethyl_long |>
         filter(grepl(aml_term_pattern, Term, ignore.case = TRUE)) |>
@@ -693,7 +695,7 @@ if (nrow(focused_terms) > 0L) {
 }
 ```
 
-```{r, fig.width=10, fig.height=5}
+```{r focused_terms_plot, fig.width=10, fig.height=5}
 if (nrow(focused_terms) > 0L) {
     ggplot(focused_terms, aes(x = -log10(pmax(FDR, .Machine$double.xmin)), y = Term_Collection, fill = Collection)) +
         geom_col(width = 0.7) +
@@ -709,8 +711,9 @@ if (nrow(focused_terms) > 0L) {
 
 ## Candidate CMEnt Gene Overlapping Loci
 
-```{r}
+```{r candidate_dmrs}
 dmr_table <- as.data.frame(dmrs_cment)
+dmr_table$dmr_index <- seq_along(dmrs_cment)
 dmr_table$DMR <- paste0(dmr_table$seqnames, ":", dmr_table$start, "-", dmr_table$end)
 dmr_table$delta_beta_for_ranking <- dmr_delta
 dmr_table$abs_delta_beta <- abs(dmr_delta)
@@ -724,6 +727,11 @@ if (!"pval" %in% colnames(dmr_table)) {
 if (!"score" %in% colnames(dmr_table)) {
     dmr_table$score <- NA_real_
 }
+
+top_dmr_index <- dmr_table |>
+    arrange(desc(svm_score_for_ranking), qval, desc(abs_delta_beta)) |>
+    slice_head(n = 1) |>
+    pull(dmr_index)
 
 top_dmrs <- dmr_table |>
     filter(has_text(in_promoter_of) | has_text(in_gene_body_of)) |>
@@ -743,11 +751,10 @@ knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overl
 ```
 
 ## Top CMEnt DMR Visualization
-```{r, fig.width=6, fig.height=6}
+```{r top_dmr, fig.width=6, fig.height=6}
 CMEnt::plotDMRs(
     dmrs_cment,
-    top_n = 1,
-    score_by = "score",
+    dmr_indices = top_dmr_index,
     beta = beta_handler,
     pheno = pheno,
     sample_group_col = sample_group_col,
@@ -757,14 +764,14 @@ CMEnt::plotDMRs(
 ```
 
 ## CMEnt DMR Manhattan Plot
-```{r, fig.width=10, fig.height=4}
+```{r manhattan, fig.width=10, fig.height=4}
 CMEnt::plotDMRsManhattan(
     dmrs_cment,
     genome = "hg19")
 ```
 
 ## CMEnt DMR Interaction Circos Visualization
-```{r, fig.width=10, fig.height=10}
+```{r circos, fig.width=10, fig.height=10}
 CMEnt::plotDMRsCircos(
     dmrs_cment,
     genome = "hg19",
