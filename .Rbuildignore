@@ -1,8 +1,10 @@
 ^CMEnt\.Rproj$
 ^\.Rproj\.user$
 ^\.DS_Store$
+^CITATION$
 ^LICENSE\.md$
 ^\.github$
+^\.githooks$
 ^README\.Rmd$
 ^README\.html$
 ^\.here$
@@ -29,6 +31,8 @@
 ^docs$
 ^build_and_push\.sh$
 ^Dockerfile$
+^pkgdown$
+^run_cment\.R$
 ^tmp$
 ^Rplots\.pdf$
 ^tests/testthat/Rplots\.pdf$

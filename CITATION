@@ -5,6 +5,6 @@ bibentry(
   title   = "From DMPs to DMRs: CMEnt, Characterization of Methylation using positional ENTanglement",
   author  = c(person("Vasileios", "Lemonidis"), person("Ken", "Op De Beeck"), person("Joris", "Vermeesch"), person("Timon", "Vandamme"), person("Guy", "Van Camp"), person("Joe", "Ibrahim")),
   year    = "2026",
-  note    = "R package version 0.99.1",
+  note    = "R package version 0.99.5",
   url     = "https://github.com/CMG-UA/CMEnt"
 )
