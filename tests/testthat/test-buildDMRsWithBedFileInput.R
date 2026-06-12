@@ -99,6 +99,31 @@ test_that("custom BED preprocessing returns locations without reparsing tabix ou
     expect_equal(as.integer(locations$start), fixture$locs$start)
 })
 
+test_that("custom BED preprocessing falls back when tabix tools are unavailable", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    bed_file <- tempfile(fileext = ".bed")
+    withr::defer(unlink(bed_file))
+
+    writeSyntheticBedFile(fixture, bed_file)
+
+    local_mocked_bindings(
+        Sys.which = function(names) stats::setNames(rep("", length(names)), names),
+        convertBetaToTabix = function(...) stop("tabix conversion should not run"),
+        .package = "CMEnt"
+    )
+    ret <- suppressWarnings(readCustomMethylationBedData(
+        bed_file,
+        pheno = fixture$pheno,
+        chrom_col = "chrom",
+        start_col = "start"
+    ))
+
+    expect_null(ret$tabix_file)
+    expect_true(file.exists(ret$beta_file))
+    expect_equal(readLines(ret$beta_file, n = 1L), paste(c("site_id", rownames(fixture$pheno)), collapse = "\t"))
+    expect_s4_class(ret$locations, "DelayedDataFrame")
+})
+
 test_that("buildDMRs handles BED files without a chr prefix", {
     skip_on_ci()
     fixture <- makeSyntheticBuildDMRsFixture()

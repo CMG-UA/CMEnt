@@ -84,19 +84,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     if (is.na(njobs) || njobs < 1L) {
         stop("njobs must be a positive integer.")
     }
-    tabix_available <- tryCatch(
-        {
-            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
-            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
-            TRUE
-        },
-        error = function(e) FALSE,
-        warning = function(w) FALSE
-    )
-
-    if (!tabix_available) {
-        stop("tabix/bgzip not found in PATH. Cannot process BED file.")
-    }
+    tabix_available <- all(nzchar(Sys.which(c("tabix", "bgzip"))))
 
     cache_dir <- .getTabixCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
@@ -105,6 +93,14 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     hash <- .getFileHash(bed_file)
     normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
     on.exit(unlink(normalized_bed_file), add = TRUE)
+    fallback_beta_file <- NULL
+    if (!tabix_available) {
+        .log_warn("tabix/bgzip not found in PATH. Using normalized beta TSV fallback for custom BED input.")
+        fallback_beta_file <- .getDerivedOutputPath(output_prefix, ".input_beta.tsv")
+        if (is.null(fallback_beta_file)) {
+            fallback_beta_file <- file.path(cache_dir, paste0("bed_beta_", hash, ".tsv"))
+        }
+    }
 
     # Read BED file header
     bed_header <- base::strsplit(readLines(bed_file, n = 1), "\t")[[1]]
@@ -140,6 +136,9 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     # Write normalized header to new BED file
     norm_bed_header <- c("#chrom", "start", "end", "id", "score", "strand", existing_ids)
     writeLines(paste(norm_bed_header, collapse = "\t"), normalized_bed_file)
+    if (!is.null(fallback_beta_file)) {
+        writeLines(paste(c("site_id", existing_ids), collapse = "\t"), fallback_beta_file)
+    }
     # Skip header line
     readLines(con, n = 1)
     count <- 0
@@ -164,6 +163,22 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
             col.names = FALSE,
             append = TRUE
         )
+        if (!is.null(fallback_beta_file)) {
+            beta_subset <- data.frame(
+                site_id = paste0(bed_data$chr, ":", bed_data$start),
+                bed_data[, existing_ids, drop = FALSE],
+                check.names = FALSE
+            )
+            data.table::fwrite(
+                beta_subset,
+                file = fallback_beta_file,
+                sep = "\t",
+                quote = FALSE,
+                row.names = FALSE,
+                col.names = FALSE,
+                append = TRUE
+            )
+        }
         count <- count + nrow(bed_data)
     }
     close(con)
@@ -205,7 +220,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
         tabix_file
     }
 
-    if (njobs > 1L && identical(.Platform$OS.type, "unix")) {
+    if (tabix_available && njobs > 1L && identical(.Platform$OS.type, "unix")) {
         locations_job <- parallel::mcparallel(build_locations(), silent = TRUE)
         tabix_result <- tryCatch(
             build_tabix(max(1L, njobs - 1L)),
@@ -222,12 +237,13 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
         locations <- locations_result
     } else {
         locations <- build_locations()
-        tabix_file_path <- build_tabix(njobs)
+        tabix_file_path <- if (tabix_available) build_tabix(njobs) else NULL
     }
 
 
     list(
         tabix_file = tabix_file_path,
+        beta_file = if (is.null(tabix_file_path)) fallback_beta_file else tabix_file_path,
         locations = locations
     )
 }

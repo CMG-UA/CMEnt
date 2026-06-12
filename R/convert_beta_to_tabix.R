@@ -50,18 +50,7 @@ convertBetaToTabix <- function(beta_file,
                                njobs = 1,
                                .bed_file = NULL,
                                output_prefix = NULL) {
-    # Check if tabix/bgzip are available
-    tabix_available <- tryCatch(
-        {
-            system2("which", "tabix", stdout = FALSE, stderr = FALSE)
-            system2("which", "bgzip", stdout = FALSE, stderr = FALSE)
-            TRUE
-        },
-        error = function(e) FALSE,
-        warning = function(w) FALSE
-    )
-
-    if (!tabix_available) {
+    if (!all(nzchar(Sys.which(c("tabix", "bgzip"))))) {
         .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
         return(NULL)
     }

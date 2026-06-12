@@ -3237,7 +3237,7 @@ buildDMRs <- function(
                 output_prefix = output_prefix_base,
                 njobs = njobs
             )
-            beta <- ret$tabix_file
+            beta <- ret$beta_file
             beta_locs <- ret$locations
         }
     }
