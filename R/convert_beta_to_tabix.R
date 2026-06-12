@@ -40,6 +40,10 @@
 #' }
 #'
 #' @export
+.tabixToolsAvailable <- function() {
+    all(nzchar(Sys.which(c("tabix", "bgzip"))))
+}
+
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
@@ -50,7 +54,7 @@ convertBetaToTabix <- function(beta_file,
                                njobs = 1,
                                .bed_file = NULL,
                                output_prefix = NULL) {
-    if (!all(nzchar(Sys.which(c("tabix", "bgzip"))))) {
+    if (!.tabixToolsAvailable()) {
         .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
         return(NULL)
     }
