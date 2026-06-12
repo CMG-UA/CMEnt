@@ -1,6 +1,6 @@
 ---
 title: "Benchmarking CMEnt on Simulated ONT Data"
-subtitle: "CMEnt vs DMRcate vs dmrseq vs hummingbird"
+subtitle: "CMEnt vs DMRcate vs DMRseq vs hummingbird"
 author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output:
@@ -34,13 +34,13 @@ Methods:
 
 - **CMEnt** seed-guided, correlation-based DMR assembly
 - **DMRcate** Gaussian Kernel smoothing-based DMR detection
-- **dmrseq** BSseq-native region-level inference
+- **DMRseq** BSseq-native region-level inference
 - **hummingbird** HMM-based DMR detection
 
 Primary goal:
 
 - assess CMEnt performance against ground truth
-- compare with DMRcate, dmrseq, and hummingbird using the same dataset
+- compare with DMRcate, DMRseq, and hummingbird using the same dataset
 
 ## Setup and Dependencies
 
@@ -637,7 +637,7 @@ if (!file.exists(dmrcate_file)) {
 }
 ```
 
-### dmrseq
+### DMRseq
 ```{r dmrseq}
 
 run_dmrseq_bsseq <- function(
@@ -920,7 +920,7 @@ if (!file.exists(hummingbird_file)) {
 ```{r}
 cat(sprintf("**CMEnt**: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
 cat(sprintf("**DMRcate**: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
-cat(sprintf("**dmrseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
+cat(sprintf("**DMRseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
 cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummingbird), round(as.numeric(time_hummingbird, units = "secs"))))
 ```
 
@@ -930,7 +930,7 @@ cat(sprintf("**hummingbird**: Found %d DMRs in %d seconds\n", length(dmrs_hummin
 methods_list <- list(
     CMEnt = dmrs_cment,
     DMRcate = dmrs_dmrcate,
-    dmrseq = dmrs_dmrseq,
+    DMRseq = dmrs_dmrseq,
     hummingbird = dmrs_hummingbird
 )
 method_order <- names(methods_list)
