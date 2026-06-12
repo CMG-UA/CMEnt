@@ -73,6 +73,32 @@ test_that("buildDMRs rejects BED seeds that are not in chr:pos format", {
     )
 })
 
+test_that("custom BED preprocessing returns locations without reparsing tabix output", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    bed_file <- tempfile(fileext = ".bed")
+    withr::defer(unlink(bed_file))
+
+    writeSyntheticBedFile(fixture, bed_file)
+
+    local_mocked_bindings(
+        genomicLocsFromTabix = function(...) stop("tabix output should not be reparsed"),
+        .package = "CMEnt"
+    )
+    ret <- readCustomMethylationBedData(
+        bed_file,
+        pheno = fixture$pheno,
+        chrom_col = "chrom",
+        start_col = "start",
+        njobs = 2
+    )
+
+    expect_true(file.exists(ret$tabix_file))
+    locations <- as.data.frame(ret$locations)
+    expect_equal(rownames(locations), paste0(fixture$locs$chr, ":", fixture$locs$start))
+    expect_equal(locations$chr, fixture$locs$chr)
+    expect_equal(as.integer(locations$start), fixture$locs$start)
+})
+
 test_that("buildDMRs handles BED files without a chr prefix", {
     skip_on_ci()
     fixture <- makeSyntheticBuildDMRsFixture()

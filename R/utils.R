@@ -810,31 +810,13 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
     if (is.null(output_h5file)) {
         output_h5file <- tempfile(fileext = ".h5")
     }
-    h5_error <- tryCatch(
-        {
-            createH5file(
-                input_file = obj,
-                output_h5file = output_h5file,
-                dataset_name = "data",
-                select = select,
-                chunk_size = chunk_size
-            )
-            NULL
-        },
-        error = identity
+    createH5file(
+        input_file = obj,
+        output_h5file = output_h5file,
+        dataset_name = "data",
+        select = select,
+        chunk_size = chunk_size
     )
-    if (!is.null(h5_error)) {
-        df <- data.table::fread(
-            obj,
-            sep = "\t",
-            header = TRUE,
-            data.table = FALSE,
-            select = select,
-            check.names = FALSE,
-            showProgress = FALSE
-        )
-        return(.postProcessRegistry(df, select = NULL, rename = rename, derive = derive, indices = indices))
-    }
     da <- HDF5Array::HDF5Array(output_h5file, "data")
     n_rows <- as.integer(rhdf5::h5read(output_h5file, "data_nrows"))
     da <- da[seq_len(n_rows), , drop = FALSE]

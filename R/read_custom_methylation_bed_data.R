@@ -22,6 +22,9 @@
 #'   efficiency (default: 50000)
 #' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
 #'   artifacts next to analysis outputs.
+#' @param njobs Integer. Number of jobs to use after normalization. On Unix-like
+#'   systems, location-registry creation and tabix conversion can run in
+#'   parallel when `njobs > 1`.
 #'
 #' @return A list with two elements:
 #' \itemize{
@@ -76,7 +79,11 @@
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
                                          start_col = "start", output_dir = NULL, chunk_size = 50000,
-                                         output_prefix = NULL) {
+                                         output_prefix = NULL, njobs = 1L) {
+    njobs <- suppressWarnings(as.integer(njobs)[1L])
+    if (is.na(njobs) || njobs < 1L) {
+        stop("njobs must be a positive integer.")
+    }
     tabix_available <- tryCatch(
         {
             system2("which", "tabix", stdout = FALSE, stderr = FALSE)
@@ -160,28 +167,62 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     }
     close(con)
 
+    locations_h5_file <- .getDerivedOutputPath(output_prefix, ".input_beta.locations.h5")
     hash <- .getFileHash(bed_file)
     tabix_file_path <- .getDerivedOutputPath(output_prefix, ".input_beta.tabix.bed.gz")
     if (is.null(tabix_file_path)) {
         tabix_file_path <- file.path(cache_dir, paste0("bed_beta_", hash, ".bed.gz"))
     }
-    # Convert to tabix
-    convertBetaToTabix(
-        .bed_file = normalized_bed_file,
-        output_file = tabix_file_path,
-        chunk_size = chunk_size,
-        njobs = 1,
-        output_prefix = output_prefix
-    )
-    locations_h5_file <- .getDerivedOutputPath(output_prefix, ".input_beta.locations.h5")
-    locations <- genomicLocsFromTabix(
-        tabix_file_path,
-        num_rows = num_rows,
-        hash = hash,
-        output_dir = cache_dir,
-        chunk_size = chunk_size,
-        output_h5file = locations_h5_file
-    )
+
+    build_locations <- function() {
+        getRegistry(
+            normalized_bed_file,
+            select = c("#chrom", "start"),
+            rename = c("#chrom" = "chr", start = "start"),
+            derive = list(
+                index = list(
+                    cols = c("chr", "start"),
+                    fun = function(chr, start) paste0(chr, ":", start)
+                )
+            ),
+            indices = "index",
+            chunk_size = chunk_size,
+            output_h5file = locations_h5_file
+        )
+    }
+    build_tabix <- function(njobs) {
+        tabix_file <- convertBetaToTabix(
+            .bed_file = normalized_bed_file,
+            output_file = tabix_file_path,
+            chunk_size = chunk_size,
+            njobs = njobs,
+            output_prefix = output_prefix
+        )
+        if (is.null(tabix_file)) {
+            stop("Failed to create tabix-indexed BED file.")
+        }
+        tabix_file
+    }
+
+    parallel_tasks <- njobs > 1L && identical(.Platform$OS.type, "unix")
+    if (parallel_tasks) {
+        locations_job <- parallel::mcparallel(build_locations(), silent = TRUE)
+        tabix_file_path <- tryCatch(
+            build_tabix(max(1L, njobs - 1L)),
+            error = function(e) {
+                parallel::mccollect(locations_job, wait = FALSE)
+                stop(e)
+            }
+        )
+        locations_result <- parallel::mccollect(locations_job)[[1L]]
+        if (inherits(locations_result, "try-error")) {
+            stop(attr(locations_result, "condition"))
+        }
+        locations <- locations_result
+    } else {
+        locations <- build_locations()
+        tabix_file_path <- build_tabix(njobs)
+    }
 
 
     list(

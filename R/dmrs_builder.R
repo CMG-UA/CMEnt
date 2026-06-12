@@ -3234,7 +3234,8 @@ buildDMRs <- function(
             ret <- readCustomMethylationBedData(
                 bed_file = beta, pheno = pheno, genome = genome,
                 chrom_col = bed_chrom_col, start_col = bed_start_col,
-                output_prefix = output_prefix_base
+                output_prefix = output_prefix_base,
+                njobs = njobs
             )
             beta <- ret$tabix_file
             beta_locs <- ret$locations
