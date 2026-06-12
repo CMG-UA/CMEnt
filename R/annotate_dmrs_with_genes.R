@@ -50,25 +50,18 @@
 #' )
 #'
 #' @export
-annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
-                                  promoter_upstream = 2000,
-                                  promoter_downstream = 200,
-                                  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
-                                  site_locs = NULL,
-                                  site_delta_beta = NULL,
-                                  aggfun = stats::median) {
+.loadGeneAnnotationFeatures <- function(genome, promoter_upstream = 2000,
+                                        promoter_downstream = 200,
+                                        context = "gene annotation") {
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
-    dmrs_df_provided <- is.data.frame(dmrs)
-    dmrs <- .convertToGRanges(dmrs, genome)
-
     target_genome <- tolower(genome)
     annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
     annotation_pkgs <- .assertGeneAnnotationPackagesInstalled(
         genome = genome,
-        context = "annotateDMRsWithGenes()"
+        context = context
     )
     txdb_pkg <- unname(annotation_pkgs[["txdb"]])
     orgdb_pkg <- unname(annotation_pkgs[["orgdb"]])
@@ -166,6 +159,29 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
         }
     })
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
+    list(genes = genes, promoters = promoters, orgdb_pkg = orgdb_pkg)
+}
+
+annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
+                                  promoter_upstream = 2000,
+                                  promoter_downstream = 200,
+                                  njobs = getOption("CMEnt.njobs", .defaultNJobs()),
+                                  site_locs = NULL,
+                                  site_delta_beta = NULL,
+                                  aggfun = stats::median) {
+    dmrs_df_provided <- is.data.frame(dmrs)
+    dmrs <- .convertToGRanges(dmrs, genome)
+
+    annotation_features <- .loadGeneAnnotationFeatures(
+        genome = genome,
+        promoter_upstream = promoter_upstream,
+        promoter_downstream = promoter_downstream,
+        context = "annotateDMRsWithGenes()"
+    )
+    genes <- annotation_features$genes
+    promoters <- annotation_features$promoters
+    orgdb_pkg <- annotation_features$orgdb_pkg
+
     .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
     .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
     annotation_specs <- list(

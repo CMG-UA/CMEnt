@@ -2034,6 +2034,25 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
+.mapEntrezIdsToSymbols <- function(entrez_ids, orgdb_pkg) {
+    valid_entrez_ids <- unique(entrez_ids[!is.na(entrez_ids) & nzchar(entrez_ids)])
+    if (length(valid_entrez_ids) == 0L) {
+        return(stats::setNames(character(), character()))
+    }
+    if (!isNamespaceLoaded(orgdb_pkg)) {
+        loadNamespace(orgdb_pkg)
+    }
+    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
+    symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
+        keys = valid_entrez_ids,
+        column = "SYMBOL",
+        keytype = "ENTREZID",
+        multiVals = "first"
+    ))
+    names(symbols) <- valid_entrez_ids
+    symbols
+}
+
 .annotateDMRsWithGeneFeature <- function(dmrs, features, orgdb_pkg,
                                          feature_type = c("promoter", "gene_body")) {
     feature_type <- match.arg(feature_type)
@@ -2047,27 +2066,16 @@ orderByLoc <- function(x,
         return(annotations)
     }
 
-    if (!isNamespaceLoaded(orgdb_pkg)) {
-        loadNamespace(orgdb_pkg)
-    }
-    orgdb <- getExportedValue(orgdb_pkg, orgdb_pkg)
     feature_hits <- S4Vectors::subjectHits(overlaps)
     entrez_ids <- switch(feature_type,
         promoter = as.character(S4Vectors::mcols(features[feature_hits])$name),
         gene_body = as.character(names(features)[feature_hits])
     )
-    valid_entrez_ids <- unique(entrez_ids[!is.na(entrez_ids) & nzchar(entrez_ids)])
-    if (length(valid_entrez_ids) == 0L) {
+    symbols <- .mapEntrezIdsToSymbols(entrez_ids, orgdb_pkg)
+    if (length(symbols) == 0L) {
         return(annotations)
     }
 
-    symbols <- suppressMessages(AnnotationDbi::mapIds(orgdb,
-        keys = valid_entrez_ids,
-        column = "SYMBOL",
-        keytype = "ENTREZID",
-        multiVals = "first"
-    ))
-    names(symbols) <- valid_entrez_ids
     symbols_by_dmr <- split(
         symbols[entrez_ids],
         S4Vectors::queryHits(overlaps)

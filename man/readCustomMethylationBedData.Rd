@@ -12,7 +12,8 @@ readCustomMethylationBedData(
   start_col = "start",
   output_dir = NULL,
   chunk_size = 50000,
-  output_prefix = NULL
+  output_prefix = NULL,
+  njobs = 1L
 )
 }
 \arguments{
@@ -39,6 +40,10 @@ efficiency (default: 50000)}
 
 \item{output_prefix}{Character. Optional prefix used to persist derived BED/tabix
 artifacts next to analysis outputs.}
+
+\item{njobs}{Integer. Number of jobs to use after normalization. On Unix-like
+systems, location-registry creation and tabix conversion run in parallel
+when \code{njobs > 1}.}
 }
 \value{
 A list with two elements:

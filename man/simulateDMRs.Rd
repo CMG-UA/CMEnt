@@ -55,7 +55,8 @@ second group level.}
 
 \item{samplesheet}{Optional data frame or path to a tab-delimited sample
 sheet with covariates. Row names, a \code{Sample_ID} column, or an unnamed first
-column must identify samples.}
+column must identify samples. If fewer than all input samples are present,
+simulation is run on the matching samples.}
 
 \item{samplesheet_sep}{Separator for samplesheet files. Default is tab.}
 

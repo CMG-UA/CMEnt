@@ -210,6 +210,26 @@ test_that("plotDMR plot structure contains expected components", {
     expect_true(inherits(p, "grob"))
 })
 
+test_that(".plotDMRStructure includes existing gene overlap metadata in title", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs
+    S4Vectors::mcols(dmrs)$in_promoter_of[1] <- "GENE1"
+    S4Vectors::mcols(dmrs)$in_gene_body_of[1] <- "GENE1,GENE2"
+
+    ret <- suppressWarnings(CMEnt:::.plotDMRStructure(
+        dmrs,
+        dmr_index = 1,
+        beta_locs = plot_fixture$locs,
+        array = NULL,
+        genome = "hg38",
+        .ret_details = TRUE
+    ))
+
+    expect_match(ret$structure_plot$labels$title, "Overlapping Promoters: GENE1", fixed = TRUE)
+    expect_match(ret$structure_plot$labels$title, "Overlapping Gene Bodies: GENE1, GENE2", fixed = TRUE)
+})
+
 test_that(".plotPWM clarifies when a motif logo is consensus-only", {
     skip_if_not_installed("ggplot2")
 

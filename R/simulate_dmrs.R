@@ -60,7 +60,8 @@
 #'   second group level.
 #' @param samplesheet Optional data frame or path to a tab-delimited sample
 #'   sheet with covariates. Row names, a `Sample_ID` column, or an unnamed first
-#'   column must identify samples.
+#'   column must identify samples. If fewer than all input samples are present,
+#'   simulation is run on the matching samples.
 #' @param samplesheet_sep Separator for samplesheet files. Default is tab.
 #' @param sample_group_col Name of the phenotype column added to the returned
 #'   samplesheet. Values are `"case"` for perturbed samples and `"control"` for
@@ -273,6 +274,17 @@ simulateDMRs <- function(
         sample_groups = output_groups,
         sample_group_col = sample_group_col
     )
+    sample_keep <- match(rownames(pheno), sample_names)
+    sample_names <- sample_names[sample_keep]
+    groups <- groups[sample_keep]
+    output_groups <- output_groups[sample_keep]
+    case_samples <- which(groups == case_group)
+    control_samples <- which(groups != case_group)
+    if (length(case_samples) == 0L || length(control_samples) == 0L) {
+        stop("'samplesheet' subset must retain at least one case and one non-case sample.")
+    }
+    meth_mat <- meth_mat[, sample_keep, drop = FALSE]
+    cov_mat <- cov_mat[, sample_keep, drop = FALSE]
 
     meth_mat[is.na(meth_mat)] <- 0
     cov_mat[is.na(cov_mat)] <- 0
@@ -780,13 +792,16 @@ simulateDMRs <- function(
     }
 
     missing_samples <- setdiff(sample_names, rownames(pheno))
-    if (length(missing_samples) > 0L) {
+    if (length(missing_samples) == length(sample_names)) {
         stop(
-            "The following input samples are missing from samplesheet: ",
+            "All input samples are missing from samplesheet: ",
             paste(head(missing_samples, 10), collapse = ", "),
             if (length(missing_samples) > 10L) " ..." else ""
         )
     }
+    sample_keep <- sample_names %in% rownames(pheno)
+    sample_names <- sample_names[sample_keep]
+    sample_groups <- sample_groups[sample_keep]
 
     pheno <- pheno[sample_names, , drop = FALSE]
     pheno[[sample_group_col]] <- sample_groups

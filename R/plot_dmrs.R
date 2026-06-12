@@ -488,23 +488,23 @@
         dmr_data$delta_beta
     )
 
-    if (!"in_promoter_of" %in% colnames(mcols(dmrs))) {
+    gene_mcols <- S4Vectors::mcols(dmr)
+    if (!any(c("in_promoter_of", "in_gene_body_of") %in% colnames(gene_mcols))) {
         ret <- try(annotateDMRsWithGenes(dmr, genome = genome))
         if (inherits(ret, "try-error")) {
             warning("Failed to annotate DMR with gene information.")
         } else {
             dmr <- ret
-            in_promoter_of <- dmr$in_promoter_of
-            if (length(in_promoter_of) > 0 && !all(is.na(in_promoter_of))) {
-                gene_labels <- paste(in_promoter_of, collapse = ", ")
-                title <- paste0(title, "\n Overlapping Promoters: ", gene_labels)
-            }
-            body_genes <- dmr$in_gene_body_of
-            if (length(body_genes) > 0 && !all(is.na(body_genes))) {
-                gene_labels <- paste(body_genes, collapse = ", ")
-                title <- paste0(title, "\n Overlapping Gene Bodies: ", gene_labels)
-            }
+            gene_mcols <- S4Vectors::mcols(dmr)
         }
+    }
+    promoter_genes <- .splitDMRGeneLabels(gene_mcols$in_promoter_of)
+    if (length(promoter_genes) > 0) {
+        title <- paste0(title, "\n Overlapping Promoters: ", paste(promoter_genes, collapse = ", "))
+    }
+    body_genes <- .splitDMRGeneLabels(gene_mcols$in_gene_body_of)
+    if (length(body_genes) > 0) {
+        title <- paste0(title, "\n Overlapping Gene Bodies: ", paste(body_genes, collapse = ", "))
     }
 
     # Styling
@@ -581,6 +581,133 @@
 }
 
 
+.splitDMRGeneLabels <- function(x) {
+    if (is.null(x)) {
+        return(character())
+    }
+    genes <- trimws(unique(unlist(strsplit(stats::na.omit(as.character(x)), ","), use.names = FALSE)))
+    genes[nzchar(genes)]
+}
+
+.collapseGeneLabels <- function(genes, max_genes = 3L) {
+    if (length(genes) == 0L) {
+        return("")
+    }
+    label <- paste(head(genes, max_genes), collapse = ", ")
+    if (length(genes) > max_genes) {
+        label <- paste0(label, ", ...")
+    }
+    label
+}
+
+.siteTileBounds <- function(positions, plot_start, plot_end) {
+    positions <- as.numeric(positions)
+    if (length(positions) == 1L) {
+        half_width <- max(1, (plot_end - plot_start) * 0.02)
+        return(data.frame(xmin = positions - half_width, xmax = positions + half_width))
+    }
+    mids <- (head(positions, -1L) + tail(positions, -1L)) / 2
+    data.frame(
+        xmin = c(plot_start, mids),
+        xmax = c(mids, plot_end)
+    )
+}
+
+.plotDMRGeneContextTrack <- function(dmr, total_shown_positions, breaks, genome) {
+    features <- tryCatch(
+        .loadGeneAnnotationFeatures(genome, context = "plotDMR() gene context track"),
+        error = function(e) NULL
+    )
+    if (is.null(features) || nrow(total_shown_positions) == 0L) {
+        return(NULL)
+    }
+
+    site_ids <- rownames(total_shown_positions)
+    site_end <- if ("end" %in% colnames(total_shown_positions)) total_shown_positions$end else total_shown_positions$start
+    site_gr <- GenomicRanges::GRanges(
+        seqnames = total_shown_positions$chr,
+        ranges = IRanges::IRanges(start = total_shown_positions$start, end = site_end),
+        seqinfo = GenomeInfoDb::seqinfo(dmr)
+    )
+    names(site_gr) <- site_ids
+    site_bounds <- .siteTileBounds(total_shown_positions$start, breaks[1], breaks[length(breaks)])
+    site_bounds$site_id <- site_ids
+    site_bounds$Position <- total_shown_positions$start
+
+    make_track_df <- function(feature_gr, context, feature_type) {
+        feature_gr <- GenomicRanges::subsetByOverlaps(feature_gr, dmr, ignore.strand = TRUE)
+        overlaps <- GenomicRanges::findOverlaps(site_gr, feature_gr, ignore.strand = TRUE)
+        if (length(overlaps) == 0L) {
+            return(data.frame())
+        }
+        feature_hits <- S4Vectors::subjectHits(overlaps)
+        entrez_ids <- if (feature_type == "promoter") {
+            as.character(S4Vectors::mcols(feature_gr[feature_hits])$name)
+        } else {
+            as.character(names(feature_gr)[feature_hits])
+        }
+        symbols <- .mapEntrezIdsToSymbols(entrez_ids, features$orgdb_pkg)
+        gene_symbols <- unname(symbols[entrez_ids])
+        hit_df <- data.frame(
+            site_id = names(site_gr)[S4Vectors::queryHits(overlaps)],
+            Context = context,
+            Gene = gene_symbols,
+            stringsAsFactors = FALSE
+        )
+        hit_df <- hit_df[!is.na(hit_df$Gene) & nzchar(hit_df$Gene), , drop = FALSE]
+        if (nrow(hit_df) == 0L) {
+            return(data.frame())
+        }
+        hit_df <- stats::aggregate(Gene ~ site_id + Context, hit_df, function(x) paste(unique(x), collapse = ", "))
+        merge(hit_df, site_bounds, by = "site_id", all.x = TRUE, sort = FALSE)
+    }
+
+    track_df <- rbind(
+        make_track_df(features$promoters, "Promoter", "promoter"),
+        make_track_df(features$genes, "Gene body", "gene_body")
+    )
+    if (nrow(track_df) == 0L) {
+        return(NULL)
+    }
+    track_df$y <- ifelse(track_df$Context == "Promoter", 2, 1)
+    label_df <- stats::aggregate(
+        cbind(xmin, xmax) ~ Context + y,
+        track_df,
+        function(x) mean(range(x, na.rm = TRUE))
+    )
+    gene_labels <- vapply(split(track_df$Gene, track_df$Context), function(x) {
+        .collapseGeneLabels(unique(unlist(strsplit(x, ","), use.names = FALSE)))
+    }, character(1))
+    label_df$Gene <- unname(gene_labels[as.character(label_df$Context)])
+
+    ggplot2::ggplot(track_df) +
+        ggplot2::geom_rect(
+            ggplot2::aes(xmin = xmin, xmax = xmax, ymin = y - 0.34, ymax = y + 0.34, fill = Context),
+            alpha = 0.9
+        ) +
+        ggplot2::geom_text(
+            data = label_df,
+            ggplot2::aes(x = (xmin + xmax) / 2, y = y, label = Gene),
+            size = 2.8,
+            fontface = "bold",
+            color = "#222222"
+        ) +
+        ggplot2::scale_fill_manual(values = c("Promoter" = "#E69F00", "Gene body" = "#009E73")) +
+        ggplot2::scale_y_continuous(breaks = NULL) +
+        ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]), clip = "off") +
+        ggplot2::labs(x = NULL, y = NULL, fill = "Gene context") +
+        ggplot2::theme_minimal(base_size = 9) +
+        ggplot2::theme(
+            axis.text = ggplot2::element_blank(),
+            axis.ticks = ggplot2::element_blank(),
+            panel.grid = ggplot2::element_blank(),
+            legend.position = "right",
+            legend.title = ggplot2::element_text(size = 8, face = "bold"),
+            legend.text = ggplot2::element_text(size = 8),
+            plot.margin = ggplot2::margin(t = 0, r = 5, b = 0, l = 5)
+        )
+}
+
 # Create beta heatmap plot
 .plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, max_samples_per_group = 10, sample_group_col = "Sample_Group") {
     site_ids <- rownames(total_shown_positions)
@@ -637,22 +764,32 @@
     beta_melted$Position <- site_locs[as.character(beta_melted$site), "start"]
     beta_melted$is_seed <- is_seed[match(beta_melted$site, site_ids)]
     sample_order <- unique(as.character(beta_melted$Sample))
-    sample_label_colors <- rep("#222222", length(sample_order))
-    names(sample_label_colors) <- sample_order
+    group_ranges <- NULL
+    group_boundaries <- NULL
     if (!is.null(pheno) && !is.null(sample_group_col)) {
         beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
         # Order samples by group
         sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
         beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
         group_per_sample <- as.character(pheno[sample_order, sample_group_col])
-        unique_groups <- unique(group_per_sample)
-        group_colors <- colorspace::qualitative_hcl(length(unique_groups), palette = "Dark 3")
-        names(group_colors) <- unique_groups
-        sample_label_colors <- unname(group_colors[group_per_sample])
-        names(sample_label_colors) <- sample_order
+        group_run <- rle(group_per_sample)
+        group_ranges <- data.frame(
+            Group = group_run$values,
+            ymax = cumsum(group_run$lengths),
+            stringsAsFactors = FALSE
+        )
+        group_ranges$ymin <- group_ranges$ymax - group_run$lengths + 1
+        group_ranges$ymid <- (group_ranges$ymin + group_ranges$ymax) / 2
+        if (nrow(group_ranges) > 1L) {
+            group_boundaries <- head(group_ranges$ymax, -1L) + 0.5
+        }
     } else {
         beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
     }
+    sample_index <- seq_along(sample_order)
+    names(sample_index) <- sample_order
+    beta_melted$SampleIndex <- unname(sample_index[as.character(beta_melted$Sample)])
+
     valid_beta <- beta_melted$Beta[is.finite(beta_melted$Beta)]
     beta_limits <- range(valid_beta, na.rm = TRUE)
     q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
@@ -682,20 +819,36 @@
         )
     }
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
-        ggplot2::geom_tile(ggplot2::aes(x = Position, y = Sample, fill = Beta)) +
+        ggplot2::geom_tile(ggplot2::aes(x = Position, y = SampleIndex, fill = Beta)) +
         coloring +
+        ggplot2::scale_y_continuous(
+            breaks = if (is.null(group_ranges)) NULL else group_ranges$ymid,
+            labels = if (is.null(group_ranges)) NULL else group_ranges$Group,
+            limits = c(0.5, length(sample_order) + 0.5),
+            expand = c(0, 0)
+        ) +
         ggplot2::labs(
-            y = "Sample"
+            y = NULL
         ) +
         ggplot2::theme_minimal(base_size = 10) +
         ggplot2::theme(
-            axis.text.y = ggplot2::element_text(size = 7, color = sample_label_colors[levels(beta_melted$Sample)]),
+            axis.text.y = ggplot2::element_text(size = 8, face = "bold", color = "#222222"),
+            axis.ticks.y = ggplot2::element_blank(),
             panel.grid.minor = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         ) +
         ggplot2::theme(
             axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7)
         )
+    if (length(group_boundaries) > 0L) {
+        heatmap_plot <- heatmap_plot +
+            ggplot2::geom_hline(
+                yintercept = group_boundaries,
+                linetype = "dashed",
+                linewidth = 0.35,
+                color = "#333333"
+            )
+    }
     heatmap_plot
 }
 
@@ -1235,15 +1388,24 @@ plotDMR <- function(dmrs,
                 plot.margin = ggplot2::margin(t = 0, r = 5, b = 5, l = 5)
             )
 
-        g1 <- ggplot2::ggplotGrob(structure_plot)
-        g2 <- ggplot2::ggplotGrob(heatmap_plot)
-        grobs <- list(g1, g2)
+        grobs <- list(ggplot2::ggplotGrob(structure_plot))
+        heights <- c(1)
+        gene_context_track <- .plotDMRGeneContextTrack(dmr, breaks)
+        if (!is.null(gene_context_track)) {
+            grobs <- c(grobs, list(ggplot2::ggplotGrob(gene_context_track)))
+            heights <- c(heights, 0.18)
+        }
+        grobs <- c(grobs, list(ggplot2::ggplotGrob(heatmap_plot)))
+        heights <- c(heights, 1)
+        x_aligned_grobs <- length(grobs)
     } else {
         structure_plot <- structure_plot + ggplot2::labs(
             x = sprintf("Genomic Position on %s (bp)", ret$chr)
         )
         .log_info("Beta values not provided. Only the DMR structure plot will be returned.", level = 2)
         grobs <- list(ggplot2::ggplotGrob(structure_plot))
+        heights <- c(1)
+        x_aligned_grobs <- 1L
     }
 
     if (plot_motif) {
@@ -1267,31 +1429,27 @@ plotDMR <- function(dmrs,
                 widths = c(0.58, 0.42)
             )
             grobs <- c(grobs, list(motif_panel))
+            heights <- c(heights, if (!is.null(beta)) 0.55 else 0.6)
         }
     }
 
     # Keep genomic schematic and beta heatmap perfectly aligned on x,
     # but avoid forcing motif/context panel into the same gtable geometry.
-    if (!is.null(beta) && length(grobs) >= 2) {
-        max_width <- grid::unit.pmax(grobs[[1]]$widths, grobs[[2]]$widths)
-        grobs[[1]]$widths <- max_width
-        grobs[[2]]$widths <- max_width
+    if (x_aligned_grobs >= 2L) {
+        max_width <- do.call(grid::unit.pmax, lapply(grobs[seq_len(x_aligned_grobs)], `[[`, "widths"))
+        for (i in seq_len(x_aligned_grobs)) {
+            grobs[[i]]$widths <- max_width
+        }
     }
 
-    if (length(grobs) == 3) {
+    if (length(grobs) > 1L) {
         combined <- gridExtra::arrangeGrob(
             grobs = grobs,
             ncol = 1,
-            heights = c(1, 1, 0.55)
-        )
-    } else if (length(grobs) == 2 && plot_motif && is.null(beta)) {
-        combined <- gridExtra::arrangeGrob(
-            grobs = grobs,
-            ncol = 1,
-            heights = c(1, 0.6)
+            heights = heights
         )
     } else {
-        combined <- do.call(gridExtra::gtable_rbind, grobs)
+        combined <- grobs[[1]]
     }
     grid::grid.draw(combined)
     if (!is.null(output_file)) {
