@@ -917,7 +917,7 @@ if (!file.exists(hummingbird_file)) {
 }
 ```
 
-```{r}
+```{r, runtime_summary}
 cat(sprintf("**CMEnt**: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
 cat(sprintf("**DMRcate**: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
 cat(sprintf("**DMRseq**: Found %d DMRs in %d seconds\n", length(dmrs_dmrseq), round(as.numeric(time_dmrseq, units = "secs"))))
