@@ -107,7 +107,7 @@ test_that("custom BED preprocessing falls back when tabix tools are unavailable"
     writeSyntheticBedFile(fixture, bed_file)
 
     local_mocked_bindings(
-        Sys.which = function(names) stats::setNames(rep("", length(names)), names),
+        .tabixToolsAvailable = function() FALSE,
         convertBetaToTabix = function(...) stop("tabix conversion should not run"),
         .package = "CMEnt"
     )

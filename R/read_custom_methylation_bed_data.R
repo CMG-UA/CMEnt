@@ -84,7 +84,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     if (is.na(njobs) || njobs < 1L) {
         stop("njobs must be a positive integer.")
     }
-    tabix_available <- all(nzchar(Sys.which(c("tabix", "bgzip"))))
+    tabix_available <- .tabixToolsAvailable()
 
     cache_dir <- .getTabixCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
