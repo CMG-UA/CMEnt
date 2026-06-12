@@ -1,55 +1,3 @@
-#' Annotate DMRs with Gene Information
-#'
-#' @description Annotates DMRs with overlapping gene promoters and gene bodies
-#' using TxDb annotations. For each DMR, identifies genes whose promoters or
-#' gene bodies overlap with the DMR coordinates.
-#'
-#' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
-#' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
-#'   define promoter region (default: 2000)
-#' @param promoter_downstream Integer. Number of base pairs downstream of TSS
-#'   to define promoter region (default: 200)
-#' @param njobs Integer. Number of parallel jobs used to annotate promoter and
-#'   gene-body overlaps (default: `getOption("CMEnt.njobs")`)
-#' @param site_locs Optional data frame or GRanges with site coordinates used to
-#'   compute feature-specific delta beta values.
-#' @param site_delta_beta Optional named numeric vector of per-site delta beta values.
-#' @param aggfun Function used to aggregate per-site delta beta values.
-#'
-#' @return The input Dataframe/GRanges object with additional metadata columns:
-#' \itemize{
-#'   \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
-#'   \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
-#'   \item delta_beta_promoter: Aggregated delta beta of DMR sites overlapping promoters, or NA
-#'   \item delta_beta_gene_body: Aggregated delta beta of DMR sites overlapping gene bodies, or NA
-#' }
-#'
-#' @details
-#' The function uses genome-appropriate TxDb packages. For `hs1`, CMEnt
-#' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
-#' Gene symbols are retrieved from the appropriate org.*.eg.db package.
-#' Multiple overlapping genes are concatenated with commas.
-#'
-#' @examples
-#' # Annotate DMRs with gene information
-#' dmrs <- data.frame(
-#'     chr = c("chr1", "chr2"),
-#'     start = c(1000000, 2000000),
-#'     end = c(1001000, 2001000)
-#' )
-#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
-#'
-#' # Use custom promoter definition
-#' dmrs_annotated <- annotateDMRsWithGenes(
-#'     dmrs,
-#'     genome = "hg38",
-#'     promoter_upstream = 5000,
-#'     promoter_downstream = 1000,
-#'     njobs = 2
-#' )
-#'
-#' @export
 .loadGeneAnnotationFeatures <- function(genome, promoter_upstream = 2000,
                                         promoter_downstream = 200,
                                         context = "gene annotation") {
@@ -162,6 +110,58 @@
     list(genes = genes, promoters = promoters, orgdb_pkg = orgdb_pkg)
 }
 
+#' Annotate DMRs with Gene Information
+#'
+#' @description Annotates DMRs with overlapping gene promoters and gene bodies
+#' using TxDb annotations. For each DMR, identifies genes whose promoters or
+#' gene bodies overlap with the DMR coordinates.
+#'
+#' @param dmrs Dataframe or GRanges object containing DMR coordinates
+#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
+#' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
+#'   define promoter region (default: 2000)
+#' @param promoter_downstream Integer. Number of base pairs downstream of TSS
+#'   to define promoter region (default: 200)
+#' @param njobs Integer. Number of parallel jobs used to annotate promoter and
+#'   gene-body overlaps (default: `getOption("CMEnt.njobs")`)
+#' @param site_locs Optional data frame or GRanges with site coordinates used to
+#'   compute feature-specific delta beta values.
+#' @param site_delta_beta Optional named numeric vector of per-site delta beta values.
+#' @param aggfun Function used to aggregate per-site delta beta values.
+#'
+#' @return The input Dataframe/GRanges object with additional metadata columns:
+#' \itemize{
+#'   \item in_promoter_of: Character vector of gene symbols with promoters overlapping the DMR (comma-separated)
+#'   \item in_gene_body_of: Character vector of gene symbols with gene bodies overlapping the DMR (comma-separated)
+#'   \item delta_beta_promoter: Aggregated delta beta of DMR sites overlapping promoters, or NA
+#'   \item delta_beta_gene_body: Aggregated delta beta of DMR sites overlapping gene bodies, or NA
+#' }
+#'
+#' @details
+#' The function uses genome-appropriate TxDb packages. For `hs1`, CMEnt
+#' uses hg38 gene models and lifts them to `hs1` before computing overlaps.
+#' Gene symbols are retrieved from the appropriate org.*.eg.db package.
+#' Multiple overlapping genes are concatenated with commas.
+#'
+#' @examples
+#' # Annotate DMRs with gene information
+#' dmrs <- data.frame(
+#'     chr = c("chr1", "chr2"),
+#'     start = c(1000000, 2000000),
+#'     end = c(1001000, 2001000)
+#' )
+#' dmrs_annotated <- annotateDMRsWithGenes(dmrs, genome = "hg38")
+#'
+#' # Use custom promoter definition
+#' dmrs_annotated <- annotateDMRsWithGenes(
+#'     dmrs,
+#'     genome = "hg38",
+#'     promoter_upstream = 5000,
+#'     promoter_downstream = 1000,
+#'     njobs = 2
+#' )
+#'
+#' @export
 annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200,

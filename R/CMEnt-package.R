@@ -56,7 +56,7 @@ NULL
 if (getRversion() >= "2.15.1") {
     utils::globalVariables(
         c(
-            ".", ".N", "Beta", "Sample",
+            ".", ".N", "Beta", "Context", "Gene", "Sample", "SampleIndex",
             "cases_beta", "cases_beta_sd", "chr", "controls_beta",
             "controls_beta_sd", "dmr_id", "end_bp", "end_score",
             "hover_text", "id", "label", "label_x", "label_y",

@@ -635,7 +635,7 @@
     site_bounds$Position <- total_shown_positions$start
 
     make_track_df <- function(feature_gr, context, feature_type) {
-        feature_gr <- GenomicRanges::subsetByOverlaps(feature_gr, dmr, ignore.strand = TRUE)
+        feature_gr <- IRanges::subsetByOverlaps(feature_gr, dmr, ignore.strand = TRUE)
         overlaps <- GenomicRanges::findOverlaps(site_gr, feature_gr, ignore.strand = TRUE)
         if (length(overlaps) == 0L) {
             return(data.frame())
