@@ -131,6 +131,8 @@ array_type <- "450K"
 genome <- "hg19"
 simulation <- list(
     delta_max0 = 0.3,
+    delta_jitter = 0.1,
+    truth_min_delta_beta = 0.1,
     expected_correlation = 0.7,
     max_gap = 500L,
     min_dmr_size = 50L,
@@ -675,7 +677,6 @@ get_dmr_stats <- function(dmrs, method) {
         return(data.frame(
             Method = method,
             `Number of DMRs` = 0,
-            `Mean DMR Width` = NA,
             `Median DMR Width` = NA,
             `Total Coverage bp` = 0,
             `Min Width` = NA,
@@ -686,7 +687,6 @@ get_dmr_stats <- function(dmrs, method) {
     data.frame(
         Method = method,
         `Number of DMRs` = length(dmrs),
-        `Mean DMR Width` = round(mean(width(dmrs)), 1),
         `Median DMR Width` = median(width(dmrs)),
         `Total Coverage bp` = sum(width(dmrs)),
         `Min Width` = min(width(dmrs)),
@@ -699,7 +699,8 @@ stats_list <- list(
     get_dmr_stats(dmrs_combp, "comb-p"),
     get_dmr_stats(dmrs_probelasso, "probeLasso"),
     get_dmr_stats(dmrs_dmrcate, "DMRcate"),
-    get_dmr_stats(dmrs_bumphunter, "Bumphunter")
+    get_dmr_stats(dmrs_bumphunter, "Bumphunter"),
+    get_dmr_stats(truth_dmrs, "Truth")
 )
 
 results_comparison <- do.call(rbind, stats_list)
