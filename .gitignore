@@ -62,3 +62,5 @@ notebooks/cached_results/simulated_microarray450k/GSE40279*
 notebooks/metastudy_files
 notebooks/metastudy_cache
 
+notebooks/*.html
+dmps.rds
