@@ -3,6 +3,8 @@ name: CMEnt CI
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - master
     paths:
       - ".github/workflows/prepare-cment-env-image.yaml"
       - ".github/workflows/prepare-cment-env-notebooks-image.yaml"
@@ -21,7 +23,6 @@ on:
   push:
     branches:
       - master
-      - devel
     paths:
       - ".github/workflows/ci.yaml"
       - ".github/workflows/prepare-cment-env-image.yaml"
@@ -58,20 +59,29 @@ env:
   CI: true
 
 jobs:
+  gate:
+    if: github.repository == 'CMG-UA/CMEnt'
+    runs-on: ubuntu-latest
+    outputs:
+      run_ci: "true"
+    steps:
+      - run: echo "Allowed repository"
+  
   test-package:
+    needs: gate
     name: Test package
     uses: ./.github/workflows/test-package.yaml
     secrets: inherit
     
   make-docker:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master')
     name: Make CMEnt Docker image
     needs: test-package
     uses: ./.github/workflows/make-docker.yaml
     secrets: inherit
 
   make-github-pages:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master')
     name: Render notebooks and deploy to GitHub Pages
     needs: test-package
     uses: ./.github/workflows/make-github-pages.yaml
