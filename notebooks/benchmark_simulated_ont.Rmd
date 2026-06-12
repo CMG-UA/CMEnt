@@ -940,7 +940,6 @@ get_dmr_stats <- function(dmrs, method) {
         return(data.frame(
             Method = method,
             `Number of DMRs` = 0,
-            `Mean DMR Width` = NA_real_,
             `Median DMR Width` = NA_real_,
             `Total Coverage bp` = 0,
             `Min Width` = NA_real_,
@@ -951,7 +950,6 @@ get_dmr_stats <- function(dmrs, method) {
     data.frame(
         Method = method,
         `Number of DMRs` = length(dmrs),
-        `Mean DMR Width` = mean(width(dmrs)),
         `Median DMR Width` = median(width(dmrs)),
         `Total Coverage bp` = sum(width(dmrs)),
         `Min Width` = min(width(dmrs)),

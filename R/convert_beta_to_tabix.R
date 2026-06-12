@@ -1,3 +1,7 @@
+.tabixToolsAvailable <- function() {
+    all(nzchar(Sys.which(c("tabix", "bgzip"))))
+}
+
 #' Convert Beta File to Tabix-Indexed Format
 #'
 #' @description Converts a methylation beta values file to a tabix-indexed BED format
@@ -40,10 +44,6 @@
 #' }
 #'
 #' @export
-.tabixToolsAvailable <- function() {
-    all(nzchar(Sys.which(c("tabix", "bgzip"))))
-}
-
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = c("450K", "27K", "EPIC", "EPICv2"),
