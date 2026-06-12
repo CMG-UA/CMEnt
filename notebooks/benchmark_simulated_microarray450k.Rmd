@@ -32,7 +32,7 @@ This vignette provides an extended benchmark comparing CMEnt against multiple po
 - **DMRcate**: Gaussian kernel smoothing approach
 - **Bumphunter**: Permutation-based regional testing
 
-The dataset used is a simulated dataset, produced by running `simulateDMRs`, on a chr20 and chr21 subset of preprocessed beta values from 656 450K illumina microarray healthy blood samples found in GEO with identifier GSE40279, with 500 simulated DMRs of varying widths and effect sizes. The simulated dataset is available for download from Zenodo (see code below).
+The dataset used is a simulated dataset, produced by running `simulateDMRs`, on a chr20 and chr21 subset of preprocessed beta values from 100 randomly selected 450K illumina microarray healthy blood samples found in GEO with identifier GSE40279, with 500 simulated DMRs of varying widths and effect sizes (50 cases and 50 controls). The simulated dataset is available for download from Zenodo (see code below).
 
 ## Setup and Dependencies
 
