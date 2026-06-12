@@ -333,6 +333,36 @@ test_that("simulateDMRs extends an existing samplesheet with case/control groups
     expect_equal(sim$pheno$condition, c(rep("control", 3), rep("case", 3)))
 })
 
+test_that("simulateDMRs subsets samples based on samplesheet", {
+    array_input <- create_simulation_microarray()
+    keep_samples <- colnames(array_input$beta)[2:5]
+    samplesheet <- data.frame(
+        age = seq_along(keep_samples) + 50,
+        row.names = rev(keep_samples),
+        stringsAsFactors = FALSE
+    )
+
+    set.seed(321)
+    sim <- simulateDMRs(
+        beta = array_input$beta,
+        sorted_locs = array_input$sorted_locs,
+        samplesheet = samplesheet,
+        num_dmrs = 4,
+        delta_max0 = 0.25,
+        min_sites = 4,
+        max_sites = 20,
+        max_gap = 500L
+    )
+
+    expect_equal(colnames(sim$simulated), keep_samples)
+    expect_equal(rownames(sim$pheno), keep_samples)
+    expect_equal(sim$pheno$age, samplesheet[keep_samples, "age"])
+    expect_equal(names(sim$groups), keep_samples)
+    expect_equal(unname(sim$groups), c("control", "control", "case", "case"))
+    expect_equal(names(sim$input_groups), keep_samples)
+    expect_equal(unname(sim$input_groups), c("Condition1", "Condition1", "Condition2", "Condition2"))
+})
+
 test_that("simulateDMRs residualizes covariates before simulation", {
     array_input <- create_simulation_microarray(n_sites = 90, n_samples = 8)
     batch <- rep(c("A", "A", "B", "B"), 2)

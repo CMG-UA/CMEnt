@@ -32,7 +32,7 @@ This vignette provides an extended benchmark comparing CMEnt against multiple po
 - **DMRcate**: Gaussian kernel smoothing approach
 - **Bumphunter**: Permutation-based regional testing
 
-The dataset used is a simulated dataset, produced by running `simulateDMRs`, with default parameters, on chr21 and chr22 subset of preprocessed beta values from 656 450K illumina microarray healthy blood samples found in GEO with identifier GSE40279, with 500 simulated DMRs of varying widths and effect sizes. The simulated dataset is available for download from Zenodo (see code below).
+The dataset used is a simulated dataset, produced by running `simulateDMRs`, on a chr20 and chr21 subset of preprocessed beta values from 656 450K illumina microarray healthy blood samples found in GEO with identifier GSE40279, with 500 simulated DMRs of varying widths and effect sizes. The simulated dataset is available for download from Zenodo (see code below).
 
 ## Setup and Dependencies
 
@@ -63,6 +63,18 @@ getBenchmarkFile <- function(filename) {
 
 get_method_cache_file <- function(method) {
     getBenchmarkFile(sprintf("dmrs.%s.rds", method))
+}
+
+read_method_cache <- function(cache_file, params) {
+    if (!file.exists(cache_file)) {
+        return(NULL)
+    }
+    ret <- readRDS(cache_file)
+    if (identical(ret$params, params)) ret else NULL
+}
+
+save_method_cache <- function(cache_file, dmrs, time, params) {
+    saveRDS(list(dmrs = dmrs, time = time, params = params), cache_file)
 }
 ```
 
@@ -117,6 +129,21 @@ sim_truth_path <- getBenchmarkFile("GSE40279_sim_dmrs.tsv")
 sim_pheno_path <- getBenchmarkFile("GSE40279_sim_samplesheet.tsv")
 array_type <- "450K"
 genome <- "hg19"
+simulation <- list(
+    delta_max0 = 0.3,
+    expected_correlation = 0.7,
+    max_gap = 500L,
+    min_dmr_size = 50L,
+    max_dmr_size = 2000L,
+    min_sites = 5L,
+    max_sites = 500L,
+    num_dmrs = 500L,
+    genome = genome
+)
+cat("Simulation parameters:\n")
+for (param in names(simulation)) {
+    cat(sprintf("- %s: %s\n", param, simulation[[param]]))
+}
 zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
 if (!file.exists(sim_beta_path)) {
     curl::curl_download(
@@ -223,9 +250,9 @@ dmps_gr <- makeGRangesFromDataFrame(
 dmps_gr <- sort(dmps_gr)
 names(dmps_gr) <- rownames(dmps)
 
-seeds_gr <- dmps_gr[mcols(dmps_gr)$qval < 0.05]
+seeds_gr <- dmps_gr[mcols(dmps_gr)$qval < 0.1]
 seeds <- mcols(seeds_gr)$id
-cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.05)\n", length(seeds)))
+cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.1)\n", length(seeds)))
 
 ```
 
@@ -233,7 +260,7 @@ cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.05)\n", leng
 
 ## Method 1: CMEnt
 
-```{r CMEnt_params}
+```{r cment}
 cment_params <- list(
     sample_group_col = "Sample_Group",
     casecontrol_col = "casecontrol",
@@ -241,180 +268,22 @@ cment_params <- list(
     max_bridge_extension_gaps = 1,
     min_seeds = 2,
     min_sites = 3,
-    ext_site_delta_beta = 0.1,
-    max_lookup_dist = 500,
+    ext_site_delta_beta = simulation$delta_max0 / 3,
+    max_lookup_dist = simulation$max_gap,
+    expansion_window = simulation$max_dmr_size,
     max_pval = 0.05,
     testing_mode = "parametric",
     entanglement = "weak"
 )
 cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
 options("CMEnt.njobs" = cment_njobs)
-```
-
-### Assessing DMPs seeds connectivity alone
-
-```{r CMEnt_seeds, eval=FALSE}
-# only chr21
-truth_dmrs_21 <- truth_dmrs[seqnames(truth_dmrs) == "chr21", ]
-seeds_gr_21 <- subset(seeds_gr, seqnames(seeds_gr) == "chr21")
-seeds_21 <- mcols(seeds_gr_21)$id
-seeds_beta_21 <- beta_mat[mcols(seeds_gr_21)$id, , drop = FALSE]
-gt_seeds_gr_21 <- subsetByOverlaps(seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
-seeds_dmrs_cment <- do.call(CMEnt::buildDMRs, c(cment_params, list(
-    beta = seeds_beta_21,
-    seeds = seeds_21,
-    pheno = pheno,
-    verbose = 2,
-    .score_dmrs = FALSE,
-    extract_motifs = FALSE,
-    annotate_with_genes = FALSE)))
-```
-```{r chr21_gt_check, eval=FALSE}
-seeds_in_truth <- subsetByOverlaps(gt_seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
-
-seeds_in_dmrs <- subsetByOverlaps(gt_seeds_gr_21, seeds_dmrs_cment, ignore.strand = TRUE)
-seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE)
-seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE, invert = TRUE)
-
-
-
-seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs_21, ignore.strand = TRUE)
-truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs_21))
-seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs_21, ignore.strand = TRUE)
-
-
-truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs_21))
-truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
-
-recoverable_truth <- truth_seed_total >= 2L
-recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
-recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
-
-stage1_quality <- data.frame(
-    Truth_DMRs_Total = length(truth_dmrs_21),
-    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
-    Truth_DMRs_2plusSeeds = sum(recoverable_truth),
-    Truth_DMRs_With2plusCapturedSeeds = sum(recoverable_with2captured),
-    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
-    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
-    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
-)
-
-for (col in colnames(stage1_quality)) {
-    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
-}
-
-
-```
-```{r CMEnt_connectivity, eval=FALSE}
-seeds_beta_21_handler <- CMEnt::getBetaHandler(
-    beta = seeds_beta_21,
-    genome = genome,
-    array = array_type
-)
-group_inds <- split(seq_len(nrow(pheno)), pheno$Sample_Group)
-testing_mode_per_group <- rep("parametric", length(group_inds))
-names(testing_mode_per_group) <- names(group_inds)
-empirical_strategy_per_group <- rep("permutation", length(group_inds))
-names(empirical_strategy_per_group) <- names(group_inds)
-
-connectivity_array_21 <- CMEnt:::.buildConnectivityArray(
-    beta_handler = seeds_beta_21_handler,
-    pheno = pheno,
-    group_inds = group_inds,
-    testing_mode_per_group = testing_mode_per_group,
-    empirical_strategy_per_group = empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = cment_params$max_pval,
-    ext_site_delta_beta = NA_real_,
-    max_lookup_dist = cment_params$max_lookup_dist,
-    entanglement = cment_params$entanglement,
-    njobs = cment_njobs,
-    max_bridge_gaps = 1,
-    verbose = 3
-)$connectivity_array
-connectivity_array_21_no_gaps <- CMEnt:::.buildConnectivityArray(
-    beta_handler = seeds_beta_21_handler,
-    pheno = pheno,
-    group_inds = group_inds,
-    testing_mode_per_group = testing_mode_per_group,
-    empirical_strategy_per_group = empirical_strategy_per_group,
-    col_names = NULL,
-    max_pval = cment_params$max_pval,
-    ext_site_delta_beta = NA_real_,
-    max_lookup_dist = cment_params$max_lookup_dist,
-    entanglement = cment_params$entanglement,
-    njobs = cment_njobs,
-    max_bridge_gaps = 0,
-    verbose = 2
-)$connectivity_array
-
-truth_hits <- findOverlaps(gt_seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
-
-truth_id <- rep(NA_integer_, length(gt_seeds_gr_21))
-truth_id[queryHits(truth_hits)] <- subjectHits(truth_hits)
-
-gt_vec <- rep(FALSE, length(gt_seeds_gr_21))
-if (length(gt_vec) > 1L) {
-    gt_vec[-length(gt_vec)] <- !is.na(truth_id[-length(truth_id)]) &
-        truth_id[-length(truth_id)] == truth_id[-1]
-}
-
-gt_connectivity <- data.frame(gt = gt_vec)
-
-colnames(connectivity_array_21_no_gaps) <- paste(colnames(connectivity_array_21_no_gaps), "ngaps", sep = "_")
-connectivity_array_21 <- cbind(gt_connectivity, connectivity_array_21, connectivity_array_21_no_gaps)
-x <- rle(connectivity_array_21$connected); sum(x$values)
-```
-```{r CMEnt_seeds_connectivity_quality, eval=FALSE}
-seeds_in_truth <- subsetByOverlaps(gt_seeds_gr_21, truth_dmrs_21, ignore.strand = TRUE)
-
-seeds_in_dmrs <- subsetByOverlaps(gt_seeds_gr_21, seeds_dmrs_cment, ignore.strand = TRUE)
-seeds_in_truth_and_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE)
-seeds_in_truth_not_dmrs <- subsetByOverlaps(seeds_in_truth, seeds_dmrs_cment, ignore.strand = TRUE, invert = TRUE)
-
-
-
-seed_truth_ov <- findOverlaps(seeds_in_truth, truth_dmrs_21, ignore.strand = TRUE)
-truth_seed_total <- tabulate(subjectHits(seed_truth_ov), nbins = length(truth_dmrs_21))
-seed_truth_hit_ov <- findOverlaps(seeds_in_truth_and_dmrs, truth_dmrs_21, ignore.strand = TRUE)
-
-
-truth_seed_captured <- tabulate(subjectHits(seed_truth_hit_ov), nbins = length(truth_dmrs_21))
-truth_seed_capture_pct <- ifelse(truth_seed_total > 0, round(100 * truth_seed_captured / truth_seed_total, 1), NA_real_)
-
-recoverable_truth <- truth_seed_total >= 2L
-recoverable_with2captured <- recoverable_truth & truth_seed_captured >= 2L
-recoverable_fully_captured <- recoverable_truth & truth_seed_captured == truth_seed_total
-
-stage1_quality <- data.frame(
-    Truth_DMRs_Total = length(truth_dmrs_21),
-    Truth_DMRs_With_Seeds = sum(truth_seed_total >= 1L),
-    Truth_DMRs_2plusSeeds = sum(recoverable_truth),
-    Truth_DMRs_With2plusCapturedSeeds = sum(recoverable_with2captured),
-    Truth_DMRs_Stage1Recoverable_FullyCapturedSeeds = sum(recoverable_fully_captured),
-    Seed_Capture_Rate_Pct_in_Truth = ifelse(length(seeds_in_truth) == 0, NA_real_, round(100 * length(seeds_in_truth_and_dmrs) / length(seeds_in_truth), 1)),
-    Median_Seed_Capture_Pct_Per_Truth = ifelse(sum(truth_seed_total > 0) == 0, NA_real_, stats::median(truth_seed_capture_pct[truth_seed_total > 0], na.rm = TRUE))
-)
-
-for (col in colnames(stage1_quality)) {
-    cat(sprintf("- **%s**: %s\n", col, stage1_quality[[col]]))
-}
-
-```
-```{r CMEnt}
 cment_file <- get_method_cache_file("CMEnt")
 
-cment_cache_valid <- FALSE
-if (file.exists(cment_file)) {
-    ret <- readRDS(cment_file)
-    cment_cache_valid <- identical(ret$params, cment_params)
-    if (cment_cache_valid) {
-        dmrs_cment <- ret$dmrs
-        time_cment <- ret$time
-    }
-}
-if (!cment_cache_valid) {
+ret <- read_method_cache(cment_file, cment_params)
+if (!is.null(ret)) {
+    dmrs_cment <- ret$dmrs
+    time_cment <- ret$time
+} else {
     cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     options("CMEnt.njobs" = cment_njobs)
     cat(sprintf("CMEnt parallel jobs: %d\n", cment_njobs))
@@ -432,7 +301,7 @@ if (!cment_cache_valid) {
     )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_cment, time = time_cment, params = cment_params), cment_file)
+    save_method_cache(cment_file, dmrs_cment, time_cment, cment_params)
 }
 
 cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
@@ -442,8 +311,15 @@ cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as
 
 ```{r comb-p}
 combp_file <- get_method_cache_file("combp")
+combp_params <- list(
+    seed = simulation$max_gap,
+    dist = simulation$max_gap,
+    region_filter_p = 0.01,
+    region_filter_n = simulation$min_sites,
+    region_sidak_p = 0.05
+)
 
-run_combp <- function(dmps_gr, seed = 500, dist = 500) {
+run_combp <- function(dmps_gr, params) {
     if (Sys.which("bedtools") == "") {
         warning("bedtools not found in PATH. comb-p requires bedtools to be installed.")
         warning("Install with: conda install -yc bioconda bedtools")
@@ -471,8 +347,12 @@ run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     )
 
     cmd <- sprintf(
-        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p 0.01 --region-filter-n 3 %s",
-        seed, dist, file.path(tmpdir, "output."), bed_file
+        paste(
+            "comb-p pipeline -c 4 --seed %d --dist %d -p %s",
+            "--region-filter-p %s --region-filter-n %d %s"
+        ),
+        params$seed, params$dist, file.path(tmpdir, "output."),
+        params$region_filter_p, params$region_filter_n, bed_file
     )
 
     tryCatch(
@@ -489,7 +369,7 @@ run_combp <- function(dmps_gr, seed = 500, dist = 500) {
                 regions <- fread(cmd = sprintf("zcat %s", regions_file))
                 colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
 
-                regions <- regions[regions$z_sidak_p < 0.05 & regions$n_probes >= 3, ]
+                regions <- regions[regions$z_sidak_p < params$region_sidak_p & regions$n_probes >= params$region_filter_n, ]
 
                 dmrs_combp <- makeGRangesFromDataFrame(regions,
                     seqnames.field = "chr",
@@ -510,16 +390,16 @@ run_combp <- function(dmps_gr, seed = 500, dist = 500) {
     )
 }
 
-if (!file.exists(combp_file)) {
-    start_time <- Sys.time()
-    dmrs_combp <- run_combp(dmps_gr)
-    end_time <- Sys.time()
-    time_combp <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_combp, time = time_combp), combp_file)
-} else {
-    ret <- readRDS(combp_file)
+ret <- read_method_cache(combp_file, combp_params)
+if (!is.null(ret)) {
     dmrs_combp <- ret$dmrs
     time_combp <- ret$time
+} else {
+    start_time <- Sys.time()
+    dmrs_combp <- run_combp(dmps_gr, combp_params)
+    end_time <- Sys.time()
+    time_combp <- end_time - start_time
+    save_method_cache(combp_file, dmrs_combp, time_combp, combp_params)
 }
 
 cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(as.numeric(time_combp, units = "secs"))))
@@ -528,12 +408,22 @@ cat(sprintf("comb-p: Found %d DMRs in %d seconds\n", length(dmrs_combp), round(a
 ## Method 3: probeLasso
 ```{r probeLasso}
 probelasso_file <- get_method_cache_file("probeLasso")
+probelasso_params <- list(
+    array_type = array_type,
+    genome = genome,
+    minProbes = simulation$min_sites,
+    adjPvalDmr = 0.05,
+    adjPvalProbe = 0.1,
+    meanLassoRadius = simulation$max_gap,
+    minDmrSep = simulation$max_gap,
+    minDmrSize = simulation$min_dmr_size
+)
 
-run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K", genome = "hg19") {
+run_probelasso_champ <- function(beta_mat, pheno, params) {
     if (!requireNamespace("ChAMP", quietly = TRUE)) {
         warning("ChAMP not installed. probeLasso requires ChAMP.")
         warning("Install with: BiocManager::install('ChAMP')")
-        return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome)))
+        return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome)))
     }
 
     library(ChAMP)
@@ -543,14 +433,14 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K", genome = 
             result <- champ.DMR(
                 beta = beta_mat,
                 pheno = pheno$Sample_Group,
-                arraytype = array_type,
+                arraytype = params$array_type,
                 method = "ProbeLasso",
-                minProbes = cment_params$min_sites,
-                adjPvalDmr = 0.05,
-                adjPvalProbe = 0.1,
-                meanLassoRadius = 500,
-                minDmrSep = 500,
-                minDmrSize = 50,
+                minProbes = params$minProbes,
+                adjPvalDmr = params$adjPvalDmr,
+                adjPvalProbe = params$adjPvalProbe,
+                meanLassoRadius = params$meanLassoRadius,
+                minDmrSep = params$minDmrSep,
+                minDmrSize = params$minDmrSize,
                 PDFplot = FALSE,
                 Rplot = FALSE,
                 resultsDir = file.path(tempdir(), "champ_probelasso")
@@ -576,27 +466,27 @@ run_probelasso_champ <- function(beta_mat, pheno, array_type = "450K", genome = 
                 seqnames.field = "seqnames",
                 start.field = "start",
                 end.field = "end",
-                seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
+                seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome),
                 keep.extra.columns = TRUE
             ))
         },
         error = function(e) {
             warning(sprintf("probeLasso (ChAMP) failed: %s", e$message))
-            GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = genome))
+            GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome))
         }
     )
 }
 
-if (!file.exists(probelasso_file)) {
-    start_time <- Sys.time()
-    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, array_type = "450K", genome = genome)
-    end_time <- Sys.time()
-    time_probelasso <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_probelasso, time = time_probelasso), probelasso_file)
-} else {
-    ret <- readRDS(probelasso_file)
+ret <- read_method_cache(probelasso_file, probelasso_params)
+if (!is.null(ret)) {
     dmrs_probelasso <- ret$dmrs
     time_probelasso <- ret$time
+} else {
+    start_time <- Sys.time()
+    dmrs_probelasso <- run_probelasso_champ(beta_mat, pheno, probelasso_params)
+    end_time <- Sys.time()
+    time_probelasso <- end_time - start_time
+    save_method_cache(probelasso_file, dmrs_probelasso, time_probelasso, probelasso_params)
 }
 
 cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso), round(as.numeric(time_probelasso, units = "secs"))))
@@ -606,7 +496,21 @@ cat(sprintf("probeLasso: Found %d DMRs in %d seconds\n", length(dmrs_probelasso)
 
 ```{r dmrcate}
 dmrcate_file <- get_method_cache_file("dmrcate")
-if (!file.exists(dmrcate_file)) {
+dmrcate_params <- list(
+    array_type = array_type,
+    genome = genome,
+    fdr = 0.05,
+    C = 2,
+    lambda = simulation$max_gap * 2,
+    min.cpgs = simulation$min_sites,
+    betacutoff = 0.05
+)
+
+ret <- read_method_cache(dmrcate_file, dmrcate_params)
+if (!is.null(ret)) {
+    dmrs_dmrcate <- ret$dmrs
+    time_dmrcate <- ret$time
+} else {
     library(DMRcate)
     start_time <- Sys.time()
     formula_str <- "~Sample_Group"
@@ -616,22 +520,23 @@ if (!file.exists(dmrcate_file)) {
     colnames(design)[coef_col] <- "case_vs_control"
 
     myannotation <- cpg.annotate("array", mvalues,
-        what = "M", arraytype = "450K",
+        what = "M", arraytype = dmrcate_params$array_type,
         analysis.type = "differential", design = design,
-        coef = coef_col, fdr = 0.05
+        coef = coef_col, fdr = dmrcate_params$fdr
     )
 
-    dmrcate_results <- dmrcate(myannotation, C = 2, lambda = 1000, min.cpgs = 3, betacutoff = 0.05)
-    dmrs_dmrcate <- extractRanges(dmrcate_results, genome = genome)
+    dmrcate_results <- dmrcate(myannotation,
+        C = dmrcate_params$C,
+        lambda = dmrcate_params$lambda,
+        min.cpgs = dmrcate_params$min.cpgs,
+        betacutoff = dmrcate_params$betacutoff
+    )
+    dmrs_dmrcate <- extractRanges(dmrcate_results, genome = dmrcate_params$genome)
 
 
     end_time <- Sys.time()
     time_dmrcate <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_dmrcate, time = time_dmrcate), dmrcate_file)
-} else {
-    ret <- readRDS(dmrcate_file)
-    dmrs_dmrcate <- ret$dmrs
-    time_dmrcate <- ret$time
+    save_method_cache(dmrcate_file, dmrs_dmrcate, time_dmrcate, dmrcate_params)
 }
 
 cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), round(as.numeric(time_dmrcate, units = "secs"))))
@@ -641,18 +546,29 @@ cat(sprintf("DMRcate: Found %d DMRs in %d seconds\n", length(dmrs_dmrcate), roun
 
 ```{r bumphunter}
 bumphunter_file <- get_method_cache_file("bumphunter")
-if (!file.exists(bumphunter_file)) {
+bumphunter_params <- list(
+    B = 100L,
+    max_dmrs = 100000L,
+    max_gap = simulation$max_gap,
+    min_l = simulation$min_sites,
+    region_p = 0.05,
+    cutoff_start = simulation$delta_max0 / 3,
+    cutoff_floor = 0.005,
+    max_iter = 10L,
+    max_bootstrap_adjust = 6L
+)
+
+ret <- read_method_cache(bumphunter_file, bumphunter_params)
+if (!is.null(ret)) {
+    dmrs_bumphunter <- ret$dmrs
+    time_bumphunter <- ret$time
+} else {
     suppressPackageStartupMessages({
         library(bumphunter)
         library(doParallel)
     })
     start_time <- Sys.time()
     bh_cores <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
-    bh_b <- 100L
-    bh_max_dmrs <- 100000L
-    bh_max_gap <- 2000L
-    bh_min_l <- 2L
-    bh_region_p <- 0.05
     formula_str <- "~Sample_Group"
     design <- model.matrix(stats::as.formula(formula_str), data = pheno)
     coef_col <- which(colnames(design) == "Sample_Groupcase")
@@ -668,7 +584,7 @@ if (!file.exists(bumphunter_file)) {
     bh_cluster <- bumphunter::clusterMaker(
         chr = as.character(locs$chr),
         pos = locs$start,
-        maxGap = bh_max_gap
+        maxGap = bumphunter_params$max_gap
     )
     run_bumphunter_fit <- function(cutoff, B) {
         bumphunter(beta_mat,
@@ -677,7 +593,7 @@ if (!file.exists(bumphunter_file)) {
             pos = locs$start,
             cluster = bh_cluster,
             cutoff = cutoff,
-            maxGap = max_gap,
+            maxGap = bumphunter_params$max_gap,
             nullMethod = "bootstrap",
             B = B,
             type = "Beta",
@@ -692,12 +608,10 @@ if (!file.exists(bumphunter_file)) {
             length(null_lengths) > 0 &&
             any(null_lengths > 0)
     }
-    max_gap <- bh_max_gap
-    dmrs_cutoff <- 0.1
+    dmrs_cutoff <- bumphunter_params$cutoff_start
     dmrs_cnt <- Inf
     iter <- 0L
-    max_iter <- 10L
-    while (dmrs_cnt > bh_max_dmrs && iter < max_iter) {
+    while (dmrs_cnt > bumphunter_params$max_dmrs && iter < bumphunter_params$max_iter) {
         iter <- iter + 1L
         dmrs <- run_bumphunter_fit(cutoff = dmrs_cutoff, B = 0)
         dmrs_cnt <- nrow(dmrs$table)
@@ -708,21 +622,20 @@ if (!file.exists(bumphunter_file)) {
     final_cutoff <- dmrs_cutoff / 1.2
     cat(sprintf(
         "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
-        final_cutoff, dmrs_cnt, bh_min_l, max_gap, bh_cores, bh_b
+        final_cutoff, dmrs_cnt, bumphunter_params$min_l, bumphunter_params$max_gap,
+        bh_cores, bumphunter_params$B
     ))
-    bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
-    bh_cutoff_floor <- 0.005
+    bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bumphunter_params$B)
     bh_bootstrap_adjust_iter <- 0L
-    bh_max_bootstrap_adjust <- 6L
     while (
         nrow(bumphunter_results$table) > 0 &&
             (all(is.na(bumphunter_results$table$p.value)) ||
                 !has_informative_bumphunter_null(bumphunter_results)) &&
-            final_cutoff > bh_cutoff_floor &&
-            bh_bootstrap_adjust_iter < bh_max_bootstrap_adjust
+            final_cutoff > bumphunter_params$cutoff_floor &&
+            bh_bootstrap_adjust_iter < bumphunter_params$max_bootstrap_adjust
     ) {
         prev_cutoff <- final_cutoff
-        final_cutoff <- max(final_cutoff / 2, bh_cutoff_floor)
+        final_cutoff <- max(final_cutoff / 2, bumphunter_params$cutoff_floor)
         if (identical(final_cutoff, prev_cutoff)) {
             break
         }
@@ -731,12 +644,12 @@ if (!file.exists(bumphunter_file)) {
             "Bumphunter: bootstrap null degenerate at cutoff=%.4f; retrying with cutoff=%.4f\n",
             prev_cutoff, final_cutoff
         ))
-        bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bh_b)
+        bumphunter_results <- run_bumphunter_fit(cutoff = final_cutoff, B = bumphunter_params$B)
     }
 
     dmr_table <- bumphunter_results$table
     # bumphunter already estimates region-level p-values from the bootstrap null.
-    dmr_table <- dmr_table[dmr_table$L >= bh_min_l & dmr_table$p.value <= bh_region_p, ]
+    dmr_table <- dmr_table[dmr_table$L >= bumphunter_params$min_l & dmr_table$p.value <= bumphunter_params$region_p, ]
 
     dmrs_bumphunter <- makeGRangesFromDataFrame(dmr_table,
         seqnames.field = "chr",
@@ -746,11 +659,7 @@ if (!file.exists(bumphunter_file)) {
     )
     end_time <- Sys.time()
     time_bumphunter <- end_time - start_time
-    saveRDS(list(dmrs = dmrs_bumphunter, time = time_bumphunter), bumphunter_file)
-} else {
-    ret <- readRDS(bumphunter_file)
-    dmrs_bumphunter <- ret$dmrs
-    time_bumphunter <- ret$time
+    save_method_cache(bumphunter_file, dmrs_bumphunter, time_bumphunter, bumphunter_params)
 }
 
 cat(sprintf("Bumphunter: Found %d DMRs in %d seconds\n", length(dmrs_bumphunter), round(as.numeric(time_bumphunter, units = "secs"))))
