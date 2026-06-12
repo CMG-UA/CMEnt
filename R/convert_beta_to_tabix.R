@@ -79,7 +79,8 @@ convertBetaToTabix <- function(beta_file,
 
     tryCatch(
         {
-            if (is.null(.bed_file)) {
+            owns_temp_bed <- is.null(.bed_file)
+            if (owns_temp_bed) {
                 array <- strex::match_arg(array, ignore_case = TRUE)
                 # Get sorted locations if not provided
                 if (is.null(sorted_locs)) {
@@ -306,7 +307,9 @@ convertBetaToTabix <- function(beta_file,
                 )
                 system2("sh", c("-c", shQuote(sort_cmd)))
             }
-            unlink(temp_bed)
+            if (owns_temp_bed) {
+                unlink(temp_bed)
+            }
             # Compress with bgzip
             .log_step("Compressing with bgzip...", level = 2)
             .log_info("Expected output compressed file: ", output_file, level = 3)

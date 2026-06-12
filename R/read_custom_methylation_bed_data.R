@@ -23,8 +23,8 @@
 #' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
 #'   artifacts next to analysis outputs.
 #' @param njobs Integer. Number of jobs to use after normalization. On Unix-like
-#'   systems, location-registry creation and tabix conversion can run in
-#'   parallel when `njobs > 1`.
+#'   systems, location-registry creation and tabix conversion run in parallel
+#'   when `njobs > 1`.
 #'
 #' @return A list with two elements:
 #' \itemize{
@@ -104,6 +104,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
     }
     hash <- .getFileHash(bed_file)
     normalized_bed_file <- file.path(tempdir(), paste0("bed_", hash, ".tsv"))
+    on.exit(unlink(normalized_bed_file), add = TRUE)
 
     # Read BED file header
     bed_header <- base::strsplit(readLines(bed_file, n = 1), "\t")[[1]]
@@ -204,20 +205,20 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom
         tabix_file
     }
 
-    parallel_tasks <- njobs > 1L && identical(.Platform$OS.type, "unix")
-    if (parallel_tasks) {
+    if (njobs > 1L && identical(.Platform$OS.type, "unix")) {
         locations_job <- parallel::mcparallel(build_locations(), silent = TRUE)
-        tabix_file_path <- tryCatch(
+        tabix_result <- tryCatch(
             build_tabix(max(1L, njobs - 1L)),
-            error = function(e) {
-                parallel::mccollect(locations_job, wait = FALSE)
-                stop(e)
-            }
+            error = identity
         )
-        locations_result <- parallel::mccollect(locations_job)[[1L]]
+        locations_result <- parallel::mccollect(locations_job, wait = TRUE)[[1L]]
+        if (inherits(tabix_result, "error")) {
+            stop(tabix_result)
+        }
         if (inherits(locations_result, "try-error")) {
             stop(attr(locations_result, "condition"))
         }
+        tabix_file_path <- tabix_result
         locations <- locations_result
     } else {
         locations <- build_locations()
