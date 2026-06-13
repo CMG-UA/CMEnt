@@ -69,7 +69,8 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(sim$assay, "BSseq")
@@ -90,6 +91,16 @@ test_that("simulateDMRs returns dmrseq-like outputs for BSseq input", {
     expect_true(all(bsseq::getCoverage(sim$simulated, type = "M") <= bsseq::getCoverage(sim$simulated, type = "Cov")))
 })
 
+test_that("simulateDMRs requires an explicit sample group column", {
+    bs <- create_simulation_bsseq()
+
+    expect_error(
+        simulateDMRs(beta = bs, num_dmrs = 1, min_sites = 5, max_sites = 20),
+        "'sample_group_col' must be a non-empty character scalar.",
+        fixed = TRUE
+    )
+})
+
 test_that("simulateDMRs respects genomic size bounds", {
     bs <- create_simulation_bsseq()
     set.seed(123)
@@ -100,7 +111,8 @@ test_that("simulateDMRs respects genomic size bounds", {
         min_sites = 5,
         max_sites = 20,
         min_dmr_size = 550,
-        max_dmr_size = 570
+        max_dmr_size = 570,
+        sample_group_col = "Sample_Group"
     )
 
     selected_widths <- GenomicRanges::width(sim$selected_regions)
@@ -112,12 +124,18 @@ test_that("simulateDMRs respects genomic size bounds", {
             min_sites = 5,
             max_sites = 20,
             min_dmr_size = 550,
-            max_dmr_size = 560
+            max_dmr_size = 560,
+            sample_group_col = "Sample_Group"
         ),
         "eligible candidate genomic segments"
     )
     expect_error(
-        simulateDMRs(beta = bs, min_dmr_size = 100, max_dmr_size = 99),
+        simulateDMRs(
+            beta = bs,
+            min_dmr_size = 100,
+            max_dmr_size = 99,
+            sample_group_col = "Sample_Group"
+        ),
         "'max_dmr_size' must be an integer greater than or equal to 'min_dmr_size'",
         fixed = TRUE
     )
@@ -131,7 +149,8 @@ test_that("simulateDMRs fits and stores correlation calibration metadata", {
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
     )
 
     expect_true(all(c(
@@ -160,7 +179,8 @@ test_that("simulateDMRs reports full touched regions by default", {
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(as.character(GenomicRanges::seqnames(sim$gr.dmrs)), as.character(GenomicRanges::seqnames(sim$selected_regions)))
@@ -177,7 +197,8 @@ test_that("simulateDMRs uses expected correlation as a local-background floor", 
         delta_max0 = 0.25,
         min_sites = 5,
         max_sites = 20,
-        expected_correlation = 0.2
+        expected_correlation = 0.2,
+        sample_group_col = "Sample_Group"
     )
     set.seed(456)
     sim_high_target <- simulateDMRs(
@@ -186,7 +207,8 @@ test_that("simulateDMRs uses expected correlation as a local-background floor", 
         delta_max0 = 0.25,
         min_sites = 5,
         max_sites = 20,
-        expected_correlation = 0.6
+        expected_correlation = 0.6,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(sim_low_target$truth$background_corr_target, sim_high_target$truth$background_corr_target)
@@ -205,7 +227,8 @@ test_that("simulateDMRs exposes the correlated-neighbor window", {
         delta_max0 = 0.25,
         min_sites = 5,
         max_sites = 20,
-        neighbor_window = 7L
+        neighbor_window = 7L,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(sim$neighbor_window, 7L)
@@ -216,9 +239,21 @@ test_that("simulateDMRs exposes the correlated-neighbor window", {
 test_that("simulateDMRs is reproducible with external seed for BSseq input", {
     bs <- create_simulation_bsseq()
     set.seed(42)
-    sim1 <- simulateDMRs(beta = bs, num_dmrs = 3, min_sites = 5, max_sites = 20)
+    sim1 <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 3,
+        min_sites = 5,
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
+    )
     set.seed(42)
-    sim2 <- simulateDMRs(beta = bs, num_dmrs = 3, min_sites = 5, max_sites = 20)
+    sim2 <- simulateDMRs(
+        beta = bs,
+        num_dmrs = 3,
+        min_sites = 5,
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
+    )
 
     expect_equal(bsseq::getCoverage(sim1$simulated, type = "M"), bsseq::getCoverage(sim2$simulated, type = "M"))
     expect_equal(sim1$truth, sim2$truth)
@@ -231,7 +266,13 @@ test_that("simulateDMRs collapses duplicate input loci before simulation", {
     expect_warning(
         {
             set.seed(42)
-            sim <- simulateDMRs(beta = bs_dup, num_dmrs = 3, min_sites = 5, max_sites = 20)
+            sim <- simulateDMRs(
+                beta = bs_dup,
+                num_dmrs = 3,
+                min_sites = 5,
+                max_sites = 20,
+                sample_group_col = "Sample_Group"
+            )
         },
         NA
     )
@@ -266,7 +307,8 @@ test_that("simulateDMRs keeps sample names and returns case/control phenotype", 
         case_group = "treated",
         num_dmrs = 3,
         min_sites = 5,
-        max_sites = 20
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(colnames(sim$simulated), colnames(bs))
@@ -290,7 +332,8 @@ test_that("simulateDMRs supports microarray beta input", {
         delta_max0 = 0.25,
         min_sites = 4,
         max_sites = 20,
-        max_gap = 500L
+        max_gap = 500L,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(sim$assay, "microarray")
@@ -347,6 +390,7 @@ test_that("simulateDMRs subsets samples based on samplesheet", {
         beta = array_input$beta,
         sorted_locs = array_input$sorted_locs,
         samplesheet = samplesheet,
+        sample_group_col = "Sample_Group",
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 4,
@@ -390,6 +434,7 @@ test_that("simulateDMRs residualizes covariates before simulation", {
         case_group = "case",
         samplesheet = samplesheet,
         covariates = "batch",
+        sample_group_col = "Sample_Group",
         num_dmrs = 4,
         delta_max0 = 0.25,
         min_sites = 4,
@@ -419,7 +464,8 @@ test_that("simulateDMRs supports BSseq input provided as an rds path", {
         num_dmrs = 3,
         delta_max0 = 0.25,
         min_sites = 5,
-        max_sites = 20
+        max_sites = 20,
+        sample_group_col = "Sample_Group"
     )
 
     expect_equal(sim$assay, "BSseq")
@@ -456,7 +502,8 @@ test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs
         min_sites = length(pos),
         max_sites = length(pos),
         truth_min_delta_beta = 0,
-        resample_counts = FALSE
+        resample_counts = FALSE,
+        sample_group_col = "Sample_Group"
     )
 
     case_samples <- which(sim$groups == sim$case_group)

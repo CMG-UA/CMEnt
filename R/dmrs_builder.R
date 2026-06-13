@@ -64,7 +64,7 @@
     if (is.na(array) || !nzchar(array) || tolower(array) == "null") {
         return(NULL)
     }
-    supported_arrays <- c("450K", "27K", "EPIC", "EPICv2")
+    supported_arrays <- c("450K", "27K", "EPIC", "EPICv2", "Mouse")
     matched_idx <- match(tolower(array), tolower(supported_arrays))
     if (is.na(matched_idx)) {
         stop(
@@ -123,6 +123,9 @@
         if (!is.null(beta_array) && beta_array %in% c("450K", "27K", "EPIC")) {
             return("hg19")
         }
+        if (identical(beta_array, "Mouse")) {
+            return("mm10")
+        }
         return("hg38")
     }
 
@@ -145,6 +148,9 @@
 
     if (!is.null(array) && array %in% c("450K", "27K", "EPIC")) {
         return("hg19")
+    }
+    if (identical(array, "Mouse")) {
+        return("mm10")
     }
 
     "hg38"
@@ -2951,9 +2957,13 @@
 #'  regardless of their correlation p-value. Set to `NA`, `NULL`, or `Inf` to
 #'  disable this shortcut. A value of `0` means any proximal site with a
 #'  non-missing case-control delta beta can be force-connected. Default is 0.2.
-#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Required when beta row names are array probe IDs.
+#' @param array Character. Type of array used (e.g., "450K", "EPIC",
+#'   "EPICv2", "27K", "Mouse"). Required when beta row names are array probe
+#'   IDs.
 #'  Ignored if the beta file is provided as a beta values BED file.
-#' @param genome Character. Genome version. Required when array annotations or BED coordinates need an explicit genome.
+#' @param genome Optional character genome version. If `NULL`, inferred from
+#'   `beta` when possible, otherwise from `array`; BED inputs default to
+#'   `"hg38"`.
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "weak" (default) requires at least one group to show significant correlation;
 #'  "strong" requires all groups to show significant correlation for connectivity.

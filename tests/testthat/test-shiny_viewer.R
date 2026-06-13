@@ -458,6 +458,7 @@ test_that("plotDMR restores showtext auto hooks after drawing", {
             pheno = pheno,
             array = array_type,
             genome = "hg19",
+            sample_group_col = "Sample_Group",
             max_sites = 20,
             max_samples_per_group = 4
         )

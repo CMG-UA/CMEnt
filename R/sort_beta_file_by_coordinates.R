@@ -77,6 +77,12 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
+        if (is.null(array) || length(array) != 1L || is.na(array) || !nzchar(array)) {
+            stop("'array' must be provided when 'genomic_locs' is NULL.")
+        }
+        if (is.null(genome) || length(genome) != 1L || is.na(genome) || !nzchar(genome)) {
+            stop("'genome' must be provided when 'genomic_locs' is NULL.")
+        }
         array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }

@@ -35,6 +35,8 @@ test_that("findDMPsArray returns BSseq-like DMP columns sorted by location", {
     dmps <- findDMPsArray(
         beta = fixture$beta,
         samplesheet = fixture$pheno,
+        sample_group_col = "Sample_Group",
+        array = "450K",
         sorted_locs = fixture$locs,
         case_group = "case",
         covariates = "Age",
@@ -65,6 +67,8 @@ test_that("findDMPsArray writes the same output shape, including gzipped files",
     dmps <- findDMPsArray(
         beta = fixture$beta,
         samplesheet = fixture$pheno,
+        sample_group_col = "Sample_Group",
+        array = "450K",
         sorted_locs = fixture$locs,
         case_group = "case",
         chr = "chr1",
@@ -85,6 +89,8 @@ test_that("findDMPsArray drops collinear covariate columns without dropping samp
     unadjusted <- findDMPsArray(
         beta = fixture$beta,
         samplesheet = fixture$pheno,
+        sample_group_col = "Sample_Group",
+        array = "450K",
         sorted_locs = fixture$locs,
         case_group = "case",
         chr = "all"
@@ -94,6 +100,8 @@ test_that("findDMPsArray drops collinear covariate columns without dropping samp
         adjusted <- findDMPsArray(
             beta = fixture$beta,
             samplesheet = fixture$pheno,
+            sample_group_col = "Sample_Group",
+            array = "450K",
             sorted_locs = fixture$locs,
             case_group = "case",
             covariates = "Batch",

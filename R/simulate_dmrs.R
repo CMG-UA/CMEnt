@@ -217,6 +217,12 @@ simulateDMRs <- function(
     if (length(flank_fraction) != 1L || !is.finite(flank_fraction) || flank_fraction < 0) {
         stop("'flank_fraction' must be a non-negative numeric scalar.")
     }
+    if (missing(sample_group_col) ||
+        length(sample_group_col) != 1L ||
+        is.na(sample_group_col) ||
+        !nzchar(sample_group_col)) {
+        stop("'sample_group_col' must be a non-empty character scalar.")
+    }
     .log_step("Preparing input...", level = 1)
     input <- .prepareSimulationInput(
         beta = beta,

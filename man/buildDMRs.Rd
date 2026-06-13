@@ -75,10 +75,14 @@ regardless of their correlation p-value. Set to \code{NA}, \code{NULL}, or \code
 disable this shortcut. A value of \code{0} means any proximal site with a
 non-missing case-control delta beta can be force-connected. Default is 0.2.}
 
-\item{array}{Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Required when beta row names are array probe IDs.
+\item{array}{Character. Type of array used (e.g., "450K", "EPIC",
+"EPICv2", "27K", "Mouse"). Required when beta row names are array probe
+IDs.
 Ignored if the beta file is provided as a beta values BED file.}
 
-\item{genome}{Character. Genome version. Required when array annotations or BED coordinates need an explicit genome.}
+\item{genome}{Optional character genome version. If \code{NULL}, inferred from
+\code{beta} when possible, otherwise from \code{array}; BED inputs default to
+\code{"hg38"}.}
 
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 

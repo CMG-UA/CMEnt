@@ -56,7 +56,9 @@ test_that("buildDMRs validates input parameters correctly", {
             seeds = dmps,
             pheno = pheno_wrong,
             sample_group_col = "Sample_Group",
-            casecontrol_col = "casecontrol"
+            casecontrol_col = "casecontrol",
+            array = array_type,
+            genome = "hg19"
         )
     )
 })
@@ -74,6 +76,8 @@ test_that("buildDMRs works with small beta file (in-memory loading)", {
             seeds = dmps,
             pheno = pheno,
             sample_group_col = "Sample_Group",
+            array = array_type,
+            genome = "hg19",
             min_seeds = 2,
             min_sites = 3,
             max_lookup_dist = 1000
@@ -98,6 +102,8 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
@@ -107,7 +113,7 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
-    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, array = array_type, genome = "hg19", overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
     options("CMEnt.beta_in_mem_threshold_mb" = 1)
 
@@ -119,6 +125,8 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
@@ -146,7 +154,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
-    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, overwrite = TRUE)
+    sorted_beta_file <- sortBetaFileByCoordinates(beta_file, array = array_type, genome = "hg19", overwrite = TRUE)
     withr::defer(unlink(sorted_beta_file))
 
     withr::local_options(list(
@@ -232,7 +240,9 @@ test_that("convertBetaToTabix writes integer BED coordinates for tabix", {
 
     expect_identical(tabix_file, output_file)
 
-    bed_lines <- readLines(gzfile(output_file, "r"))
+    con <- gzfile(output_file, "r")
+    on.exit(close(con), add = TRUE)
+    bed_lines <- readLines(con)
     expect_identical(
         strsplit(bed_lines[2], "\t", fixed = TRUE)[[1]][1:3],
         c("chr7", "44999999", "45000000")
@@ -361,6 +371,8 @@ test_that("buildDMRs works when tabix is not available", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 2,
         max_lookup_dist = 1000

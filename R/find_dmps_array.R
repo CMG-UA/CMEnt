@@ -15,8 +15,9 @@
 #' @param id_col Column in `samplesheet` containing sample IDs. row.names can also be used by specifying `id_col = "row.names"`.
 #' @param array Array platform passed to [getSortedGenomicLocs()] when
 #'   `sorted_locs` is not supplied.
-#' @param genome Genome passed to [getSortedGenomicLocs()] when `sorted_locs` is
-#'   not supplied.
+#' @param genome Optional genome passed to [getSortedGenomicLocs()] when
+#'   `sorted_locs` is not supplied. If `NULL`, inferred from `beta` when
+#'   possible, otherwise from `array`.
 #' @param sorted_locs Optional data frame of probe locations with row names as
 #'   site IDs and `chr` plus `start` or `pos` columns.
 #' @param njobs Number of jobs used by [getBetaHandler()] when reading beta
@@ -67,11 +68,8 @@ findDMPsArray <- function(
     if (is.null(array)) {
         stop("array must be provided for array DMP calling.", call. = FALSE)
     }
-    if (is.null(genome)) {
-        stop("genome must be provided for array DMP calling.", call. = FALSE)
-    }
-    genome <- match.arg(genome, c("hg19", "hg38", "hs1", "mm10", "mm39"))
     array <- match.arg(array, c("450K", "27K", "EPIC", "EPICv2", "Mouse"))
+    genome <- .resolveBuildDMRsGenome(beta = beta, array = array, genome = genome)
 
     beta_handler <- getBetaHandler(
         beta = beta,
