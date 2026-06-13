@@ -752,13 +752,14 @@ knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overl
 
 ## Top CMEnt DMR Visualization
 ```{r top_dmr, fig.width=6, fig.height=6}
-CMEnt::plotDMRs(
+CMEnt::plotDMR(
     dmrs_cment,
-    dmr_indices = top_dmr_index,
+    dmr_index = top_dmr_index,
     beta = beta_handler,
     pheno = pheno,
     sample_group_col = sample_group_col,
     genome = "hg19",
+    plot_motif = FALSE,
     array = array_type
 )
 ```
