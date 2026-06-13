@@ -14,6 +14,7 @@ test_that("scoreDMRs adds score column to DMRs", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        array = "450K",
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
@@ -37,6 +38,7 @@ test_that("scoreDMRs works when called from buildDMRs with .score_dmrs=TRUE", {
         beta = beta,
         seeds = dmps,
         pheno = pheno,
+        array = "450K",
         sample_group_col = "Sample_Group",
         min_seeds = 2,
         min_sites = 3,
@@ -57,7 +59,6 @@ test_that("scoreDMRs accepts a BetaHandler input", {
         dmrs = dmrs,
         beta = beta_handler,
         pheno = pheno,
-        genome = "hg19",
         sample_group_col = "Sample_Group"
     )
 
@@ -122,6 +123,7 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
         beta = beta,
         seeds = dmps,
         pheno = pheno,
+        array = "450K",
         sample_group_col = "Sample_Group",
         ignored_sample_groups = "cancer",
         min_seeds = 2,
@@ -145,6 +147,7 @@ test_that("scoreDMRs score values are meaningful", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        array = "450K",
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
@@ -164,6 +167,7 @@ test_that("scoreDMRs works with different nfold values", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        array = "450K",
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
@@ -173,6 +177,7 @@ test_that("scoreDMRs works with different nfold values", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        array = "450K",
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
@@ -192,6 +197,7 @@ test_that("scoreDMRs returns DMRs ordered by p-value", {
         dmrs = dmrs,
         beta = beta,
         pheno = pheno,
+        array = "450K",
         genome = "hg19",
         sample_group_col = "Sample_Group"
     )
@@ -248,6 +254,13 @@ test_that(".computeChromosomeGapThreshold supports adaptive, fixed, and none mod
 
     thr_none <- CMEnt:::.computeChromosomeGapThreshold(dense_x, mode = "none")
     expect_true(is.infinite(thr_none))
+})
+
+test_that("scoreDMRs uses documented adaptive block gap defaults", {
+    expect_equal(formals(scoreDMRs)$block_gap_min_bp, 250000)
+    expect_equal(formals(scoreDMRs)$block_gap_max_bp, 5000000)
+    expect_equal(formals(CMEnt:::.assignDMRBlocksFromScores)$block_gap_min_bp, 250000)
+    expect_equal(formals(CMEnt:::.assignDMRBlocksFromScores)$block_gap_max_bp, 5000000)
 })
 
 test_that("distance-constrained mode removes over-bridging blocks", {

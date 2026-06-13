@@ -438,12 +438,12 @@
 .prepareCircosPlotState <- function(dmrs,
                                     beta,
                                     pheno,
-                                    genome = "hg38",
-                                    array = "450K",
+                                    genome = NULL,
+                                    array = NULL,
                                     sorted_locs = NULL,
                                     components = NULL,
                                     interactions = NULL,
-                                    sample_group_col = "Sample_Group",
+                                    sample_group_col = NULL,
                                     min_similarity = 0.8,
                                     motif_site_flank_size = 5,
                                     max_num_samples_per_group = 5,
@@ -454,6 +454,7 @@
                                     query_components_with_jaspar = TRUE,
                                     verbose = NULL) {
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
             stop("max_components must be NULL or a single numeric value.")
@@ -504,6 +505,7 @@
     }
 
     if (show_beta_track) {
+        sample_group_col <- .requireSampleGroupCol(sample_group_col, ".prepareCircosPlotState()")
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
             pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
         }
@@ -1562,12 +1564,12 @@
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix. If not provided, beta heatmap track will be omitted.
 #' @param pheno Data frame or character path to phenotype file. Sample information with
 #'   rownames matching beta column names (required for beta track, if not provided beta track will not be shown).
-#' @param genome Character. Genome version (e.g., "hg38").
-#' @param array Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.
+#' @param genome Character. Required if DMRs are provided as a data frame or they lack seqinfo.
+#' @param array Character. Array platform type (e.g., "EPIC", "450K"). Required if beta is provided as a file path and is indexed by array probe IDs.
 #' @param sorted_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param components Data frame. Output from motif component detection (optional, will be computed if missing).
 #' @param interactions Data frame. Output from motif interaction detection (optional, will be computed if missing).
-#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
+#' @param sample_group_col Character. Required column in pheno for sample grouping when `pheno` is provided.
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).
 #' @param motif_site_flank_size Integer. Flanking region size for motif extraction in bp (default: 5).
 #' @param max_num_samples_per_group Integer. Maximum number of samples to show per group in heatmap (default: 5).
@@ -1616,12 +1618,12 @@ plotDMRsCircos <- function(
     dmrs,
     beta = NULL,
     pheno = NULL,
-    genome = "hg38",
-    array = "450K",
+    genome = NULL,
+    array = NULL,
     sorted_locs = NULL,
     components = NULL,
     interactions = NULL,
-    sample_group_col = "Sample_Group",
+    sample_group_col = NULL,
     min_similarity = 0.8,
     motif_site_flank_size = 5,
     max_num_samples_per_group = 5,
@@ -1646,6 +1648,7 @@ plotDMRsCircos <- function(
     verbose = NULL
 ) {
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!is.null(max_components)) {
         if (!is.numeric(max_components) || length(max_components) != 1 || is.na(max_components)) {
             stop("max_components must be NULL or a single numeric value.")
@@ -1694,6 +1697,9 @@ plotDMRsCircos <- function(
             genome = genome,
             sorted_locs = sorted_locs
         )
+    }
+    if (!is.null(beta_handler)){
+        array <- beta_handler$array
     }
 
     beta_locs <- if (!is.null(beta_handler)) beta_handler$getBetaLocs() else sorted_locs
@@ -1749,6 +1755,7 @@ plotDMRsCircos <- function(
     }
 
     if (show_beta_track) {
+        sample_group_col <- .requireSampleGroupCol(sample_group_col, "plotDMRsCircos()")
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
             pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
         }
@@ -2302,8 +2309,8 @@ plotAutoDMRsCircos <- function(dmrs,
                                region_flank_bp = 1e6,
                                max_regions_per_chr = 2,
                                min_inter_region_bp = 5e6,
-                               genome = "hg38",
-                               array = "450K",
+                               genome = NULL,
+                               array = NULL,
                                sorted_locs = NULL,
                                components = NULL,
                                interactions = NULL,
@@ -2324,6 +2331,7 @@ plotAutoDMRsCircos <- function(dmrs,
     }
     method <- match.arg(method)
     dmrs_gr <- .convertToGRanges(dmrs, genome = genome)
+    genome <- .resolveGRangesGenome(dmrs_gr, "DMRs")
     if (!is.null(chromosomes)) {
         dmrs_gr <- dmrs_gr[as.character(GenomicRanges::seqnames(dmrs_gr)) %in% chromosomes]
     }

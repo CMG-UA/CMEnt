@@ -81,7 +81,7 @@ loadExampleInputDataChr5And11("pheno")
 
 ### `sample_group_col`
 **Type:** Character  
-**Default:** `"Sample_Group"`  
+**Required:** Yes, whenever `pheno` or a samplesheet is provided  
 **Description:** Column name in `pheno` that specifies sample groups (e.g., "case" vs "control", "treated" vs "untreated"). More than two groups are supported.
 
 ### `casecontrol_col`
@@ -110,14 +110,14 @@ dmrs <- buildDMRs(
 ### `array`
 **Type:** Character  
 **Options:** `"450K"`, `"27K"`, `"EPIC"`, `"EPICv2"`  
-**Default:** `"450K"`  
-**Description:** Type of methylation array platform used. Ignored when using mouse genomes or when beta is provided as a BED file.
+**Required:** When beta row names are array probe IDs and no explicit genomic locations are supplied  
+**Description:** Type of methylation array platform used. Ignored when beta is provided as a BED file or explicit genomic locations are supplied.
 
 
 ### `genome`
 **Type:** Character
 **Options:** `"hg19"`, `"hg38"`, `"hs1"`, `"mm10"`, `"mm39"`
-**Description:** Reference genome version. If not specified, it will be inferred from the input data; if input is 450K or EPIC array data, the genome will be set to "hg19" by default, otherwise to "hg38".
+**Description:** Reference genome version. Required when array annotations or BED coordinates need an explicit genome. For DMR `GRanges` inputs, functions infer the genome from seqinfo when available.
 
 ## Filtering Parameters
 
@@ -493,6 +493,8 @@ dmrs <- buildDMRs(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
+    array = "EPIC",
+    genome = "hg38",
     min_seeds = 2,
     min_sites = 3,
     max_lookup_dist = 20000,
@@ -509,6 +511,8 @@ dmrs <- buildDMRs(
     seeds = seeds,
     pheno = pheno,
     sample_group_col = "Sample_Group",
+    array = "EPIC",
+    genome = "hg38",
     testing_mode = "empirical",
     empirical_strategy = "montecarlo",
     ntries = 5000,

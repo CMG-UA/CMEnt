@@ -11,7 +11,7 @@
 #'   methylation values. Can be gzipped (default: NULL)
 #' @param pheno Data frame. Phenotype data with sample IDs as rownames. Only samples
 #'   present in both the pheno rownames and BED file header will be processed
-#' @param genome Character. Genome version to use (e.g., "hg38", "hg19", "hs1") (default: "hg38")
+#' @param genome Character. Required genome version to use (e.g., "hg38", "hg19", "hs1").
 #' @param chrom_col Character. Name of the chromosome column in the BED file
 #'   (default: "#chrom")
 #' @param start_col Character. Name of the start position column in the BED file
@@ -77,7 +77,7 @@
 #' \code{\link{getBetaHandler}} for creating a BetaHandler object from processed files
 #'
 #' @export
-readCustomMethylationBedData <- function(bed_file, pheno, genome = "hg38", chrom_col = "#chrom",
+readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#chrom",
                                          start_col = "start", output_dir = NULL, chunk_size = 50000,
                                          output_prefix = NULL, njobs = 1L) {
     njobs <- suppressWarnings(as.integer(njobs)[1L])

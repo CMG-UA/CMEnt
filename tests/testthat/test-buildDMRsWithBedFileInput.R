@@ -87,12 +87,17 @@ test_that("custom BED preprocessing returns locations without reparsing tabix ou
     ret <- readCustomMethylationBedData(
         bed_file,
         pheno = fixture$pheno,
+        genome = "hg38",
         chrom_col = "chrom",
         start_col = "start",
         njobs = 2
     )
 
-    expect_true(file.exists(ret$tabix_file))
+    expect_true(file.exists(ret$beta_file))
+    if (!is.null(ret$tabix_file)) {
+        expect_identical(ret$beta_file, ret$tabix_file)
+        expect_true(file.exists(ret$tabix_file))
+    }
     locations <- as.data.frame(ret$locations)
     expect_equal(rownames(locations), paste0(fixture$locs$chr, ":", fixture$locs$start))
     expect_equal(locations$chr, fixture$locs$chr)
@@ -114,6 +119,7 @@ test_that("custom BED preprocessing falls back when tabix tools are unavailable"
     ret <- suppressWarnings(readCustomMethylationBedData(
         bed_file,
         pheno = fixture$pheno,
+        genome = "hg38",
         chrom_col = "chrom",
         start_col = "start"
     ))

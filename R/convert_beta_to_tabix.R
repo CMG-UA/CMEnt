@@ -12,8 +12,8 @@
 #' @param beta_file Character. Path to the input beta values file
 #' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' columns.
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
-#' @param array Character. Array platform type. Only used if sorted_locs is NULL (default: "450K")
-#' @param genome Character. Genome version. Only used if  sorted_locs is NULL (default: "hg38")
+#' @param array Character. Array platform type. Required when `sorted_locs` is NULL.
+#' @param genome Character. Genome version. Required when `sorted_locs` is NULL.
 #' @param locations_file Character. Optional path to an explicit genomic locations file passed through to `getSortedGenomicLocs()`.
 #' @param output_file Character. Path for the output tabix file. If NULL, a temporary
 #'   file is used unless `output_prefix` is supplied.
@@ -46,8 +46,8 @@
 #' @export
 convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
-                               array = c("450K", "27K", "EPIC", "EPICv2"),
-                               genome = "hg38",
+                               array = NULL,
+                               genome = NULL,
                                locations_file = NULL,
                                output_file = NULL,
                                chunk_size = 50000,
@@ -74,9 +74,9 @@ convertBetaToTabix <- function(beta_file,
         {
             owns_temp_bed <- is.null(.bed_file)
             if (owns_temp_bed) {
-                array <- strex::match_arg(array, ignore_case = TRUE)
                 # Get sorted locations if not provided
                 if (is.null(sorted_locs)) {
+                    array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
                     sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
                 }
                 # Read header to get column names

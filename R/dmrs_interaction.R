@@ -311,8 +311,8 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' calculates base frequencies at each position, and stores the results in
 #' the DMR metadata.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and site indices
-#' @param genome Character. Genome version to use for sequence extraction. Defaults to hg38.
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Ignored if input is not array-based. (default: "450K")
+#' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site (default: 5)
@@ -339,10 +339,12 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
 extractDMRMotifs <- function(
-    dmrs, genome = "hg38", array = "450k", beta_locs = NULL, motif_site_flank_size = 5, plot_dir = NULL
+    dmrs, genome = NULL, array = NULL, beta_locs = NULL, motif_site_flank_size = 5, plot_dir = NULL
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
+
     .assertDependencyRequirements(
         requirements = .motifDependencyRequirements(
             genome = genome,
@@ -486,8 +488,8 @@ extractDMRMotifs <- function(
 #' motif similarity. Identifies pairs of DMRs with significant motif similarity
 #' and returns a data frame of interactions. Assigns directionality based on score, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
-#' @param genome Character. Genome version to use for sequence extraction (e.g., "hg38")
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")
+#' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
@@ -530,8 +532,8 @@ extractDMRMotifs <- function(
 #' @export
 computeDMRsInteraction <- function(
     dmrs,
-    genome = "hg38",
-    array = "450K",
+    genome = NULL,
+    array = NULL,
     min_similarity = getOption("CMEnt.min_motif_similarity", 0.8),
     beta_locs = NULL,
     motif_site_flank_size = 5,
@@ -543,6 +545,7 @@ computeDMRsInteraction <- function(
 ) {
     input_is_df <- is.data.frame(dmrs)
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (isTRUE(find_components) && isTRUE(query_components_with_jaspar)) {
         .assertDependencyRequirements(
             requirements = .jasparDependencyRequirements(),

@@ -6,19 +6,14 @@
 locations (chromosome and position). This function is useful for sorting site
 sites or other genomic features by their physical positions.}
 \usage{
-orderByLoc(
-  x,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
-  genomic_locs = NULL
-)
+orderByLoc(x, array = NULL, genome = NULL, genomic_locs = NULL)
 }
 \arguments{
 \item{x}{Character or integer vector. Indices or identifiers to be ordered}
 
-\item{array}{Character. Array platform type, either "450K" or "EPIC" (default: "450K")}
+\item{array}{Character. Array platform type, either "450K" or "EPIC". Required when \code{genomic_locs} is NULL.}
 
-\item{genome}{Character. Genome version, either "hg38", "hg19", or "hs1" (default: "hg38")}
+\item{genome}{Character. Genome version, either "hg38", "hg19", or "hs1". Required when \code{genomic_locs} is NULL.}
 
 \item{genomic_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

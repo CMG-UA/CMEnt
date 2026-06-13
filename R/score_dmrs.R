@@ -476,8 +476,8 @@
                                                    block_gap_fixed_bp = NULL,
                                                    block_gap_quantile = 0.95,
                                                    block_gap_multiplier = 1.5,
-                                                   block_gap_min_bp = 2500,
-                                                   block_gap_max_bp = 50000) {
+                                                   block_gap_min_bp = 250000,
+                                                   block_gap_max_bp = 5000000) {
     f_chr <- .gaussianSmoothAdaptiveKNN(x_chr, y_chr, k = k_neighbors)
     seg <- .segmentLinearPELT(
         x = x_chr,
@@ -779,10 +779,10 @@
 #' @param beta Character. Path to beta value file, tabix file, beta matrix, BetaHandler object, or bed file
 #' @param pheno Data frame. Phenotype data containing sample group information
 #' @param covariates Character vector of covariate columns in `pheno` to regress out before scoring. Default is `NULL`.
-#' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"
-#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"
+#' @param genome Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Required if DMRs are provided as a data frame without seqlevels style information. Default is NULL.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Required when beta row names are array probe IDs and `sorted_locs` is not provided.
 #' @param sorted_locs Data frame. Optional pre-computed sorted genomic locations. Default is NULL
-#' @param sample_group_col Character. Column name in pheno containing sample group information. Default is "Sample_Group"
+#' @param sample_group_col Character. Required column name in pheno containing sample group information.
 #' @param block_gap_mode Character. Distance rule for block construction:
 #' `"adaptive"` (default), `"fixed"`, or `"none"`.
 #' @param block_gap_fixed_bp Numeric. Maximum allowed midpoint gap (bp) when
@@ -841,14 +841,14 @@
 #' @export
 scoreDMRs <- function(
     dmrs, beta, pheno, covariates = NULL,
-    genome = "hg38", array = "450K", sorted_locs = NULL,
-    sample_group_col = "Sample_Group",
+    genome = NULL, array = NULL, sorted_locs = NULL,
+    sample_group_col = NULL,
     block_gap_mode = c("adaptive", "fixed", "none"),
     block_gap_fixed_bp = NULL,
     block_gap_quantile = 0.95,
     block_gap_multiplier = 1.5,
-    block_gap_min_bp = 2500,
-    block_gap_max_bp = 50000,
+    block_gap_min_bp = 250000,
+    block_gap_max_bp = 5000000,
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
@@ -856,6 +856,8 @@ scoreDMRs <- function(
     on.exit(options(old_setting), add = TRUE)
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- .convertToGRanges(dmrs, genome = genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
+    sample_group_col <- .requireSampleGroupCol(sample_group_col, "scoreDMRs()")
     beta_handler <- getBetaHandler(beta, array = array, genome = genome, sorted_locs = sorted_locs)
     .log_step("Preparing metadata for DMR scoring", level = 3)
     beta_col_names <- beta_handler$getBetaColNames()

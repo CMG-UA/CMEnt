@@ -31,8 +31,7 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         ),
         optparse::make_option(
             "--sample_group_col",
-            help = "The column in the samplesheet corresponding to the sample group",
-            default = "Sample_Group"
+            help = "Required column in the samplesheet corresponding to the sample group"
         ),
         optparse::make_option(
             "--sample_group_control",
@@ -91,13 +90,13 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         ),
         optparse::make_option(
             "--array",
-            default = "450K",
-            help = "Array platform ('450K', '27K', 'EPIC', 'EPICv2', 'Mouse', 'NULL'). Must be 'NULL' if not applicable"
+            default = NULL,
+            help = "Array platform ('450K', '27K', 'EPIC', 'EPICv2', 'Mouse', 'NULL'). Required when beta row names are array probe IDs."
         ),
         optparse::make_option(
             "--genome",
             default = NULL,
-            help = "Reference genome identifier. If omitted, CMEnt infers hg19 for 450K, 27K, and EPIC arrays, otherwise hg38."
+            help = "Reference genome identifier. Required when array annotations or BED coordinates need an explicit genome."
         ),
         optparse::make_option("--beta_row_names_file", default = NULL),
         optparse::make_option(
@@ -219,10 +218,10 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         optparse::make_option("--beta", help = "Beta matrix/file input supported by getBetaHandler()."),
         optparse::make_option("--samplesheet", help = "Tab-delimited samplesheet containing sample metadata."),
         optparse::make_option("--samplesheet_sep", default = "\t", help = "Samplesheet separator (default: tab)."),
-        optparse::make_option("--sample_group_col", default = "Sample_Group", help = "Samplesheet group column."),
+        optparse::make_option("--sample_group_col", help = "Required samplesheet group column."),
         optparse::make_option("--id_col", default = "Sample_ID", help = "Samplesheet sample ID column."),
-        optparse::make_option("--array", default = "450K", help = "Array platform: 450K, 27K, EPIC, EPICv2, or Mouse."),
-        optparse::make_option("--genome", default = "hg19", help = "Reference genome: hg19, hg38, hs1, mm10, or mm39."),
+        optparse::make_option("--array", help = "Required array platform: 450K, 27K, EPIC, EPICv2, or Mouse."),
+        optparse::make_option("--genome", help = "Required reference genome: hg19, hg38, hs1, mm10, or mm39."),
         optparse::make_option("--sorted_locs", default = NULL, help = "Optional RDS file with sorted genomic locations."),
         optparse::make_option("--chr", default = "auto", help = "Chromosomes to analyze: auto, all, or comma-separated chromosome names."),
         optparse::make_option("--case_group", default = NULL, help = "Group label to treat as case. Defaults to first group in samplesheet."),
@@ -243,7 +242,7 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         optparse::make_option("--bsseq", help = "BSseq RDS input file."),
         optparse::make_option("--samplesheet", help = "Tab-delimited samplesheet containing sample metadata."),
         optparse::make_option("--samplesheet_sep", default = "\t", help = "Samplesheet separator (default: tab)."),
-        optparse::make_option("--sample_group_col", default = "Sample_Group", help = "Samplesheet group column."),
+        optparse::make_option("--sample_group_col", help = "Required samplesheet group column."),
         optparse::make_option("--id_col", default = "Sample_ID", help = "Samplesheet sample ID column."),
         optparse::make_option("--chr", default = "auto", help = "Chromosomes to analyze: auto, all, or comma-separated chromosome names."),
         optparse::make_option("--case_group", default = NULL, help = "Group label to treat as case. Defaults to first group in samplesheet."),
@@ -282,6 +281,7 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
 buildDMRsCLI <- function(args) {
     old_setting <- options("CMEnt.verbose" = args$verbose)
     on.exit(options(old_setting), add = TRUE)
+    .requireCLIOptions(args, "sample_group_col")
     pheno <- .processSamplesheet(args)$samplesheet
     array <- args$array
     covariates <- args$covariates
@@ -338,7 +338,7 @@ buildDMRsCLI <- function(args) {
 #' @param args Argument list from optparse containing command line parameters.
 #' @return Invisibly returns the DMP data frame after writing `args$output_file`.
 findDMPsArrayCLI <- function(args) {
-    .requireCLIOptions(args, c("beta", "samplesheet", "output_file"))
+    .requireCLIOptions(args, c("beta", "samplesheet", "sample_group_col", "array", "genome", "output_file"))
     invisible(CMEnt::findDMPsArray(
         beta = args$beta,
         samplesheet = args$samplesheet,
@@ -361,7 +361,7 @@ findDMPsArrayCLI <- function(args) {
 #' @param args Argument list from optparse containing command line parameters.
 #' @return Invisibly returns the DMP data frame after writing `args$output_file`.
 findDMPsBSSeqCLI <- function(args) {
-    .requireCLIOptions(args, c("bsseq", "samplesheet", "output_file"))
+    .requireCLIOptions(args, c("bsseq", "samplesheet", "sample_group_col", "output_file"))
     invisible(CMEnt::findDMPsBSSeq(
         bsseq = args$bsseq,
         samplesheet = args$samplesheet,
@@ -601,15 +601,15 @@ launchCMEntViewerCLI <- function(args) {
     switch(
         invocation$command,
         buildDMRs = {
-            .requireCLIOptions(parsed_args, c("beta", "seeds_file", "samplesheet"))
+            .requireCLIOptions(parsed_args, c("beta", "seeds_file", "samplesheet", "sample_group_col"))
             invisible(buildDMRsCLI(parsed_args))
         },
         findDMPsArray = {
-            .requireCLIOptions(parsed_args, c("beta", "samplesheet", "output_file"))
+            .requireCLIOptions(parsed_args, c("beta", "samplesheet", "sample_group_col", "array", "genome", "output_file"))
             invisible(findDMPsArrayCLI(parsed_args))
         },
         findDMPsBSSeq = {
-            .requireCLIOptions(parsed_args, c("bsseq", "samplesheet", "output_file"))
+            .requireCLIOptions(parsed_args, c("bsseq", "samplesheet", "sample_group_col", "output_file"))
             invisible(findDMPsBSSeqCLI(parsed_args))
         },
         launchCMEntViewer = {

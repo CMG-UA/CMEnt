@@ -37,6 +37,27 @@ test_that("plotDMRsManhattan draws block rectangles when block ids are present",
     expect_true("GeomRect" %in% geom_classes)
 })
 
+test_that("plotDMRsManhattan keeps DMRs overlapping both promoter and gene body", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100, 200, 300), width = 40),
+        seqinfo = GenomeInfoDb::Seqinfo(
+            seqnames = "chr1",
+            seqlengths = 1000,
+            genome = "hg19"
+        )
+    )
+    S4Vectors::mcols(dmrs)$score <- c(0.62, 0.91, 0.64)
+    S4Vectors::mcols(dmrs)$in_promoter_of <- c(NA, "TOP1", NA)
+    S4Vectors::mcols(dmrs)$in_gene_body_of <- c("GENE1", "TOP1", NA)
+
+    p <- plotDMRsManhattan(dmrs, genome = "hg19")
+
+    expect_equal(nrow(p$data), 3L)
+    expect_equal(max(p$data$score), 0.91)
+    expect_equal(as.character(p$data$dmr_class[p$data$score == 0.91]), "Promoter")
+})
+
 test_that("Manhattan block rectangles are full-height overview bands", {
     dmrs <- GenomicRanges::GRanges(
         seqnames = c("chr1", "chr1", "chr1"),

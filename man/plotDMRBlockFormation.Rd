@@ -7,7 +7,7 @@
 plotDMRBlockFormation(
   dmrs,
   chromosome,
-  genome = "hg38",
+  genome = NULL,
   k_neighbors = 5L,
   min_segment_size = 2L,
   block_gap_mode = "adaptive",

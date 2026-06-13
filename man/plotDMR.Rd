@@ -9,10 +9,10 @@ plotDMR(
   dmr_index,
   beta = NULL,
   pheno = NULL,
-  genome = "hg38",
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  genome = NULL,
+  array = NULL,
   beta_locs = NULL,
-  sample_group_col = "Sample_Group",
+  sample_group_col = NULL,
   extend_by_dmr_size_ratio = 0.2,
   min_extension_bp = 50,
   max_sites = 100,
@@ -35,13 +35,13 @@ If a character path or matrix is provided, a BetaHandler will be created automat
 
 \item{pheno}{Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).}
 
-\item{genome}{Character. Genome version (default: "hg38").}
+\item{genome}{Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
-\item{array}{Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")}
+\item{array}{Character. Array platform type. Required when beta row names are array probe IDs and \code{beta_locs} is not provided.}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional).}
 
-\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
+\item{sample_group_col}{Character. Required column in pheno for sample grouping when \code{pheno} is provided.}
 
 \item{extend_by_dmr_size_ratio}{Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).}
 

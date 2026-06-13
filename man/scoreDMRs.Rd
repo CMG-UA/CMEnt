@@ -9,16 +9,16 @@ scoreDMRs(
   beta,
   pheno,
   covariates = NULL,
-  genome = "hg38",
-  array = "450K",
+  genome = NULL,
+  array = NULL,
   sorted_locs = NULL,
-  sample_group_col = "Sample_Group",
+  sample_group_col = NULL,
   block_gap_mode = c("adaptive", "fixed", "none"),
   block_gap_fixed_bp = NULL,
   block_gap_quantile = 0.95,
   block_gap_multiplier = 1.5,
-  block_gap_min_bp = 2500,
-  block_gap_max_bp = 50000,
+  block_gap_min_bp = 250000,
+  block_gap_max_bp = 5e+06,
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
   verbose = getOption("CMEnt.verbose", 1L)
 )
@@ -32,13 +32,13 @@ scoreDMRs(
 
 \item{covariates}{Character vector of covariate columns in \code{pheno} to regress out before scoring. Default is \code{NULL}.}
 
-\item{genome}{Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Default is "hg38"}
+\item{genome}{Character. Genome version (e.g., "hg38", "hg19", "hs1", "mm10"). Required if DMRs are provided as a data frame without seqlevels style information. Default is NULL.}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Default is "450K"}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC", "EPICv2"). Required when beta row names are array probe IDs and \code{sorted_locs} is not provided.}
 
 \item{sorted_locs}{Data frame. Optional pre-computed sorted genomic locations. Default is NULL}
 
-\item{sample_group_col}{Character. Column name in pheno containing sample group information. Default is "Sample_Group"}
+\item{sample_group_col}{Character. Required column name in pheno containing sample group information.}
 
 \item{block_gap_mode}{Character. Distance rule for block construction:
 \code{"adaptive"} (default), \code{"fixed"}, or \code{"none"}.}

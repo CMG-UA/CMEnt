@@ -155,6 +155,14 @@
     x
 }
 
+.requireSampleGroupCol <- function(sample_group_col, context) {
+    if (is.null(sample_group_col) || length(sample_group_col) != 1L ||
+        is.na(sample_group_col) || !nzchar(as.character(sample_group_col))) {
+        stop(context, " requires 'sample_group_col' when phenotype data is provided.", call. = FALSE)
+    }
+    as.character(sample_group_col)
+}
+
 #' @keywords internal
 #' @noRd
 .getBetaColNamesAndInds <- function(beta_file,
@@ -1569,17 +1577,20 @@ supportedOrganisms <- function() {
 #' # locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
 #'
 #' @export
-getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), genome = c("hg38", "hg19", "hs1", "mm10", "mm39"), locations_file = NULL) {
+getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = NULL) {
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
         return(locs)
     }
-    genome <- strex::match_arg(genome, ignore_case = TRUE)
+    if (is.null(genome)) {
+        stop("genome must be provided when locations_file is not provided.", call. = FALSE)
+    }
+    genome <- strex::match_arg(genome, choices = c("hg38", "hg19", "hs1", "mm10", "mm39"), ignore_case = TRUE)
     array_based <- !is.null(array)
     if (!array_based) {
         stop("Provided array is NULL but locations file was not provided.")
     }
-    array <- strex::match_arg(array, ignore_case = TRUE)
+    array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2", "Mouse"), ignore_case = TRUE)
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
@@ -1659,8 +1670,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #' sites or other genomic features by their physical positions.
 #'
 #' @param x Character or integer vector. Indices or identifiers to be ordered
-#' @param array Character. Array platform type, either "450K" or "EPIC" (default: "450K")
-#' @param genome Character. Genome version, either "hg38", "hg19", or "hs1" (default: "hg38")
+#' @param array Character. Array platform type, either "450K" or "EPIC". Required when `genomic_locs` is NULL.
+#' @param genome Character. Genome version, either "hg38", "hg19", or "hs1". Required when `genomic_locs` is NULL.
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #'
@@ -1677,8 +1688,8 @@ getSortedGenomicLocs <- function(array = c("450K", "27K", "EPIC", "EPICv2", "Mou
 #'
 #' @export
 orderByLoc <- function(x,
-                       array = c("450K", "27K", "EPIC", "EPICv2"),
-                       genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
+                       array = NULL,
+                       genome = NULL,
                        genomic_locs = NULL) {
     if (is.null(genomic_locs)) {
         genomic_locs <- getSortedGenomicLocs(array, genome)
@@ -2093,9 +2104,24 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
-.convertToGRanges <- function(obj, genome) {
+.resolveGRangesGenome <- function(gr, context = "Input GRanges object") {
+    genome <- unique(as.character(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(gr))))
+    genome <- genome[!is.na(genome) & nzchar(genome)]
+    if (length(genome) == 0L) {
+        stop(context, " has no genome information. Please specify the genome or provide genome information in the GRanges object.", call. = FALSE)
+    }
+    if (length(genome) > 1L) {
+        stop(context, " has multiple genome values: ", paste(genome, collapse = ", "), call. = FALSE)
+    }
+    genome
+}
+
+.convertToGRanges <- function(obj, genome = NULL) {
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
+        if (is.null(genome)) {
+            stop("When providing DMRs as a data.frame, a genome must be specified for proper GRanges conversion.")
+        }
         obj <- .decodeSerializedOutputColumns(obj)
         # If the chr prefix is missing, add it (e.g. "1" -> "chr1")
         if (!any(grepl("^chr", obj[[1]]))) {
@@ -2117,9 +2143,14 @@ orderByLoc <- function(x,
         if (!is(obj, "GRanges")) {
             stop("dmrs must be a data.frame or GRanges object")
         }
+        if (is.null(genome)) {
+            .resolveGRangesGenome(obj)
+            return(obj)
+        }
+        
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
-        grs_genome <- unique(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj)))
-        grs_genome <- grs_genome[!is.na(grs_genome)]
+        grs_genome <- unique(as.character(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))))
+        grs_genome <- grs_genome[!is.na(grs_genome) & nzchar(grs_genome)]
         if (length(grs_genome) == 0L) {
             .log_warn("Input GRanges object has no genome information. Assuming genome: ", genome)
             grs_genome <- genome
@@ -2425,7 +2456,7 @@ orderByLoc <- function(x,
     subset_locs <- NULL
     get_subset_locs <- function() {
         if (is.null(subset_locs)) {
-            locs <- getSortedGenomicLocs(array = "450k")
+            locs <- getSortedGenomicLocs(array = "450k", genome = "hg19")
             subset_locs <<- locs[locs$chr %in% subset, , drop = FALSE]
         }
         subset_locs

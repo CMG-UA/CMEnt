@@ -7,7 +7,7 @@
 plotDMRsManhattan(
   dmrs,
   region = NULL,
-  genome = "hg38",
+  genome = NULL,
   promoter_col = "in_promoter_of",
   gene_body_col = "in_gene_body_of",
   point_size = 1.1,

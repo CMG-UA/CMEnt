@@ -5,7 +5,7 @@
 #' @param bsseq A BSseq object or a file path to a saved BSseq object (RDS format).
 #' @param samplesheet A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.
 #' @param samplesheet_sep The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").
-#' @param sample_group_col The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".
+#' @param sample_group_col Required name of the column in the samplesheet that contains the group labels for comparison.
 #' @param id_col The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".
 #' @param chr A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
 #' @param case_group The specific group label in the sample_group_col to treat as the "case" group for comparison. If NULL, the first unique group in sample_group_col will be used as the case group. Default is NULL.
@@ -48,7 +48,7 @@ findDMPsBSSeq <- function(
     bsseq,
     samplesheet,
     samplesheet_sep = "\t",
-    sample_group_col = "Sample_Group",
+    sample_group_col = NULL,
     id_col = "Sample_ID",
     chr = "auto",
     case_group = NULL,
@@ -56,6 +56,7 @@ findDMPsBSSeq <- function(
     output_file = NULL,
     njobs = 1L
 ) {
+    sample_group_col <- .requireSampleGroupCol(sample_group_col, "findDMPsBSSeq()")
     .assertPackagesInstalled(
         pkg_names = "DSS",
         context = "findDMPsBSSeq()",

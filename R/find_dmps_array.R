@@ -39,10 +39,10 @@ findDMPsArray <- function(
     beta,
     samplesheet,
     samplesheet_sep = "\t",
-    sample_group_col = "Sample_Group",
+    sample_group_col = NULL,
     id_col = "Sample_ID",
-    array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
-    genome = c("hg19", "hg38", "hs1", "mm10", "mm39"),
+    array = NULL,
+    genome = NULL,
     sorted_locs = NULL,
     njobs = getOption("CMEnt.njobs", 1L),
     chr = "auto",
@@ -63,8 +63,15 @@ findDMPsArray <- function(
         .assertPackagesInstalled("minfi", "findDMPsArray()", "minfi objects must be converted to beta values.")
         beta <- minfi::getBeta(beta)
     }
-    genome <- match.arg(genome)
-    array <- match.arg(array)
+    sample_group_col <- .requireSampleGroupCol(sample_group_col, "findDMPsArray()")
+    if (is.null(array)) {
+        stop("array must be provided for array DMP calling.", call. = FALSE)
+    }
+    if (is.null(genome)) {
+        stop("genome must be provided for array DMP calling.", call. = FALSE)
+    }
+    genome <- match.arg(genome, c("hg19", "hg38", "hs1", "mm10", "mm39"))
+    array <- match.arg(array, c("450K", "27K", "EPIC", "EPICv2", "Mouse"))
 
     beta_handler <- getBetaHandler(
         beta = beta,

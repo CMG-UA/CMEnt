@@ -6,8 +6,8 @@
 \usage{
 computeDMRsInteraction(
   dmrs,
-  genome = "hg38",
-  array = "450K",
+  genome = NULL,
+  array = NULL,
   min_similarity = getOption("CMEnt.min_motif_similarity", 0.8),
   beta_locs = NULL,
   motif_site_flank_size = 5,
@@ -21,9 +21,9 @@ computeDMRsInteraction(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and motif information}
 
-\item{genome}{Character. Genome version to use for sequence extraction (e.g., "hg38")}
+\item{genome}{Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Must be NULL if input is not array-based (default: "450K")}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Required only when \code{beta_locs} is not provided and DMR site IDs are array probe IDs.}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)}
 

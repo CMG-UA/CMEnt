@@ -4,11 +4,7 @@
 \alias{getSortedGenomicLocs}
 \title{Get Sorted Array Locations}
 \usage{
-getSortedGenomicLocs(
-  array = c("450K", "27K", "EPIC", "EPICv2", "Mouse"),
-  genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
-  locations_file = NULL
-)
+getSortedGenomicLocs(array = NULL, genome = NULL, locations_file = NULL)
 }
 \arguments{
 \item{array}{Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.}

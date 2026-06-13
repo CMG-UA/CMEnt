@@ -13,8 +13,8 @@ plotAutoDMRsCircos(
   region_flank_bp = 1e+06,
   max_regions_per_chr = 2,
   min_inter_region_bp = 5e+06,
-  genome = "hg38",
-  array = "450K",
+  genome = NULL,
+  array = NULL,
   sorted_locs = NULL,
   components = NULL,
   interactions = NULL,
@@ -48,9 +48,9 @@ selected regions (default: \code{2}).}
 \item{min_inter_region_bp}{Numeric. Nearby candidate windows within this gap are
 merged instead of being shown as separate Circos sectors (default: \code{5e6}).}
 
-\item{genome}{Character. Genome version (e.g., "hg38").}
+\item{genome}{Character. Required if DMRs are provided as a data frame or they lack seqinfo.}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
+\item{array}{Character. Array platform type (e.g., "EPIC", "450K"). Required if beta is provided as a file path and is indexed by array probe IDs.}
 
 \item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 

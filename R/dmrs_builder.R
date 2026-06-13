@@ -2941,7 +2941,7 @@
 #'  containing sample information including group labels and optionally covariates.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file.
 #'  Default is NULL, which corresponds to the rows names if existing, or the first column if not.
-#' @param sample_group_col Character. Column name for sample group information in the phenotype data. Default is NULL.
+#' @param sample_group_col Character. Required column name for sample group information in the phenotype data.
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status .
 #'  If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex").
@@ -2951,10 +2951,9 @@
 #'  regardless of their correlation p-value. Set to `NA`, `NULL`, or `Inf` to
 #'  disable this shortcut. A value of `0` means any proximal site with a
 #'  non-missing case-control delta beta can be force-connected. Default is 0.2.
-#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Ignored if using a mouse genome.
-#'  Also ignored if the beta file is provided as a beta values BED file. Default is "450K".
-#' @param genome Character. Genome version. Default is NULL and inferred as "hg19" for 450K, 27K, and EPIC arrays,
-#'  otherwise "hg38".
+#' @param array Character. Type of array used (e.g., "450K", "EPIC", "EPICv2", "27K"). Required when beta row names are array probe IDs.
+#'  Ignored if the beta file is provided as a beta values BED file.
+#' @param genome Character. Genome version. Required when array annotations or BED coordinates need an explicit genome.
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "weak" (default) requires at least one group to show significant correlation;
 #'  "strong" requires all groups to show significant correlation for connectivity.
@@ -3018,11 +3017,11 @@ buildDMRs <- function(
     seeds,
     pheno,
     seeds_id_col = NULL,
-    sample_group_col = "Sample_Group",
+    sample_group_col = NULL,
     casecontrol_col = NULL,
     covariates = NULL,
     ext_site_delta_beta = 0.2,
-    array = c("450K", "27K", "EPIC", "EPICv2", "NULL"),
+    array = NULL,
     genome = NULL,
     max_pval = 0.05,
     entanglement = c("weak", "strong"),
@@ -3189,6 +3188,7 @@ buildDMRs <- function(
 
     .log_step("Preparing chromosome-sequential DMR input...")
     seeds_ret <- .readSeeds(seeds, seeds_id_col)
+    sample_group_col <- .requireSampleGroupCol(sample_group_col, "buildDMRs()")
     pheno <- .readPheno(pheno)
     seeds_df <- seeds_ret$data
     seeds_id_col <- seeds_ret$id_col

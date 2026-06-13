@@ -105,8 +105,8 @@
 #'
 #' @param dmrs GRanges object. Output from buildDMRs containing DMR information.
 #' @param dmr_index Integer. Which DMR to plot (default: 1).
-#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2" (default: "450K"). Ignored if beta_locs is provided.
-#' @param genome Character. Genome version (default: "hg38"). Ignored if beta_locs is provided.
+#' @param array Character. Array platform type: "450K", "27K", "EPIC", or "EPICv2". Required when `beta_locs` is NULL.
+#' @param genome Character. Genome version. Required when `beta_locs` is NULL.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR on both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs for the plot region (default: 50).
@@ -118,8 +118,8 @@
 #' @noRd
 .plotDMRStructure <- function(dmrs,
                               dmr_index = 1,
-                              array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = "hg38",
+                              array = NULL,
+                              genome = NULL,
                               beta_locs = NULL,
                               extend_by_dmr_size_ratio = 0.2,
                               min_extension_bp = 50,
@@ -147,7 +147,10 @@
 
     # Get genomic locations if not provided
     if (is.null(beta_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
+        if (is.null(genome)) {
+            genome <- .resolveGRangesGenome(dmrs, "DMRs")
+        }
+        array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
         beta_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 
@@ -528,9 +531,9 @@
             title = if (plot_title) title else NULL,
             y = ""
         ) +
-        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme_minimal(base_size = 10) +
         ggplot2::theme(
-            plot.title = ggplot2::element_text(face = "bold", size = 11),
+            plot.title = ggplot2::element_text(face = "bold", size = 9),
             axis.text.y = ggplot2::element_text(hjust = 0.5),
             panel.grid.minor = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
@@ -652,13 +655,16 @@
             site_id = names(site_gr)[S4Vectors::queryHits(overlaps)],
             Context = context,
             Gene = gene_symbols,
+            Strand = as.character(GenomicRanges::strand(feature_gr[feature_hits])),
             stringsAsFactors = FALSE
         )
         hit_df <- hit_df[!is.na(hit_df$Gene) & nzchar(hit_df$Gene), , drop = FALSE]
         if (nrow(hit_df) == 0L) {
             return(data.frame())
         }
-        hit_df <- stats::aggregate(Gene ~ site_id + Context, hit_df, function(x) paste(unique(x), collapse = ", "))
+        gene_df <- stats::aggregate(Gene ~ site_id + Context, hit_df, function(x) paste(unique(x), collapse = ", "))
+        strand_df <- stats::aggregate(Strand ~ site_id + Context, hit_df, function(x) paste(unique(x), collapse = ", "))
+        hit_df <- merge(gene_df, strand_df, by = c("site_id", "Context"), all.x = TRUE, sort = FALSE)
         merge(hit_df, site_bounds, by = "site_id", all.x = TRUE, sort = FALSE)
     }
 
@@ -679,11 +685,54 @@
         .collapseGeneLabels(unique(unlist(strsplit(x, ","), use.names = FALSE)))
     }, character(1))
     label_df$Gene <- unname(gene_labels[as.character(label_df$Context)])
+    strand_df <- do.call(rbind, lapply(seq_len(nrow(track_df)), function(i) {
+        row <- track_df[i, , drop = FALSE]
+        has_plus <- grepl("+", row$Strand, fixed = TRUE)
+        has_minus <- grepl("-", row$Strand, fixed = TRUE)
+        direction <- if (has_plus && !has_minus) {
+            ">"
+        } else if (has_minus && !has_plus) {
+            "<"
+        } else {
+            ""
+        }
+        width <- row$xmax - row$xmin
+        if (!nzchar(direction) || !is.finite(width) || width <= 0) {
+            return(NULL)
+        }
+        inset <- min(width * 0.25, max(diff(range(breaks)) * 0.01, 1))
+        x <- row$xmin + inset
+        xend <- row$xmax - inset
+        if (direction == "<") {
+            x <- row$xmax - inset
+            xend <- row$xmin + inset
+        }
+        data.frame(
+            x = x,
+            xend = xend,
+            y = row$y - 0.19,
+            yend = row$y - 0.19,
+            stringsAsFactors = FALSE
+        )
+    }))
+    if (is.null(strand_df)) {
+        strand_df <- data.frame(x = numeric(), xend = numeric(), y = numeric(), yend = numeric())
+    }
 
     ggplot2::ggplot(track_df) +
         ggplot2::geom_rect(
             ggplot2::aes(xmin = xmin, xmax = xmax, ymin = y - 0.34, ymax = y + 0.34, fill = Context),
             alpha = 0.9
+        ) +
+        ggplot2::geom_segment(
+            data = strand_df,
+            ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
+            inherit.aes = FALSE,
+            arrow = grid::arrow(length = grid::unit(0.06, "inches"), type = "closed"),
+            linewidth = 0.35,
+            lineend = "round",
+            color = "#FFFFFF",
+            alpha = 0.85
         ) +
         ggplot2::geom_text(
             data = label_df,
@@ -692,24 +741,26 @@
             fontface = "bold",
             color = "#222222"
         ) +
-        ggplot2::scale_fill_manual(values = c("Promoter" = "#E69F00", "Gene body" = "#009E73")) +
-        ggplot2::scale_y_continuous(breaks = NULL) +
+        ggplot2::scale_fill_manual(values = c("Promoter" = "#E69F00", "Gene body" = "#009E73"), guide = "none") +
+        ggplot2::scale_y_continuous(
+            breaks = c(1, 2),
+            labels = c("Gene body", "Promoter"),
+            expand = c(0.08, 0)
+        ) +
         ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]), clip = "off") +
-        ggplot2::labs(x = NULL, y = NULL, fill = "Gene context") +
+        ggplot2::labs(x = NULL, y = NULL) +
         ggplot2::theme_minimal(base_size = 9) +
         ggplot2::theme(
-            axis.text = ggplot2::element_blank(),
+            axis.text.x = ggplot2::element_blank(),
+            axis.text.y = ggplot2::element_text(size = 8, face = "bold", color = "#222222"),
             axis.ticks = ggplot2::element_blank(),
             panel.grid = ggplot2::element_blank(),
-            legend.position = "right",
-            legend.title = ggplot2::element_text(size = 8, face = "bold"),
-            legend.text = ggplot2::element_text(size = 8),
             plot.margin = ggplot2::margin(t = 0, r = 5, b = 0, l = 5)
         )
 }
 
 # Create beta heatmap plot
-.plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, max_samples_per_group = 10, sample_group_col = "Sample_Group") {
+.plotBetaHeatmap <- function(dmr_data, beta_data, total_shown_positions, pheno = NULL, max_samples_per_group = 10, sample_group_col = NULL) {
     site_ids <- rownames(total_shown_positions)
     site_locs <- total_shown_positions[, c("chr", "start")]
 
@@ -725,7 +776,8 @@
 
     # if there are more than max_samples_per_group samples in any group, limit to max_samples_per_group samples per group for plotting
     selected_samples <- NULL
-    if (!is.null(pheno) && !is.null(sample_group_col)) {
+    if (!is.null(pheno)) {
+        sample_group_col <- .requireSampleGroupCol(sample_group_col, ".plotBetaHeatmap()")
         group_counts <- table(pheno[[sample_group_col]])
         if (any(group_counts > max_samples_per_group)) {
             .log_info("Limiting to ", max_samples_per_group, " samples per group for plotting. Original group counts:\n", paste(names(group_counts), group_counts, sep = ": ", collapse = "\n"))
@@ -754,7 +806,7 @@
     }
     if (!is.null(selected_samples)) {
         beta_data <- beta_data[, c("site", selected_samples), drop = FALSE]
-        if (!is.null(pheno) && !is.null(sample_group_col)) {
+        if (!is.null(pheno)) {
             pheno <- pheno[selected_samples, , drop = FALSE]
         }
     }
@@ -766,7 +818,7 @@
     sample_order <- unique(as.character(beta_melted$Sample))
     group_ranges <- NULL
     group_boundaries <- NULL
-    if (!is.null(pheno) && !is.null(sample_group_col)) {
+    if (!is.null(pheno)) {
         beta_melted$Group <- pheno[as.character(beta_melted$Sample), sample_group_col]
         # Order samples by group
         sample_order <- rownames(pheno)[order(pheno[[sample_group_col]])]
@@ -1076,6 +1128,20 @@ minmaxscale <- function(x) {
     pwm_plot
 }
 
+.check_output_file <- function(output_file, num_plots) {
+    if (!is.null(output_file)) {
+        if (num_plots == 1) {
+            if (!grepl("\\.(pdf|png)$", output_file, ignore.case = TRUE)) {
+                stop("Output file must have a .pdf or .png extension when plotting a single DMR.")
+            }
+        } else {
+            if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
+                stop("Output file must have a .pdf extension when plotting multiple DMRs.")
+            }
+        }
+    }
+}
+
 #' Plot Multiple DMRs in a Grid
 #'
 #' @description Creates a grid of DMR plots for multiple regions. Can optionally
@@ -1087,9 +1153,9 @@ minmaxscale <- function(x) {
 #' @param score_by Character. Which metric to use for ranking DMRs when dmr_indices is NULL. Options: "delta_beta" or "score" (default: "delta_beta").
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix (optional). If provided, creates plots with heatmaps.
 #' @param pheno Data frame or character path to phenotype file (optional). Required when beta is provided.
-#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
-#' @param genome Character. Genome version (default: "hg38").
-#' @param array Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.
+#' @param sample_group_col Character. Required column in pheno for sample grouping when `pheno` is provided.
+#' @param genome Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
+#' @param array Character. Array platform type. Required when beta row names are array probe IDs and `beta_locs` is not provided.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.
 #' @param ncol Integer. Number of columns in the grid (default: 1).
 #' @param output_file Character. Path to save the combined plot as PDF (optional). If NULL, the plot is not saved to file.
@@ -1121,30 +1187,24 @@ plotDMRs <- function(dmrs,
                      score_by = c("delta_beta", "score"),
                      beta = NULL,
                      pheno = NULL,
-                     sample_group_col = "Sample_Group",
-                     genome = "hg38",
-                     array = c("450K", "27K", "EPIC", "EPICv2"),
+                     sample_group_col = NULL,
+                     genome = NULL,
+                     array = NULL,
                      beta_locs = NULL,
                      ncol = 1,
                      output_file = NULL,
                      width = 8,
                      height = 12,
                      ...) {
-    if (!is.null(output_file)) {
-        if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
-            stop("Output file must have a .pdf extension.")
-        }
-    }
+    .check_output_file(output_file, if (is.null(dmr_indices)) top_n else length(dmr_indices))
     if (!is.null(array)) {
         if (length(array) > 1) {
             array <- array[[1]]
         }
-        array <- strex::match_arg(array, ignore_case = TRUE)
-    }
-    if (is.null(beta_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
+        array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
     }
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (is.null(dmr_indices)) {
         score <- minmaxscale(abs(mcols(dmrs)[[strex::match_arg(score_by)]]))
         ord <- order(score, decreasing = TRUE)
@@ -1162,7 +1222,13 @@ plotDMRs <- function(dmrs,
         beta_locs <- beta$getBetaLocs()
     }
     if (!is.null(output_file)) {
-        grDevices::cairo_pdf(output_file, width = width, height = height)
+        # get device type from file extension
+        dev_type <- tools::file_ext(output_file)
+        if (dev_type == "png") {
+            grDevices::png(output_file, width = width, height = height, units = "in", res = 300)
+        } else {
+            grDevices::cairo_pdf(output_file, width = width, height = height)
+        }
     }
     if (.Device == "null device") {
         grDevices::cairo_pdf(width = width, height = height)
@@ -1202,10 +1268,10 @@ plotDMRs <- function(dmrs,
 #' @param beta BetaHandler object, character path to beta file, or beta values matrix.
 #'   If a character path or matrix is provided, a BetaHandler will be created automatically.
 #' @param pheno Data frame or character path to phenotype file. Sample information with rownames matching beta column names (required).
-#' @param genome Character. Genome version (default: "hg38").
-#' @param array Character. Array platform type. Must be NULL if input is not array-based. Ignored if beta_locs is provided. (default: "450K")
+#' @param genome Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
+#' @param array Character. Array platform type. Required when beta row names are array probe IDs and `beta_locs` is not provided.
 #' @param beta_locs Data frame. Genomic locations sorted by position (optional).
-#' @param sample_group_col Character. Column in pheno for sample grouping (default: "Sample_Group").
+#' @param sample_group_col Character. Required column in pheno for sample grouping when `pheno` is provided.
 #' @param extend_by_dmr_size_ratio Numeric. Ratio of the DMR width to extend the plot region outside of the DMR in both sides (default: 0.2).
 #' @param min_extension_bp Integer. Minimum extension in base pairs (default: 50).
 #' @param max_sites Integer. Maximum number of sites to show in heatmap (default: 100).
@@ -1233,10 +1299,10 @@ plotDMR <- function(dmrs,
                     dmr_index,
                     beta = NULL,
                     pheno = NULL,
-                    genome = "hg38",
-                    array = c("450K", "27K", "EPIC", "EPICv2"),
+                    genome = NULL,
+                    array = NULL,
                     beta_locs = NULL,
-                    sample_group_col = "Sample_Group",
+                    sample_group_col = NULL,
                     extend_by_dmr_size_ratio = 0.2,
                     min_extension_bp = 50,
                     max_sites = 100,
@@ -1255,21 +1321,18 @@ plotDMR <- function(dmrs,
         NA_integer_
     }
 
-    if (!is.null(output_file)) {
-        if (!grepl("\\.pdf$", output_file, ignore.case = TRUE)) {
-            stop("Output file must have a .pdf extension.")
-        }
-    }
+    .check_output_file(output_file, 1)
     if (length(dmr_index) != 1 || is.na(dmr_index) || dmr_index < 1 ||
         (!is.na(input_dmrs_n) && dmr_index > input_dmrs_n)) {
         stop("dmr_index (", dmr_index, ") is out of bounds. There are only ", input_dmrs_n, " DMRs available.")
     }
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!is.null(array)) {
         if (length(array) > 1) {
             array <- array[[1]]
         }
-        array <- strex::match_arg(array, ignore_case = TRUE)
+        array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
     }
 
     # Create BetaHandler if a file path or matrix was provided
@@ -1289,8 +1352,8 @@ plotDMR <- function(dmrs,
         beta_locs <- beta_handler$getBetaLocs()
     }
 
-    if (!is.null(pheno) && !(sample_group_col %in% colnames(pheno))) {
-        stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
+    if (!is.null(pheno)) {
+        sample_group_col <- .requireSampleGroupCol(sample_group_col, "plotDMR()")
     }
     if (dmr_index < 1 || dmr_index > length(dmrs)) {
         stop("dmr_index (", dmr_index, ") is out of bounds. There are only ", length(dmrs), " DMRs available.")
@@ -1305,6 +1368,9 @@ plotDMR <- function(dmrs,
         }
         if (!is.data.frame(pheno)) {
             stop("pheno must be a data frame or a valid file path to a phenotype table")
+        }
+        if (!(sample_group_col %in% colnames(pheno))) {
+            stop(sprintf("sample_group_col '%s' not found in pheno data frame", sample_group_col))
         }
         pheno <- pheno[rownames(pheno) %in% beta_handler$getBetaColNames(), , drop = FALSE]
         if (nrow(pheno) == 0) {
@@ -1323,7 +1389,12 @@ plotDMR <- function(dmrs,
     showtext::showtext_auto(enable = TRUE)
     showtext::showtext_opts(dpi = if (!is.null(output_file) || .Device == "null device") 300 else .resolveShowtextDpi(300))
     if (!is.null(output_file)) {
-        grDevices::cairo_pdf(output_file, width = width, height = height)
+        dev_type <- tolower(tools::file_ext(output_file))
+        if (dev_type == "png") {
+            grDevices::png(output_file, width = width, height = height, units = "in", res = 300)
+        } else {
+            grDevices::cairo_pdf(output_file, width = width, height = height)
+        }
     }
     if (.Device == "null device") {
         grDevices::cairo_pdf(width = width, height = height)
@@ -1386,10 +1457,10 @@ plotDMR <- function(dmrs,
                 axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
                 axis.title.x = ggplot2::element_text(margin = ggplot2::margin(t = 6)),
                 plot.margin = ggplot2::margin(t = 0, r = 5, b = 5, l = 5)
-            )
+        )
 
         grobs <- list(ggplot2::ggplotGrob(structure_plot))
-        heights <- c(1)
+        heights <- c(0.5)
         gene_context_track <- .plotDMRGeneContextTrack(dmr, total_shown_positions, breaks, genome)
         if (!is.null(gene_context_track)) {
             grobs <- c(grobs, list(ggplot2::ggplotGrob(gene_context_track)))
@@ -1469,13 +1540,12 @@ plotDMR <- function(dmrs,
     dmr_class <- rep("Intergenic", length(dmrs))
     dmr_class[gene_body_mask] <- "Gene Body"
     dmr_class[promoter_mask] <- "Promoter"
-    dmr_class[promoter_mask & gene_body_mask] <- NA
 
     factor(dmr_class, levels = c("Promoter", "Gene Body", "Intergenic"))
 }
 
 .getManhattanChromosomeLengths <- function(dmrs,
-                                           genome = "hg38",
+                                           genome = NULL,
                                            chromosomes = NULL,
                                            cytoband = NULL) {
     if (length(dmrs) == 0) {
@@ -1542,7 +1612,7 @@ plotDMR <- function(dmrs,
 }
 
 .resolveManhattanPlotSpans <- function(dmrs,
-                                       genome = "hg38",
+                                       genome = NULL,
                                        region = NULL,
                                        cytoband = NULL) {
     chr_values <- as.character(GenomicRanges::seqnames(dmrs))
@@ -1783,7 +1853,7 @@ plotDMR <- function(dmrs,
 #' @export
 plotDMRBlockFormation <- function(dmrs,
                                   chromosome,
-                                  genome = "hg38",
+                                  genome = NULL,
                                   k_neighbors = 5L,
                                   min_segment_size = 2L,
                                   block_gap_mode = "adaptive",
@@ -1795,6 +1865,7 @@ plotDMRBlockFormation <- function(dmrs,
                                   point_alpha = 0.7,
                                   point_size = 1.0) {
     dmrs <- .convertToGRanges(dmrs, genome = genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("Column 'score' not found in DMR metadata.")
     }
@@ -2077,7 +2148,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @export
 plotDMRsManhattan <- function(dmrs,
                               region = NULL,
-                              genome = "hg38",
+                              genome = NULL,
                               promoter_col = "in_promoter_of",
                               gene_body_col = "in_gene_body_of",
                               point_size = 1.1,
@@ -2090,6 +2161,7 @@ plotDMRsManhattan <- function(dmrs,
                               width = 12,
                               height = 6) {
     dmrs <- .convertToGRanges(dmrs, genome = genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!( "score" %in% colnames(S4Vectors::mcols(dmrs)))) {
         stop("Column 'score' not found in DMR metadata.")
     }
