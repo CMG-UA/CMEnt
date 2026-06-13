@@ -6,7 +6,7 @@
 \usage{
 annotateDMRsWithGenes(
   dmrs,
-  genome = "hg38",
+  genome = NULL,
   promoter_upstream = 2000,
   promoter_downstream = 200,
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
@@ -18,7 +18,7 @@ annotateDMRsWithGenes(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates}
 
-\item{genome}{Character. Genome version to use for gene annotation. (default: "hg38")}
+\item{genome}{Character. Genome version to use for gene annotation. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
 \item{promoter_upstream}{Integer. Number of base pairs upstream of TSS to
 define promoter region (default: 2000)}

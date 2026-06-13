@@ -1,3 +1,4 @@
+
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # CMEnt <img src="man/figures/logo.png" align="right" height="139"/>
@@ -60,29 +61,37 @@ changes.
 
 You can install the development version of CMEnt from GitHub.
 
-    # install.packages("devtools") # nolint
-    devtools::install_github("CMG-UA/CMEnt")
+``` r
+# install.packages("devtools") # nolint
+devtools::install_github("CMG-UA/CMEnt")
+```
 
 Another option is to use the Docker image available on DockerHub, which
 contains a pre-installed version of CMEnt along with all dependencies.
 You can pull the image using the following command:
 
-    docker pull ghcr.io/cmg-ua/cment/cment:latest
+``` bash
+docker pull ghcr.io/cmg-ua/cment/cment:latest
+```
 
 and run it using:
 
-    docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
+``` bash
+docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
+```
 
 To launch the packaged example output in `CMEntViewer`, publish the
 Shiny port from the container and bind the app to `0.0.0.0`:
 
-    docker run --rm -p 3838:3838 \
-      ghcr.io/cmg-ua/cment/cment:latest \
-      launchCMEntViewer \
-      --output_prefix /CMEnt/inst/extdata/example_output \
-      --launch_browser FALSE \
-      --host 0.0.0.0 \
-      --port 3838
+``` bash
+docker run --rm -p 3838:3838 \
+  ghcr.io/cmg-ua/cment/cment:latest \
+  launchCMEntViewer \
+  --output_prefix /CMEnt/inst/extdata/example_output \
+  --launch_browser FALSE \
+  --host 0.0.0.0 \
+  --port 3838
+```
 
 Then open `http://localhost:3838` in your browser.
 
@@ -90,40 +99,131 @@ If you want to view outputs created on your machine, mount them into the
 container. Keeping the R library and cache on Docker volumes avoids
 re-installing on-demand packages and cached annotations on every run:
 
-    docker volume create cment-r-lib
-    docker volume create cment-r-cache
+``` bash
+docker volume create cment-r-lib
+docker volume create cment-r-cache
 
-    docker run --rm -p 3838:3838 \
-      -v "$PWD:/work" -w /work \
-      -v cment-r-lib:/usr/local/lib/R/site-library \
-      -v cment-r-cache:/home/root/.cache/R \
-      ghcr.io/cmg-ua/cment/cment:latest \
-      launchCMEntViewer \
-      --output_prefix /work/path/to/output_prefix \
-      --launch_browser FALSE \
-      --host 0.0.0.0 \
-      --port 3838
+docker run --rm -p 3838:3838 \
+  -v "$PWD:/work" -w /work \
+  -v cment-r-lib:/usr/local/lib/R/site-library \
+  -v cment-r-cache:/home/root/.cache/R \
+  ghcr.io/cmg-ua/cment/cment:latest \
+  launchCMEntViewer \
+  --output_prefix /work/path/to/output_prefix \
+  --launch_browser FALSE \
+  --host 0.0.0.0 \
+  --port 3838
+```
 
 ## Usage
 
-Here’s a basic example of how to use CMEnt:
+Here’s a basic example of how to use CMEnt in a 450K Microarray setting:
 
-    suppressPackageStartupMessages(library(CMEnt))
-    loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
-    # Build DMRs using parallel processing
-    dmrs <- buildDMRs(
-        beta = beta,
-        seeds = dmps,
-        pheno = pheno,
-        sample_group_col = "Sample_Group",
-        array = array_type,  # Specify array platform
-        min_sites = 3,
-        min_seeds = 2,
-        njobs = 2  # Use parallel processing
-    )
+``` r
+suppressPackageStartupMessages(library(CMEnt))
+loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
+cat("\nBeta matrix:")
+cat(head(beta), "\n")
+cat("\nSeeds:")
+cat(head(dmps), "\n")
+cat("\nPhenotype data:")
+cat(head(pheno), "\n")
+# Build DMRs using parallel processing
+dmrs <- buildDMRs(
+    beta = beta,
+    seeds = dmps,
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    array = array_type,  # Specify array platform
+    min_sites = 3,
+    min_seeds = 2,
+    njobs = 2  # Use parallel processing
+)
 
-    # View summary of DMR statistics
-    summary(dmrs)
+# View summary of DMR statistics
+summary(dmrs)
+```
+
+Here’s the same workflow with a custom BED-like methylation file instead
+of array probe IDs. The BED file must have a header, chromosome and
+start-position columns, and one column per sample. Sample column names
+must match `rownames(pheno)`. Because the beta rows are genomic
+coordinates rather than array probes, set `array = NULL` and provide
+`genome` explicitly. Seeds must also be identified by `chr:start`
+coordinates.
+
+Expected BED format:
+
+``` text
+chrom   start   Sample1 Sample2 Sample3
+chr1    100000  0.21    0.76    0.73
+chr1    100120  0.25    0.79    0.75
+chr2    250010  0.64    0.31    0.29
+```
+
+``` r
+suppressPackageStartupMessages(library(CMEnt))
+
+pheno <- data.frame(
+    Sample_Group = c("control", "case", "case"),
+    row.names = c("Sample1", "Sample2", "Sample3")
+)
+
+seeds <- data.frame(
+    site_id = c("chr1:100000", "chr1:100120", "chr2:250010"),
+    pval = c(1e-5, 2e-4, 8e-4)
+)
+
+dmrs <- buildDMRs(
+    beta = "methylation_values.bed",
+    seeds = seeds,
+    seeds_id_col = "site_id",
+    pheno = pheno,
+    sample_group_col = "Sample_Group",
+    array = NULL,
+    genome = "hg38",
+    bed_chrom_col = "chrom",
+    bed_start_col = "start",
+    min_sites = 2,
+    min_seeds = 2,
+    njobs = 2
+)
+
+summary(dmrs)
+```
+
+The tool supports also bsseq and tabix-indexed BED files as input, which
+can be specified by setting `beta` to a `BSseq` object or a path to a
+tabix-indexed BED file, respectively. When using tabix-indexed BED
+files, the function will automatically fetch only the relevant genomic
+regions based on the seed locations, which can significantly reduce
+memory usage and improve performance for large datasets.
+
+There are two helper functions that can be used to find DMPs and create
+seeds from microarray or bsseq data, which can be used in the
+`buildDMRs` function: - `findDMPsFromMicroarray()`: This function takes
+a beta matrix and phenotype data as input and identifies DMPs using
+linear modeling (limma, please cite
+[![DOI](https://img.shields.io/badge/DOI-10.109%2Fnar%2Fgkv007-blue?style=flat-square)](https://doi.org/10.1093/nar/gkv007)
+if used). It returns a data frame of DMPs with their associated
+p-values, which can be used as seeds for DMR identification. -
+`findDMPsFromBSseq()`: This function takes a `BSseq` object and
+phenotype data as input and identifies DMPs using a beta-binomial
+regression model (DSS, please cite
+[![DOI](https://img.shields.io/badge/DOI-10.1093%2Fnar%2Fgku150-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/nar/gku150)
+if used). It returns a data frame of DMPs with their associated
+p-values, which can be used as seeds for DMR identification.
+
+For an automated “cleaning” of the seeds, which can be useful when the
+seeds are derived from noisy data or when a more stringent set of seeds
+is desired, we also incorporate the comb-p algorithm (please cite
+[![DOI](https://img.shields.io/badge/DOI-10.1093%2Fbioinformatics%2Fbts545-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/bioinformatics/bts545)
+if used) for auto-correlation adjustment. It can be used with
+combinePvalues() function, which takes a data frame of seeds with their
+associated p-values and genomic locations as input and applies the
+comb-p algorithm to adjust the p-values for spatial correlation. The
+function returns a data frame of seeds with adjusted p-values, which can
+be used as input for DMR identification.
 
 ## Citation
 
@@ -131,7 +231,7 @@ If you use CMEnt in your research, please cite:
 
         To cite package 'CMEnt' in publications use:
 
-          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.1.
+          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.7.
           University of Antwerp, Antwerp, Belgium.
 
         A BibTeX entry for LaTeX users is:
@@ -140,7 +240,7 @@ If you use CMEnt in your research, please cite:
             title = {From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement},
             author = {Vasileios Lemonidis, Ken op de Beeck, Joris R Vermeesch, Timon Vandamme, Guy Van Camp, Joe Ibrahim},
             year = {2026},
-            note = {R package version 0.99.1},
+            note = {R package version 0.99.7},
             url = {https://github.com/CMG-UA/CMEnt},
           }
 

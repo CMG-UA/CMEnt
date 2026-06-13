@@ -11,9 +11,9 @@ plotDMRs(
   score_by = c("delta_beta", "score"),
   beta = NULL,
   pheno = NULL,
-  sample_group_col = "Sample_Group",
-  genome = "hg38",
-  array = c("450K", "27K", "EPIC", "EPICv2"),
+  sample_group_col = NULL,
+  genome = NULL,
+  array = NULL,
   beta_locs = NULL,
   ncol = 1,
   output_file = NULL,
@@ -35,11 +35,11 @@ plotDMRs(
 
 \item{pheno}{Data frame or character path to phenotype file (optional). Required when beta is provided.}
 
-\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
+\item{sample_group_col}{Character. Required column in pheno for sample grouping when \code{pheno} is provided.}
 
-\item{genome}{Character. Genome version (default: "hg38").}
+\item{genome}{Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if beta_locs is provided.}
+\item{array}{Character. Array platform type. Required when beta row names are array probe IDs and \code{beta_locs} is not provided.}
 
 \item{beta_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 

@@ -313,6 +313,120 @@ if (is.null(dmrs_cment)) {
 methods_list <- list(CMEnt = dmrs_cment, `Published Bumphunter` = published_bumphunter)
 ```
 
+
+```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
+dmrs_cment_only_promoter_or_gene_body <- dmrs_cment[!(is.finite(mcols(dmrs_cment)$delta_beta_promoter) & is.finite(mcols(dmrs_cment)$delta_beta_gene_body))]
+dmr_effect_df <- bind_rows(
+    data.frame(
+        Region = "Promoter-overlapping DMRs",
+        Width = width(dmrs_cment_only_promoter_or_gene_body),
+        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_promoter)
+    ),
+    data.frame(
+        Region = "Gene-body-overlapping DMRs",
+        Width = width(dmrs_cment_only_promoter_or_gene_body),
+        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_gene_body)
+    )
+) |>
+    filter(is.finite(Delta_beta)) |>
+    mutate(Direction = factor(
+        ifelse(Delta_beta > 0, "Hyper", "Hypo"),
+        levels = c("Hyper", "Hypo")
+    ))
+
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+ignore_abs_delta <- !is.finite(dmr_effect_df$Delta_beta) | abs(dmr_effect_df$Delta_beta) < 0.05
+dmr_effect_df <- dmr_effect_df[!ignore_abs_delta,]
+# Summary per Region and Direction
+dmr_summary <- dmr_effect_df %>%
+  group_by(Region, Direction) %>%
+  summarise(
+    median_delta_beta = median(Delta_beta, na.rm = TRUE),
+    n_dmrs = n(),
+    .groups = "drop"
+  )
+
+# Define two y-levels for the two summary bars
+y_max <- max(dmr_effect_df$Width, na.rm = TRUE)
+
+dmr_summary <- dmr_summary %>%
+  mutate(
+    bar_y = case_when(
+      Direction == "Hyper" ~ y_max * 2.0,
+      Direction == "Hypo"  ~ y_max * 3.2
+    ),
+    label_y = bar_y * 1.12
+  )
+
+# Expand y-range so the bars and labels fit
+y_upper <- max(dmr_summary$label_y) * 1.15
+
+ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
+  geom_hline(
+    yintercept = median(dmr_effect_df$Width, na.rm = TRUE),
+    linewidth = 0.2,
+    color = "grey70"
+  ) +
+  geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
+  geom_point(alpha = 0.55, size = 1.2) +
+
+  # Separate horizontal bars for hypo and hyper
+  geom_segment(
+    data = dmr_summary,
+    aes(
+      x = 0,
+      xend = median_delta_beta,
+      y = bar_y,
+      yend = bar_y,
+      color = Direction
+    ),
+    inherit.aes = FALSE,
+    linewidth = 5,
+    lineend = "butt"
+  ) +
+
+  # Labels for each bar
+  geom_text(
+    data = dmr_summary,
+    aes(
+      x = median_delta_beta,
+      y = label_y,
+      label = paste0(
+        "median Δβ = ", round(median_delta_beta, 3),
+        "\nDMRs = ", n_dmrs
+      )
+    ),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 3,
+    hjust = ifelse(dmr_summary$median_delta_beta >= 0, -0.05, 1.05)
+  ) +
+
+  facet_wrap(~Region, nrow = 1) +
+  scale_y_log10(
+    limits = c(min(dmr_effect_df$Width[dmr_effect_df$Width > 0], na.rm = TRUE), y_upper),
+    labels = comma
+  ) +
+  scale_color_manual(
+    values = c(
+      "Hyper" = "#B8405E",
+      "Hypo" = "#247BA0"
+    )
+  ) +
+  coord_cartesian(clip = "off") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(
+    title = "DMR Effect Size and Width by Gene Context",
+    x = "Context-specific delta beta (Tumor - Stroma)",
+    y = "DMR width (bp, log scale)",
+    color = ""
+  )
+```
+
 ```{r}
 metadata_numeric_summary <- function(gr, fields) {
     fields <- intersect(fields, colnames(mcols(gr)))
@@ -450,6 +564,7 @@ CMEnt::plotDMRs(
     dmrs_cment,
     top_n = 1,
     score_by = "score",
+    plot_motif = FALSE,
     beta = beta_handler,
     pheno = pheno,
     sample_group_col = "tissue.ch1",
@@ -614,6 +729,7 @@ if (file.exists(cached)) {
 } else {
     missmethyl_long <- base::do.call(rbind, Filter(Negate(is.null), unlist(lapply(names(methods_list), function(method) {
         lapply(c("GO", "KEGG"), function(collection) {
+            cat(sprintf("Running missMethyl %s enrichment for %s...\n", collection, method))
             ret <- tryCatch(
                 missMethyl::goregion(
                     regions = methods_list[[method]],

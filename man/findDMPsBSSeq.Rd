@@ -8,7 +8,7 @@ findDMPsBSSeq(
   bsseq,
   samplesheet,
   samplesheet_sep = "\\t",
-  sample_group_col = "Sample_Group",
+  sample_group_col = NULL,
   id_col = "Sample_ID",
   chr = "auto",
   case_group = NULL,
@@ -24,7 +24,7 @@ findDMPsBSSeq(
 
 \item{samplesheet_sep}{The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").}
 
-\item{sample_group_col}{The name of the column in the samplesheet that contains the group labels for comparison. Default is "Sample_Group".}
+\item{sample_group_col}{Required name of the column in the samplesheet that contains the group labels for comparison.}
 
 \item{id_col}{The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".}
 

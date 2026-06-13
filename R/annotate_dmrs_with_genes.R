@@ -117,7 +117,7 @@
 #' gene bodies overlap with the DMR coordinates.
 #'
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates
-#' @param genome Character. Genome version to use for gene annotation. (default: "hg38")
+#' @param genome Character. Genome version to use for gene annotation. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
 #' @param promoter_upstream Integer. Number of base pairs upstream of TSS to
 #'   define promoter region (default: 2000)
 #' @param promoter_downstream Integer. Number of base pairs downstream of TSS
@@ -162,7 +162,7 @@
 #' )
 #'
 #' @export
-annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
+annotateDMRsWithGenes <- function(dmrs, genome = NULL,
                                   promoter_upstream = 2000,
                                   promoter_downstream = 200,
                                   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
@@ -171,6 +171,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = "hg38",
                                   aggfun = stats::median) {
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- .convertToGRanges(dmrs, genome)
+    genome <- .resolveGRangesGenome(dmrs, "DMRs")
 
     annotation_features <- .loadGeneAnnotationFeatures(
         genome = genome,

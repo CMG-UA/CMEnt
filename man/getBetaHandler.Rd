@@ -6,8 +6,8 @@
 \usage{
 getBetaHandler(
   beta,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
+  array = NULL,
+  genome = NULL,
   beta_row_names_file = NULL,
   sorted_locs = NULL,
   chrom_col = "#chrom",

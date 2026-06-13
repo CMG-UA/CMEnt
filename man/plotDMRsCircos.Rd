@@ -8,12 +8,12 @@ plotDMRsCircos(
   dmrs,
   beta = NULL,
   pheno = NULL,
-  genome = "hg38",
-  array = "450K",
+  genome = NULL,
+  array = NULL,
   sorted_locs = NULL,
   components = NULL,
   interactions = NULL,
-  sample_group_col = "Sample_Group",
+  sample_group_col = NULL,
   min_similarity = 0.8,
   motif_site_flank_size = 5,
   max_num_samples_per_group = 5,
@@ -46,9 +46,9 @@ plotDMRsCircos(
 \item{pheno}{Data frame or character path to phenotype file. Sample information with
 rownames matching beta column names (required for beta track, if not provided beta track will not be shown).}
 
-\item{genome}{Character. Genome version (e.g., "hg38").}
+\item{genome}{Character. Required if DMRs are provided as a data frame or they lack seqinfo.}
 
-\item{array}{Character. Array platform type (default: "450K"). Ignored if sorted_locs is provided.}
+\item{array}{Character. Array platform type (e.g., "EPIC", "450K"). Required if beta is provided as a file path and is indexed by array probe IDs.}
 
 \item{sorted_locs}{Data frame. Genomic locations sorted by position (optional). If NULL, will be fetched based on array and genome.}
 
@@ -56,7 +56,7 @@ rownames matching beta column names (required for beta track, if not provided be
 
 \item{interactions}{Data frame. Output from motif interaction detection (optional, will be computed if missing).}
 
-\item{sample_group_col}{Character. Column in pheno for sample grouping (default: "Sample_Group").}
+\item{sample_group_col}{Character. Required column in pheno for sample grouping when \code{pheno} is provided.}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).}
 

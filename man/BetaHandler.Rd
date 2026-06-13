@@ -55,8 +55,8 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
     \if{html}{\out{<div class="r">}}
     \preformatted{BetaHandler$new(
   beta = NULL,
-  array = c("450K", "27K", "EPIC", "EPICv2"),
-  genome = "hg38",
+  array = NULL,
+  genome = NULL,
   beta_row_names_file = NULL,
   sorted_locs = NULL,
   chrom_col = "#chrom",

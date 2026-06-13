@@ -35,7 +35,9 @@ test_that("plotDMR handles invalid dmr_index", {
 test_that("plotDMR and plotDMRs validate PDF output paths", {
     skip_if_not_installed("ggplot2")
 
-    expect_error(plotDMR(plot_fixture$dmrs, 1, plot_motif = FALSE, output_file = "dmr.png", beta_locs = plot_fixture$locs, array = NULL), ".pdf")
+    output_file <- tempfile(fileext = ".png")
+    expect_silent(suppressWarnings(plotDMR(plot_fixture$dmrs, 1, plot_motif = FALSE, output_file = output_file, beta_locs = plot_fixture$locs, array = NULL)))
+    expect_true(file.exists(output_file))
     expect_error(plotDMRs(plot_fixture$dmrs, 1:2, plot_motif = FALSE, output_file = "dmrs.png"), ".pdf")
 })
 

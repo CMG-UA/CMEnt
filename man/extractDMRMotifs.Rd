@@ -6,8 +6,8 @@
 \usage{
 extractDMRMotifs(
   dmrs,
-  genome = "hg38",
-  array = "450k",
+  genome = NULL,
+  array = NULL,
   beta_locs = NULL,
   motif_site_flank_size = 5,
   plot_dir = NULL
@@ -16,9 +16,9 @@ extractDMRMotifs(
 \arguments{
 \item{dmrs}{Dataframe or GRanges object containing DMR coordinates and site indices}
 
-\item{genome}{Character. Genome version to use for sequence extraction. Defaults to hg38.}
+\item{genome}{Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Ignored if input is not array-based. (default: "450K")}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Required only when \code{beta_locs} is not provided and DMR site IDs are array probe IDs.}
 
 \item{beta_locs}{Data frame. Optional pre-computed genomic locations. If NULL,
 locations will be retrieved using getSortedGenomicLocs (default: NULL)}

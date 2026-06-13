@@ -7,8 +7,8 @@
 #'
 #' @param beta_file Character. Path to the input beta values file to be sorted
 #' @param output_file Character. Path for the output sorted beta file (default: adds "_sorted" suffix)
-#' @param array Character. Array platform type (default: "450K")
-#' @param genome Character. Genome version (default: "hg38")
+#' @param array Character. Array platform type. Required when `genomic_locs` is NULL.
+#' @param genome Character. Genome version. Required when `genomic_locs` is NULL.
 #' @param genomic_locs Data frame. Optional pre-computed genomic locations. If NULL, locations will be retrieved automatically (default: NULL)
 #' @param overwrite Logical. Whether to overwrite existing output file (default: FALSE)
 #'
@@ -37,8 +37,8 @@
 #' @export
 sortBetaFileByCoordinates <- function(beta_file,
                                       output_file = NULL,
-                                      array = c("450K", "27K", "EPIC", "EPICv2"),
-                                      genome = "hg38",
+                                      array = NULL,
+                                      genome = NULL,
                                       genomic_locs = NULL,
                                       overwrite = FALSE) {
     # Validate inputs
@@ -77,7 +77,7 @@ sortBetaFileByCoordinates <- function(beta_file,
 
     sorted_locs <- genomic_locs
     if (is.null(sorted_locs)) {
-        array <- strex::match_arg(array, ignore_case = TRUE)
+        array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
         sorted_locs <- getSortedGenomicLocs(array = array, genome = genome)
     }
 

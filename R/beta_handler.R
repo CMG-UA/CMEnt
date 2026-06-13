@@ -51,9 +51,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @field beta Path to beta values file, or a tabix file, or in-memory beta matrix, or BSseq object
         beta = NULL,
         #' @field genome Reference genome
-        genome = "hg38",
+        genome = NULL,
         #' @field array Array platform, ignore for mouse genomes or when sorted_locs provided
-        array = "450K",
+        array = NULL,
         #' @field beta_row_names_file Path to row names file
         beta_row_names_file = NULL,
         #' @field sorted_locs Sorted genomic locations
@@ -76,8 +76,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param njobs Number of parallel jobs
         #' @return A new BetaHandler object
         initialize = function(beta = NULL,
-                              array = c("450K", "27K", "EPIC", "EPICv2"),
-                              genome = "hg38",
+                              array = NULL,
+                              genome = NULL,
                               beta_row_names_file = NULL,
                               sorted_locs = NULL,
                               chrom_col = "#chrom",
@@ -92,7 +92,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 stop("Provided beta file does not exist: ", beta)
             }
             if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta)) && !is_bsseq(beta)) {
-                array <- strex::match_arg(array, ignore_case = TRUE)
+                if (is.null(array)) {
+                    stop("array must be provided when beta row names are array probe IDs and sorted_locs is not provided.", call. = FALSE)
+                }
+                if (is.null(genome)) {
+                    stop("genome must be provided when array annotations are needed and sorted_locs is not provided.", call. = FALSE)
+                }
+                array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
                 self$array <- array
                 self$genome <- genome
             }
@@ -1001,8 +1007,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #' head(beta_values[, 1:5])
 #'
 #' @export
-getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
-                           genome = c("hg38", "hg19", "hs1", "mm10", "mm39"),
+getBetaHandler <- function(beta, array = NULL,
+                           genome = NULL,
                            beta_row_names_file = NULL,
                            sorted_locs = NULL,
                            chrom_col = "#chrom",
@@ -1018,6 +1024,9 @@ getBetaHandler <- function(beta, array = c("450K", "27K", "EPIC", "EPICv2"),
             !is_bsseq(beta) &&
             !(is.character(beta) && length(beta) == 1L && file.exists(beta) && file_is_tabix(beta))
     ) {
+        if (is.null(genome)) {
+            stop("genome must be provided when array annotations are needed and sorted_locs is not provided.", call. = FALSE)
+        }
         .assertArrayAnnotationPackageInstalled(
             array = array[[1]],
             genome = genome[[1]],
