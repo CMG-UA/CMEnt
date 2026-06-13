@@ -49,7 +49,7 @@ beta_matrix <- beta
 beta_handler <- getBetaHandler(
     beta = beta_matrix,
     array = "450K",
-    genome = "hg38"
+    genome = "hg19"
 )
 
 beta_locs <- beta_handler$getBetaLocs()

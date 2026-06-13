@@ -27,12 +27,14 @@ locations (chromosome and position). This function is useful for sorting site
 sites or other genomic features by their physical positions.
 }
 \examples{
+\donttest{
 # Order site indices by genomic location
 site_ids <- c("cg00000029", "cg00000108", "cg00000109")
-ordered_indices <- orderByLoc(site_ids, array = "450K")
+ordered_indices <- orderByLoc(site_ids, array = "450K", genome = "hg19")
 
 # Order using pre-computed genomic locations
-locs <- getSortedGenomicLocs("EPIC", "hg38")
+locs <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
 ordered_indices <- orderByLoc(site_ids, genomic_locs = locs)
+}
 
 }
