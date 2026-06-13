@@ -161,6 +161,7 @@ test_that("plotDMRsCircos validates inputs", {
             dmrs = dmrs_subset,
             beta = beta,
             pheno = bad_pheno,
+            array = array_type,
             genome = "hg19",
             sample_group_col = "Sample_Group"
         ),

@@ -36,8 +36,9 @@ are also accepted and converted to beta values.}
 \item{array}{Array platform passed to \code{\link[=getSortedGenomicLocs]{getSortedGenomicLocs()}} when
 \code{sorted_locs} is not supplied.}
 
-\item{genome}{Genome passed to \code{\link[=getSortedGenomicLocs]{getSortedGenomicLocs()}} when \code{sorted_locs} is
-not supplied.}
+\item{genome}{Optional genome passed to \code{\link[=getSortedGenomicLocs]{getSortedGenomicLocs()}} when
+\code{sorted_locs} is not supplied. If \code{NULL}, inferred from \code{beta} when
+possible, otherwise from \code{array}.}
 
 \item{sorted_locs}{Optional data frame of probe locations with row names as
 site IDs and \code{chr} plus \code{start} or \code{pos} columns.}

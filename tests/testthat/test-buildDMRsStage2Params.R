@@ -1,6 +1,6 @@
 options("CMEnt.verbose" = 0)
 
-loadExampleInputDataChr21And22("beta", "dmps", "pheno")
+loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 
 test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters", {
 
@@ -13,6 +13,8 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,
@@ -60,6 +62,8 @@ test_that("buildDMRs handles ext_site_delta_beta filtering", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         ext_site_delta_beta = NA_real_,
@@ -75,6 +79,8 @@ test_that("buildDMRs handles ext_site_delta_beta filtering", {
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         ext_site_delta_beta = 0.1, # Extend DMRs to include sites with delta beta >= 0.1
@@ -317,6 +323,8 @@ test_that("buildDMRs Stage 2 expansion matches between sequential and chunked pa
         seeds = dmps,
         pheno = pheno,
         sample_group_col = "Sample_Group",
+        array = array_type,
+        genome = "hg19",
         min_seeds = 2,
         min_sites = 3,
         max_lookup_dist = 1000,

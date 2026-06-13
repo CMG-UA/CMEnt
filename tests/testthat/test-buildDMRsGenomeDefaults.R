@@ -24,6 +24,12 @@ test_that("buildDMRs infers hg38 for non-legacy inputs", {
     )
 })
 
+test_that("buildDMRs infers mm10 for mouse arrays", {
+    beta <- matrix(0.5, nrow = 2, ncol = 2)
+
+    expect_equal(CMEnt:::.resolveBuildDMRsGenome(beta = beta, array = "Mouse", genome = NULL), "mm10")
+})
+
 test_that("buildDMRs keeps explicit genome overrides", {
     beta <- matrix(0.5, nrow = 2, ncol = 2)
 

@@ -124,6 +124,7 @@ test_that("buildDMRs aggregates optional dependencies before running", {
             seeds = seeds,
             pheno = pheno,
             seeds_id_col = "site_id",
+            sample_group_col = "Sample_Group",
             array = "450K",
             genome = "hg19",
             njobs = 1,
@@ -169,7 +170,11 @@ test_that("findDMPsBSSeq reports DSS as a required dependency", {
     )
 
     expect_error(
-        findDMPsBSSeq(bsseq = "dummy.rds", samplesheet = data.frame()),
+        findDMPsBSSeq(
+            bsseq = "dummy.rds",
+            samplesheet = data.frame(),
+            sample_group_col = "Sample_Group"
+        ),
         "DSS"
     )
 })
