@@ -1,7 +1,7 @@
 Package: CMEnt
 Type: Package
 Title: Characterization of Methylation using positional ENTanglement
-Version: 0.99.7
+Version: 0.99.8
 Authors@R: c(
     person(given   = "Vasileios",
            family  = "Lemonidis",

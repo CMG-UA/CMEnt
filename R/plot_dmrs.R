@@ -1818,8 +1818,8 @@ plotDMR <- function(dmrs,
 #' @param dmrs GRanges object or data frame. DMR results from `buildDMRs`
 #' or `scoreDMRs`.
 #' @param chromosome Character. Chromosome to inspect (e.g., `"chr7"` or `"7"`).
-#' @param genome Character. Genome version passed to `.convertToGRanges`
-#' (default: `"hg38"`).
+#' @param genome Character. Genome version. Required for data.frame DMRs;
+#' inferred from GRanges seqinfo when available.
 #' @param k_neighbors Integer. Number of nearest neighbors used in adaptive Gaussian
 #' smoothing (default: `5`).
 #' @param min_segment_size Integer. Minimum size of linear segments in PELT
@@ -1849,7 +1849,7 @@ plotDMR <- function(dmrs,
 #'     end = seq(1e6, by = 5e4, length.out = 10) + 100,
 #'     score = seq(0.5, 0.8, length.out = 10)
 #' )
-#' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
+#' p <- plotDMRBlockFormation(dmrs, chromosome = "chr7", genome = "hg38")
 #' @export
 plotDMRBlockFormation <- function(dmrs,
                                   chromosome,
@@ -2122,7 +2122,7 @@ plotDMRBlockFormation <- function(dmrs,
 #' @param region Optional plotting scope. Can be NULL for full-chromosome plotting,
 #' a GRanges, a string in the form `"chr:start-end"`, or a data.frame/list with
 #' `chr`, `start`, and `end`.
-#' @param genome Character. Genome version passed to `.convertToGRanges` (default: `"hg38"`).
+#' @param genome Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
 #' @param promoter_col Character. Metadata column indicating promoter overlap (default: `"in_promoter_of"`).
 #' @param gene_body_col Character. Metadata column indicating gene-body overlap (default: `"in_gene_body_of"`).
 #' @param point_size Numeric. Point size (default: `1.1`).
@@ -2144,7 +2144,7 @@ plotDMRBlockFormation <- function(dmrs,
 #'     end = c(150, 250, 150),
 #'     score = c(0.6, 0.8, 0.7)
 #' )
-#' p <- plotDMRsManhattan(dmrs)
+#' p <- plotDMRsManhattan(dmrs, genome = "hg38")
 #' @export
 plotDMRsManhattan <- function(dmrs,
                               region = NULL,

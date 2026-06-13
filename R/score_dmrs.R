@@ -835,7 +835,8 @@
 #'     dmrs = dmrs[1],
 #'     beta = beta,
 #'     pheno = pheno,
-#'     sample_group_col = "Sample_Group"
+#'     sample_group_col = "Sample_Group",
+#'     array = "450K"
 #' )
 #'
 #' @export

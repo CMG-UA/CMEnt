@@ -72,10 +72,10 @@ dmrs <- data.frame(
     end_seed = c("cg13426503", "cg08730726"),
     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 )
-dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
+dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 interactions <- computeDMRsInteraction(
     dmrs_with_motifs,
-    genome = "hg38",
+    genome = "hg19",
     array = "450K",
     query_components_with_jaspar = FALSE
 )

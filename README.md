@@ -216,9 +216,8 @@ seeds from microarray or bsseq data, which can be used in the
   if used). It returns a data frame of DMPs with their associated
   p-values, which can be used as seeds for DMR identification.
 
-For an automated “cleaning” of the seeds, which can be useful when the
-seeds are derived from noisy data or when a more stringent set of seeds
-is desired, we also incorporate the comb-p algorithm (please cite
+For an automated “cleaning” of the seeds, when a more stringent set of
+seeds is desired, we also incorporate the comb-p algorithm (please cite
 [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fbioinformatics%2Fbts545-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/bioinformatics/bts545)
 if used) for auto-correlation adjustment. It can be used with
 combinePvalues() function, which takes a data frame of seeds with their
@@ -233,7 +232,7 @@ If you use CMEnt in your research, please cite:
 
         To cite package 'CMEnt' in publications use:
 
-          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.7.
+          Lemonidis et al (2026). From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement. R package version 0.99.8.
           University of Antwerp, Antwerp, Belgium.
 
         A BibTeX entry for LaTeX users is:
@@ -242,7 +241,7 @@ If you use CMEnt in your research, please cite:
             title = {From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement},
             author = {Vasileios Lemonidis, Ken op de Beeck, Joris R Vermeesch, Timon Vandamme, Guy Van Camp, Joe Ibrahim},
             year = {2026},
-            note = {R package version 0.99.7},
+            note = {R package version 0.99.8},
             url = {https://github.com/CMG-UA/CMEnt},
           }
 

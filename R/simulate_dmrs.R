@@ -56,6 +56,12 @@
 #' @param groups Optional sample group vector. If `NULL`, the first half of
 #'   samples are assigned to `Condition1` and the remaining samples to
 #'   `Condition2`.
+#' @param sample_group_col Required name of the phenotype column updated in the
+#'   returned samplesheet. Values are `"case"` for perturbed samples and
+#'   `"control"` for all other samples. If the column already exists in a
+#'   supplied samplesheet and has more than one value, the original values are
+#'   retained in a separate covariate column before simulation labels are
+#'   written.
 #' @param case_group Group receiving the differential shift. Defaults to the
 #'   second group level.
 #' @param samplesheet Optional data frame or path to a tab-delimited sample
@@ -63,9 +69,7 @@
 #'   column must identify samples. If fewer than all input samples are present,
 #'   simulation is run on the matching samples.
 #' @param samplesheet_sep Separator for samplesheet files. Default is tab.
-#' @param sample_group_col Name of the phenotype column added to the returned
-#'   samplesheet. Values are `"case"` for perturbed samples and `"control"` for
-#'   all other samples.
+
 #' @param covariates Optional covariate columns in `samplesheet` to regress out
 #'   on the logit methylation scale before DMRs are simulated. The per-site
 #'   baseline is retained.
@@ -124,7 +128,7 @@
 #' set.seed(1)
 #' simulated <- simulateDMRs(
 #'     beta, num_dmrs = 1, min_sites = 5, max_sites = 20,
-#'     sorted_locs = locs, verbose = 0
+#'     sorted_locs = locs, sample_group_col = "Sample_Group", verbose = 0
 #' )
 #' @importFrom stats qlogis plogis
 #' @export
@@ -136,7 +140,7 @@ simulateDMRs <- function(
     case_group = NULL,
     samplesheet = NULL,
     samplesheet_sep = "\t",
-    sample_group_col = NULL,
+    sample_group_col,
     covariates = NULL,
     max_gap = 500L,
     min_sites = 5L,
@@ -272,8 +276,10 @@ simulateDMRs <- function(
         samplesheet_sep = samplesheet_sep,
         sample_names = sample_names,
         sample_groups = output_groups,
-        sample_group_col = sample_group_col
+        sample_group_col = sample_group_col,
+        covariates = covariates
     )
+    covariates <- attr(pheno, "covariates")
     sample_keep <- match(rownames(pheno), sample_names)
     sample_names <- sample_names[sample_keep]
     groups <- groups[sample_keep]
@@ -679,6 +685,11 @@ simulateDMRs <- function(
         sample_names <- paste0("sample_", seq_len(ncol(beta_mat)))
     }
 
+    input_genome <- beta_handler$genome
+    if (is.null(input_genome) || length(input_genome) == 0L) {
+        input_genome <- if (is.null(genome) || length(genome) == 0L) NA_character_ else genome[[1L]]
+    }
+
     list(
         assay = "microarray",
         source = beta_handler,
@@ -687,7 +698,7 @@ simulateDMRs <- function(
         chr = as.character(beta_locs$chr),
         pos = as.integer(beta_locs$start),
         end = as.integer(beta_locs$end),
-        genome = beta_handler$genome,
+        genome = input_genome,
         meth = meth_mat,
         cov = cov_mat,
         beta_locs = beta_locs
@@ -745,12 +756,16 @@ simulateDMRs <- function(
                                     samplesheet_sep,
                                     sample_names,
                                     sample_groups,
-                                    sample_group_col) {
+                                    sample_group_col,
+                                    covariates) {
     if (length(sample_group_col) != 1L || is.na(sample_group_col) || !nzchar(sample_group_col)) {
         stop("'sample_group_col' must be a non-empty character scalar.")
     }
-
+    
     if (is.null(samplesheet)) {
+        if (!is.null(covariates)) {
+            stop("'samplesheet' must be provided when 'covariates' are supplied.")
+        }
         pheno <- stats::setNames(
             data.frame(sample_groups, stringsAsFactors = FALSE),
             sample_group_col
@@ -804,6 +819,17 @@ simulateDMRs <- function(
     sample_groups <- sample_groups[sample_keep]
 
     pheno <- pheno[sample_names, , drop = FALSE]
+    if (sample_group_col %in% colnames(pheno) && length(unique(pheno[[sample_group_col]])) > 1L) {
+        sample_group_col_new <- paste0(sample_group_col, "_orig")
+        pheno[[sample_group_col_new]] <- pheno[[sample_group_col]]
+        if (is.null(covariates)) {
+            covariates <- sample_group_col_new
+        } else {
+            covariates <- setdiff(covariates, sample_group_col)
+            covariates <- c(covariates, sample_group_col_new)
+        }
+    }
+    attr(pheno, "covariates") <- covariates
     pheno[[sample_group_col]] <- sample_groups
     pheno
 }

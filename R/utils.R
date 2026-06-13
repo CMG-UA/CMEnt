@@ -1554,7 +1554,7 @@ supportedOrganisms <- function() {
 #' methylation array platform and genome version. Performs liftOver if necessary.
 #' The function caches the results.
 #'
-#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse", 'NULL'), ignored when locations_file is provided. Must be 'NULL' when the experiment is not array-based.
+#' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse"), ignored when locations_file is provided.
 #' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
 #' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
 #'
@@ -1567,14 +1567,16 @@ supportedOrganisms <- function() {
 #' }
 #'
 #' @examples
-#' # Get sorted locations for 450K array (hg38)
-#' locs_450k <- getSortedGenomicLocs("450K")
+#' \donttest{
+#' # Get sorted locations for 450K array on hg19
+#' locs_450k <- getSortedGenomicLocs(array = "450K", genome = "hg19")
 #'
 #' # Get sorted locations for EPIC array with hg38
-#' # locs_epic <- getSortedGenomicLocs("EPIC", "hg38")
+#' locs_epic <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
 #'
 #' # Get sorted locations for EPICv2 array
-#' # locs_epicv2 <- getSortedGenomicLocs("EPICv2", "hg38")
+#' locs_epicv2 <- getSortedGenomicLocs(array = "EPICv2", genome = "hg38")
+#' }
 #'
 #' @export
 getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = NULL) {
@@ -1678,13 +1680,15 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
 #' @return Integer vector of ordered indices
 #'
 #' @examples
+#' \donttest{
 #' # Order site indices by genomic location
 #' site_ids <- c("cg00000029", "cg00000108", "cg00000109")
-#' ordered_indices <- orderByLoc(site_ids, array = "450K")
+#' ordered_indices <- orderByLoc(site_ids, array = "450K", genome = "hg19")
 #'
 #' # Order using pre-computed genomic locations
-#' locs <- getSortedGenomicLocs("EPIC", "hg38")
+#' locs <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
 #' ordered_indices <- orderByLoc(site_ids, genomic_locs = locs)
+#' }
 #'
 #' @export
 orderByLoc <- function(x,

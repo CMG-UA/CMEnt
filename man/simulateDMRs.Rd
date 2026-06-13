@@ -12,7 +12,7 @@ simulateDMRs(
   case_group = NULL,
   samplesheet = NULL,
   samplesheet_sep = "\\t",
-  sample_group_col = NULL,
+  sample_group_col,
   covariates = NULL,
   max_gap = 500L,
   min_sites = 5L,
@@ -60,9 +60,12 @@ simulation is run on the matching samples.}
 
 \item{samplesheet_sep}{Separator for samplesheet files. Default is tab.}
 
-\item{sample_group_col}{Name of the phenotype column added to the returned
-samplesheet. Values are \code{"case"} for perturbed samples and \code{"control"} for
-all other samples.}
+\item{sample_group_col}{Required name of the phenotype column updated in the
+returned samplesheet. Values are \code{"case"} for perturbed samples and
+\code{"control"} for all other samples. If the column already exists in a
+supplied samplesheet and has more than one value, the original values are
+retained in a separate covariate column before simulation labels are
+written.}
 
 \item{covariates}{Optional covariate columns in \code{samplesheet} to regress out
 on the logit methylation scale before DMRs are simulated. The per-site
@@ -190,6 +193,6 @@ locs <- data.frame(
 set.seed(1)
 simulated <- simulateDMRs(
     beta, num_dmrs = 1, min_sites = 5, max_sites = 20,
-    sorted_locs = locs, verbose = 0
+    sorted_locs = locs, sample_group_col = "Sample_Group", verbose = 0
 )
 }

@@ -334,7 +334,7 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #'     end_seed = c("cg13426503", "cg08730726"),
 #'     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 #' )
-#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
+#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 #' # Access motif frequencies for the first DMR
 #' motif_freqs_dmr1 <- dmrs_with_motifs$pwm[[1]]
 #' @export
@@ -522,10 +522,10 @@ extractDMRMotifs <- function(
 #'     end_seed = c("cg13426503", "cg08730726"),
 #'     seeds = c("cg00000029,cg13426503", "cg00000108,cg08730726")
 #' )
-#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg38", array = "450K")
+#' dmrs_with_motifs <- extractDMRMotifs(dmrs, genome = "hg19", array = "450K")
 #' interactions <- computeDMRsInteraction(
 #'     dmrs_with_motifs,
-#'     genome = "hg38",
+#'     genome = "hg19",
 #'     array = "450K",
 #'     query_components_with_jaspar = FALSE
 #' )

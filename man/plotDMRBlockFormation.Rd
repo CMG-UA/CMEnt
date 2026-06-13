@@ -26,8 +26,8 @@ or \code{scoreDMRs}.}
 
 \item{chromosome}{Character. Chromosome to inspect (e.g., \code{"chr7"} or \code{"7"}).}
 
-\item{genome}{Character. Genome version passed to \code{.convertToGRanges}
-(default: \code{"hg38"}).}
+\item{genome}{Character. Genome version. Required for data.frame DMRs;
+inferred from GRanges seqinfo when available.}
 
 \item{k_neighbors}{Integer. Number of nearest neighbors used in adaptive Gaussian
 smoothing (default: \code{5}).}
@@ -73,5 +73,5 @@ dmrs <- data.frame(
     end = seq(1e6, by = 5e4, length.out = 10) + 100,
     score = seq(0.5, 0.8, length.out = 10)
 )
-p <- plotDMRBlockFormation(dmrs, chromosome = "chr7")
+p <- plotDMRBlockFormation(dmrs, chromosome = "chr7", genome = "hg38")
 }

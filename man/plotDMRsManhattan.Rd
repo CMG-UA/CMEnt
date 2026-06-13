@@ -28,7 +28,7 @@ plotDMRsManhattan(
 a GRanges, a string in the form \code{"chr:start-end"}, or a data.frame/list with
 \code{chr}, \code{start}, and \code{end}.}
 
-\item{genome}{Character. Genome version passed to \code{.convertToGRanges} (default: \code{"hg38"}).}
+\item{genome}{Character. Genome version. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
 \item{promoter_col}{Character. Metadata column indicating promoter overlap (default: \code{"in_promoter_of"}).}
 
@@ -66,5 +66,5 @@ dmrs <- data.frame(
     end = c(150, 250, 150),
     score = c(0.6, 0.8, 0.7)
 )
-p <- plotDMRsManhattan(dmrs)
+p <- plotDMRsManhattan(dmrs, genome = "hg38")
 }
