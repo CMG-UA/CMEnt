@@ -201,18 +201,20 @@ memory usage and improve performance for large datasets.
 
 There are two helper functions that can be used to find DMPs and create
 seeds from microarray or bsseq data, which can be used in the
-`buildDMRs` function: - `findDMPsFromMicroarray()`: This function takes
-a beta matrix and phenotype data as input and identifies DMPs using
-linear modeling (limma, please cite
-[![DOI](https://img.shields.io/badge/DOI-10.109%2Fnar%2Fgkv007-blue?style=flat-square)](https://doi.org/10.1093/nar/gkv007)
-if used). It returns a data frame of DMPs with their associated
-p-values, which can be used as seeds for DMR identification. -
-`findDMPsFromBSseq()`: This function takes a `BSseq` object and
-phenotype data as input and identifies DMPs using a beta-binomial
-regression model (DSS, please cite
-[![DOI](https://img.shields.io/badge/DOI-10.1093%2Fnar%2Fgku150-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/nar/gku150)
-if used). It returns a data frame of DMPs with their associated
-p-values, which can be used as seeds for DMR identification.
+`buildDMRs` function:
+
+- `findDMPsFromMicroarray()`: This function takes a beta matrix and
+  phenotype data as input and identifies DMPs using linear modeling
+  (limma, please cite
+  [![DOI](https://img.shields.io/badge/DOI-10.109%2Fnar%2Fgkv007-blue?style=flat-square)](https://doi.org/10.1093/nar/gkv007)
+  if used). It returns a data frame of DMPs with their associated
+  p-values, which can be used as seeds for DMR identification.
+- `findDMPsFromBSseq()`: This function takes a `BSseq` object and
+  phenotype data as input and identifies DMPs using a beta-binomial
+  regression model (DSS, please cite
+  [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fnar%2Fgku150-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/nar/gku150)
+  if used). It returns a data frame of DMPs with their associated
+  p-values, which can be used as seeds for DMR identification.
 
 For an automated “cleaning” of the seeds, which can be useful when the
 seeds are derived from noisy data or when a more stringent set of seeds
