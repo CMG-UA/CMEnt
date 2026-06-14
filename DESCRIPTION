@@ -51,6 +51,7 @@ Imports:
     DelayedDataFrame,
     DT,
     e1071,
+    filelock,
     FNN,
     GenomeInfoDb,
     GenomicFeatures,

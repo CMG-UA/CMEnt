@@ -633,13 +633,13 @@
         check_non_overlapping = !is.null(checked_pairs)
     )
     rm(chunk_beta)
+    .log_success("Connectivity tested.", level = 3)
     if (!is.null(checked_pairs) && length(inds) > 0L) {
         # attach to result so outer loop can map back exactly
         # keep only mod 2 = 1
         inds <- inds[seq_along(inds) %% 2 == 1]
         attr(x, "recomputed_pairs") <- inds
     }
-    .log_success("", level = 3)
     list(pair_start = pair_start, pair_end = pair_end, result = x)
 }
 
@@ -1086,7 +1086,6 @@
         testing_mode_per_group <- vapply(groups_options, function(opt) opt$testing_mode, character(1))
         names(testing_mode_per_group) <- names(group_inds)
         rm(first_chunk, site_starts, exceeded_dist, nexdist_mask, groups_options)
-        gc()
     }
     beta_start_vec <- as.integer(beta_locs[, "start"])
     .runConnectivityChunk <- function(
@@ -1271,7 +1270,6 @@
             .applyChunkResult(item)
         }
         rm(ret, batch_splits)
-        gc(verbose = FALSE)
     }
 
     connected_vec[bridge_mask] <- TRUE
@@ -2217,7 +2215,7 @@
     covariates,
     covariate_models,
     annotate_with_genes,
-    .score_dmrs,
+    score_dmrs,
     extract_motifs
 ) {
     if (!inherits(beta_handler, "BetaHandler")) {
@@ -2227,11 +2225,13 @@
     beta_locs <- beta_handler$getBetaLocs()
     all_sites <- .explicitRowNames(beta_locs)
     chromosome <- unique(as.character(beta_locs[, "chr"]))
+    .log_step("Building DMRs for ", chromosome, "..", level = 1)
+
     chromosome_progress <- NULL
     chromosome_progress_step <- 0L
     chromosome_progress_total <- 6L +
         as.integer(isTRUE(annotate_with_genes)) +
-        as.integer(isTRUE(.score_dmrs)) +
+        as.integer(isTRUE(score_dmrs)) +
         as.integer(isTRUE(extract_motifs))
     if (verbose >= 1L) {
         chromosome_progress <- utils::txtProgressBar(
@@ -2313,7 +2313,6 @@
     )
     .log_info("Number of provided chromosome-scoped seeds: ", length(seed_ids), level = 2)
     rm(seeds_beta)
-    gc(verbose = FALSE)
 
     .log_success("Input preparation complete.", level = 2)
     .advanceChromosomeProgress()
@@ -2356,7 +2355,6 @@
             verbose = verbose
         )
         rm(seeds_beta_handler)
-        gc(verbose = FALSE)
         seeds_connectivity_array <- ret$connectivity_array
         testing_mode_per_group <- ret$testing_mode_per_group
         empirical_strategy_per_group <- ret$empirical_strategy_per_group
@@ -2427,10 +2425,11 @@
             return(NULL)
         }
         if (getOption("CMEnt.make_debug_dir", FALSE)) {
-            .log_info("Saving initial DMRs from connected seeds to debug/01_dmrs_from_connected_seeds.tsv", level = 1)
+            debug_path <- file.path("debug", paste0("01_dmrs_from_connected_seeds_", chromosome, ".tsv"))
+            .log_info("Saving initial DMRs from connected seeds to ", debug_path, level = 1)
             dir.create("debug", showWarnings = FALSE)
             write.table(dmrs,
-                file = file.path("debug", "01_dmrs_from_connected_seeds.tsv"),
+                file = debug_path,
                 sep = "\t",
                 row.names = FALSE,
                 col.names = TRUE,
@@ -2524,9 +2523,10 @@
     .log_success("Connectivity array built.", level = 2)
     .log_info("Number of underlying correlated sites found: ", sum(connectivity_array$connected), level = 2)
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving connectivity array to debug/connectivity_array.rds", level = 1)
+        debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, ".rds"))
+        .log_info("Saving connectivity array to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
-        saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
+        saveRDS(connectivity_array, file = debug_path)
     }
     if (nrow(connectivity_array) != nrow(stage2_beta_locs)) {
         stop(
@@ -2604,10 +2604,11 @@
     .log_success("Post-processing complete.", level = 3)
     .log_success("DMR expansion complete.", level = 2)
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving extended DMRs prior to filtering to debug/03_extended_dmrs.tsv", level = 1)
+        debug_path <- file.path("debug", paste0("02_extended_dmrs_", chromosome, ".tsv"))
+        .log_info("Saving extended DMRs prior to filtering to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
-            file = file.path("debug", "02_extended_dmrs.tsv"),
+            file = debug_path,
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
@@ -2703,10 +2704,11 @@
     merged_dmrs <- .convertToDataFrame(merged_dmrs_ranges)
 
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
+        debug_path <- file.path("debug", paste0("03_merged_dmrs_", chromosome, ".tsv"))
+        .log_info("Saving merged DMRs prior to filtering to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(merged_dmrs,
-            file = file.path("debug", "03_merged_dmrs.tsv"),
+            file = debug_path,
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
@@ -2789,7 +2791,6 @@
         aggfun = aggfun
     )
     rm(all_selected_sites_beta)
-    gc(verbose = FALSE)
     .log_success("Per-site beta statistics calculated.", level = 3)
 
     beta_stats <- as.data.frame(beta_stats)
@@ -2859,7 +2860,7 @@
 
     if (annotate_with_genes) {
         .advanceChromosomeProgress()
-        .log_step("Annotating DMRs with gene information...", level = 2)
+        .log_step("Annotating DMRs with gene information...", level = 3)
         site_delta_beta <- beta_stats$cases_beta - beta_stats$controls_beta
         names(site_delta_beta) <- rownames(beta_stats)
         annotated_dmrs <- annotateDMRsWithGenes(
@@ -2873,7 +2874,7 @@
         .log_success("DMR annotation completed.", level = 2)
     }
 
-    if (.score_dmrs) {
+    if (score_dmrs) {
         .advanceChromosomeProgress()
         .log_step("Scoring DMRs...", level = 2)
         annotated_dmrs <- scoreDMRs(
@@ -2907,8 +2908,7 @@
     final_dmrs <- .convertToDataFrame(final_dmrs_granges)
 
     .log_info("Final number of chromosome-scoped DMRs: ", nrow(final_dmrs), level = 2)
-
-    gc()
+    .log_success("DMR building complete for ", chromosome, ".", level = 1)
     invisible(final_dmrs_granges)
 }
 
@@ -2996,7 +2996,7 @@
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values.
 #'  If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param .score_dmrs Logical. Whether to add complementary cross-validated
+#' @param score_dmrs Logical. Whether to add complementary cross-validated
 #'  SVM discrimination scores to DMRs. Default is TRUE.
 #' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
@@ -3052,7 +3052,7 @@ buildDMRs <- function(
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
-    .score_dmrs = TRUE,
+    score_dmrs = TRUE,
     extract_motifs = TRUE,
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
@@ -3446,9 +3446,16 @@ buildDMRs <- function(
     } else {
         beta_locs_rownames
     }
-    chr_results <- vector("list", length(chromosomes))
-    names(chr_results) <- chromosomes
-    for (chr in chromosomes) {
+    chr_parallel_jobs <-  min(getOption("CMEnt.chr_njobs", 3L), length(chromosomes), max(1L, njobs))
+    chr_njobs <- if (chr_parallel_jobs > 1L) max(1L, floor(njobs / chr_parallel_jobs)) else njobs
+    if (chr_parallel_jobs > 1L) {
+        .log_info(
+            "Using ", chr_parallel_jobs, " chromosome job(s) with ", chr_njobs,
+            " inner job(s) per chromosome.",
+            level = 2
+        )
+    }
+    .processChromosome <- function(chr) {
         .log_step("Processing chromosome ", chr, "...", level = 1)
         chr_beta_idx <- which(beta_chr == chr)
         chr_row_ids <- if (is.null(beta_locs_rownames)) chr_beta_idx else beta_row_ids_all[chr_beta_idx]
@@ -3487,7 +3494,7 @@ buildDMRs <- function(
                 min_adj_seeds = min_adj_seeds,
                 min_sites = min_sites,
                 aggfun = aggfun,
-                njobs = njobs,
+                njobs = chr_njobs,
                 verbose = verbose,
                 .load_debug = .load_debug,
                 pheno = pheno,
@@ -3496,7 +3503,7 @@ buildDMRs <- function(
                 covariates = covariates,
                 covariate_models = covariate_models,
                 annotate_with_genes = annotate_with_genes,
-                .score_dmrs = .score_dmrs,
+                score_dmrs = score_dmrs,
                 extract_motifs = extract_motifs
             ),
             warning = function(w) {
@@ -3505,12 +3512,24 @@ buildDMRs <- function(
                 }
             }
         )
-        if (!is.null(chr_ret) && length(chr_ret) > 0L) {
-            chr_results[[chr]] <- chr_ret
-        }
-        rm(chr_handler, chr_ret)
-        gc(verbose = FALSE)
+        rm(chr_handler)
+        chr_ret
     }
+    if (chr_parallel_jobs > 1L) {
+        bp_backend <- if (.usesFileBackedBSseq(beta_handler)) "snow" else NULL
+        chr_results <- BiocParallel::bplapply(
+            chromosomes,
+            .processChromosome,
+            BPPARAM = .makeBiocParallelParam(
+                chr_parallel_jobs,
+                n_tasks = length(chromosomes),
+                parallel_backend = bp_backend
+            )
+        )
+    } else {
+        chr_results <- lapply(chromosomes, .processChromosome)
+    }
+    names(chr_results) <- chromosomes
     chr_results <- chr_results[lengths(chr_results) > 0L]
     if (length(chr_results) == 0L) {
         .log_warn("No DMRs remain after filtering based on min_seeds.")

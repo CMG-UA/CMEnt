@@ -1,4 +1,28 @@
 options("CMEnt.verbose" = 0)
+
+test_that("gene bodies exclude promoter intervals", {
+    genes <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(c(100L, 500L, 900L), c(300L, 800L, 1000L)),
+        strand = c("+", "-", "+")
+    )
+    names(genes) <- c("gene1", "gene2", "gene3")
+
+    promoters <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(c(50L, 750L, 250L), c(120L, 850L, 550L)),
+        strand = c("+", "-", "+")
+    )
+    S4Vectors::mcols(promoters)$name <- c("gene1", "gene2", "gene3")
+
+    gene_bodies <- CMEnt:::.trimGeneBodiesByPromoters(genes, promoters)
+
+    expect_equal(as.character(GenomicRanges::seqnames(gene_bodies)), rep("chr1", 3))
+    expect_equal(GenomicRanges::start(gene_bodies), c(121L, 551L, 900L))
+    expect_equal(GenomicRanges::end(gene_bodies), c(249L, 749L, 1000L))
+    expect_equal(names(gene_bodies), c("gene1", "gene2", "gene3"))
+})
+
 test_that("annotateDMRsWithGenes matches between sequential and parallel execution", {
     skip_on_cran()
     skip_if_offline()

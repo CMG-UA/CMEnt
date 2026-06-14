@@ -17,6 +17,7 @@ plotDMRsManhattan(
   block_alpha = 0.12,
   block_linewidth = 0.25,
   output_file = NULL,
+  add_hover_text = FALSE,
   width = 12,
   height = 6
 )

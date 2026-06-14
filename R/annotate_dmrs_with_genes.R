@@ -1,3 +1,30 @@
+.trimGeneBodiesByPromoters <- function(genes, promoters) {
+    if (length(genes) == 0L || length(promoters) == 0L) {
+        return(genes)
+    }
+    genes_unstranded <- genes
+    promoters_unstranded <- promoters
+    GenomicRanges::strand(genes_unstranded) <- "*"
+    GenomicRanges::strand(promoters_unstranded) <- "*"
+    promoter_free <- GenomicRanges::setdiff(genes_unstranded, promoters_unstranded, ignore.strand = TRUE)
+    if (length(promoter_free) == 0L) {
+        return(genes[FALSE])
+    }
+    hits <- GenomicRanges::findOverlaps(promoter_free, genes, ignore.strand = TRUE)
+    if (length(hits) == 0L) {
+        return(genes)
+    }
+    gene_hits <- S4Vectors::subjectHits(hits)
+    gene_bodies <- GenomicRanges::pintersect(
+        genes[gene_hits],
+        promoter_free[S4Vectors::queryHits(hits)],
+        ignore.strand = TRUE
+    )
+    names(gene_bodies) <- names(genes)[gene_hits]
+    S4Vectors::mcols(gene_bodies) <- S4Vectors::mcols(genes)[gene_hits, , drop = FALSE]
+    gene_bodies
+}
+
 .loadGeneAnnotationFeatures <- function(genome, promoter_upstream = 2000,
                                         promoter_downstream = 200,
                                         context = "gene annotation") {
@@ -20,7 +47,7 @@
             level = 2
         )
     }
-    .log_step("Loading gene annotations for ", genome, "...", level = 2)
+    .log_step("Loading gene annotations for ", genome, "...", level = 3)
 
     # Load TxDb namespace
     if (!isNamespaceLoaded(txdb_pkg)) {
@@ -69,7 +96,7 @@
                 }
             )
         }
-        promoters_key <- paste0("promoters_", genome)
+        promoters_key <- paste0("promoters_", genome, "_u", promoter_upstream, "_d", promoter_downstream)
         promoters <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
             .readBiocFileCacheRDS(cache_dir, promoters_key)
         } else {
@@ -106,7 +133,8 @@
             )
         }
     })
-    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
+    genes <- .trimGeneBodiesByPromoters(genes, promoters)
+    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 3)
     list(genes = genes, promoters = promoters, orgdb_pkg = orgdb_pkg)
 }
 
@@ -183,8 +211,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     promoters <- annotation_features$promoters
     orgdb_pkg <- annotation_features$orgdb_pkg
 
-    .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
-    .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
+    .log_step("Finding overlaps with promoters and gene bodies...", level = 3)
     annotation_specs <- list(
         list(
             column = "in_promoter_of",
@@ -202,7 +229,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     bp_param <- .makeBiocParallelParam(
         njobs,
         n_tasks = length(annotation_specs),
-        progressbar = getOption("CMEnt.verbose", 0) > 0L
+        progressbar = FALSE
     )
     annotation_results <- BiocParallel::bplapply(
         annotation_specs,
@@ -233,7 +260,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     for (delta_column in names(delta_beta_annotations)) {
         S4Vectors::mcols(dmrs)[[delta_column]] <- delta_beta_annotations[[delta_column]]
     }
-    .log_success("Gene symbols mapped", level = 2)
+    .log_success("Gene symbols mapped", level = 3)
     if (dmrs_df_provided) {
         dmrs <- .convertToDataFrame(dmrs)
     }

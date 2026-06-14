@@ -208,7 +208,6 @@ cat(sprintf("Found %d significant DMPs (FDR < 0.05, |delta beta| >= 0.05)\n", nr
 ```
 
 ## Method 1: CMEnt
-
 ```{r CMEnt}
 cment_file <- getBenchmarkFile("dmrs.CMEnt.rds")
 if (!file.exists(cment_file)) {
@@ -226,6 +225,7 @@ if (!file.exists(cment_file)) {
         pheno = pheno,
         sample_group_col = sample_group_col,
         casecontrol_col = "casecontrol",
+        testing_mode  = "parametric",
         covariates = covariates,
         max_bridge_seeds_gaps  = 1,
         max_bridge_extension_gaps = 3,
@@ -236,7 +236,7 @@ if (!file.exists(cment_file)) {
         max_pval = 0.05,
         entanglement = "weak",
         njobs = cment_njobs,
-        verbose = 1
+        verbose = 3
     )
     end_time <- Sys.time()
     time_cment <- end_time - start_time
@@ -290,18 +290,18 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for AML versus normal samples")
 ```
 
+
 ```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
-dmrs_cment_only_promoter_or_gene_body <- dmrs_cment[!(is.finite(mcols(dmrs_cment)$delta_beta_promoter) & is.finite(mcols(dmrs_cment)$delta_beta_gene_body))]
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
-        Width = width(dmrs_cment_only_promoter_or_gene_body),
-        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_promoter)
+        Width = width(dmrs_cment),
+        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_promoter)
     ),
     data.frame(
         Region = "Gene-body-overlapping DMRs",
-        Width = width(dmrs_cment_only_promoter_or_gene_body),
-        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_gene_body)
+        Width = width(dmrs_cment),
+        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_gene_body)
     )
 ) |>
     filter(is.finite(Delta_beta)) |>
@@ -321,6 +321,7 @@ dmr_summary <- dmr_effect_df %>%
   group_by(Region, Direction) %>%
   summarise(
     median_delta_beta = median(Delta_beta, na.rm = TRUE),
+    median_width_bp = median(Width, na.rm = TRUE),
     n_dmrs = n(),
     .groups = "drop"
   )
@@ -341,11 +342,16 @@ dmr_summary <- dmr_summary %>%
 y_upper <- max(dmr_summary$label_y) * 1.15
 
 ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
-  geom_hline(
-    yintercept = median(dmr_effect_df$Width, na.rm = TRUE),
-    linewidth = 0.2,
-    color = "grey70"
-  ) +
+    geom_hline(
+        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta > 0], na.rm = TRUE),
+        linewidth = 0.2,
+        color = "#B8405E"
+    ) +
+    geom_hline(
+        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta < 0], na.rm = TRUE),
+        linewidth = 0.2,
+        color = "#247BA0"
+    ) +
   geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
   geom_point(alpha = 0.55, size = 1.2) +
 
@@ -372,6 +378,7 @@ ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
       y = label_y,
       label = paste0(
         "median Δβ = ", round(median_delta_beta, 3),
+        "\nmedian width = ", round(median_width_bp, 1), " bp",
         "\nDMRs = ", n_dmrs
       )
     ),
@@ -768,7 +775,8 @@ CMEnt::plotDMR(
 ```{r manhattan, fig.width=10, fig.height=4}
 CMEnt::plotDMRsManhattan(
     dmrs_cment,
-    genome = "hg19")
+    genome = "hg19"
+)
 ```
 
 ## CMEnt DMR Interaction Circos Visualization

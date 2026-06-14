@@ -34,7 +34,7 @@ buildDMRs(
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
   beta_row_names_file = NULL,
   annotate_with_genes = TRUE,
-  .score_dmrs = TRUE,
+  score_dmrs = TRUE,
   extract_motifs = TRUE,
   bed_provided = FALSE,
   bed_chrom_col = "chrom",
@@ -135,7 +135,7 @@ If not provided, row names will be read from the beta file. Default is NULL.}
 
 \item{annotate_with_genes}{Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.}
 
-\item{.score_dmrs}{Logical. Whether to add complementary cross-validated
+\item{score_dmrs}{Logical. Whether to add complementary cross-validated
 SVM discrimination scores to DMRs. Default is TRUE.}
 
 \item{extract_motifs}{Logical. Whether to compute DMRs seeds motifs. Default is TRUE.}

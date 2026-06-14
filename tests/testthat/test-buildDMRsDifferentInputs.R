@@ -24,7 +24,7 @@ test_that("buildDMRs validates input parameters correctly", {
     # Test missing required parameters
     expect_error(
         buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             beta = beta,
             seeds = NULL, # Missing
@@ -35,7 +35,7 @@ test_that("buildDMRs validates input parameters correctly", {
 
     expect_error(
         buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             beta = beta,
             seeds = dmps,
@@ -50,7 +50,7 @@ test_that("buildDMRs validates input parameters correctly", {
 
     expect_error(
         buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             beta = beta,
             seeds = dmps,
@@ -69,7 +69,7 @@ test_that("buildDMRs works with small beta file (in-memory loading)", {
     options("CMEnt.beta_in_mem_threshold_mb" = 500)
     suppressWarnings(
         dmrs <- buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE,
             beta = beta,
@@ -95,7 +95,7 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
     skip_if_not(nzchar(Sys.which("bgzip")))
     
     expected_dmrs <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = beta,
@@ -118,7 +118,7 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
     options("CMEnt.beta_in_mem_threshold_mb" = 1)
 
     dmrs <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = sorted_beta_file,
@@ -364,7 +364,7 @@ test_that("buildDMRs works when tabix is not available", {
     stub(buildDMRs, "convertBetaToTabix", mock_convertBetaToTabix)
     options("CMEnt.beta_in_mem_threshold_mb" = 0.1)
     dmrs <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -410,7 +410,7 @@ test_that("buildDMRs works with minimal bed file", {
 
     dmps_with_chr_pos <- create_seeds_with_chr_pos(dmps, beta_mat, locs)
     dmrs <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = bed_file,

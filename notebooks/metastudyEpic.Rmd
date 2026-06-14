@@ -65,7 +65,7 @@ ensure_bioc_packages(c(
     "BiocStyle", "minfi", "GenomicRanges", "annotatr", "missMethyl",
     "org.Hs.eg.db", "TxDb.Hsapiens.UCSC.hg19.knownGene",
     "IlluminaHumanMethylationEPICanno.ilm10b4.hg19", "clusterProfiler",
-    "ReactomePA"
+    "ReactomePA", "pathview", "KEGGREST"
 ))
 
 try(devtools::load_all(), silent = TRUE)
@@ -292,7 +292,7 @@ if (!file.exists(cment_file)) {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         entanglement = "weak",
-        .score_dmrs = TRUE,
+        score_dmrs = TRUE,
         annotate_with_genes = TRUE,
         extract_motifs = TRUE,
         njobs = cment_njobs,
@@ -315,17 +315,16 @@ methods_list <- list(CMEnt = dmrs_cment, `Published Bumphunter` = published_bump
 
 
 ```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
-dmrs_cment_only_promoter_or_gene_body <- dmrs_cment[!(is.finite(mcols(dmrs_cment)$delta_beta_promoter) & is.finite(mcols(dmrs_cment)$delta_beta_gene_body))]
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
-        Width = width(dmrs_cment_only_promoter_or_gene_body),
-        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_promoter)
+        Width = width(dmrs_cment),
+        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_promoter)
     ),
     data.frame(
         Region = "Gene-body-overlapping DMRs",
-        Width = width(dmrs_cment_only_promoter_or_gene_body),
-        Delta_beta = as.numeric(mcols(dmrs_cment_only_promoter_or_gene_body)$delta_beta_gene_body)
+        Width = width(dmrs_cment),
+        Delta_beta = as.numeric(mcols(dmrs_cment)$delta_beta_gene_body)
     )
 ) |>
     filter(is.finite(Delta_beta)) |>
@@ -345,6 +344,7 @@ dmr_summary <- dmr_effect_df %>%
   group_by(Region, Direction) %>%
   summarise(
     median_delta_beta = median(Delta_beta, na.rm = TRUE),
+    median_width_bp = median(Width, na.rm = TRUE),
     n_dmrs = n(),
     .groups = "drop"
   )
@@ -365,11 +365,16 @@ dmr_summary <- dmr_summary %>%
 y_upper <- max(dmr_summary$label_y) * 1.15
 
 ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
-  geom_hline(
-    yintercept = median(dmr_effect_df$Width, na.rm = TRUE),
-    linewidth = 0.2,
-    color = "grey70"
-  ) +
+    geom_hline(
+        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta > 0], na.rm = TRUE),
+        linewidth = 0.2,
+        color = "#B8405E"
+    ) +
+    geom_hline(
+        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta < 0], na.rm = TRUE),
+        linewidth = 0.2,
+        color = "#247BA0"
+    ) +
   geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
   geom_point(alpha = 0.55, size = 1.2) +
 
@@ -396,6 +401,7 @@ ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
       y = label_y,
       label = paste0(
         "median Δβ = ", round(median_delta_beta, 3),
+        "\nmedian width = ", round(median_width_bp, 1), " bp",
         "\nDMRs = ", n_dmrs
       )
     ),
@@ -594,6 +600,20 @@ CMEnt::plotDMRsCircos(
 while `missMethyl` is used for array-aware GO/KEGG enrichment because it accounts
 for probe-per-gene bias in methylation arrays, and it was also included in the original publication.
 
+```{r top_scoring_dmrs_genes}
+top_10_cment_dmrs <- as.data.frame(dmrs_cment) |>
+    arrange(by = -score) |>
+    head(10) |>
+    dplyr::select(id, score, in_promoter_of, in_gene_body_of)
+knitr::kable(
+    top_10_cment_dmrs,
+    digits = 3,
+    row.names = FALSE,
+    caption = "Top 10 CMEnt DMRs with gene annotations"
+)
+```
+
+
 ```{r}
 context_summary <- NULL
 annotatr_gene_ids_by_method <- list()
@@ -699,6 +719,7 @@ normalize_missmethyl_result <- function(x, method, collection) {
         return(NULL)
     }
     x <- as.data.frame(x)
+    id_col <- intersect(c("ID", "PathwayID", "Pathway.ID", "KEGGID"), colnames(x))[1]
     term_col <- intersect(c("Term", "TERM", "Description", "Pathway"), colnames(x))[1]
     fdr_col <- intersect(c("FDR", "adj.P.Val", "P.DE", "P.Value"), colnames(x))[1]
     p_col <- intersect(c("P.DE", "P.Value", "P.DE.weighted"), colnames(x))[1]
@@ -708,9 +729,12 @@ normalize_missmethyl_result <- function(x, method, collection) {
     if (is.na(term_col) || is.na(fdr_col)) {
         return(NULL)
     }
+    pathway_id <- if (!is.na(id_col)) as.character(x[[id_col]]) else rownames(x)
+    pathway_id <- ifelse(collection == "KEGG" & grepl("^(path:)?hsa[0-9]{5}$|^[0-9]{5}$", pathway_id), pathway_id, NA_character_)
     data.frame(
         Method = method,
         Collection = collection,
+        PathwayID = pathway_id,
         Term = as.character(x[[term_col]]),
         Ontology = if (!is.na(ont_col)) as.character(x[[ont_col]]) else collection,
         N = if (!is.na(n_col)) suppressWarnings(as.numeric(x[[n_col]])) else NA_real_,
@@ -726,7 +750,12 @@ missmethyl_array <- if (toupper(array_type) == "EPICV2") "EPIC_V2" else toupper(
 cached <- getBenchmarkFile("missmethyl_enrichment_results.rds")
 if (file.exists(cached)) {
     missmethyl_long <- readRDS(cached)
-} else {
+    if (!"PathwayID" %in% colnames(missmethyl_long)) {
+        unlink(cached)
+        missmethyl_long <- NULL
+    }
+}
+if (is.null(missmethyl_long)) {
     missmethyl_long <- base::do.call(rbind, Filter(Negate(is.null), unlist(lapply(names(methods_list), function(method) {
         lapply(c("GO", "KEGG"), function(collection) {
             cat(sprintf("Running missMethyl %s enrichment for %s...\n", collection, method))
@@ -770,7 +799,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
 
     knitr::kable(
         missmethyl_top |>
-            dplyr::select(Method, Collection, Ontology, Term, N, DE, PValue, FDR) |>
+            dplyr::select(Method, Collection, PathwayID, Ontology, Term, N, DE, PValue, FDR) |>
             arrange(Collection, Method, FDR),
         digits = 3,
         row.names = FALSE,
@@ -792,6 +821,148 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     cat("missMethyl returned no enrichment results.\n")
 }
 
+```
+
+```{r missmethyl-kegg-pathview, fig.width=10, fig.height=7}
+if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
+    requireNamespace("pathview", quietly = TRUE) &&
+    requireNamespace("KEGGREST", quietly = TRUE)) {
+    kegg_candidates <- missmethyl_long |>
+        filter(Method == "CMEnt", Collection == "KEGG", !is.na(PathwayID), is.finite(PValue)) |>
+        arrange(FDR, PValue) |>
+        mutate(PathwayID = sub("^path:", "", PathwayID),
+               PathwayID = ifelse(grepl("^hsa", PathwayID), PathwayID, paste0("hsa", PathwayID)))
+
+    promoter_gene_delta <- as.data.frame(dmrs_cment) |>
+        arrange(desc(score)) |>
+        slice_head(n = min(100L, length(dmrs_cment))) |>
+        filter(is.finite(as.numeric(delta_beta_promoter)), !is.na(in_promoter_of), nzchar(in_promoter_of)) |>
+        mutate(delta_beta_promoter = as.numeric(delta_beta_promoter)) |>
+        dplyr::select(id, score, delta_beta_promoter, in_promoter_of) |>
+        tidyr::separate_rows(in_promoter_of, sep = "\\s*,\\s*") |>
+        mutate(Gene = trimws(in_promoter_of)) |>
+        filter(nzchar(Gene)) |>
+        arrange(desc(abs(delta_beta_promoter))) |>
+        distinct(Gene, .keep_all = TRUE)
+
+    if (nrow(kegg_candidates) > 0L && nrow(promoter_gene_delta) > 0L) {
+        gene_map <- suppressMessages(AnnotationDbi::select(
+            org.Hs.eg.db,
+            keys = promoter_gene_delta$Gene,
+            keytype = "SYMBOL",
+            columns = c("SYMBOL", "ENTREZID")
+        )) |>
+            filter(!is.na(ENTREZID)) |>
+            distinct(SYMBOL, ENTREZID)
+
+        promoter_gene_delta <- promoter_gene_delta |>
+            inner_join(gene_map, by = c("Gene" = "SYMBOL")) |>
+            arrange(desc(abs(delta_beta_promoter))) |>
+            distinct(ENTREZID, .keep_all = TRUE)
+
+        if (nrow(promoter_gene_delta) == 0L) {
+            cat("No promoter genes could be mapped to Entrez IDs for pathview.\n")
+        } else {
+            kegg_gene_map_file <- getBenchmarkFile("kegg_hsa_pathway_gene_map.rds")
+            kegg_gene_map <- if (file.exists(kegg_gene_map_file)) {
+                readRDS(kegg_gene_map_file)
+            } else {
+                links <- tryCatch(
+                    KEGGREST::keggLink("hsa", "pathway"),
+                    error = function(e) {
+                        warning(sprintf("Could not retrieve KEGG pathway-gene links: %s", e$message))
+                        NULL
+                    }
+                )
+                if (is.null(links)) {
+                    data.frame(PathwayID = character(), ENTREZID = character())
+                } else {
+                    data.frame(
+                        PathwayID = sub("^path:", "", names(links)),
+                        ENTREZID = sub("^hsa:", "", unname(links)),
+                        stringsAsFactors = FALSE
+                    ) |>
+                        distinct()
+                }
+            }
+            if (!file.exists(kegg_gene_map_file)) {
+                saveRDS(kegg_gene_map, kegg_gene_map_file)
+            }
+
+            candidate_overlaps <- kegg_candidates |>
+                left_join(kegg_gene_map, by = "PathwayID") |>
+                filter(ENTREZID %in% promoter_gene_delta$ENTREZID) |>
+                group_by(PathwayID) |>
+                summarise(OverlapEntrez = list(unique(ENTREZID)), .groups = "drop")
+
+            matched_pathway <- match(kegg_candidates$PathwayID, candidate_overlaps$PathwayID)
+            matched_pathway <- which(!is.na(matched_pathway))[1]
+
+            if (is.na(matched_pathway)) {
+                cat("No missMethyl KEGG pathway contained the top promoter-overlapping DMR genes for pathview coloring.\n")
+            } else {
+                top_kegg <- kegg_candidates |> dplyr::slice(matched_pathway)
+                matched_genes <- candidate_overlaps$OverlapEntrez[[match(top_kegg$PathwayID[1], candidate_overlaps$PathwayID)]]
+                promoter_pathway_delta <- promoter_gene_delta |>
+                    filter(ENTREZID %in% matched_genes)
+                gene_delta <- promoter_pathway_delta$delta_beta_promoter
+                names(gene_delta) <- promoter_pathway_delta$ENTREZID
+                kegg_id <- sub("^hsa", "", top_kegg$PathwayID[1])
+                pathview_dir <- getBenchmarkFile("pathview")
+                dir.create(pathview_dir, showWarnings = FALSE, recursive = TRUE)
+                pathview_suffix <- "promoter_delta_beta"
+                pathview_png <- file.path(pathview_dir, paste0("hsa", kegg_id, ".", pathview_suffix, ".png"))
+                gene_limit <- max(0.001, max(abs(gene_delta), na.rm = TRUE))
+
+                tryCatch(
+                    pathview::pathview(
+                        gene.data = gene_delta,
+                        gene.idtype = "entrez",
+                        pathway.id = kegg_id,
+                        species = "hsa",
+                        out.suffix = pathview_suffix,
+                        kegg.dir = pathview_dir,
+                        limit = list(gene = gene_limit, cpd = 1),
+                        low = list(gene = "#2F80ED", cpd = "#2F80ED"),
+                        mid = list(gene = "#FFFFFF", cpd = "#FFFFFF"),
+                        high = list(gene = "#FF3B30", cpd = "#FF3B30")
+                    ),
+                    error = function(e) {
+                        warning(sprintf("pathview failed for KEGG pathway %s: %s", kegg_id, e$message))
+                        NULL
+                    }
+                )
+                if (file.exists(basename(pathview_png)) && !file.exists(pathview_png)) {
+                    file.rename(basename(pathview_png), pathview_png)
+                }
+
+                knitr::kable(
+                    promoter_pathway_delta |>
+                        dplyr::select(Gene, ENTREZID, delta_beta_promoter, score, id) |>
+                        arrange(desc(abs(delta_beta_promoter))) |>
+                        head(20),
+                    digits = 3,
+                    row.names = FALSE,
+                    caption = paste0(
+                        "Promoter delta beta values supplied to pathview for the top missMethyl KEGG pathway with promoter-gene overlap: ",
+                        top_kegg$Term[1],
+                        ". Red indicates higher methylation in Tumor; blue indicates lower methylation in Tumor."
+                    )
+                )
+
+                if (file.exists(pathview_png)) {
+                    knitr::include_graphics(pathview_png)
+                } else {
+                    cat("pathview did not produce a KEGG pathway image.\n")
+                }
+            }
+        }
+    } else {
+        cat("No CMEnt KEGG pathway with ID or promoter gene delta-beta values were available for pathview.\n")
+    }
+} else {
+    cat("pathview and KEGGREST are required for the KEGG pathway diagram.\n")
+}
 ```
 
 ```{r}

@@ -321,7 +321,7 @@ dmrs <- buildDMRs(
 **Default:** `TRUE`  
 **Description:** Whether to annotate DMRs with overlapping genes.
 
-### `.score_dmrs`
+### `score_dmrs`
 **Type:** Logical  
 **Default:** `TRUE`  
 **Description:** Whether to add complementary SVM-based discrimination scores to DMRs. When enabled, each DMR is evaluated for its ability to separate sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `score` and `cv_accuracy` values summarize sample-level discriminative strength and should be read alongside DMR `pval`, `qval`, and effect-size columns, not as replacements for them.

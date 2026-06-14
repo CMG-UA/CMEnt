@@ -466,29 +466,6 @@
     if (bit == 32L) 28L else 56L
 }
 
-.mem_used <- function() {
-    sum(gc()[, 1] * c(.node_size(), 8))
-}
-
-
-.format_mem_used <- function(digits = 3, ...) {
-    x <- .mem_used()
-    power <- min(floor(log(abs(x), 1000)), 4)
-    if (power < 1) {
-        unit <- "B"
-    } else {
-        unit <- c("kB", "MB", "GB", "TB")[[power]]
-        x <- x / (1000^power)
-    }
-
-    formatted <- format(signif(x, digits = digits),
-        big.mark = ",",
-        scientific = FALSE
-    )
-
-    paste(formatted, unit)
-}
-
 #' @keywords internal
 #' @noRd
 .log_success <- function(..., .envir = parent.frame(), level = 1) {
@@ -503,9 +480,6 @@
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
     # if level is equal or greater than 2, report memory usage in MBs as well
-    if (level >= 2) {
-        msg <- paste0(msg, " [mem: ", .format_mem_used(), "]")
-    }
     lead <- .col(cli::symbol$tick, "green")
     message(.format_log_output(msg, lead = lead, level = level))
     # Clear the recorded step time for this level after reporting success
@@ -990,12 +964,14 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     )
     bfc <- .getBiocFileCache(cache_dir)
     chain_name <- paste0(from_genome, "To", stringr::str_to_title(to_genome), ".over.chain")
+    chain_rname <- paste0("liftOver_", chain_name)
     chain_file <- .getBiocFileCachePath(
         bfc,
-        rname = paste0("liftOver_", chain_name),
-        ext = ".over.chain"
+        rname = chain_rname,
+        ext = ".over.chain",
+        create = FALSE
     )
-    if (!file.exists(chain_file)) {
+    if (is.null(chain_file) || !file.exists(chain_file)) {
         temp_gz <- tempfile(fileext = ".over.chain.gz")
         on.exit(unlink(temp_gz), add = TRUE)
         .downloadFirstAvailable(
@@ -1006,12 +982,29 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             destfile = temp_gz,
             mode = "wb"
         )
-        R.utils::gunzip(
-            filename = temp_gz,
-            destname = chain_file,
-            overwrite = TRUE,
-            remove = FALSE
-        )
+        chain_file <- .withBiocFileCacheLock(bfc, {
+            chain_file <- .getBiocFileCachePath(
+                bfc,
+                rname = chain_rname,
+                ext = ".over.chain",
+                lock = FALSE
+            )
+            if (!file.exists(chain_file)) {
+                temp_chain <- tempfile(
+                    pattern = paste0(".", basename(chain_file), "-"),
+                    tmpdir = dirname(chain_file)
+                )
+                on.exit(unlink(temp_chain), add = TRUE)
+                R.utils::gunzip(
+                    filename = temp_gz,
+                    destname = temp_chain,
+                    overwrite = TRUE,
+                    remove = FALSE
+                )
+                .moveFileAtomic(temp_chain, chain_file)
+            }
+            chain_file
+        })
     }
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
@@ -1792,7 +1785,53 @@ orderByLoc <- function(x,
     BiocFileCache::BiocFileCache(cache, ask = FALSE)
 }
 
-.getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE) {
+.getBiocFileCacheDir <- function(cache) {
+    if (methods::is(cache, "BiocFileCache")) {
+        return(BiocFileCache::bfccache(cache))
+    }
+    normalizePath(cache, mustWork = FALSE)
+}
+
+.withBiocFileCacheLock <- function(cache, expr) {
+    cache_dir <- .getBiocFileCacheDir(cache)
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    lock <- filelock::lock(
+        file.path(cache_dir, ".CMEnt.lock"),
+        timeout = getOption("CMEnt.cache_lock_timeout", Inf)
+    )
+    if (is.null(lock)) {
+        stop("Timed out waiting for CMEnt cache lock: ", cache_dir, call. = FALSE)
+    }
+    on.exit(filelock::unlock(lock), add = TRUE)
+    force(expr)
+}
+
+.moveFileAtomic <- function(from, to) {
+    if (!file.rename(from, to)) {
+        copied <- file.copy(from, to, overwrite = TRUE, copy.mode = TRUE)
+        if (!copied) {
+            stop("Failed to move temporary file into place: ", to, call. = FALSE)
+        }
+        unlink(from)
+    }
+    invisible(to)
+}
+
+.saveRDSAtomic <- function(object, path) {
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    tmp_path <- tempfile(pattern = paste0(".", basename(path), "-"), tmpdir = dirname(path))
+    on.exit(unlink(tmp_path), add = TRUE)
+    saveRDS(object, tmp_path)
+    .moveFileAtomic(tmp_path, path)
+}
+
+.getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE, lock = TRUE) {
+    if (isTRUE(lock)) {
+        return(.withBiocFileCacheLock(
+            bfc,
+            .getBiocFileCachePath(bfc, rname = rname, ext = ext, create = create, lock = FALSE)
+        ))
+    }
     cache_records <- BiocFileCache::bfcquery(
         bfc,
         query = rname,
@@ -1820,23 +1859,32 @@ orderByLoc <- function(x,
 
 .readBiocFileCacheRDS <- function(cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
-    if (is.null(cache_file) || !file.exists(cache_file)) {
-        return(NULL)
-    }
-    readRDS(cache_file)
+    .withBiocFileCacheLock(bfc, {
+        cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE, lock = FALSE)
+        if (is.null(cache_file) || !file.exists(cache_file)) {
+            NULL
+        } else {
+            readRDS(cache_file)
+        }
+    })
 }
 
 .hasBiocFileCacheRDS <- function(cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
+    cache_file <- .withBiocFileCacheLock(
+        bfc,
+        .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE, lock = FALSE)
+    )
     !is.null(cache_file) && file.exists(cache_file)
 }
 
 .saveBiocFileCacheRDS <- function(object, cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds")
-    saveRDS(object, cache_file)
+    cache_file <- .withBiocFileCacheLock(bfc, {
+        cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", lock = FALSE)
+        .saveRDSAtomic(object, cache_file)
+        cache_file
+    })
     invisible(cache_file)
 }
 

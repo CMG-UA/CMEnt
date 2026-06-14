@@ -922,7 +922,7 @@ scoreDMRs <- function(
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
     bp_param <- .makeBiocParallelParam(
         njobs,
-        n_tasks = length(dmrs_m_values),
+        n_tasks = min(length(dmrs_m_values), njobs * 4L),
         progressbar = verbose >= 3L
     )
     cv_metrics <- BiocParallel::bplapply(

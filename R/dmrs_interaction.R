@@ -423,7 +423,10 @@ extractDMRMotifs <- function(
         }
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         site_seqs <- matrix(unlist(base::strsplit(site_seqs, split = "")), nrow = 2 * motif_site_flank_size + 2, byrow = FALSE)
-        frequencies <- as.matrix(apply(site_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
+        frequencies <- as.matrix(table(
+            factor(toupper(site_seqs), levels = Biostrings::DNA_BASES),
+            row(site_seqs)
+        ))
         if (array_based) {
             frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))
         }

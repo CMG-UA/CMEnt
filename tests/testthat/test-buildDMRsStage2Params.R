@@ -6,7 +6,7 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
 
     # Test with expansion_window and max_bridge_seeds_gaps
     dmrs_expanded <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -55,7 +55,7 @@ test_that("buildDMRs handles ext_site_delta_beta filtering", {
 
     # Test with no delta beta filtering
     dmrs_no_filter <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -72,7 +72,7 @@ test_that("buildDMRs handles ext_site_delta_beta filtering", {
 
     # Test with delta beta extension
     dmrs_with_db_ext <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -163,7 +163,7 @@ test_that("buildDMRs handles adjusted seeds filtering for array data", {
 
 
     dmrs_adj <- expect_no_error(suppressWarnings(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -224,7 +224,7 @@ test_that("buildDMRs does not bridge across chromosome boundaries", {
     seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
     dmrs <- expect_no_error(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta_handler,
@@ -283,7 +283,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
     seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
     dmrs <- expect_no_error(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta_handler,
@@ -316,7 +316,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
 test_that("buildDMRs Stage 2 expansion matches between sequential and chunked parallel execution", {
 
     args <- list(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,

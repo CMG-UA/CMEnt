@@ -29,10 +29,10 @@ test_that("scoreDMRs adds score column to DMRs", {
     expect_equal(length(dmrs), length(scoring_dmrs))
 })
 
-test_that("scoreDMRs works when called from buildDMRs with .score_dmrs=TRUE", {
+test_that("scoreDMRs works when called from buildDMRs with score_dmrs=TRUE", {
 
     dmrs <- buildDMRs(
-        .score_dmrs = TRUE,
+        score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = beta,
@@ -118,7 +118,7 @@ test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
 
     dmrs <- buildDMRs(
-        .score_dmrs = TRUE,
+        score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = beta,

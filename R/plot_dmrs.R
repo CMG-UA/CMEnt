@@ -2158,6 +2158,7 @@ plotDMRsManhattan <- function(dmrs,
                               block_alpha = 0.12,
                               block_linewidth = 0.25,
                               output_file = NULL,
+                              add_hover_text = FALSE,
                               width = 12,
                               height = 6) {
     dmrs <- .convertToGRanges(dmrs, genome = genome)
@@ -2274,20 +2275,22 @@ plotDMRsManhattan <- function(dmrs,
     dmr_df$position <- (midpoint_clipped - dmr_df$plot_start + 1) + dmr_df$offset
     chr_levels <- .orderChromosomesNaturally(unique(plot_spans$chr))
     dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
-    dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
-        .buildHoverText(
-            .hoverLine("DMR", dmr_df$dmr_id[i]),
-            .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
-            .hoverLine("Score", dmr_df$score[i], digits = 3),
-            .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
-            .hoverLine("Primary region", dmr_df$dmr_class[i]),
-            .hoverLine("sites", dmr_df$sites_num[i]),
-            .hoverLine("Seeds", dmr_df$seeds_num[i]),
-            .hoverLine("Block", dmr_df$block_id[i]),
-            .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),
-            .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
-        )
-    }, character(1))
+    if (add_hover_text) {
+        dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("DMR", dmr_df$dmr_id[i]),
+                .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
+                .hoverLine("Score", dmr_df$score[i], digits = 3),
+                .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
+                .hoverLine("Primary region", dmr_df$dmr_class[i]),
+                .hoverLine("sites", dmr_df$sites_num[i]),
+                .hoverLine("Seeds", dmr_df$seeds_num[i]),
+                .hoverLine("Block", dmr_df$block_id[i]),
+                .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),
+                .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
+            )
+        }, character(1))
+    }
     axis_df <- plot_spans[, c("axis_position", "label"), drop = FALSE]
     axis_df <- axis_df[is.finite(axis_df$axis_position), , drop = FALSE]
     total_span_width <- sum(plot_spans$span_width, na.rm = TRUE)
@@ -2321,25 +2324,31 @@ plotDMRsManhattan <- function(dmrs,
             } else {
                 dmr_df$block_id
             })
-            block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
-                members <- block_members[[block_rects$group_id[i]]]
-                .buildHoverText(
-                    .hoverLine("Block", block_rects$block_id[i]),
-                    .hoverLine("DMRs", nrow(members)),
-                    .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
-                    .hoverLine("Scope", paste(unique(members$span_id), collapse = ", ")),
-                    .hoverLine("Score range", paste(
-                        .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
-                        .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
-                        sep = " to "
-                    )),
-                    .hoverLine("DMR IDs", paste(utils::head(members$dmr_id, 5), collapse = ", ")),
-                    if (nrow(members) > 5) "More DMRs available in this block." else NULL
-                )
-            }, character(1))
+            if (add_hover_text) {
+                block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
+                    members <- block_members[[block_rects$group_id[i]]]
+                    .buildHoverText(
+                        .hoverLine("Block", block_rects$block_id[i]),
+                        .hoverLine("DMRs", nrow(members)),
+                        .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
+                        .hoverLine("Scope", paste(unique(members$span_id), collapse = ", ")),
+                        .hoverLine("Score range", paste(
+                            .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
+                            .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
+                            sep = " to "
+                        )),
+                        .hoverLine("DMR IDs", paste(utils::head(members$dmr_id, 5), collapse = ", ")),
+                        if (nrow(members) > 5) "More DMRs available in this block." else NULL
+                    )
+                }, character(1))
+            }
+            if (add_hover_text)
+                rect_aes <- ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, text = hover_text)
+            else
+                rect_aes <- ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax)
             p <- p + suppressWarnings(ggplot2::geom_rect(
                 data = block_rects,
-                ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, text = hover_text),
+                mapping = rect_aes,
                 inherit.aes = FALSE,
                 fill = block_rects$fill,
                 color = block_rects$fill,
@@ -2360,8 +2369,13 @@ plotDMRsManhattan <- function(dmrs,
         subtitle_parts <- c(subtitle_parts, paste0("Scope: ", nrow(plot_spans), " selected region", if (nrow(plot_spans) == 1) "" else "s"))
     }
     subtitle <- if (length(subtitle_parts) > 0) paste(subtitle_parts, collapse = " | ") else NULL
+    if (add_hover_text) {
+        point_aes <- ggplot2::aes(text = hover_text, size = point_size, alpha = point_alpha, stroke = 0)
+    } else {
+        point_aes <- ggplot2::aes(size = point_size, alpha = point_alpha, stroke = 0)
+    }
     p <- p +
-        suppressWarnings(ggplot2::geom_point(ggplot2::aes(text = hover_text), size = point_size, alpha = point_alpha, stroke = 0)) +
+        suppressWarnings(ggplot2::geom_point(mapping = point_aes)) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(

@@ -2392,15 +2392,11 @@ plotAutoDMRsCircos <- function(dmrs,
 
 .getCytobandData <- function(genome) {
     cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "cytoband_cache"))
-    bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(
-        bfc,
-        rname = paste0("cytoband_", genome),
-        ext = ".rds"
-    )
-    if (file.exists(cache_file)) {
+    cache_key <- paste0("cytoband_", genome)
+    cytoband <- .readBiocFileCacheRDS(cache_dir, cache_key)
+    if (!is.null(cytoband)) {
         .log_info("Loading cached cytoband data for ", genome, level = 3)
-        return(readRDS(cache_file))
+        return(cytoband)
     }
 
     .log_step("Downloading cytoband data from UCSC for ", genome, "...", level = 3)
@@ -2438,7 +2434,7 @@ plotAutoDMRsCircos <- function(dmrs,
             } else {
                 stop("Unexpected cytoband format")
             }
-            saveRDS(cytoband, cache_file)
+            .saveBiocFileCacheRDS(cytoband, cache_dir, cache_key)
             .log_success("Cytoband data downloaded and cached", level = 3)
             cytoband
         },

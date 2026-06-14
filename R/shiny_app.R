@@ -499,7 +499,8 @@ launchCMEntViewer <- function(
                     region = params$region,
                     genome = data$genome,
                     point_size = params$point_size,
-                    point_alpha = params$point_alpha
+                    point_alpha = params$point_alpha,
+                    add_hover_text = TRUE
                 )
             })
         ),

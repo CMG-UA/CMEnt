@@ -219,10 +219,12 @@ pheno$casecontrol <- pheno$Sample_Group == "case"
 ## Find Differentially Methylated Positions
 
 ```{r}
-dmps <- CMEnt::findDMPsArray(beta_handler,
+dmps <- CMEnt::findDMPsArray(
+    beta_handler,
     pheno,
     sample_group_col = "Sample_Group",
-    id_col = "V1"
+    id_col = "V1",
+    array = array_type
 )
 rownames(dmps) <- dmps$site_id
 # sort DMPs by location
@@ -296,7 +298,7 @@ if (!is.null(ret)) {
             seeds = seeds,
             pheno = pheno,
             verbose = 2,
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE
         ), cment_params)

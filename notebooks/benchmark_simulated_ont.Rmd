@@ -671,10 +671,20 @@ run_dmrseq_bsseq <- function(
         return(GenomicRanges::GRanges())
     }
 
+    .materializeBSSeq <- function(x) {
+        bsseq::BSseq(
+            M = as.matrix(bsseq::getCoverage(x, type = "M")),
+            Cov = as.matrix(bsseq::getCoverage(x, type = "Cov")),
+            gr = bsseq::granges(x),
+            pData = as.data.frame(SummarizedExperiment::colData(x)),
+            sampleNames = colnames(x)
+        )
+    }
+
     dmrs_by_chr <- vector("list", length(chr_vec))
     names(dmrs_by_chr) <- chr_vec
     bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
-    .runDMRSeq <- function(chunk_bs, chr_name, chunk_i, core_start_pos = NA_integer_, core_end_pos = NA_integer_) {
+    .runDMRSeq <- function(chunk_bs, chr_name, chunk_i, total_chunks = 1L, core_start_pos = NA_integer_, core_end_pos = NA_integer_) {
         chunk_out <- tryCatch(
             {
                 fit <- dmrseq::dmrseq(
@@ -685,6 +695,9 @@ run_dmrseq_bsseq <- function(
                     verbose = FALSE,
                     BPPARAM = bpparam
                 )
+                if (is.null(fit) || length(fit) == 0) {
+                    return(GenomicRanges::GRanges())
+                }
                 qvals <- mcols(fit)$qval
                 if (length(fit) > 0 && any(is.finite(qvals))) {
                     fit <- fit[is.finite(qvals) & qvals < 0.05]
@@ -693,7 +706,7 @@ run_dmrseq_bsseq <- function(
                         "dmrseq chunk %s %d/%d returned observed candidates but no finite q-values; keeping candidates without permutation significance.\n",
                         chr_name,
                         chunk_i,
-                        length(chunk_starts)
+                        total_chunks
                     ))
                 }
 
@@ -711,7 +724,7 @@ run_dmrseq_bsseq <- function(
                     "dmrseq chunk failed (%s chunk %d/%d): %s\n",
                     chr_name,
                     chunk_i,
-                    length(chunk_starts),
+                    total_chunks,
                     e$message
                 ))
                 NULL
@@ -720,7 +733,7 @@ run_dmrseq_bsseq <- function(
         chunk_out
     }
     if (!chunk) {
-        out <- .runDMRSeq(bs_obj, "", 1, NA_integer_, NA_integer_)
+        out <- .runDMRSeq(bs_obj, "", 1L, 1L, NA_integer_, NA_integer_)
     } else {
         for (chr_name in chr_vec) {
             chr_idx <- which(all_seqnames == chr_name)
@@ -753,7 +766,15 @@ run_dmrseq_bsseq <- function(
                 ))
 
                 chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
-                chr_chunk_dmrs[[chunk_i]] <- .runDMRSeq(chunk_bs, chr_name, chunk_i, core_start_pos, core_end_pos)
+                chunk_bs <- .materializeBSSeq(chunk_bs)
+                chr_chunk_dmrs[[chunk_i]] <- .runDMRSeq(
+                    chunk_bs,
+                    chr_name,
+                    chunk_i,
+                    length(chunk_starts),
+                    core_start_pos,
+                    core_end_pos
+                )
                 rm(chunk_bs)
                 gc(verbose = FALSE)
             }
