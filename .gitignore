@@ -64,3 +64,4 @@ notebooks/metastudy_cache
 
 notebooks/*.html
 dmps.rds
+publication/*
