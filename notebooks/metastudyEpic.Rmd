@@ -27,12 +27,9 @@ try(assignInNamespace("plot_crop", function(x, quiet = TRUE) x, ns = "knitr"), s
 ## Introduction
 
 GSE244696 (doi: https://doi.org/10.1016/j.trsl.2024.05.005) is a PDAC MethylationEPIC study comparing tumor-cell enriched
-("Tumor") and stroma-cell enriched ("Stroma") compartments. The GEO deposition
-does not include the complete raw IDAT set used by the original study, so a
-head-to-head DMR caller benchmark on the locally available beta matrix would be
-unfair. This notebook therefore uses CMEnt in a meta-analysis mode: the
+("Tumor") and stroma-cell enriched ("Stroma") compartments. This notebook uses CMEnt in a meta-analysis mode: the
 published DMP list (Supplementary table 1) is treated as the external evidence, and CMEnt uses the
-available beta matrix to assemble coherent DMRs around those known
+available beta matrix from GEO to assemble coherent DMRs around those known
 signals. The only external DMR comparison retained here is the Bumphunter DMR table (Supplementary table 2)
 provided by the original researchers. 
 
@@ -59,14 +56,17 @@ ensure_bioc_packages <- function(pkgs) {
         BiocManager::install(missing, update = FALSE, ask = FALSE)
     }
 }
-
-ensure_cran_packages(c("readxl", "data.table", "devtools", "dplyr", "ggplot2", "tidyr", "scales", "svglite"))
-ensure_bioc_packages(c(
-    "BiocStyle", "minfi", "GenomicRanges", "annotatr", "missMethyl",
-    "org.Hs.eg.db", "TxDb.Hsapiens.UCSC.hg19.knownGene",
-    "IlluminaHumanMethylationEPICanno.ilm10b4.hg19", "clusterProfiler",
-    "ReactomePA", "pathview", "KEGGREST"
-))
+suppressWarnings(
+    {
+        ensure_cran_packages(c("readxl", "data.table", "devtools", "dplyr", "ggplot2", "tidyr", "scales", "svglite"))
+        ensure_bioc_packages(c(
+            "BiocStyle", "minfi", "GenomicRanges", "annotatr", "missMethyl",
+            "org.Hs.eg.db", "TxDb.Hsapiens.UCSC.hg19.knownGene",
+            "IlluminaHumanMethylationEPICanno.ilm10b4.hg19", "clusterProfiler",
+            "ReactomePA", "pathview", "KEGGREST"
+        ))
+    }
+)
 
 try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
@@ -96,6 +96,10 @@ short_label <- function(x, width = 65L) {
     ifelse(nchar(x) > width, paste0(substr(x, 1L, width - 3L), "..."), x)
 }
 
+has_text <- function(x) {
+    !is.na(x) & nzchar(as.character(x))
+}
+
 theme_meta <- function() {
     theme_minimal(base_size = 11) +
         theme(
@@ -110,14 +114,13 @@ array_type <- "EPIC"
 genome <- "hg19"
 ```
 
-## Load Local Data and Published Evidence
+## Load Data and Published Evidence
 
 ```{r load-inputs}
 beta_file <- getBenchmarkFile("GSE244696_beta_values.tsv.gz")
 samplesheet <- getBenchmarkFile("GSE244696_samplesheet.tsv")
 dmp_file <- getBenchmarkFile("GSE244696_DMPs.xlsx")
 published_dmr_file <- getBenchmarkFile("GSE244696_DMRs.xlsx")
-
 
 
 zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
@@ -145,7 +148,6 @@ if (!file.exists(published_dmr_file)) {
         destfile = published_dmr_file
     )
 }
-
 
 
 pheno <- utils::read.table(samplesheet, header = TRUE, stringsAsFactors = FALSE, sep = "\t", check.names = FALSE)
@@ -229,11 +231,11 @@ mcols(published_bumphunter)$dmr_id <- names(published_bumphunter)
 
 input_summary <- data.frame(
     Metric = c(
-        "Local samples",
-        "Local Tumor samples",
-        "Local Stroma samples",
+        "Samples",
+        "Tumor samples",
+        "Stroma samples",
         "Published DMPs",
-        "Published DMPs present in local beta matrix",
+        "Published DMPs present in beta matrix",
         "Published Bumphunter DMRs"
     ),
     Value = c(
@@ -253,17 +255,30 @@ dmp_direction <- data.frame(
     Direction = c("Higher in Tumor", "Higher in Stroma"),
     Count = c(sum(sig_dmps$delta_beta_available > 0, na.rm = TRUE), sum(sig_dmps$delta_beta_available < 0, na.rm = TRUE))
 )
-knitr::kable(dmp_direction, row.names = FALSE, caption = "Direction of published DMPs in the locally available samples")
+knitr::kable(dmp_direction, row.names = FALSE, caption = "Direction of published DMPs")
 ```
-```{r dmp-diagnostics, fig.width=9, fig.height=4}
+```{r dmp-diagnostics, fig.width=8, fig.height=6}
+sig_dmps_delta_beta_medians <- sig_dmps |>
+    group_by(Direction = ifelse(delta_beta_available > 0, "Higher in Tumor", "Higher in Stroma")) |>
+    summarise(
+        Median = median(delta_beta_available, na.rm = TRUE),
+        y = 1.1 * max(hist(delta_beta_available, breaks = 60, plot = FALSE)$counts, na.rm = TRUE)
+    )
 ggplot(sig_dmps, aes(x = delta_beta_available)) +
     geom_histogram(bins = 60, fill = "#0072B2", color = "white", linewidth = 0.15) +
     geom_vline(xintercept = 0, linetype = "dashed", color = "grey35") +
+    geom_text(
+        data = sig_dmps_delta_beta_medians,
+        aes(x = Median, y = y, label = paste0("Median: ", round(Median, 3))),
+        inherit.aes = FALSE,
+        color = "black",
+        fontface = "bold",
+        size = 3.5
+    ) +
     theme_meta() +
     labs(
-        title = "Local Effect Size for Published DMPs",
-        subtitle = "Tumor minus Stroma beta difference, computed only from locally available samples",
-        x = "Delta beta in local samples", y = "Published DMPs"
+        title = "Effect Size for Published DMPs",
+        x = "Delta beta", y = "Published DMPs"
     )
 ```
 
@@ -310,11 +325,15 @@ cat(sprintf("CMEnt found %d DMRs in %d seconds.\n", length(dmrs_cment), round(as
 if (is.null(dmrs_cment)) {
     dmrs_cment <- GRanges()
 }
+if (length(dmrs_cment) > 0L && !"in_promoter_of" %in% colnames(mcols(dmrs_cment))) {
+    dmrs_cment <- CMEnt::annotateDMRsWithGenes(dmrs_cment, genome = genome)
+}
+published_bumphunter <- CMEnt::annotateDMRsWithGenes(published_bumphunter, genome = genome)
 methods_list <- list(CMEnt = dmrs_cment, `Published Bumphunter` = published_bumphunter)
 ```
 
 
-```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
+```{r cment_dmr_scatter_plot, fig.width=12, fig.height=6}
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
@@ -328,109 +347,174 @@ dmr_effect_df <- bind_rows(
     )
 ) |>
     filter(is.finite(Delta_beta)) |>
-    mutate(Direction = factor(
-        ifelse(Delta_beta > 0, "Hyper", "Hypo"),
-        levels = c("Hyper", "Hypo")
-    ))
+    mutate(
+        Region = factor(Region, levels = unique(Region)),
+        Direction = factor(
+            ifelse(Delta_beta > 0, "Hyper", "Hypo"),
+            levels = c("Hyper", "Hypo")
+        )
+    )
 
 library(dplyr)
 library(ggplot2)
 library(scales)
 
 ignore_abs_delta <- !is.finite(dmr_effect_df$Delta_beta) | abs(dmr_effect_df$Delta_beta) < 0.05
-dmr_effect_df <- dmr_effect_df[!ignore_abs_delta,]
+dmr_effect_df <- dmr_effect_df[!ignore_abs_delta, ]
 # Summary per Region and Direction
-dmr_summary <- dmr_effect_df %>%
-  group_by(Region, Direction) %>%
-  summarise(
-    median_delta_beta = median(Delta_beta, na.rm = TRUE),
-    median_width_bp = median(Width, na.rm = TRUE),
-    n_dmrs = n(),
-    .groups = "drop"
-  )
+dmr_summary <- dmr_effect_df |>
+    group_by(Region, Direction) |>
+    summarise(
+        median_delta_beta = median(Delta_beta, na.rm = TRUE),
+        median_width_bp = median(Width, na.rm = TRUE),
+        n_dmrs = n(),
+        .groups = "drop"
+    )
+
+mood_median_p_value <- function(width, direction) {
+    widths <- split(width, direction)
+    if (!all(c("Hyper", "Hypo") %in% names(widths)) || any(lengths(widths[c("Hyper", "Hypo")]) < 2L)) {
+        return(NA_real_)
+    }
+    median_width <- median(width, na.rm = TRUE)
+    keep <- is.finite(width) & width != median_width
+    tab <- table(
+        factor(direction[keep], levels = c("Hypo", "Hyper")),
+        factor(width[keep] > median_width, levels = c(FALSE, TRUE))
+    )
+    if (any(rowSums(tab) == 0L) || any(colSums(tab) == 0L)) {
+        return(NA_real_)
+    }
+    suppressWarnings(stats::chisq.test(tab, correct = FALSE)$p.value)
+}
+
+p_to_stars <- function(p) {
+    case_when(
+        is.na(p) ~ "",
+        p < 0.001 ~ "***",
+        p < 0.01 ~ "**",
+        p < 0.05 ~ "*",
+        TRUE ~ ""
+    )
+}
+
+x_range <- range(dmr_effect_df$Delta_beta, na.rm = TRUE)
+x_min <- x_range[[1]]
+
+region_levels <- unique(dmr_effect_df$Region)
+dmr_mood <- dmr_summary |>
+    group_by(Region) |>
+    summarise(
+        star_y = exp(mean(log(median_width_bp))), .groups = "drop",
+        segy_min = min(median_width_bp), segy_max = max(median_width_bp)
+    ) |>
+    left_join(
+        dmr_effect_df |>
+            group_by(Region) |>
+            summarise(mood_p = mood_median_p_value(Width, Direction), .groups = "drop"),
+        by = "Region"
+    ) |>
+    mutate(
+        stars = p_to_stars(mood_p),
+        star_x = x_min - 0.05 * abs(x_min),
+        hjust = 0.5
+    )
 
 # Define two y-levels for the two summary bars
 y_max <- max(dmr_effect_df$Width, na.rm = TRUE)
 
-dmr_summary <- dmr_summary %>%
-  mutate(
-    bar_y = case_when(
-      Direction == "Hyper" ~ y_max * 2.0,
-      Direction == "Hypo"  ~ y_max * 3.2
-    ),
-    label_y = bar_y * 1.12
-  )
+dmr_summary <- dmr_summary |>
+    mutate(
+        bar_y = case_when(
+            Direction == "Hyper" ~ y_max * 2.0,
+            Direction == "Hypo" ~ y_max * 3.2
+        ),
+        label_y = bar_y * 1.12
+    )
 
 # Expand y-range so the bars and labels fit
 y_upper <- max(dmr_summary$label_y) * 1.15
 
 ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
     geom_hline(
-        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta > 0], na.rm = TRUE),
-        linewidth = 0.2,
-        color = "#B8405E"
+        data = dmr_summary,
+        aes(yintercept = median_width_bp, color = Direction),
+        inherit.aes = FALSE,
+        linewidth = 0.2
     ) +
-    geom_hline(
-        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta < 0], na.rm = TRUE),
-        linewidth = 0.2,
-        color = "#247BA0"
+    geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
+    geom_point(alpha = 0.55, size = 1.2) +
+    geom_segment(
+        data = dmr_mood,
+        aes(x = star_x + 0.05 * abs(x_min), xend = star_x + 0.05 * abs(x_min), y = segy_min, yend = segy_max),
+        inherit.aes = FALSE,
+        linewidth = 0.4,
+        arrow = arrow(length = unit(0.15, "cm"), type = "closed", ends = "both"),
+        color = "black",
+        linetype = "dashed"
     ) +
-  geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
-  geom_point(alpha = 0.55, size = 1.2) +
+    geom_text(
+        data = dmr_mood,
+        aes(x = star_x, y = star_y, label = stars, hjust = hjust),
+        inherit.aes = FALSE,
+        angle = 90,
+        color = "black",
+        fontface = "bold",
+        size = 5
+    ) +
 
-  # Separate horizontal bars for hypo and hyper
-  geom_segment(
-    data = dmr_summary,
-    aes(
-      x = 0,
-      xend = median_delta_beta,
-      y = bar_y,
-      yend = bar_y,
-      color = Direction
-    ),
-    inherit.aes = FALSE,
-    linewidth = 5,
-    lineend = "butt"
-  ) +
+    # Separate horizontal bars for hypo and hyper
+    geom_segment(
+        data = dmr_summary,
+        aes(
+            x = 0,
+            xend = median_delta_beta,
+            y = bar_y,
+            yend = bar_y,
+            color = Direction
+        ),
+        inherit.aes = FALSE,
+        linewidth = 5,
+        lineend = "butt"
+    ) +
 
-  # Labels for each bar
-  geom_text(
-    data = dmr_summary,
-    aes(
-      x = median_delta_beta,
-      y = label_y,
-      label = paste0(
-        "median Δβ = ", round(median_delta_beta, 3),
-        "\nmedian width = ", round(median_width_bp, 1), " bp",
-        "\nDMRs = ", n_dmrs
-      )
-    ),
-    inherit.aes = FALSE,
-    color = "black",
-    size = 3,
-    hjust = ifelse(dmr_summary$median_delta_beta >= 0, -0.05, 1.05)
-  ) +
-
-  facet_wrap(~Region, nrow = 1) +
-  scale_y_log10(
-    limits = c(min(dmr_effect_df$Width[dmr_effect_df$Width > 0], na.rm = TRUE), y_upper),
-    labels = comma
-  ) +
-  scale_color_manual(
-    values = c(
-      "Hyper" = "#B8405E",
-      "Hypo" = "#247BA0"
+    # Labels for each bar
+    geom_text(
+        data = dmr_summary,
+        aes(
+            x = median_delta_beta,
+            y = label_y,
+            label = paste0(
+                "median Δβ = ", round(median_delta_beta, 3),
+                "\nmedian width = ", round(median_width_bp, 1), " bp",
+                "\nDMRs = ", n_dmrs
+            )
+        ),
+        inherit.aes = FALSE,
+        color = "black",
+        size = 4,
+        hjust = ifelse(dmr_summary$median_delta_beta >= 0, -0.05, 1.05)
+    ) +
+    facet_wrap(~Region, nrow = 1) +
+    scale_y_log10(
+        limits = c(min(dmr_effect_df$Width[dmr_effect_df$Width > 0], na.rm = TRUE), y_upper),
+        labels = comma
+    ) +
+    scale_color_manual(
+        values = c(
+            "Hyper" = "#B8405E",
+            "Hypo" = "#247BA0"
+        )
+    ) +
+    coord_cartesian(clip = "off") +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "bottom", strip.text.x = element_text(size = 12)) +
+    labs(
+        title = "DMR Effect Size and Width by Gene Context",
+        x = "Context-specific delta beta (Tumor - Stroma)",
+        y = "DMR width (bp, log scale)",
+        color = ""
     )
-  ) +
-  coord_cartesian(clip = "off") +
-  theme_minimal() +
-  theme(legend.position = "bottom") +
-  labs(
-    title = "DMR Effect Size and Width by Gene Context",
-    x = "Context-specific delta beta (Tumor - Stroma)",
-    y = "DMR width (bp, log scale)",
-    color = ""
-  )
 ```
 
 ```{r}
@@ -478,6 +562,94 @@ ggplot(width_df, aes(x = Method, y = Width, fill = Method)) +
     theme_meta() +
     labs(title = "DMR Width Distribution", x = "", y = "Width (bp, log10 scale)")
 ```
+## CpG and Gene Context
+
+```{r gene_context}
+gene_context_df <- data.frame(
+    Context = c("Promoter", "Gene body", "Promoter and gene body", "No annotated gene overlap"),
+    DMRs = c(
+        sum(has_text(mcols(dmrs_cment)$in_promoter_of)),
+        sum(has_text(mcols(dmrs_cment)$in_gene_body_of)),
+        sum(has_text(mcols(dmrs_cment)$in_promoter_of) & has_text(mcols(dmrs_cment)$in_gene_body_of)),
+        sum(!has_text(mcols(dmrs_cment)$in_promoter_of) & !has_text(mcols(dmrs_cment)$in_gene_body_of))
+    )
+) |>
+    mutate(Percentage = round(100 * DMRs / length(dmrs_cment), 1))
+
+knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
+```
+
+```{r gene_context_plot, fig.width=6, fig.height=3.5}
+ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
+    geom_col(width = 0.7) +
+    coord_flip() +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    theme(legend.position = "none") +
+    labs(title = "DMR Gene Context", x = "", y = "DMRs")
+```
+
+```{r cpg_island_context}
+split_ids <- function(x) {
+    ids <- unlist(strsplit(stats::na.omit(as.character(x)), ","), use.names = FALSE)
+    unique(ids[nzchar(ids)])
+}
+
+if (requireNamespace("IlluminaHumanMethylationEPICanno.ilm10b4.hg19", quietly = TRUE)) {
+    library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+    anno <- as.data.frame(minfi::getAnnotation(IlluminaHumanMethylationEPICanno.ilm10b4.hg19))
+    anno$probe_id <- rownames(anno)
+
+    dmr_site_ids <- split_ids(mcols(dmrs_cment)$sites)
+    dmr_site_context <- anno[intersect(dmr_site_ids, rownames(anno)), c("probe_id", "Relation_to_Island")]
+    dmp_site_context <- anno[intersect(sig_dmps$site_id, rownames(anno)), c("probe_id", "Relation_to_Island")]
+
+    site_context_df <- bind_rows(
+        dmp_site_context |> mutate(Source = "Significant DMPs"),
+        dmr_site_context |> mutate(Source = "Sites inside DMRs")
+    ) |>
+        dplyr::count(Source, Relation_to_Island, name = "Sites") |>
+        group_by(Source) |>
+        mutate(Percentage = round(100 * Sites / sum(Sites), 1)) |>
+        ungroup()
+
+    knitr::kable(site_context_df, caption = "CpG island context of significant DMPs and sites inside DMRs")
+}
+```
+
+```{r cpg_island_context_plot, fig.width=8, fig.height=4}
+if (exists("site_context_df")) {
+    context_levels <- site_context_df |>
+        group_by(Relation_to_Island) |>
+        summarise(Max_sites = max(Sites), .groups = "drop") |>
+        arrange(Max_sites) |>
+        pull(Relation_to_Island)
+    plot_context_df <- site_context_df |>
+        mutate(
+            Relation_to_Island = factor(Relation_to_Island, levels = context_levels),
+            Source = factor(Source, levels = c("Significant DMPs", "Sites inside DMRs"))
+        )
+    diff_df <- plot_context_df |>
+        dplyr::select(Source, Relation_to_Island, Sites) |>
+        tidyr::pivot_wider(names_from = Source, values_from = Sites, values_fill = 0) |>
+        dplyr::mutate(
+            Difference = `Sites inside DMRs` - `Significant DMPs`,
+            Label = paste0("Delta=", scales::comma(Difference)),
+            Label_x = pmax(`Significant DMPs`, `Sites inside DMRs`)
+        )
+
+    ggplot(plot_context_df, aes(x = Sites, y = Relation_to_Island, fill = Source)) +
+        geom_col(data = dplyr::filter(plot_context_df, Source == "Significant DMPs"), width = 0.78, alpha = 0.45) +
+        geom_col(data = dplyr::filter(plot_context_df, Source == "Sites inside DMRs"), width = 0.48, alpha = 0.9) +
+        geom_text(data = diff_df, aes(x = Label_x, y = Relation_to_Island, label = Label), inherit.aes = FALSE, hjust = -0.05, size = 3) +
+        scale_x_continuous(labels = scales::comma, expand = expansion(mult = c(0, 0.2))) +
+        scale_fill_manual(values = c("Significant DMPs" = "grey65", "Sites inside DMRs" = "#0072B2")) +
+        theme_minimal() +
+        theme(legend.position = "bottom") +
+        labs(title = "CpG Island Context", x = "Sites", y = "", fill = "")
+}
+```
+
 
 ## Comparison With the Supplied Bumphunter DMRs
 
@@ -564,7 +736,7 @@ if (length(overlap_hits) > 0L) {
 }
 ```
 ## CMEnt-specific plots
-```{r cment-specific-plots-plot-dmr, fig.width=10, fig.height=5}
+```{r cment-specific-plots-plot-dmr, fig.width=8, fig.height=6}
 dmr_rank_table <- as.data.frame(dmrs_cment)
 CMEnt::plotDMRs(
     dmrs_cment,
@@ -585,7 +757,7 @@ CMEnt::plotDMRsManhattan(
     genome = "hg19"
 )
 ```
-```{r cment-specific-plots-circos-interactions, fig.width=10, fig.height=10}
+```{r cment-specific-plots-circos-interactions, fig.width=8, fig.height=8}
 cat("CMEnt DMR Circos interactions plot:\n")
 CMEnt::plotDMRsCircos(
     dmrs_cment,
@@ -597,14 +769,14 @@ CMEnt::plotDMRsCircos(
 ## Biological Interpretation
 
 `annotatr` is used for CpG and gene-region context,
-while `missMethyl` is used for array-aware GO/KEGG enrichment because it accounts
+while `missMethyl` is applied to promoter-overlapping DMRs for array-aware GO/KEGG enrichment because it accounts
 for probe-per-gene bias in methylation arrays, and it was also included in the original publication.
 
 ```{r top_scoring_dmrs_genes}
 top_10_cment_dmrs <- as.data.frame(dmrs_cment) |>
     arrange(by = -score) |>
     head(10) |>
-    dplyr::select(id, score, in_promoter_of, in_gene_body_of)
+    dplyr::select(id, score, cv_accuracy, in_promoter_of, in_gene_body_of)
 knitr::kable(
     top_10_cment_dmrs,
     digits = 3,
@@ -614,105 +786,8 @@ knitr::kable(
 ```
 
 
-```{r}
-context_summary <- NULL
-annotatr_gene_ids_by_method <- list()
-annotatr_types <- c(
-    paste0(genome, "_cpg_islands"),
-    paste0(genome, "_cpg_shores"),
-    paste0(genome, "_cpg_shelves"),
-    paste0(genome, "_cpg_inter"),
-    paste0(genome, "_genes_promoters"),
-    paste0(genome, "_genes_exons"),
-    paste0(genome, "_genes_introns"),
-    paste0(genome, "_genes_3UTRs"),
-    paste0(genome, "_genes_5UTRs"),
-    paste0(genome, "_genes_intergenic")
-)
-annotatr_types <- annotatr_types[annotatr_types %in% annotatr::builtin_annotations()]
-annotatr_ann <- annotatr::build_annotations(genome = genome, annotations = annotatr_types)
-annotation_type_labels <- c(
-    setNames(
-        c("CpG island", "CpG shore", "CpG shelf", "Open sea"),
-        paste0(genome, c("_cpg_islands", "_cpg_shores", "_cpg_shelves", "_cpg_inter"))
-    ),
-    setNames(
-        c("Promoter", "Exon", "Intron", "3' UTR", "5' UTR", "Intergenic"),
-        paste0(genome, c("_genes_promoters", "_genes_exons", "_genes_introns", "_genes_3UTRs", "_genes_5UTRs", "_genes_intergenic"))
-    )
-)
-
-context_summary <- base::do.call(rbind, lapply(names(methods_list), function(method) {
-    gr <- methods_list[[method]]
-    if (length(gr) == 0L) {
-        return(NULL)
-    }
-    gr <- granges(gr)
-    mcols(gr)$dmr_id <- seq_along(gr)
-    names(gr) <- NULL
-    ann_gr <- annotatr::annotate_regions(regions = gr, annotations = annotatr_ann, quiet = TRUE)
-    ann_mcols <- as.data.frame(S4Vectors::mcols(ann_gr), optional = TRUE)
-    rownames(ann_mcols) <- NULL
-    ann_df <- data.frame(
-        seqnames = as.character(seqnames(ann_gr)),
-        start = start(ann_gr),
-        end = end(ann_gr),
-        ann_mcols,
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-    )
-    if ("annot.gene_id" %in% colnames(ann_df)) {
-        annotatr_gene_ids_by_method[[method]] <<- unique(stats::na.omit(as.character(ann_df$annot.gene_id)))
-    }
-    ann_df <- ann_df[ann_df$annot.type %in% names(annotation_type_labels), , drop = FALSE]
-    if (nrow(ann_df) == 0L) {
-        return(NULL)
-    }
-    ann_df <- unique(ann_df[, c("dmr_id", "annot.type"), drop = FALSE])
-    counts <- as.data.frame(table(ann_df$annot.type), stringsAsFactors = FALSE)
-    colnames(counts) <- c("annot.type", "DMRs")
-    counts$Method <- method
-    counts$Annotation <- unname(annotation_type_labels[as.character(counts$annot.type)])
-    counts$Class <- ifelse(grepl("_cpg_", counts$annot.type), "CpG context", "Gene context")
-    counts$Percentage <- 100 * counts$DMRs / length(gr)
-    counts
-}))
-if (!is.null(context_summary) && nrow(context_summary) > 0L) {
-    context_summary$Annotation <- factor(
-        context_summary$Annotation,
-        levels = c("CpG island", "CpG shore", "CpG shelf", "Open sea", "Promoter", "Exon", "Intron", "5' UTR", "3' UTR", "Intergenic")
-    )
-    knitr::kable(
-        context_summary |>
-            dplyr::select(Method, Class, Annotation, DMRs, Percentage) |>
-            arrange(Class, Annotation, Method),
-        digits = 1,
-        row.names = FALSE,
-        caption = "Region context summary. Categories can overlap."
-    )
-}
-```
-```{r biology-context, fig.width=10, fig.height=5}
-if (!is.null(context_summary) && nrow(context_summary) > 0L) {
-    ggplot(context_summary, aes(x = Annotation, y = Percentage, fill = Method)) +
-        geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-        facet_wrap(~Class, scales = "free_x") +
-        scale_fill_manual(values = method_palette, drop = FALSE) +
-        theme_meta() +
-        labs(title = "DMR Annotation Context", x = "", y = "DMRs overlapping annotation (%)", fill = "")
-}
-```
 
 ```{r}
-pdac_term_pattern <- paste(
-    c(
-        "immune", "immun", "macrophage", "myeloid", "leukocyte", "lymphocyte",
-        "cytokine", "chemokine", "inflamm", "antigen", "interferon",
-        "estrogen", "oestrogen", "hormone", "stromal", "extracellular matrix",
-        "collagen", "fibroblast", "pancrea"
-    ),
-    collapse = "|"
-)
 
 normalize_missmethyl_result <- function(x, method, collection) {
     if (is.null(x) || nrow(x) == 0L) {
@@ -747,21 +822,48 @@ normalize_missmethyl_result <- function(x, method, collection) {
 library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
 missmethyl_long <- NULL
 missmethyl_array <- if (toupper(array_type) == "EPICV2") "EPIC_V2" else toupper(array_type)
-cached <- getBenchmarkFile("missmethyl_enrichment_results.rds")
+missmethyl_regions <- lapply(names(methods_list), function(method) {
+    gr <- methods_list[[method]]
+    if (!"in_promoter_of" %in% colnames(mcols(gr))) {
+        return(gr[integer()])
+    }
+    gr[has_text(mcols(gr)$in_promoter_of)]
+})
+names(missmethyl_regions) <- names(methods_list)
+missmethyl_region_summary <- data.frame(
+    Method = names(methods_list),
+    Promoter_overlapping_DMRs = vapply(missmethyl_regions, length, integer(1)),
+    Total_DMRs = vapply(methods_list, length, integer(1)),
+    stringsAsFactors = FALSE
+)
+missmethyl_region_summary$Percentage <- 100 * missmethyl_region_summary$Promoter_overlapping_DMRs / pmax(1L, missmethyl_region_summary$Total_DMRs)
+knitr::kable(
+    missmethyl_region_summary,
+    digits = 1,
+    row.names = FALSE,
+    caption = "CMEnt-annotated promoter-overlapping DMRs supplied to missMethyl"
+)
+
+cached <- getBenchmarkFile("missmethyl_cment_gene_annotation_promoter_enrichment_results.rds")
 if (file.exists(cached)) {
     missmethyl_long <- readRDS(cached)
-    if (!"PathwayID" %in% colnames(missmethyl_long)) {
+    if (!all(c("PathwayID", "RegionScope") %in% colnames(missmethyl_long))) {
         unlink(cached)
         missmethyl_long <- NULL
     }
 }
 if (is.null(missmethyl_long)) {
-    missmethyl_long <- base::do.call(rbind, Filter(Negate(is.null), unlist(lapply(names(methods_list), function(method) {
+    missmethyl_results <- Filter(Negate(is.null), unlist(lapply(names(missmethyl_regions), function(method) {
+        regions <- missmethyl_regions[[method]]
+        if (length(regions) == 0L) {
+            cat(sprintf("Skipping missMethyl enrichment for %s: no promoter-overlapping DMRs.\n", method))
+            return(NULL)
+        }
         lapply(c("GO", "KEGG"), function(collection) {
-            cat(sprintf("Running missMethyl %s enrichment for %s...\n", collection, method))
+            cat(sprintf("Running missMethyl %s enrichment for %s CMEnt-annotated promoter-overlapping DMRs (n = %d)...\n", collection, method, length(regions)))
             ret <- tryCatch(
                 missMethyl::goregion(
-                    regions = methods_list[[method]],
+                    regions = regions,
                     all.cpg = beta_row_names,
                     collection = collection,
                     array.type = missmethyl_array,
@@ -773,9 +875,18 @@ if (is.null(missmethyl_long)) {
                     NULL
                 }
             )
-            normalize_missmethyl_result(ret, method, collection)
+            ret <- normalize_missmethyl_result(ret, method, collection)
+            if (!is.null(ret)) {
+                ret$RegionScope <- "CMEnt-annotated promoter-overlapping DMRs"
+            }
+            ret
         })
-    }), recursive = FALSE)))
+    }), recursive = FALSE))
+    missmethyl_long <- if (length(missmethyl_results) > 0L) {
+        base::do.call(rbind, missmethyl_results)
+    } else {
+        NULL
+    }
     saveRDS(missmethyl_long, cached)
 }
 ```
@@ -783,7 +894,6 @@ if (is.null(missmethyl_long)) {
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     missmethyl_long <- missmethyl_long[is.finite(missmethyl_long$FDR), , drop = FALSE]
     missmethyl_long$NegLog10FDR <- -log10(pmax(missmethyl_long$FDR, .Machine$double.xmin))
-    missmethyl_long$PDAC_Context <- ifelse(grepl(pdac_term_pattern, missmethyl_long$Term, ignore.case = TRUE), "Study-context term", "Other top term")
 
     missmethyl_top <- missmethyl_long |>
         group_by(Method, Collection) |>
@@ -792,9 +902,23 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
         ungroup()
     missmethyl_top$Term_Label <- short_label(missmethyl_top$Term, 70)
     missmethyl_top$Facet <- paste(missmethyl_top$Method, missmethyl_top$Collection, sep = " - ")
+    shared_missmethyl_terms <- missmethyl_top |>
+        distinct(Collection, Term, Method) |>
+        dplyr::count(Collection, Term, name = "Methods") |>
+        filter(Methods > 1L) |>
+        transmute(Term_Key = paste(Collection, Term, sep = "___")) |>
+        pull(Term_Key)
+    missmethyl_top$Shared_Term <- paste(missmethyl_top$Collection, missmethyl_top$Term, sep = "___") %in% shared_missmethyl_terms
     missmethyl_top$Term_Facet <- factor(
         paste(missmethyl_top$Term_Label, missmethyl_top$Facet, sep = "___"),
         levels = rev(unique(paste(missmethyl_top$Term_Label, missmethyl_top$Facet, sep = "___")))
+    )
+    missmethyl_axis_term_labels <- gsub("\\\\", "\\\\\\\\", missmethyl_top$Term_Label)
+    missmethyl_axis_term_labels <- gsub('"', '\\"', missmethyl_axis_term_labels, fixed = TRUE)
+    missmethyl_axis_term_labels <- paste0('"', missmethyl_axis_term_labels, '"')
+    missmethyl_axis_labels <- setNames(
+        ifelse(missmethyl_top$Shared_Term, paste0("bold(", missmethyl_axis_term_labels, ")"), missmethyl_axis_term_labels),
+        as.character(missmethyl_top$Term_Facet)
     )
 
     knitr::kable(
@@ -803,39 +927,39 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
             arrange(Collection, Method, FDR),
         digits = 3,
         row.names = FALSE,
-        caption = "Top missMethyl GO/KEGG enrichments"
+        caption = "Top missMethyl GO/KEGG enrichments from promoter-overlapping DMRs"
     )
 }
 ```
-```{r biology-missmethyl, fig.width=12, fig.height=7}
+```{r biology-missmethyl, fig.width=15, fig.height=7}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
-
     ggplot(missmethyl_top, aes(x = NegLog10FDR, y = Term_Facet, size = DE)) +
         geom_point(alpha = 0.9) +
         facet_wrap(~Facet, scales = "free_y", ncol = 2) +
-        scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
-        theme_meta() +
-        theme(axis.text.y = element_text(size = 7)) +
-        labs(title = "missMethyl Enrichment", x = expression(-log[10]("FDR")), y = "", color = "", size = "DM genes")
+        scale_y_discrete(labels = function(x) parse(text = unname(missmethyl_axis_labels[x]))) +
+        theme_minimal(base_size = 17) +
+        labs(
+            x = expression(-log[10]("FDR")), y = "", color = "", size = "DM genes"
+        )
 } else {
     cat("missMethyl returned no enrichment results.\n")
 }
-
 ```
 
 ```{r missmethyl-kegg-pathview, fig.width=10, fig.height=7}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
     requireNamespace("pathview", quietly = TRUE) &&
     requireNamespace("KEGGREST", quietly = TRUE)) {
+    library(pathview)
     kegg_candidates <- missmethyl_long |>
         filter(Method == "CMEnt", Collection == "KEGG", !is.na(PathwayID), is.finite(PValue)) |>
         arrange(FDR, PValue) |>
-        mutate(PathwayID = sub("^path:", "", PathwayID),
-               PathwayID = ifelse(grepl("^hsa", PathwayID), PathwayID, paste0("hsa", PathwayID)))
-
+        mutate(
+            PathwayID = sub("^path:", "", PathwayID),
+            PathwayID = ifelse(grepl("^hsa", PathwayID), PathwayID, paste0("hsa", PathwayID))
+        )
     promoter_gene_delta <- as.data.frame(dmrs_cment) |>
         arrange(desc(score)) |>
-        slice_head(n = min(100L, length(dmrs_cment))) |>
         filter(is.finite(as.numeric(delta_beta_promoter)), !is.na(in_promoter_of), nzchar(in_promoter_of)) |>
         mutate(delta_beta_promoter = as.numeric(delta_beta_promoter)) |>
         dplyr::select(id, score, delta_beta_promoter, in_promoter_of) |>
@@ -913,8 +1037,9 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
                 pathview_suffix <- "promoter_delta_beta"
                 pathview_png <- file.path(pathview_dir, paste0("hsa", kegg_id, ".", pathview_suffix, ".png"))
                 gene_limit <- max(0.001, max(abs(gene_delta), na.rm = TRUE))
+                unlink(c(pathview_png, basename(pathview_png)))
 
-                tryCatch(
+                pathview_result <- tryCatch(
                     pathview::pathview(
                         gene.data = gene_delta,
                         gene.idtype = "entrez",
@@ -932,8 +1057,13 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
                         NULL
                     }
                 )
-                if (file.exists(basename(pathview_png)) && !file.exists(pathview_png)) {
+                if (file.exists(basename(pathview_png))) {
                     file.rename(basename(pathview_png), pathview_png)
+                }
+                pathview_mapped <- if (!is.null(pathview_result$plot.data.gene)) {
+                    sum(!is.na(pathview_result$plot.data.gene[["mol.data"]]))
+                } else {
+                    NA_integer_
                 }
 
                 knitr::kable(
@@ -946,6 +1076,8 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
                     caption = paste0(
                         "Promoter delta beta values supplied to pathview for the top missMethyl KEGG pathway with promoter-gene overlap: ",
                         top_kegg$Term[1],
+                        ". Genes overlapping this KEGG pathway: ", nrow(promoter_pathway_delta),
+                        ". Genes mapped by pathview: ", pathview_mapped,
                         ". Red indicates higher methylation in Tumor; blue indicates lower methylation in Tumor."
                     )
                 )
@@ -964,46 +1096,6 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
     cat("pathview and KEGGREST are required for the KEGG pathway diagram.\n")
 }
 ```
-
-```{r}
-focused_terms <- missmethyl_long |>
-    filter(grepl(pdac_term_pattern, Term, ignore.case = TRUE)) |>
-    group_by(Method, Collection) |>
-    arrange(FDR, .by_group = TRUE) |>
-    slice_head(n = 8) |>
-    ungroup()
-
-if (nrow(focused_terms) > 0L) {
-    focused_terms$Term_Label <- short_label(focused_terms$Term, 62)
-    focused_terms$Term_Method <- factor(
-        paste(focused_terms$Term_Label, focused_terms$Method, focused_terms$Collection, sep = "___"),
-        levels = rev(unique(paste(focused_terms$Term_Label, focused_terms$Method, focused_terms$Collection, sep = "___")))
-    )
-    knitr::kable(
-        focused_terms |>
-            dplyr::select(Method, Collection, Ontology, Term, N, DE, PValue, FDR) |>
-            arrange(Collection, Method, FDR),
-        digits = 3,
-        row.names = FALSE,
-        caption = "Top immune, macrophage, stromal, pancreatic, and hormone/estrogen-related terms"
-    )
-}
-```
-```{r biology-focused-terms-plot, fig.width=10, fig.height=5}
-if (nrow(focused_terms) > 0L) {
-    ggplot(focused_terms, aes(x = -log10(pmax(FDR, .Machine$double.xmin)), y = Term_Method, fill = Method)) +
-        geom_col(width = 0.7) +
-        facet_wrap(~Collection, scales = "free_y") +
-        scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
-        scale_fill_manual(values = method_palette, drop = FALSE) +
-        theme_meta() +
-        theme(axis.text.y = element_text(size = 8)) +
-        labs(title = "Study-Relevant Enrichment Terms", x = expression(-log[10]("FDR")), y = "", fill = "")
-} else {
-    cat("No missMethyl terms matched the study-focused keyword set.\n")
-}
-```
-
 
 ## Conclusions
 
