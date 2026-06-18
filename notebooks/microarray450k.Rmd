@@ -305,10 +305,13 @@ dmr_effect_df <- bind_rows(
     )
 ) |>
     filter(is.finite(Delta_beta)) |>
-    mutate(Direction = factor(
-        ifelse(Delta_beta > 0, "Hyper", "Hypo"),
-        levels = c("Hyper", "Hypo")
-    ))
+    mutate(
+        Region = factor(Region, levels = unique(Region)),
+        Direction = factor(
+            ifelse(Delta_beta > 0, "Hyper", "Hypo"),
+            levels = c("Hyper", "Hypo")
+        )
+    )
 
 library(dplyr)
 library(ggplot2)
@@ -324,6 +327,50 @@ dmr_summary <- dmr_effect_df %>%
     median_width_bp = median(Width, na.rm = TRUE),
     n_dmrs = n(),
     .groups = "drop"
+  )
+
+mood_median_p_value <- function(width, direction) {
+  widths <- split(width, direction)
+  if (!all(c("Hyper", "Hypo") %in% names(widths)) || any(lengths(widths[c("Hyper", "Hypo")]) < 2L)) {
+    return(NA_real_)
+  }
+  median_width <- median(width, na.rm = TRUE)
+  keep <- is.finite(width) & width != median_width
+  tab <- table(
+    factor(direction[keep], levels = c("Hypo", "Hyper")),
+    factor(width[keep] > median_width, levels = c(FALSE, TRUE))
+  )
+  if (any(rowSums(tab) == 0L) || any(colSums(tab) == 0L)) {
+    return(NA_real_)
+  }
+  suppressWarnings(stats::chisq.test(tab, correct = FALSE)$p.value)
+}
+
+p_to_stars <- function(p) {
+  case_when(
+    is.na(p) ~ "",
+    p < 0.001 ~ "***",
+    p < 0.01 ~ "**",
+    p < 0.05 ~ "*",
+    TRUE ~ ""
+  )
+}
+
+x_range <- range(dmr_effect_df$Delta_beta, na.rm = TRUE)
+region_levels <- unique(dmr_effect_df$Region)
+dmr_mood <- dmr_summary %>%
+  group_by(Region) %>%
+  summarise(star_y = exp(mean(log(median_width_bp))), .groups = "drop") %>%
+  left_join(
+    dmr_effect_df %>%
+      group_by(Region) %>%
+      summarise(mood_p = mood_median_p_value(Width, Direction), .groups = "drop"),
+    by = "Region"
+  ) %>%
+  mutate(
+    stars = p_to_stars(mood_p),
+    star_x = ifelse(Region == region_levels[1], x_range[1], x_range[2]),
+    hjust = ifelse(Region == region_levels[1], 0, 1)
   )
 
 # Define two y-levels for the two summary bars
@@ -342,18 +389,22 @@ dmr_summary <- dmr_summary %>%
 y_upper <- max(dmr_summary$label_y) * 1.15
 
 ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
-    geom_hline(
-        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta > 0], na.rm = TRUE),
-        linewidth = 0.2,
-        color = "#B8405E"
-    ) +
-    geom_hline(
-        yintercept = median(dmr_effect_df$Width[dmr_effect_df$Delta_beta < 0], na.rm = TRUE),
-        linewidth = 0.2,
-        color = "#247BA0"
-    ) +
+  geom_hline(
+    data = dmr_summary,
+    aes(yintercept = median_width_bp, color = Direction),
+    inherit.aes = FALSE,
+    linewidth = 0.2
+  ) +
   geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
   geom_point(alpha = 0.55, size = 1.2) +
+  geom_text(
+    data = dmr_mood,
+    aes(x = star_x, y = star_y, label = stars, hjust = hjust),
+    inherit.aes = FALSE,
+    color = "black",
+    fontface = "bold",
+    size = 5
+  ) +
 
   # Separate horizontal bars for hypo and hyper
   geom_segment(
@@ -451,7 +502,7 @@ if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = T
         dmp_site_context |> mutate(Source = "Significant DMPs"),
         dmr_site_context |> mutate(Source = "Sites inside DMRs")
     ) |>
-        count(Source, Relation_to_Island, name = "Sites") |>
+        dplyr::count(Source, Relation_to_Island, name = "Sites") |>
         group_by(Source) |>
         mutate(Percentage = round(100 * Sites / sum(Sites), 1)) |>
         ungroup()
@@ -490,68 +541,6 @@ if (exists("site_context_df")) {
         theme_minimal() +
         theme(legend.position = "bottom") +
         labs(title = "CpG Island Context", x = "Sites", y = "", fill = "")
-}
-```
-
-## AML Pathway and Marker Gene Scan
-
-The table below is a targeted DMR scan of AML genetics, signaling, and hematopoietic/myeloid marker genes.
-
-```{r aml_gene_scan}
-gene_pattern <- function(gene) {
-    paste0("(^|,)", gene, "($|,)")
-}
-
-dmr_gene_summary <- function(gene) {
-    promoter_hits <- grepl(gene_pattern(gene), as.character(mcols(dmrs_cment)$in_promoter_of))
-    body_hits <- grepl(gene_pattern(gene), as.character(mcols(dmrs_cment)$in_gene_body_of))
-    dmr_hits <- promoter_hits | body_hits
-    data.frame(
-        Gene = gene,
-        CMEnt_DMRs = sum(dmr_hits),
-        Promoter_DMRs = sum(promoter_hits),
-        Gene_body_DMRs = sum(body_hits),
-        Mean_DMR_delta_beta = round(mean(dmr_delta[dmr_hits], na.rm = TRUE), 4)
-    )
-}
-
-aml_prior_genes <- data.frame(
-    Gene = c(
-        "NPM1", "FLT3", "KIT", "RUNX1", "TP53", "TET2", "DNMT3A", "CXCR4", "NAT10",
-        "JAK2", "STAT3", "STAT5A", "STAT5B", "HOXA9", "HOXA10",
-        "CD34", "ITGAM", "SPI1", "CEBPA", "GATA2"
-    ),
-    Theme = c(
-        rep("AML genetics/prognosis", 9),
-        rep("JAK-STAT/HOXA signaling", 6),
-        rep("Hematopoietic and myeloid differentiation", 5)
-    )
-)
-
-prior_dmr_summary <- bind_rows(lapply(aml_prior_genes$Gene, dmr_gene_summary))
-
-prior_gene_table <- aml_prior_genes |>
-    left_join(prior_dmr_summary, by = "Gene") |>
-    mutate(
-        CMEnt_DMRs = tidyr::replace_na(CMEnt_DMRs, 0L),
-        Methylation_signal = CMEnt_DMRs > 0
-    ) |>
-    arrange(desc(Methylation_signal), desc(CMEnt_DMRs), Gene)
-
-knitr::kable(prior_gene_table, digits = 4, caption = "Targeted AML gene scan using CMEnt DMRs")
-```
-
-```{r aml_gene_plot, fig.width=8, fig.height=4}
-prior_plot_df <- prior_gene_table |>
-    filter(Methylation_signal) |>
-    mutate(Gene = reorder(Gene, CMEnt_DMRs))
-
-if (nrow(prior_plot_df) > 0) {
-    ggplot(prior_plot_df, aes(x = Gene, y = CMEnt_DMRs, fill = Theme)) +
-        geom_col(width = 0.7) +
-        coord_flip() +
-        theme_minimal() +
-        labs(title = "AML Genes Overlapping CMEnt DMRs", x = "", y = "CMEnt DMRs", fill = "")
 }
 ```
 
@@ -816,16 +805,6 @@ genome-wide distribution of significant single CpGs. In practical terms,
 the analysis reframes part of the AML methylation signal as coordinated regional
 dysregulation around CpG island-associated loci.
 
-The targeted AML gene scan also supports biological relevance while adding
-positional detail. CMEnt DMRs overlap several AML-associated regulatory
-and differentiation genes, including HOXA9, HOXA10, RUNX1, STAT3, CD34,
-and GATA2. This partly recapitulates the original study’s emphasis
-on hematopoietic differentiation and AML-relevant signaling, 
-but adds information about whether these signals occur as promoter,
-gene-body, or mixed regional methylation events. Notably, RUNX1 and STAT3
-show strong hypomethylated DMR signals, while HOXA10 and CD34 show
-hypermethylated regional signals, suggesting that AML-associated methylation
-changes are directionally heterogeneous across disease-relevant loci.
 
 The enrichment results further reinforce the biological interpretation. 
 The strongest GO terms are broad developmental, cell-periphery, cell-signaling,
@@ -834,15 +813,6 @@ regulation of differentiation, stem-cell pluripotency signaling, hematopoietic c
 and cytokine-related pathways. Compared with the original study’s pathway-level analysis, 
 CMEnt adds the observation that these biological themes are supported by coherent DMR structures 
 rather than only by individually significant CpGs or methylation-expression gene intersections.
-
-Finally, the candidate-region and visualization figures provide concrete follow-up loci.
-The top-scoring DMR overlaps CD247 on chromosome 1, shows clear group separation with
-cross-validation accuracy of 0.85, and is hypomethylated in AML.
-Other high-ranking regions include PVT1, RUNX1-associated regulatory candidates
-through the AML scan, POU5F1, SH3PXD2A, TLE7, KCNQ1, PLIN5, and MAFG/SIRT7-associated loci.
-The Manhattan and circos plots show that high-scoring DMRs are distributed across many chromosomes,
-with 115 identified DMR blocks and recurrent motif-interaction patterns involving factors such as
-KLF-family motifs and AHR::ARNT-like motifs.
 
 Overall, this analysis supports the original conclusion that AML is associated with dysregulated
 methylation in genes and pathways linked to hematopoietic differentiation,
