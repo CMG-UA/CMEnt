@@ -9,9 +9,8 @@ convertBetaToTabix(
   sorted_locs = NULL,
   array = NULL,
   genome = NULL,
-  locations_file = NULL,
   output_file = NULL,
-  chunk_size = 50000,
+  chunk_size = getOption("CMEnt.chunk_size", 1e+06),
   njobs = 1,
   .bed_file = NULL,
   output_prefix = NULL
@@ -27,12 +26,10 @@ If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: 
 
 \item{genome}{Character. Genome version. Required when \code{sorted_locs} is NULL.}
 
-\item{locations_file}{Character. Optional path to an explicit genomic locations file passed through to \code{getSortedGenomicLocs()}.}
-
 \item{output_file}{Character. Path for the output tabix file. If NULL, a temporary
 file is used unless \code{output_prefix} is supplied.}
 
-\item{chunk_size}{Integer. Number of rows to process in each chunk (default: 50000)}
+\item{chunk_size}{Integer. Number of rows to process in each chunk (default: getOption("CMEnt.chunk_size", 1000000)).}
 
 \item{njobs}{Integer. Number of parallel jobs for sorting (default: 1)}
 
@@ -54,7 +51,7 @@ next to analysis outputs when \code{output_prefix} is supplied.
 The function performs the following steps:
 \enumerate{
 \item Checks if tabix and bgzip tools are available in the system PATH
-\item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
+\item Processes the beta file in chunks (getOption("CMEnt.chunk_size", 1000000) rows at a time) to minimize memory usage
 \item Converts beta values to BED format with genomic coordinates
 \item Sorts, compresses (bgzip), and indexes (tabix) the file
 \item Persists the derived file if an explicit output path or \code{output_prefix} is provided

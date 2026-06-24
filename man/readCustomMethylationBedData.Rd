@@ -11,7 +11,7 @@ readCustomMethylationBedData(
   chrom_col = "#chrom",
   start_col = "start",
   output_dir = NULL,
-  chunk_size = 50000,
+  chunk_size = getOption("CMEnt.chunk_size", 1e+06),
   output_prefix = NULL,
   njobs = 1L
 )
@@ -36,7 +36,7 @@ present in both the pheno rownames and BED file header will be processed}
 a temporary working directory unless \code{output_prefix} is provided (default: NULL)}
 
 \item{chunk_size}{Integer. Number of rows to process in each chunk for memory
-efficiency (default: 50000)}
+efficiency (default: getOption("CMEnt.chunk_size", 1000000)). This allows processing of large BED files without loading the entire dataset into memory.}
 
 \item{output_prefix}{Character. Optional prefix used to persist derived BED/tabix
 artifacts next to analysis outputs.}

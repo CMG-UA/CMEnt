@@ -2,7 +2,7 @@
 
 #' @keywords internal
 #' @noRd
-.mergeGenomicWindows <- function(windows) {
+.mergeGenomicWindows <- function(windows, return_granges = FALSE) {
     if (is.null(windows) || nrow(windows) == 0L) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
@@ -25,6 +25,9 @@
         ranges = IRanges::IRanges(start = windows$start, end = windows$end)
     )
     gr <- GenomicRanges::reduce(gr, ignore.strand = TRUE)
+    if (return_granges) {
+        return(gr)
+    }
     data.frame(
         chr = as.character(GenomicRanges::seqnames(gr)),
         start = GenomicRanges::start(gr),
@@ -177,6 +180,20 @@
         error = function(e) NULL
     )
     !is.null(bsseq_object) && !.bsseqIsInMemory(bsseq_object)
+}
+
+
+#' @keywords internal
+#' @noRd
+.usesBSseqBackend <- function(beta_handler) {
+    if (!inherits(beta_handler, "BetaHandler")) {
+        return(FALSE)
+    }
+    bsseq_object <- tryCatch(
+        beta_handler$.__enclos_env__$private$.bsseq_object,
+        error = function(e) NULL
+    )
+    !is.null(bsseq_object)
 }
 
 
@@ -447,7 +464,7 @@
             rownames(beta_locs)
         }
     }
-    if (is.null(beta_locs_rownames)) {
+    if (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler)) {
         subset_ids <- subset_idx
         subset_names <- paste0(as.character(subset_locs[, "chr"]), ":", as.integer(subset_locs[, "start"]))
     } else {
@@ -3196,7 +3213,7 @@ buildDMRs <- function(
         withr::defer(wait())
     }
 
-    .log_step("Preparing chromosome-sequential DMR input...")
+    .log_step("Preparing DMR input...")
     seeds_ret <- .readSeeds(seeds, seeds_id_col)
     sample_group_col <- .requireSampleGroupCol(sample_group_col, "buildDMRs()")
     pheno <- .readPheno(pheno)
@@ -3392,7 +3409,8 @@ buildDMRs <- function(
     }
 
     beta_locs_rownames <- .explicitRowNames(beta_locs)
-    use_numeric_sequencing_rows <- !array_based && is.null(beta_locs_rownames)
+    use_numeric_sequencing_rows <- !array_based &&
+        (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler))
     beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
     if (use_numeric_sequencing_rows) {
         seed_beta_index <- .matchSequencingIdsToBeta(seeds_df[, seeds_id_col], beta_chr, beta_start)

@@ -109,15 +109,25 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
     )
     site_names <- paste(seqnames(gr), start(gr), sep = ":")
     names(gr) <- site_names
-    bsseq_obj <- BSseq(
+    bsseq_obj <- bsseq::BSseq(
         M = met, Cov = cov, gr = gr,
         sampleNames = paste0("Sample", seq_len(n_samples))
     )
-    beta_handler <- getBetaHandler(beta = bsseq_obj)
     subset_sites <- site_names[c(1, 10, 20)]
+
+    beta_handler <- getBetaHandler(beta = bsseq_obj)
     beta_subset <- beta_handler$getBeta(row_names = subset_sites)
     expect_equal(nrow(beta_subset), 3)
     expect_equal(rownames(beta_subset), subset_sites)
+    bsseq_obj_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+    beta_handler_hdf5 <- getBetaHandler(beta = bsseq_obj_hdf5)
+    beta_subset_hdf5 <- beta_handler_hdf5$getBeta(row_names = subset_sites)
+    expect_equal(nrow(beta_subset_hdf5), 3)
+    expect_equal(rownames(beta_subset_hdf5), subset_sites)
 })
 
 test_that("BetaHandler can subset beta values from BSseq object by column names", {
@@ -161,8 +171,19 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     beta_locs <- beta_handler$getBetaLocs()
     expect_equal(nrow(beta_locs), n_loci)
     expect_true(all(c("chr", "start", "end") %in% colnames(beta_locs)))
-    expect_equal(beta_locs$chr, rep("chr1", n_loci))
+    expect_equal(as.character(beta_locs$chr), rep("chr1", n_loci))
     expect_equal(beta_locs$start, start_positions)
+    # convert the object to disk-backed and check that the genomic locations are still correct
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+    beta_handler_hdf5 <- getBetaHandler(beta = bsseq_hdf5)
+    beta_locs_hdf5 <- beta_handler_hdf5$getBetaLocs()
+    expect_equal(as.character(beta_locs_hdf5$chr), rep("chr1", n_loci))
+    expect_equal(as.character(beta_locs_hdf5$start), as.character(start_positions))
+    expect_equal(as.character(beta_locs_hdf5$end), as.character(start_positions + 1))
 })
 
 test_that("BetaHandler sorts genomic locations from unsorted BSseq input", {
@@ -336,6 +357,48 @@ test_that("BetaHandler subset preserves compact HDF5-backed BSseq views", {
     expect_equal(
         subset_handler$getBeta(),
         beta_handler$getBeta(row_names = subset_rows, col_names = subset_cols),
+        tolerance = 1e-8
+    )
+})
+
+test_that("disk-backed BSseq window subsetting uses integer row lookup", {
+    skip_if_not_installed("HDF5Array")
+
+    set.seed(123)
+    n_loci <- 30
+    n_samples <- 4
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep("chr1", n_loci),
+        ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
+    )
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+    beta_handler <- getBetaHandler(beta = bsseq_hdf5)
+    beta_locs <- beta_handler$getBetaLocs()
+    beta_handler$.__enclos_env__$private$.beta_row_names <- paste0("bad", seq_len(n_loci))
+
+    subset <- CMEnt:::.subsetStage2BetaToWindows(
+        beta_handler = beta_handler,
+        beta_locs = beta_locs,
+        col_names = sample_names[1:2],
+        expansion_windows = data.frame(chr = "chr1", start = 1250L, end = 1450L)
+    )
+
+    expect_s4_class(subset$beta_handler$.__enclos_env__$private$.bsseq_object, "BSseq")
+    expect_equal(as.integer(subset$beta_locs$start), seq(1250, 1450, by = 50))
+    expect_equal(
+        subset$beta_handler$getBeta(row_names = seq_len(nrow(subset$beta_locs))),
+        beta_handler$getBeta(row_names = 6:10, col_names = sample_names[1:2]),
         tolerance = 1e-8
     )
 })

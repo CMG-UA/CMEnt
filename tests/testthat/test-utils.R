@@ -124,7 +124,6 @@ test_that("logging and parallel helpers handle quiet and fallback branches", {
     expect_warning(CMEnt:::.log_warn("careful"), "careful")
     expect_error(CMEnt:::.log_error("boom"), "boom")
     expect_equal(CMEnt:::.node_size(), if (8L * .Machine$sizeof.pointer == 32L) 28L else 56L)
-    expect_match(CMEnt:::.format_mem_used(), "B|kB|MB|GB|TB")
 
     expect_s4_class(CMEnt:::.makeBiocParallelParam(1), "SerialParam")
     expect_s4_class(CMEnt:::.makeBiocParallelParam(2, n_tasks = 1), "SerialParam")
@@ -150,7 +149,7 @@ test_that("registry post-processing selects, renames, derives, and indexes colum
 
     processed <- CMEnt:::.postProcessRegistry(
         registry,
-        select = c("chrom", "pos"),
+        select_columns = c("chrom", "pos"),
         rename = c(chrom = "chr", pos = "start"),
         derive = list(
             locus = list(cols = c("chr", "start"), fun = function(chr, start) paste0(chr, ":", start))

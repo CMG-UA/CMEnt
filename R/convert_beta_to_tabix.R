@@ -14,10 +14,9 @@
 #'   If NULL, will be retrieved automatically using getSortedGenomicLocs() (default: NULL)
 #' @param array Character. Array platform type. Required when `sorted_locs` is NULL.
 #' @param genome Character. Genome version. Required when `sorted_locs` is NULL.
-#' @param locations_file Character. Optional path to an explicit genomic locations file passed through to `getSortedGenomicLocs()`.
 #' @param output_file Character. Path for the output tabix file. If NULL, a temporary
 #'   file is used unless `output_prefix` is supplied.
-#' @param chunk_size Integer. Number of rows to process in each chunk (default: 50000)
+#' @param chunk_size Integer. Number of rows to process in each chunk (default: getOption("CMEnt.chunk_size", 1000000)).
 #' @param njobs Integer. Number of parallel jobs for sorting (default: 1)
 #' @param .bed_file Character. Internal precomputed BED path used to skip beta-to-BED conversion.
 #' @param output_prefix Character. Optional prefix used to persist derived tabix
@@ -29,7 +28,7 @@
 #' The function performs the following steps:
 #' \enumerate{
 #'   \item Checks if tabix and bgzip tools are available in the system PATH
-#'   \item Processes the beta file in chunks (50,000 rows at a time) to minimize memory usage
+#'   \item Processes the beta file in chunks (getOption("CMEnt.chunk_size", 1000000) rows at a time) to minimize memory usage
 #'   \item Converts beta values to BED format with genomic coordinates
 #'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
 #'   \item Persists the derived file if an explicit output path or `output_prefix` is provided
@@ -48,9 +47,8 @@ convertBetaToTabix <- function(beta_file,
                                sorted_locs = NULL,
                                array = NULL,
                                genome = NULL,
-                               locations_file = NULL,
                                output_file = NULL,
-                               chunk_size = 50000,
+                               chunk_size = getOption("CMEnt.chunk_size", 1000000),
                                njobs = 1,
                                .bed_file = NULL,
                                output_prefix = NULL) {

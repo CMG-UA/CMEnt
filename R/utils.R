@@ -623,7 +623,7 @@
 }
 
 
-.getTabixCacheDir <- function(output_dir) {
+.getCacheDir <- function(output_dir) {
     cache_dir <- if (is.null(output_dir)) tempdir() else output_dir
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -631,8 +631,98 @@
     cache_dir
 }
 
-createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select = NULL,
-                         chunk_size = 100000, sep = "\t") {
+createH5fileFromDf <- function(
+    df, output_h5file = tempfile(fileext = ".h5"),
+    dataset_name = "data", select_columns = NULL,
+    chunk_size = getOption("CMEnt.chunk_size", 1000000)
+) {
+    stopifnot(is.data.frame(df))
+    stopifnot(is.character(output_h5file), length(output_h5file) == 1)
+
+    if (file.exists(output_h5file)) file.remove(output_h5file)
+    .log_step("Creating HDF5 file: ", output_h5file, " for data frame with ", nrow(df), " rows and ", ncol(df), " columns.", level = 4)
+    dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
+    rhdf5::h5createFile(output_h5file)
+
+    header_names <- colnames(df)
+    selected_header_names <- if (is.null(select_columns)) {
+        header_names
+    } else if (is.numeric(select_columns)) {
+        header_names[select_columns]
+    } else {
+        as.character(select_columns)
+    }
+    p <- length(selected_header_names)
+    if (p == 0L) {
+        stop("No columns available to store in HDF5 dataset.")
+    }
+    rhdf5::h5createDataset(
+        file = output_h5file,
+        dataset = dataset_name,
+        dims = c(1L, p),
+        maxdims = c(rhdf5::H5Sunlimited(), p),
+        chunk = c(1L, p),
+        storage.mode = "character",
+        level = 7
+    )
+    rhdf5::h5write(
+        matrix("", nrow = 1L, ncol = p),
+        file = output_h5file,
+        name = dataset_name,
+        index = list(1L, seq_len(p))
+    )
+    rhdf5::h5write(selected_header_names, output_h5file, paste0(dataset_name, "_colnames"))
+
+
+    if (!is.null(select_columns)) {
+        df <- df[, select_columns, drop = FALSE]
+    }
+
+    row_offset <- 0L
+    .log_step("Writing data frame to HDF5 file: ", output_h5file, " in chunks of ", chunk_size, " rows.", level = 4)
+    verbose <- getOption("CMEnt.verbose", 0) >= 4
+    if (verbose) {
+        pb <- utils::txtProgressBar(min = 0, max = nrow(df), style = 3)
+    }
+
+    repeat {
+        subset <- df[(row_offset + 1L):min(nrow(df), row_offset + chunk_size), , drop = FALSE]
+        n_new <- nrow(subset)
+        if (n_new == 0L) {
+            next
+        }
+        mat <- as.matrix(data.frame(lapply(subset, as.character), check.names = FALSE))
+        new_total <- row_offset + n_new
+        if (new_total > 1L) {
+            rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+        }
+
+        idx_rows <- (row_offset + 1L):new_total
+        rhdf5::h5write(
+            mat,
+            file = output_h5file,
+            name = dataset_name,
+            index = list(idx_rows, seq_len(p))
+        )
+
+        row_offset <- new_total
+        if (verbose) {
+            utils::setTxtProgressBar(pb, row_offset)
+        }
+        if (new_total >= nrow(df)) {
+            break
+        }
+    }
+    if (verbose) {
+        close(pb)
+    }
+    rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
+    .log_success("Finished writing data frame to HDF5 file: ", output_h5file, " with ", row_offset, " rows.", level = 4)
+    invisible(output_h5file)
+}
+
+createH5fileFromFile <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select_columns = NULL,
+                         chunk_size = getOption("CMEnt.chunk_size", 1000000), sep = "\t") {
     stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
     stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
@@ -648,12 +738,12 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
         stop("Input file is empty.")
     }
     header_names <- strsplit(header_line, split = sep, fixed = TRUE)[[1]]
-    selected_header_names <- if (is.null(select)) {
+    selected_header_names <- if (is.null(select_columns)) {
         header_names
-    } else if (is.numeric(select)) {
-        header_names[select]
+    } else if (is.numeric(select_columns)) {
+        header_names[select_columns]
     } else {
-        as.character(select)
+        as.character(select_columns)
     }
     p <- length(selected_header_names)
     if (p == 0L) {
@@ -695,8 +785,8 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
             col.names = header_names,
             check.names = FALSE
         )
-        if (!is.null(select)) {
-            df <- df[, select, drop = FALSE]
+        if (!is.null(select_columns)) {
+            df <- df[, select_columns, drop = FALSE]
         }
 
         n_new <- nrow(df)
@@ -744,9 +834,9 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
 }
 
 
-.postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
-    if (!is.null(select)) {
-        df <- df[, select, drop = FALSE]
+.postProcessRegistry <- function(df, select_columns = NULL, rename = NULL, derive = NULL, indices = NULL) {
+    if (!is.null(select_columns)) {
+        df <- df[, select_columns, drop = FALSE]
     }
     if (!is.null(rename)) {
         for (name in names(rename)) {
@@ -784,27 +874,51 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
     df
 }
 
-getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL,
-                        chunk_size = 100000, output_h5file = NULL) {
+getRegistry <- function(obj, indices = NULL, select_columns = NULL, rename = NULL, derive = NULL,
+                        chunk_size = getOption("CMEnt.chunk_size", 1000000), output_h5file = NULL) {
+    if (inherits(obj, "BSseq") && inherits(SummarizedExperiment::assays(obj)$M, "matrix")) {
+        gr <- GenomicRanges::granges(obj)
+        obj <- as.data.frame(gr)
+        obj$end <- obj$start + 1
+    }
     if (is.data.frame(obj)) {
-        return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
+        return(.postProcessRegistry(obj, select_columns = select_columns, rename = rename, derive = derive, indices = indices))
     }
     if (is.null(output_h5file)) {
         output_h5file <- tempfile(fileext = ".h5")
     }
-    createH5file(
-        input_file = obj,
-        output_h5file = output_h5file,
-        dataset_name = "data",
-        select = select,
-        chunk_size = chunk_size
-    )
+    if (inherits(obj, "BSseq")) {
+        .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
+        .log_step("Loading genomic locations from BSseq object into memory.", level = 4)
+        df <- as.data.frame(GenomicRanges::granges(obj))
+        df$end <- df$start + 1
+        .log_success("Finished loading genomic locations from BSseq object into memory.", level = 4)
+        createH5fileFromDf(
+            df = df,
+            output_h5file = output_h5file,
+            dataset_name = "data",
+            select_columns = NULL,
+            chunk_size = chunk_size
+        )
+    } else {
+        .log_info("Input object is a file; creating HDF5 file from input file.", level = 4)
+        createH5fileFromFile(
+            input_file = obj,
+            output_h5file = output_h5file,
+            dataset_name = "data",
+            select_columns = select_columns,
+            chunk_size = chunk_size
+        )
+    }
     da <- HDF5Array::HDF5Array(output_h5file, "data")
     n_rows <- as.integer(rhdf5::h5read(output_h5file, "data_nrows"))
     da <- da[seq_len(n_rows), , drop = FALSE]
     x <- DelayedDataFrame::DelayedDataFrame(da)
     colnames(x) <- rhdf5::h5read(output_h5file, "data_colnames")
-    .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
+    .log_step("Post-processing registry: selecting columns, renaming, deriving new columns, and setting indices.", level = 4)
+    ret <- .postProcessRegistry(x, select_columns = NULL, rename = rename, derive = derive, indices = indices)
+    .log_success("Finished post-processing registry.", level = 4)
+    ret
 }
 
 
@@ -813,21 +927,20 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
 #' @param output_dir Character. Directory used for temporary or explicit derived files.
-#' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string used for deterministic temporary file names.
-#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: getOption("CMEnt.chunk_size", 1000000))
 #' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL,
-                                 chunk_size = 50000, use_id_as_rownames = FALSE,
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, hash = NULL,
+                                 chunk_size = getOption("CMEnt.chunk_size", 1000000), use_id_as_rownames = FALSE,
                                  chrom_col = "#chrom", start_col = "start",
                                  output_h5file = NULL) { # nolint
     renaming <- c("chr", "start")
     names(renaming) <- c(chrom_col, start_col)
     if (is.null(output_h5file)) {
         temp_cache <- is.null(output_dir)
-        output_dir <- .getTabixCacheDir(output_dir)
+        output_dir <- .getCacheDir(output_dir)
         if (is.null(hash)) {
             hash <- .getFileHash(input_tabix)
         }
@@ -840,7 +953,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     if (!use_id_as_rownames) {
         sorted_locs <- getRegistry(
             input_tabix,
-            select = c(chrom_col, start_col),
+            select_columns = c(chrom_col, start_col, "end"),
             rename = renaming,
             derive = list(
                 index = list(
@@ -855,13 +968,71 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     } else {
         sorted_locs <- getRegistry(
             input_tabix,
-            select = c(chrom_col, start_col, "end", "id"),
+            select_columns = c(chrom_col, start_col, "end", "id"),
             rename = renaming,
             indices = "id",
             chunk_size = chunk_size,
             output_h5file = output_h5file
         )
     }
+    sorted_locs
+}
+
+
+#' Create Genomic Location Registry from bsseq Object
+#'
+#' @description 
+#' If the bsseq object is memory-backed, it extracts the genomic locations directly from the object.
+#' If not, it extracts the genomic locations and stores them in an HDF5 file for memory-efficient access.
+#' @param input_bsseq bsseq The bsseq object.
+#' @param output_dir Character. Directory used for temporary or explicit derived files.
+#' @param hash Character. Hash string used for deterministic temporary file names.
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: getOption("CMEnt.chunk_size", 1000000))
+#' @return Returns a DelayedDataFrame object
+#' @keywords internal
+#' @noRd
+genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
+                                 output_h5file = NULL) { # nolint
+    # If bsseq is memory backed, we extract the genomic locations directly from the bsseq object into memory.
+    if (inherits(input_bsseq, "BSseq") && inherits(assays(input_bsseq)$M, "matrix")) {
+        .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
+        gr <- granges(input_bsseq)
+        df <- as.data.frame(gr)[, c("seqnames", "start")]
+        colnames(df) <- c("chr", "start")
+        df[,'end'] <- df$start + 1
+        df$index <- paste0(df$chr, ":", df$start)
+        rownames(df) <- df$index
+        return(df)
+    }
+
+    if (is.null(output_h5file)) {
+        temp_cache <- is.null(output_dir)
+        output_dir <- .getCacheDir(output_dir)
+        if (is.null(hash)) {
+            hash <- .getFileHash(DelayedArray::path(assays(input_bsseq)$M))
+        }
+        output_h5file <- if (temp_cache) {
+            tempfile(paste0("bed_locations_", hash, "_"), tmpdir = output_dir, fileext = ".h5")
+        } else {
+            file.path(output_dir, paste0("bed_locations_", hash, ".h5"))
+        }
+    }
+    renaming <- c("chr", "start")
+    names(renaming) <- c("seqnames", "start")
+    # If bsseq is not memory backed, we extract the genomic locations from the bsseq object and store them in an HDF5 file for efficient access.
+    sorted_locs <- getRegistry(
+        input_bsseq,
+        select_columns = c("seqnames", "start", "end"),
+        rename = renaming,
+        derive = list(
+            index = list(
+                cols = c("chr", "start"),
+                fun = function(chr, start) paste0(chr, ":", start)
+            )
+        ),
+        indices = "index",
+        output_h5file = output_h5file
+    )
     sorted_locs
 }
 
@@ -2224,7 +2395,7 @@ orderByLoc <- function(x,
         return(gr)
     }
     chr_prefix_added <- FALSE
-    if ("chr_prefix_added" %in% names(mcols(gr))) {
+    if ("chr_prefix_added" %in% names(S4Vectors::mcols(gr))) {
         chr_prefix_added <- TRUE
     }
     df <- as.data.frame(gr, stringsAsFactors = FALSE)
@@ -2282,7 +2453,17 @@ orderByLoc <- function(x,
 #' @keywords internal
 #' @noRd
 .decodeSerializedOutputColumns <- function(df) {
-    stopifnot(is.data.frame(df))
+    if (!is.data.frame(df)) {
+        try(df <- as.data.frame(df, stringsAsFactors = FALSE), silent = TRUE)
+    }
+    if (!is.data.frame(df)) {
+        stop(
+            "Input must be a data.frame or coercible to a data.frame. ", 
+            "Unable to coerce input of class: ",
+            paste(class(df), collapse = ", "),
+            call. = FALSE
+        )
+    }
 
     serialized_columns <- names(df)[vapply(df, .isSerializedOutputColumn, logical(1))]
     if (length(serialized_columns) == 0L) {

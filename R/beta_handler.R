@@ -92,11 +92,12 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 stop("Provided beta file does not exist: ", beta)
             }
             if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta)) && !is_bsseq(beta)) {
-                if (is.null(array)) {
+                beta_row_names_are_array_ids <- !grepl("chr", row.names(beta)[1])
+                if (is.null(array) && beta_row_names_are_array_ids) {
                     stop("array must be provided when beta row names are array probe IDs and sorted_locs is not provided.", call. = FALSE)
                 }
-                if (is.null(genome)) {
-                    stop("genome must be provided when array annotations are needed and sorted_locs is not provided.", call. = FALSE)
+                if (is.null(genome) && beta_row_names_are_array_ids) {
+                    stop("genome must be provided when beta row names are array probe IDs and sorted_locs is not provided.", call. = FALSE)
                 }
                 array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
                 self$array <- array
@@ -129,13 +130,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 self$beta <- NULL
                 gr <- granges(private$.bsseq_object)
                 .log_step("Constructing sorted_locs delayed data frame..", level = 3)
-                sorted_locs <- data.frame(
-                    chr = as.character(seqnames(gr)),
-                    start = start(gr),
-                    end = end(gr),
-                    stringsAsFactors = FALSE
+                sorted_locs <- genomicLocsFromBsseq(
+                    input_bsseq = private$.bsseq_object,
+                    output_h5file = .getDerivedOutputPath(output_prefix, ".input_bsseq.locations.h5")
                 )
-                rownames(sorted_locs) <- paste0(sorted_locs$chr, ":", sorted_locs$start)
                 .log_success("Constructed sorted_locs delayed data frame..", level = 3)
 
                 .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " sites", level = 2)

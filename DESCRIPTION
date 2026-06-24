@@ -143,6 +143,7 @@ Collate:
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
     'read_custom_methylation_bed_data.R'
+    'reduce_bsseq_around_seeds.R'
     'shiny_app.R'
     'shiny_modules.R'
     'score_dmrs.R'

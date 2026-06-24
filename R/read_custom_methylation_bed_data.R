@@ -19,7 +19,7 @@
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
 #'   a temporary working directory unless `output_prefix` is provided (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
-#'   efficiency (default: 50000)
+#'   efficiency (default: getOption("CMEnt.chunk_size", 1000000)). This allows processing of large BED files without loading the entire dataset into memory.
 #' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
 #'   artifacts next to analysis outputs.
 #' @param njobs Integer. Number of jobs to use after normalization. On Unix-like
@@ -78,7 +78,7 @@
 #'
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
+                                         start_col = "start", output_dir = NULL, chunk_size = getOption("CMEnt.chunk_size", 1000000),
                                          output_prefix = NULL, njobs = 1L) {
     njobs <- suppressWarnings(as.integer(njobs)[1L])
     if (is.na(njobs) || njobs < 1L) {
@@ -86,7 +86,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     }
     tabix_available <- .tabixToolsAvailable()
 
-    cache_dir <- .getTabixCacheDir(output_dir)
+    cache_dir <- .getCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -193,7 +193,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     build_locations <- function() {
         getRegistry(
             normalized_bed_file,
-            select = c("#chrom", "start"),
+            select_columns = c("#chrom", "start"),
             rename = c("#chrom" = "chr", start = "start"),
             derive = list(
                 index = list(

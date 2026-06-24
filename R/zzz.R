@@ -18,6 +18,7 @@
 }
 
 .updateCMEntOption("CMEnt.njobs", .defaultNJobs())
+.updateCMEntOption("CMEnt.chunk_size", 1000000)
 .updateCMEntOption("CMEnt.beta_in_mem_threshold_mb", 500)
 .updateCMEntOption("CMEnt.verbose", 1)
 

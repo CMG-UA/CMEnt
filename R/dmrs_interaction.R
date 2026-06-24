@@ -392,7 +392,7 @@ extractDMRMotifs <- function(
         start_locs <- beta_locs_start[dmr_seeds]
         valid_start_locs <- !is.na(start_locs)
         if (!all(valid_start_locs)) {
-            .log_warn(sum(!valid_start_locs), " seed(s) were missing genomic locations and were ignored in DMR motif extraction.")
+            .log_warn(sum(!valid_start_locs), " seed(s) were missing genomic locations and were ignored in DMR motif extraction. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
             start_locs <- start_locs[valid_start_locs]
         }
         if (length(start_locs) == 0) {
@@ -408,14 +408,14 @@ extractDMRMotifs <- function(
         site_seqs <- substring(sequence, seq_site_inds - motif_site_flank_size, seq_site_inds + motif_site_flank_size + 1)
         valid_site_seqs <- !is.na(site_seqs) & nchar(site_seqs) == expected_len
         if (!all(valid_site_seqs)) {
-            .log_warn(sum(!valid_site_seqs), " motif windows had unexpected length and were ignored for one DMR.")
+            .log_warn(sum(!valid_site_seqs), " motif windows had unexpected length and were ignored for one DMR. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
             site_seqs <- site_seqs[valid_site_seqs]
         }
         site_seqs <- .normalizeMotifSiteSequences(site_seqs, motif_site_flank_size)
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {
-            .log_warn(sum(!valid_site_center), " motif window(s) were not centered on C and were ignored for one DMR.")
+            .log_warn(sum(!valid_site_center), " motif window(s) were not centered on C and were ignored for one DMR. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
             site_seqs <- site_seqs[valid_site_center]
         }
         if (length(site_seqs) == 0) {
