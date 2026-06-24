@@ -65,3 +65,8 @@ notebooks/metastudy_cache
 notebooks/*.html
 dmps.rds
 publication/*
+notebooks/cached_results/ont/downloaded
+notebooks/cached_results/ont/h5
+notebooks/cached_results/ont/input_h5
+
+notebooks/cached_results/ont/dmps.rds

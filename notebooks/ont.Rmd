@@ -1,0 +1,213 @@
+---
+title: "CMEnt Analysis of ONT Methylation Data"
+subtitle: "Biological interpretation of GSE63409"
+author: "CMEnt Package"
+date: "`r Sys.Date()`"
+output: 
+    BiocStyle::html_document:
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+try(devtools::load_all(), silent = TRUE)
+suppressPackageStartupMessages({
+    library(curl)
+    library(GenomicRanges)
+    library(GEOquery)
+    library(SummarizedExperiment)
+    library(data.table)
+    library(bsseq)
+    library(HDF5Array)
+})
+
+
+getBenchmarkFile <- function(filename) {
+    benchmark_file <- ""
+    folder <- "ont"
+    if (getwd() == "notebooks") {
+        benchmark_file <- file.path("cached_results", folder, filename)
+    } else if ("NAMESPACE" %in% dir()) {
+        benchmark_file <- file.path("notebooks", "cached_results", folder, filename)
+    } else {
+        benchmark_file <- file.path("cached_results", folder, filename)
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
+```
+Downloading and parsing the GEO dataset samplesheet. 
+We select 2 cancers, 5 samples of Pilocytic astrocytoma, a benign cancer,
+and 21 samples of Glioblastoma, IDH-wildtype, an aggressive cancer, all sequenced with PromethION with the R10.4.1 chemistry.
+```{r samplesheet_creation}
+URL <- "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE289nnn/GSE289246/soft/GSE289246_family.soft.gz"
+samplesheet_file <- getBenchmarkFile("samplesheet.tsv")
+if (!file.exists(samplesheet_file)) {
+    message("Downloading and parsing the GEO dataset samplesheet: ", URL)
+    soft_file <- getBenchmarkFile("GSE289246_family.soft.gz")
+    if (!file.exists(soft_file)) {
+        curl::curl_download(URL, soft_file)
+    }
+    soft_data <- getGEO(filename = soft_file)
+    gsms <- attr(soft_data, "gsms")
+    samplesheet <- list()
+    colnames <- unique(unlist(sapply(names(gsms), function(x) names(attr(gsms[[x]], "header")))))
+    for (gsm in names(gsms)) {
+        samplesheet[[gsm]] <- sapply(
+            attr(gsms[[gsm]], "header"), function(x) {
+                if (length(x) > 1) {
+                    x <- paste(x, collapse = "; ")
+                    x <- gsub("\\s+", " ", x)
+                }
+                x
+            }
+        )
+        missing_cols <- setdiff(colnames, names(samplesheet[[gsm]]))
+        if (length(missing_cols) > 0) {
+            samplesheet[[gsm]][missing_cols] <- NA
+            samplesheet[[gsm]] <- samplesheet[[gsm]][colnames]
+        }
+    }
+    samplesheet <- do.call(rbind, samplesheet)
+    pheno <- samplesheet[samplesheet[, "library_strategy"] == "OTHER", ]
+    instrument_models <- table(pheno[, "instrument_model"])
+    pheno <- pheno[pheno[, "instrument_model"] == "PromethION", ]
+    case1 <- "tissue: tumor; tumor type: Pilocytic astrocytoma"
+    case2 <- "tissue: tumor; tumor type: Glioblastoma, IDH-wildtype"
+    pheno <- pheno[pheno[, "characteristics_ch1"] %in% c(case1, case2), ]
+    unlink(soft_file)
+    write.table(pheno, samplesheet_file, row.names = TRUE, col.names = NA, sep = "\t", quote = FALSE)
+} else {
+    pheno <- read.table(samplesheet_file, header = TRUE, sep = "\t", quote="", stringsAsFactors = FALSE, check.names = FALSE)
+}
+```
+```{r bsseq_creation}
+input_bsseq_h5 <- getBenchmarkFile("input_h5")
+if (file.exists(input_bsseq_h5)) {
+    message("Loading BSseq object from ", input_bsseq_h5)
+    bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(input_bsseq_h5)
+} else {
+
+
+    source_bed_files <- pheno[, "supplementary_file_1"]
+    names(source_bed_files) <- rownames(pheno)
+    target_bed_files <- sapply(names(source_bed_files), function(x) {
+        getBenchmarkFile(file.path("downloaded", paste0(x, ".bed.gz")))
+    })
+    # download the bed files to the raw_data directory
+    for (sample_name in names(source_bed_files)) {
+        if (!file.exists(target_bed_files[[sample_name]])) {
+            message("Downloading ", source_bed_files[[sample_name]])
+            curl::curl_download(source_bed_files[[sample_name]], target_bed_files[[sample_name]])
+        }
+    }
+
+    # Extract the methylation data from the bed files and create a BSseq object
+    bsseq_objects <- list()
+    progress_bar <- txtProgressBar(min = 0, max = length(target_bed_files), style = 3)
+    target_h5_dirs <- sapply(names(target_bed_files), function(x) {
+        getBenchmarkFile(file.path("h5", paste0(x)))
+    })
+    for (sample_name in names(target_bed_files)) {
+        target_h5_folder <- target_h5_dirs[[sample_name]]
+        if (file.exists(file.path(target_h5_folder, "assays.h5"))) {
+            setTxtProgressBar(progress_bar, which(names(target_bed_files) == sample_name))
+            next
+        }
+        bed_file <- target_bed_files[[sample_name]]
+        df <- data.table::fread(bed_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+        if (!exists("gr_list")) {
+            gr_list <- list()
+        }
+        gr <- GRanges(
+            seqnames = df$chrom,
+            ranges = IRanges(start = df$start, end = df$end),
+            strand = "*"
+        )
+        M <- as.matrix(as.integer(df$percentMeth * df$coverage / 100))
+        Cov <- as.matrix(as.integer(df$coverage))
+
+        bsseq_obj <- BSseq(
+            gr = gr,
+            M = M,
+            Cov = Cov,
+            sampleNames = sample_name
+        )
+        HDF5Array::saveHDF5SummarizedExperiment(bsseq_obj, dir = target_h5_folder)
+        setTxtProgressBar(progress_bar, which(names(target_bed_files) == sample_name))
+    }
+
+    bsseq_objects <- list()
+    for (sample_name in names(target_bed_files)) {
+        target_h5_folder <- target_h5_dirs[[sample_name]]
+        bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(target_h5_folder)
+        bsseq_objects[[sample_name]] <- bsseq_obj
+    }
+    suppressWarnings({
+        bsseq_obj <- do.call(bsseq::combineList, list(bsseq_objects, BACKEND = "HDF5Array"))
+    })
+    HDF5Array::saveHDF5SummarizedExperiment(bsseq_obj, dir = input_bsseq_h5)
+    bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(input_bsseq_h5)
+}
+```
+```{r seeds_calculation}
+seeds_file <- getBenchmarkFile("seeds.rds")
+if (!file.exists(seeds_file)) {
+    dmps_file <- getBenchmarkFile("dmps.rds")
+    if (!file.exists(dmps_file)) {
+        message("Calculating DMPs...")
+        pheno <- as.data.frame(pheno)
+        pheno$Sample_ID <- rownames(pheno)
+        dmps <- CMEnt::findDMPsBSSeq(bsseq_obj, samplesheet = pheno, sample_group_col = "characteristics_ch1")
+        saveRDS(dmps, dmps_file)
+    } else {
+        message("Loading DMPs from ", dmps_file)
+        dmps <- readRDS(dmps_file)
+    }
+    seeds <- dmps[dmps$pval < 0.05, ]
+    saveRDS(seeds, seeds_file)
+} else {
+    seeds <- readRDS(seeds_file)
+}
+rownames(seeds) <- seeds$site_id
+seeds$Row.names <- NULL
+seed_dist <- unlist(lapply(split(seeds$start, seeds$chr), function(x) {
+    if (length(x) < 2) return(numeric(0))
+    diff(x)
+}))
+seeds_qs <- round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)))
+cat(sprintf("Number of seeds for CMEnt: %d\n", nrow(seeds)))
+knitr::kable(
+    seeds_qs,
+    digits = 2,
+    col.names = "Distance (bp)",
+    caption = sprintf("Seed distance quantiles")
+)
+cat("BSseq object dimensions: ", dim(bsseq_obj), "\n")
+```
+```{r}
+# Reduce the BSseq object around the seeds with the specified expansion window,
+# so that to minimize memory usage and speed up the DMR building process.
+reduced_bsseq_obj <- CMEnt::reduceBSseqAroundSeeds(bsseq_obj, seeds, expansion_window = 10000)
+cat("Reduced BSseq object dimensions: ", dim(reduced_bsseq_obj), "\n")
+dmrs <- CMEnt::buildDMRs(
+    reduced_bsseq_obj,
+    seeds,
+    pheno,
+    genome = "hg19", # The authors of the original study used hg19
+    sample_group_col = "characteristics_ch1",
+    entanglement  = "weak",
+    testing_mode  = "parametric",
+    expansion_window = 10000, # The maximum distance (in bp) to expand the DMRs from the seeds
+    min_seeds = 2, # The minimum number of seeds required to form a DMR
+    min_sites = 50, # The minimum number of sites required to form a DMR
+    max_pval = 0.05,
+    ext_site_delta_beta = 0.1,
+    max_lookup_dist = 1000,
+    njobs = min(8, parallel::detectCores() - 1),
+    verbose = 2
+)
+```
+
+```{r}
+sessionInfo()
+```
