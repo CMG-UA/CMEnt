@@ -2379,12 +2379,12 @@ plotDMRsManhattan <- function(dmrs,
     }
     subtitle <- if (length(subtitle_parts) > 0) paste(subtitle_parts, collapse = " | ") else NULL
     if (add_hover_text) {
-        point_aes <- ggplot2::aes(text = hover_text, size = point_size, alpha = point_alpha, stroke = 0)
+        point_aes <- ggplot2::aes(text = hover_text)
     } else {
-        point_aes <- ggplot2::aes(size = point_size, alpha = point_alpha, stroke = 0)
+        point_aes <- NULL
     }
     p <- p +
-        suppressWarnings(ggplot2::geom_point(mapping = point_aes)) +
+        suppressWarnings(ggplot2::geom_point(mapping = point_aes, size = point_size, alpha = point_alpha, stroke = 0)) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(
