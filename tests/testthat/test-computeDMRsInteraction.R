@@ -424,6 +424,55 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
     expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 2L), "CG")
 })
 
+test_that("extractDMRMotifs rescues BED-style zero-based CpG starts", {
+    motif_site_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_site = "chr1:109",
+        end_site = "chr1:129",
+        start_seed = "chr1:109",
+        end_seed = "chr1:129",
+        seeds = "chr1:109,chr1:129",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(109L, 129L),
+        end = c(110L, 130L),
+        row.names = c("chr1:109", "chr1:129"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    c_positions <- beta_locs$start + 1L - dmrs$start + 1L + motif_site_flank_size
+    seq_chars[c_positions] <- "C"
+    seq_chars[c_positions + 1L] <- "G"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    out <- expect_warning(
+        extractDMRMotifs(
+            dmrs,
+            genome = "hg38",
+            array = NULL,
+            beta_locs = beta_locs,
+            motif_site_flank_size = motif_site_flank_size
+        ),
+        NA
+    )
+
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACGAAAAA")
+})
+
 test_that("extractDMRMotifs ignores seed windows not centered on C", {
     motif_site_flank_size <- 5L
     dmrs <- data.frame(

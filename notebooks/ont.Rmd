@@ -82,6 +82,15 @@ if (!file.exists(samplesheet_file)) {
 ```
 ```{r bsseq_creation}
 input_bsseq_h5 <- getBenchmarkFile("input_h5")
+coord_cache_marker <- getBenchmarkFile(".bedmethyl_1based_coords")
+if (!file.exists(coord_cache_marker)) {
+    unlink(c(
+        input_bsseq_h5,
+        getBenchmarkFile("h5"),
+        getBenchmarkFile("dmps.rds"),
+        getBenchmarkFile("seeds.rds")
+    ), recursive = TRUE)
+}
 if (file.exists(input_bsseq_h5)) {
     message("Loading BSseq object from ", input_bsseq_h5)
     bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(input_bsseq_h5)
@@ -120,7 +129,7 @@ if (file.exists(input_bsseq_h5)) {
         }
         gr <- GRanges(
             seqnames = df$chrom,
-            ranges = IRanges(start = df$start, end = df$end),
+            ranges = IRanges(start = df$start + 1L, end = df$end),
             strand = "*"
         )
         M <- as.matrix(as.integer(df$percentMeth * df$coverage / 100))
@@ -146,6 +155,7 @@ if (file.exists(input_bsseq_h5)) {
         bsseq_obj <- do.call(bsseq::combineList, list(bsseq_objects, BACKEND = "HDF5Array"))
     })
     HDF5Array::saveHDF5SummarizedExperiment(bsseq_obj, dir = input_bsseq_h5)
+    writeLines("bedMethyl starts converted to 1-based GRanges coordinates", coord_cache_marker)
     bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(input_bsseq_h5)
 }
 ```

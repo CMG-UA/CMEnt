@@ -304,6 +304,40 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 }
 
 
+.extractMotifSiteSequences <- function(sequence, seq_site_inds, motif_site_flank_size) {
+    expected_len <- 2L * motif_site_flank_size + 2L
+    center_idx <- motif_site_flank_size + 1L
+    next_idx <- center_idx + 1L
+    extract_at <- function(center_inds) {
+        substring(sequence, center_inds - motif_site_flank_size, center_inds + motif_site_flank_size + 1L)
+    }
+
+    site_seqs <- extract_at(seq_site_inds)
+    center_base <- toupper(substr(site_seqs, center_idx, center_idx))
+    needs_rescue <- !is.na(site_seqs) & nchar(site_seqs) == expected_len & center_base != "C"
+    if (!any(needs_rescue)) {
+        return(site_seqs)
+    }
+
+    rescue_idx <- which(needs_rescue)
+    for (offset in c(1L, -1L)) {
+        candidates <- extract_at(seq_site_inds[rescue_idx] + offset)
+        valid <- !is.na(candidates) &
+            nchar(candidates) == expected_len &
+            toupper(substr(candidates, center_idx, center_idx)) == "C" &
+            toupper(substr(candidates, next_idx, next_idx)) == "G"
+        if (any(valid)) {
+            site_seqs[rescue_idx[valid]] <- candidates[valid]
+            rescue_idx <- rescue_idx[!valid]
+            if (length(rescue_idx) == 0L) {
+                break
+            }
+        }
+    }
+    site_seqs
+}
+
+
 #' Extract DMR Motif Frequencies
 #'
 #' @description Extracts motif frequencies around site sites within DMRs.
@@ -410,7 +444,7 @@ extractDMRMotifs <- function(
         # first seed. DMRs can extend upstream of their first seed.
         start_loc_base <- GenomicRanges::start(dmrs)[[i]]
         seq_site_inds <- start_locs - start_loc_base + 1 + motif_site_flank_size
-        site_seqs <- substring(sequence, seq_site_inds - motif_site_flank_size, seq_site_inds + motif_site_flank_size + 1)
+        site_seqs <- .extractMotifSiteSequences(sequence, seq_site_inds, motif_site_flank_size)
         valid_site_seqs <- !is.na(site_seqs) & nchar(site_seqs) == expected_len
         if (!all(valid_site_seqs)) {
             .log_warn(
