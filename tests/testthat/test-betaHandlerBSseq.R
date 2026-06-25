@@ -97,6 +97,27 @@ test_that("BetaHandler can extract beta values from BSseq object", {
     expect_equal(beta_values, expected_beta, tolerance = 1e-6)
 })
 
+test_that("BetaHandler returns NA for zero-coverage BSseq beta values", {
+    cov <- matrix(c(10L, 0L, 8L, 0L), nrow = 2)
+    met <- matrix(c(5L, 0L, 4L, 0L), nrow = 2)
+    gr <- GRanges(
+        seqnames = rep("chr1", 2),
+        ranges = IRanges(start = c(1000L, 1100L), width = 1)
+    )
+    names(gr) <- paste(seqnames(gr), start(gr), sep = ":")
+    bsseq_obj <- BSseq(
+        M = met,
+        Cov = cov,
+        gr = gr,
+        sampleNames = c("Sample1", "Sample2")
+    )
+
+    beta_values <- getBetaHandler(beta = bsseq_obj)$getBeta()
+
+    expect_equal(beta_values[1, ], c(Sample1 = 0.5, Sample2 = 0.5), tolerance = 1e-8)
+    expect_true(all(is.na(beta_values[2, ])))
+})
+
 test_that("BetaHandler can subset beta values from BSseq object by row names", {
     set.seed(123)
     n_loci <- 50

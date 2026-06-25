@@ -927,6 +927,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 beta_subset <- as.matrix(
                     m_assay[row_idx, col_idx, drop = FALSE] / cov_assay[row_idx, col_idx, drop = FALSE]
                 )
+                beta_subset[!is.finite(beta_subset)] <- NA_real_
                 rownames(beta_subset) <- selected_row_names
                 colnames(beta_subset) <- selected_col_names
             }

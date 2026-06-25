@@ -1889,7 +1889,7 @@
         case_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
         control_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         delta_betas <- case_betas - control_betas
-        high_delta <- !is.na(delta_betas) & abs(delta_betas) >= ext_site_delta_beta & nexdist_mask
+        high_delta <- is.finite(delta_betas) & abs(delta_betas) >= ext_site_delta_beta & nexdist_mask
         connected[high_delta] <- TRUE
         reasons[high_delta] <- "abs(delta_beta)>=ext_site_delta_beta"
     }
@@ -2231,6 +2231,50 @@
 
 #' @keywords internal
 #' @noRd
+.safeFiniteAgg <- function(x, aggfun) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    as.numeric(aggfun(x, na.rm = TRUE))
+}
+
+#' @keywords internal
+#' @noRd
+.safeFiniteMin <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    min(x)
+}
+
+#' @keywords internal
+#' @noRd
+.safeFiniteMax <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    max(x)
+}
+
+#' @keywords internal
+#' @noRd
+.signedFiniteAgg <- function(x, aggfun) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    .safeFiniteAgg(abs(x), aggfun) * sign(sum(sign(x)))
+}
+
+#' @keywords internal
+#' @noRd
 .aggregateDMRBetaStatsChunk <- function(beta_stats_chunk, aggfun) {
     if (is.null(beta_stats_chunk) || nrow(beta_stats_chunk) == 0L) {
         return(data.frame(
@@ -2246,14 +2290,14 @@
         ))
     }
     as.data.frame(data.table::as.data.table(beta_stats_chunk)[, .(
-        cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
-        controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
-        cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
-        controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
-        cases_beta_min = min(cases_beta, na.rm = TRUE),
-        cases_beta_max = max(cases_beta, na.rm = TRUE),
-        controls_beta_min = min(controls_beta, na.rm = TRUE),
-        controls_beta_max = max(controls_beta, na.rm = TRUE)
+        cases_beta = .signedFiniteAgg(cases_beta, aggfun),
+        controls_beta = .signedFiniteAgg(controls_beta, aggfun),
+        cases_beta_sd = .safeFiniteAgg(cases_beta_sd, aggfun),
+        controls_beta_sd = .safeFiniteAgg(controls_beta_sd, aggfun),
+        cases_beta_min = .safeFiniteMin(cases_beta),
+        cases_beta_max = .safeFiniteMax(cases_beta),
+        controls_beta_min = .safeFiniteMin(controls_beta),
+        controls_beta_max = .safeFiniteMax(controls_beta)
     ), by = dmr_id])
 }
 
