@@ -19,7 +19,8 @@
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
 #'   a temporary working directory unless `output_prefix` is provided (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
-#'   efficiency (default: getOption("CMEnt.chunk_size", 1000000)). This allows processing of large BED files without loading the entire dataset into memory.
+#'   efficiency (default: getOption("CMEnt.chunk_size", 1000000)).
+#'   This allows processing of large BED files without loading the entire dataset into memory.
 #' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
 #'   artifacts next to analysis outputs.
 #' @param njobs Integer. Number of jobs to use after normalization. On Unix-like
@@ -108,7 +109,10 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     required_cols <- c(chrom_col, start_col)
     missing_cols <- setdiff(required_cols, bed_header)
     if (length(missing_cols) > 0) {
-        stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
+        stop(
+            "Missing required columns in BED file: ", paste(missing_cols, collapse = ", "),
+            ". Available columns: ", paste(bed_header, collapse = ", ")
+        )
     }
     sample_ids <- rownames(pheno)
     existing_ids <- intersect(sample_ids, bed_header)
@@ -121,7 +125,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     }
     if (length(id_mapping) < length(sample_ids)) {
         missing_ids <- setdiff(sample_ids, bed_header)
-        .log_warn(length(missing_ids), " out of ", length(sample_ids), " sample IDs were not found in the BED file header and will be ignored. The IDs are: ", paste(missing_ids, collapse = ", "))
+        .log_warn(
+            length(missing_ids), " out of ", length(sample_ids),
+            " sample IDs were not found in the BED file header and will be ignored. The IDs are: ",
+            paste(missing_ids, collapse = ", ")
+        )
     }
 
     # Quickly read number of rows in BED file

@@ -1,20 +1,29 @@
 #' Find DMPs using DSS on BSseq objects
 #'
-#' This helper function identifies differentially methylated positions (DMPs) from a BSseq object using the DSS package. It allows for flexible specification of sample groups, covariates, and chromosome filtering.
+#' This helper function identifies differentially methylated positions (DMPs)
+#'  from a BSseq object using the DSS package. It allows for flexible specification of sample groups,
+#'  covariates, and chromosome filtering.
 #'
 #' @param bsseq A BSseq object or a file path to a saved BSseq object (RDS format).
-#' @param samplesheet A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.
+#' @param samplesheet A data frame or a file path to a tab-delimited text file containing sample
+#'  metadata. Must include columns for sample IDs and group labels.
 #' @param samplesheet_sep The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").
 #' @param sample_group_col Required name of the column in the samplesheet that contains the group labels for comparison.
 #' @param id_col The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".
-#' @param chr A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
-#' @param case_group The specific group label in the sample_group_col to treat as the "case" group for comparison. If NULL, the first unique group in sample_group_col will be used as the case group. Default is NULL.
-#' @param covariates A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).
-#' @param output_file An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
+#' @param chr A character vector of chromosome names to include in the analysis, or "auto" to
+#'  automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".
+#' @param case_group The specific group label in the sample_group_col to treat as the "case" group
+#'  for comparison. If NULL, the first unique group in sample_group_col will be used as the case group.
+#'  Default is NULL.
+#' @param covariates A character vector of additional covariate column names from the samplesheet to
+#'  include in the DSS model, or a comma-separated string of covariate names.
+#'  Default is NULL (no additional covariates).
+#' @param output_file An optional file path to save the DMP results as a tab-delimited text file.
+#'  If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).
 #' @param njobs The number of parallel jobs to use for chromosome-level analysis. Default is 1.
 #'
 #' @return A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
-#' 
+#'
 #' @examples
 #' if (requireNamespace("bsseqData", quietly = TRUE) &&
 #'     requireNamespace("DSS", quietly = TRUE)) {
@@ -213,10 +222,9 @@ findDMPsBSSeq <- function(
                 BPPARAM = bp_param
             ),
             error = function(e) {
-                warning(
+                .log_warn(
                     "Parallel DSS chromosome processing failed; retrying serially. Original condition: ",
-                    conditionMessage(e),
-                    call. = FALSE
+                    conditionMessage(e)
                 )
                 lapply(bsseq_by_chr, run_dss_for_chr)
             }

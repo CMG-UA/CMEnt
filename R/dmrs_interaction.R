@@ -55,7 +55,7 @@
     idxs[!is.na(idxs)]
 }
 
-.serializeDMRInteractionComponentsForStorage <- function(components_df) {
+.serializeDMRIntComps <- function(components_df) {
     if (!is.data.frame(components_df) || nrow(components_df) == 0) {
         return(components_df)
     }
@@ -312,7 +312,8 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' the DMR metadata.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and site indices
 #' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC").
+#'  Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site (default: 5)
@@ -392,7 +393,11 @@ extractDMRMotifs <- function(
         start_locs <- beta_locs_start[dmr_seeds]
         valid_start_locs <- !is.na(start_locs)
         if (!all(valid_start_locs)) {
-            .log_warn(sum(!valid_start_locs), " seed(s) were missing genomic locations and were ignored in DMR motif extraction. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
+            .log_warn(
+                sum(!valid_start_locs), " seed(s) were missing genomic locations",
+                " and were ignored in DMR motif extraction. (Genome used: ",
+                genome, "; array: ", array, ")"
+            )
             start_locs <- start_locs[valid_start_locs]
         }
         if (length(start_locs) == 0) {
@@ -408,14 +413,22 @@ extractDMRMotifs <- function(
         site_seqs <- substring(sequence, seq_site_inds - motif_site_flank_size, seq_site_inds + motif_site_flank_size + 1)
         valid_site_seqs <- !is.na(site_seqs) & nchar(site_seqs) == expected_len
         if (!all(valid_site_seqs)) {
-            .log_warn(sum(!valid_site_seqs), " motif windows had unexpected length and were ignored for one DMR. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
+            .log_warn(
+                sum(!valid_site_seqs),
+                " motif windows had unexpected length and were ignored ",
+                "for one DMR. (Genome used: ", genome, "; array: ", array, ")"
+            )
             site_seqs <- site_seqs[valid_site_seqs]
         }
         site_seqs <- .normalizeMotifSiteSequences(site_seqs, motif_site_flank_size)
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {
-            .log_warn(sum(!valid_site_center), " motif window(s) were not centered on C and were ignored for one DMR. (Genome used: ", genome, "; array: ", array, ")", call. = FALSE)
+            .log_warn(
+                sum(!valid_site_center),
+                " motif window(s) were not centered on C and were ignored",
+                " for one DMR. (Genome used: ", genome, "; array: ", array, ")"
+            )
             site_seqs <- site_seqs[valid_site_center]
         }
         if (length(site_seqs) == 0) {
@@ -492,7 +505,8 @@ extractDMRMotifs <- function(
 #' and returns a data frame of interactions. Assigns directionality based on score, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only
+#'  when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
@@ -500,7 +514,8 @@ extractDMRMotifs <- function(
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
 #' @param min_component_size Integer. Minimum size of connected components to consider (default: 2)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
-#' @param output_prefix Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)
+#' @param output_prefix Character. Prefix for output files to save interactions
+#'  and components (optional). If NULL, results are not saved to file (default: NULL)
 #' @param plot_dir Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)
 #' @return A list with:
 #' \itemize{
@@ -727,7 +742,7 @@ computeDMRsInteraction <- function(
             paste0(output_prefix, ".dmr_interactions.tsv")
         )
         .writeTabularOutputAtomic(
-            .serializeDMRInteractionComponentsForStorage(components_df),
+            .serializeDMRIntComps(components_df),
             paste0(output_prefix, ".dmr_components.tsv")
         )
     }

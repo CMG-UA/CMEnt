@@ -67,9 +67,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Create a new BetaHandler object
         #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
         #' @param array Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
-        #' @param genome Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
-        #' @param beta_row_names_file Path to row names file. If NULL, row names will be read from input `beta`.
-        #' @param sorted_locs Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically
+        #' @param genome Reference genome version, eg. hg38 or hs1.
+        #'  Only human and mouse genomes are supported.
+        #'  Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.
+        #' @param beta_row_names_file Path to row names file.
+        #'  If NULL, row names will be read from input `beta`.
+        #' @param sorted_locs Sorted genomic locations data frame.
+        #'  If given, the input data will be assumed already sorted.
+        #'  If NULL, will be inferred from the input.
         #' @param chrom_col Chromosome column name in tabix file
         #' @param start_col Start position column name in tabix file
         #' @param output_prefix Prefix used for saving derived beta artifacts
@@ -397,8 +402,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         genomic_locs = sorted_locs
                     )
                 ] == beta_row_names)) {
-                    warning("Provided beta file is not sorted by position. Sorting to a new temporary file for downstream use. This may take a while for large files")
-                    warning("Consider running sortBetaFileByCoordinates() on the original file and providing the sorted file to avoid this overhead in the future.")
+                    .log_warn(
+                        "Provided beta file is not sorted by position.",
+                        " Sorting to a new temporary file for downstream use.",
+                        " This may take a while for large files"
+                    )
+                    .log_warn(
+                        "Consider running sortBetaFileByCoordinates()",
+                        " on the original file and providing the sorted file",
+                        " to avoid this overhead in the future."
+                    )
                     sorted_beta_file <- sortBetaFileByCoordinates(
                         beta_file = private$.beta_file,
                         genomic_locs = sorted_locs,
@@ -772,7 +785,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < nrow(qregions))) {
                     stop("Requested site sites not found in beta tabix file")
                 }
-                # bedr forces the first three columns to be named "chr", "start", "stop" .... https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
+                # bedr forces the first three columns to be named "chr",
+                # "start", "stop" ....
+                # https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
                 if (is.null(chr)) {
                     if ("id" %in% colnames(beta_subset) && all(unique(regions$name) %in% as.character(beta_subset$id))) {
                         beta_subset$name <- as.character(beta_subset$id)
@@ -979,13 +994,16 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 #'
 #' @param beta Path to beta values file, or a tabix, or a beta matrix, or a BSseq object
 #' @param array Array platform type, **ignored** if sorted_locs or a BSseq object have been provided
-#' @param genome Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. **Ignored** if sorted_locs or a BSseq object have been provided.
+#' @param genome Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported.
+#'  **Ignored** if sorted_locs or a BSseq object have been provided.
 #' @param beta_row_names_file Path to row names file
-#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.
+#' @param sorted_locs Data frame with genomic locations containing 'chr' and 'start' and 'end' columns,
+#'  sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.
 #' @param chrom_col Chromosome column name in tabix file
 #' @param start_col Start position column name in tabix file
 #' @param output_prefix Prefix used for saving derived beta artifacts.
-#' @param njobs Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.
+#' @param njobs Number of parallel jobs to use when reading beta file or tabix file.
+#'  Default is number of available cores minus one, up to a maximum of 8.
 #' @return A new BetaHandler object
 #'
 #' @examples
@@ -1025,7 +1043,7 @@ getBetaHandler <- function(beta, array = NULL,
         if (is.null(genome)) {
             stop("genome must be provided when array annotations are needed and sorted_locs is not provided.", call. = FALSE)
         }
-        .assertArrayAnnotationPackageInstalled(
+        .assertArrayAnnotPkgInstalled(
             array = array[[1]],
             genome = genome[[1]],
             context = "getBetaHandler()"

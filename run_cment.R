@@ -14,7 +14,11 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
     list(
         optparse::make_option(
             "--beta",
-            help = "The beta file, with row names the sites. Can also be a tabix indexed file or a bed file with at least `bed_chrom_col` and `bed_start_col` columns set, followed by samples with methylation values."
+            help = paste0(
+                "The beta file, with row names the sites. Can also be a tabix indexed file",
+                " or a bed file with at least `bed_chrom_col` and `bed_start_col` columns set,",
+                " followed by samples with methylation values."
+            )
         ),
         optparse::make_option(
             "--seeds_file",
@@ -81,7 +85,12 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
             "--ext_site_delta_beta",
             default = 0.2,
             type = "double",
-            help = "Minimum absolute site delta beta that force-connects proximal site pairs during DMR expansion, even when the correlation test fails. Use NA to disable this shortcut; 0 means any proximal site with a non-missing case-control delta beta can be force-connected (default: 0.2)."
+            help = paste0(
+                "Minimum absolute site delta beta that force-connects proximal site pairs during DMR",
+                " expansion, even when the correlation test fails. Use NA to disable this shortcut;",
+                " 0 means any proximal site with a non-missing case-control delta beta can be",
+                " force-connected (default: 0.2)."
+            )
         ),
         optparse::make_option(
             "--ignored_sample_groups",
@@ -108,19 +117,30 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         optparse::make_option(
             "--expansion_window",
             default = "auto",
-            help = "Stage 2 connectivity is computed only in windows centered on seed-derived Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets."
+            help = paste0(
+                "Stage 2 connectivity is computed only in windows centered on seed-derived",
+                " Stage 1 DMR neighborhoods, with this total window width in bp. Set <=0",
+                " for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb)",
+                " for NGS datasets."
+            )
         ),
         optparse::make_option(
             "--max_bridge_seeds_gaps",
             default = 1,
             type = "integer",
-            help = "Maximum number of consecutive failed seed edges to bridge during Stage 1 when p-value-driven and flanked by connected edges (default: 1)."
+            help = paste0(
+                "Maximum number of consecutive failed seed edges to bridge during Stage 1",
+                " when p-value-driven and flanked by connected edges (default: 1)."
+            )
         ),
         optparse::make_option(
             "--max_bridge_extension_gaps",
             default = 1,
             type = "integer",
-            help = "Maximum number of consecutive failed site edges to extend during Stage 2 when p-value-driven and flanked by connected edges (default: 1)."
+            help = paste0(
+                "Maximum number of consecutive failed site edges to extend during Stage 2",
+                " when p-value-driven and flanked by connected edges (default: 1)."
+            )
         ),
         optparse::make_option(
             "--output_prefix",
@@ -164,15 +184,18 @@ if (!requireNamespace("CMEnt", quietly = TRUE)) {
         optparse::make_option(
             "--entanglement",
             default = "strong",
-            help = "Strategy for testing connectivity between groups: 'strong' (all groups must pass) or 'weak' (at least one group must pass). Default is 'strong'"
+            help = paste0(
+                "Strategy for testing connectivity between groups: 'strong' (all groups must pass)",
+                " or 'weak' (at least one group must pass). Default is 'strong'"
+            )
         )
     )
 }
 
-.launchCMEntViewerCLIOptionList <- function() {
+.launchCMEntViewerCLIOpts <- function() {
     CMEnt:::.assertPackagesInstalled(
         pkg_names = "optparse",
-        context = ".launchCMEntViewerCLIOptionList()",
+        context = ".launchCMEntViewerCLIOpts()",
         reason = "CMEnt CLI support is implemented with the optparse package."
     )
 
@@ -547,7 +570,7 @@ launchCMEntViewerCLI <- function(args) {
             usage = "usage: %prog launchCMEntViewer [options]",
             prog = script_name,
             description = "Launch the CMEnt interactive viewer for a saved output prefix.",
-            option_list = .launchCMEntViewerCLIOptionList()
+            option_list = .launchCMEntViewerCLIOpts()
         ),
         stop("Unsupported CMEnt command '", command, "'.", call. = FALSE)
     )

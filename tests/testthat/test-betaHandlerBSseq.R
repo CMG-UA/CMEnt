@@ -403,6 +403,69 @@ test_that("disk-backed BSseq window subsetting uses integer row lookup", {
     )
 })
 
+test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
+    skip_if_not_installed("HDF5Array")
+
+    set.seed(321)
+    n_loci <- 20
+    n_samples <- 4
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep(c("chr1", "chr2"), each = n_loci / 2L),
+        ranges = IRanges(start = rep(seq(1000, by = 50, length.out = n_loci / 2L), 2L), width = 1)
+    )
+    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    names(gr) <- site_names
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+
+    beta_handler <- getBetaHandler(beta = bsseq_hdf5)
+    beta_locs <- beta_handler$getBetaLocs()
+    beta_chr <- as.character(beta_locs[, "chr"])
+    beta_start <- as.numeric(beta_locs[, "start"])
+    seed_ids <- site_names[c(3L, 8L, 12L, 18L)]
+    seed_beta_index <- CMEnt:::.matchSequencingIdsToBeta(seed_ids, beta_chr, beta_start)
+    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
+    rownames(seeds_locs) <- seed_ids
+    seed_pvals <- stats::setNames(rep(0.01, length(seed_ids)), seed_ids)
+
+    tasks <- CMEnt:::.buildDMRsChromosomeTasks(
+        beta_handler = beta_handler,
+        beta_chr = beta_chr,
+        beta_locs_rownames = rownames(beta_locs),
+        chromosomes = unique(as.character(seeds_locs$chr)),
+        seed_ids = seed_ids,
+        seed_beta_index = seed_beta_index,
+        seed_chr = as.character(seeds_locs$chr),
+        seed_pvals = seed_pvals,
+        beta_col_names = sample_names,
+        use_numeric_sequencing_rows = TRUE
+    )
+
+    payload_names <- unique(unlist(lapply(tasks, names), use.names = FALSE))
+    expect_false(any(c("beta_chr", "beta_start", "seed_chr", "seeds_locs", "beta_row_ids_all") %in% payload_names))
+    expect_equal(tasks$chr1$seed_beta_index, c(3L, 8L))
+    expect_equal(tasks$chr2$seed_beta_index, c(2L, 8L))
+
+    for (task in tasks) {
+        task_bsseq <- task$beta_handler$.__enclos_env__$private$.bsseq_object
+        task_locs <- as.data.frame(task$beta_handler$getBetaLocs())
+        expect_s4_class(task_bsseq, "BSseq")
+        expect_null(task$beta_handler$.__enclos_env__$private$.beta_file_in_memory)
+        expect_equal(nrow(task_bsseq), nrow(task_locs))
+        expect_equal(unique(as.character(task_locs$chr)), task$chr)
+    }
+})
+
 test_that("BetaHandler subset supports numeric row indexing", {
     set.seed(99)
     n_loci <- 20

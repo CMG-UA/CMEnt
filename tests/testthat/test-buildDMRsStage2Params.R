@@ -28,7 +28,7 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
         expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
         dmr_df <- as.data.frame(dmrs_expanded)
         # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
-        win_df <- CMEnt:::.buildConnectivityWindowsFromDMRs(
+        win_df <- CMEnt:::.buildWindowsFromDMRs(
             dmrs = data.frame(
                 chr = as.character(dmr_df$seqnames),
                 start_seed_pos = dmr_df$start_seed_pos,

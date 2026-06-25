@@ -79,7 +79,7 @@ test_that("feature-specific delta beta uses DMR sites within annotated regions",
     )
     delta_beta <- c(cg1 = 0.2, cg2 = 0.4, cg3 = -0.1, cg4 = 0.8)
 
-    annotated_delta <- CMEnt:::.annotateDMRSiteDeltaBetaByFeature(
+    annotated_delta <- CMEnt:::.annotateDMRSiteDBByFeature(
         dmrs = dmrs,
         annotation_specs = annotation_specs,
         site_locs = site_locs,

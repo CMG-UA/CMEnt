@@ -276,7 +276,7 @@ test_that("viewer background Manhattan task forwards region scope", {
     S4Vectors::mcols(dmrs)$in_gene_body_of <- c(NA, "GENE2")
 
     expect_error(
-        CMEnt:::.viewerRunBackgroundTaskFromData(
+        CMEnt:::.viewerRunBgTaskFromData(
             task_type = "manhattan_plot",
             data = list(dmrs = dmrs, genome = "hg19"),
             params = list(

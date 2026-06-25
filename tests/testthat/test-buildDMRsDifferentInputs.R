@@ -93,7 +93,7 @@ test_that("buildDMRs works with small beta file (in-memory loading)", {
 test_that("buildDMRs works with large beta file (tabix indexing)", {
     skip_if_not(nzchar(Sys.which("tabix")))
     skip_if_not(nzchar(Sys.which("bgzip")))
-    
+
     expected_dmrs <- buildDMRs(
         score_dmrs = FALSE,
         annotate_with_genes = FALSE,
@@ -109,7 +109,7 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
         max_lookup_dist = 1000,
         njobs = 1
     )
-    
+
     beta_file <- tempfile(fileext = ".tsv")
     withr::defer(unlink(beta_file))
     write.table(as.data.frame(beta), file = beta_file, sep = "\t", col.names = NA, quote = FALSE)
@@ -168,7 +168,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
     testing_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
-    mem_connectivity <- .buildConnectivityArraySinglePass(
+    mem_connectivity <- .buildCASinglePass(
         beta_handler = mem_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -186,7 +186,7 @@ test_that("subset connectivity matches between in-memory and tabix beta handlers
         njobs = 1
     )[["connectivity_array"]]
 
-    tabix_connectivity <- .buildConnectivityArraySinglePass(
+    tabix_connectivity <- .buildCASinglePass(
         beta_handler = tabix_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -264,7 +264,7 @@ test_that("parallel connectivity matches sequential connectivity", {
     testing_mode_per_group <- stats::setNames(rep("parametric", length(group_inds)), names(group_inds))
     empirical_strategy_per_group <- stats::setNames(rep("permutations", length(group_inds)), names(group_inds))
 
-    connectivity_seq <- .buildConnectivityArraySinglePass(
+    connectivity_seq <- .buildCASinglePass(
         beta_handler = mem_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -283,7 +283,7 @@ test_that("parallel connectivity matches sequential connectivity", {
     )[["connectivity_array"]]
 
     withr::local_options(list(CMEnt.njobs = 2L))
-    connectivity_parallel <- .buildConnectivityArraySinglePass(
+    connectivity_parallel <- .buildCASinglePass(
         beta_handler = mem_handler,
         beta_locs = seeds_locs,
         pheno = pheno_detection,
@@ -352,6 +352,75 @@ test_that("buildDMRs works with BSseq input", {
             annotate_with_genes = FALSE
         )
     )
+})
+
+test_that("buildDMRs works with HDF5-backed BSseq input and parallel chromosome tasks", {
+    skip_if_not_installed("HDF5Array")
+
+    set.seed(777)
+    n_per_chr <- 30L
+    n_loci <- n_per_chr * 2L
+    n_controls <- 3L
+    n_cases <- 3L
+    n_samples <- n_controls + n_cases
+    sample_names <- c(paste0("Control", seq_len(n_controls)), paste0("Case", seq_len(n_cases)))
+    cov <- matrix(20L, nrow = n_loci, ncol = n_samples)
+    sample_effect <- seq(-0.08, 0.08, length.out = n_samples)
+    site_base <- rep(seq(0.25, 0.65, length.out = n_per_chr), 2L)
+    prob <- pmin(0.95, pmax(0.05, site_base + matrix(rep(sample_effect, each = n_loci), nrow = n_loci)))
+    met <- round(cov * prob)
+    gr <- GRanges(
+        seqnames = rep(c("chr1", "chr2"), each = n_per_chr),
+        ranges = IRanges(start = rep(seq(10000, by = 50, length.out = n_per_chr), 2L), width = 1)
+    )
+    site_ids <- paste0(seqnames(gr), ":", start(gr))
+    names(gr) <- site_ids
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+    h5_dir <- tempfile("bsseq_hdf5_")
+    withr::defer(unlink(h5_dir, recursive = TRUE), teardown_env())
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = h5_dir,
+        replace = TRUE
+    )
+    pheno <- data.frame(
+        Sample_ID = sample_names,
+        Group = c(rep("Control", n_controls), rep("Case", n_cases)),
+        stringsAsFactors = FALSE
+    )
+    rownames(pheno) <- sample_names
+    seeds <- data.frame(
+        site_id = site_ids[c(5:8, n_per_chr + 5:8)],
+        pval = rep(0.001, 8L)
+    )
+
+    withr::local_options(list(CMEnt.chr_njobs = 2L, CMEnt.min_pairs_for_parallel = 1L))
+    expect_no_error(
+        dmrs <- buildDMRs(
+            beta = bsseq_hdf5,
+            seeds_id_col = "site_id",
+            seeds = seeds,
+            pheno = pheno,
+            sample_group_col = "Group",
+            max_pval = 1,
+            min_seeds = 2,
+            min_sites = 2,
+            max_lookup_dist = 1000,
+            expansion_window = 200,
+            max_bridge_seeds_gaps = 0,
+            max_bridge_extension_gaps = 0,
+            ext_site_delta_beta = NA_real_,
+            testing_mode = "parametric",
+            njobs = 2,
+            score_dmrs = FALSE,
+            extract_motifs = FALSE,
+            annotate_with_genes = FALSE
+        )
+    )
+    expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
 })
 
 

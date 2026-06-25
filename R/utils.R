@@ -156,8 +156,10 @@
 }
 
 .requireSampleGroupCol <- function(sample_group_col, context) {
-    if (is.null(sample_group_col) || length(sample_group_col) != 1L ||
-        is.na(sample_group_col) || !nzchar(as.character(sample_group_col))) {
+    if (
+        is.null(sample_group_col) || length(sample_group_col) != 1L ||
+            is.na(sample_group_col) || !nzchar(as.character(sample_group_col))
+    ) {
         stop(context, " requires 'sample_group_col' when phenotype data is provided.", call. = FALSE)
     }
     as.character(sample_group_col)
@@ -435,9 +437,14 @@
 
 #' @keywords internal
 #' @noRd
-.format_log_output <- function(msg, lead, level, width = getOption("width")) {
+.formatLogOutput <- function(msg, lead, level, width = getOption("width")) {
     prefix <- paste(rep("\t", max(0, level - 1)), collapse = "")
-    paste(strwrap(prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""), width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg), collapse = "\n")
+    paste(
+        strwrap(
+            prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""),
+            width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg
+        ), collapse = "\n"
+    )
 }
 
 #' @keywords internal
@@ -445,7 +452,7 @@
 .log_error <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$cross, "red")
-    stop(.format_log_output(msg, lead = lead, level = 0), call. = FALSE)
+    stop(.formatLogOutput(msg, lead = lead, level = 0), call. = FALSE)
 }
 
 #' @keywords internal
@@ -453,7 +460,7 @@
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$warning, "yellow")
-    warning(.format_log_output(msg, lead = lead, level = 0))
+    warning(.formatLogOutput(msg, lead = lead, level = 0))
     invisible()
 }
 
@@ -481,7 +488,7 @@
     msg <- paste0(paste0(..., collapse = ""), dur)
     # if level is equal or greater than 2, report memory usage in MBs as well
     lead <- .col(cli::symbol$tick, "green")
-    message(.format_log_output(msg, lead = lead, level = level))
+    message(.formatLogOutput(msg, lead = lead, level = level))
     # Clear the recorded step time for this level after reporting success
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- NULL # nolint
     invisible()
@@ -520,7 +527,7 @@
     }
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$info, "blue")
-    message(.format_log_output(msg, lead = lead, level = level))
+    message(.formatLogOutput(msg, lead = lead, level = level))
     invisible()
 }
 
@@ -538,7 +545,7 @@
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
     lead <- .col(cli::symbol$arrow_right, "cyan")
-    message(.format_log_output(msg, lead = lead, level = level))
+    message(.formatLogOutput(msg, lead = lead, level = level))
     invisible()
 }
 
@@ -721,8 +728,10 @@ createH5fileFromDf <- function(
     invisible(output_h5file)
 }
 
-createH5fileFromFile <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select_columns = NULL,
-                         chunk_size = getOption("CMEnt.chunk_size", 1000000), sep = "\t") {
+createH5fileFromFile <- function(
+    input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select_columns = NULL,
+    chunk_size = getOption("CMEnt.chunk_size", 1000000), sep = "\t"
+) {
     stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
     stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
@@ -981,7 +990,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, hash = NULL,
 
 #' Create Genomic Location Registry from bsseq Object
 #'
-#' @description 
+#' @description
 #' If the bsseq object is memory-backed, it extracts the genomic locations directly from the object.
 #' If not, it extracts the genomic locations and stores them in an HDF5 file for memory-efficient access.
 #' @param input_bsseq bsseq The bsseq object.
@@ -999,7 +1008,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
         gr <- granges(input_bsseq)
         df <- as.data.frame(gr)[, c("seqnames", "start")]
         colnames(df) <- c("chr", "start")
-        df[,'end'] <- df$start + 1
+        df[, "end"] <- df$start + 1
         df$index <- paste0(df$chr, ":", df$start)
         rownames(df) <- df$index
         return(df)
@@ -1046,7 +1055,10 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     }
     covariate_df <- as.data.frame(pheno[, covariates, drop = FALSE], check.names = FALSE)
     if (anyNA(covariate_df)) {
-        stop("Covariates contain missing values; cannot residualize without dropping samples. Perform imputation or drop samples with missing covariate values before running CMEnt")
+        stop(
+            "Covariates contain missing values; cannot residualize without dropping samples.",
+            " Perform imputation or drop samples with missing covariate values before running CMEnt"
+        )
     }
     varying_covariates <- covariates[vapply(covariate_df, function(x) length(unique(x)) > 1L, logical(1))]
     dropped_columns <- setdiff(covariates, varying_covariates)
@@ -1371,8 +1383,10 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     missing_pkgs <- unique(missing_reqs$pkg_name)
 
     if (isTRUE(getOption("CMEnt.auto_install_dep_if_missing", FALSE))) {
-        # This is a hidden option only used by the dockerrized version of CMEnt to automatically install missing dependencies without user intervention.
-        # It is not recommended to set this option in interactive use as it may lead to unintended package installations.
+        # This is a hidden option only used by the dockerrized version of CMEnt to
+        # automatically install missing dependencies without user intervention.
+        # It is not recommended to set this option in interactive use as it may lead to
+        # unintended package installations.
         .installDependencyPackages(missing_pkgs)
         missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
         if (!any(missing_mask)) {
@@ -1435,7 +1449,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
 }
 
 
-.assertArrayAnnotationPackageInstalled <- function(array, genome, context) {
+.assertArrayAnnotPkgInstalled <- function(array, genome, context) {
     pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
     .assertDependencyRequirements(
         requirements = .makeDependencyRequirements(
@@ -1451,7 +1465,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
 }
 
 
-.arrayAnnotationDependencyRequirements <- function(array, genome, reason = NULL) {
+.arrayAnnotDependencyReqs <- function(array, genome, reason = NULL) {
     pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
     .makeDependencyRequirements(
         pkg_names = pkg_name,
@@ -1497,7 +1511,7 @@ supportedOrganisms <- function() {
 }
 
 
-.assertGeneAnnotationPackagesInstalled <- function(genome, context) {
+.assertGeneAnnotPkgsInstalled <- function(genome, context) {
     pkgs <- .getGeneAnnotationPackages(genome)
     .assertDependencyRequirements(
         requirements = .makeDependencyRequirements(
@@ -1513,7 +1527,7 @@ supportedOrganisms <- function() {
 }
 
 
-.geneAnnotationDependencyRequirements <- function(genome, reason = NULL) {
+.geneAnnotDependencyReqs <- function(genome, reason = NULL) {
     pkgs <- .getGeneAnnotationPackages(genome)
     .makeDependencyRequirements(
         pkg_names = unname(pkgs),
@@ -1549,7 +1563,7 @@ supportedOrganisms <- function() {
 }
 
 
-.assertBSGenomePackageInstalled <- function(genome, context) {
+.assertBSGenomePkgInstalled <- function(genome, context) {
     pkg_name <- .resolveBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         stop(
@@ -1572,7 +1586,7 @@ supportedOrganisms <- function() {
 }
 
 
-.bsgenomeDependencyRequirements <- function(genome, reason = NULL) {
+.bsgenomeDependencyReqs <- function(genome, reason = NULL) {
     pkg_name <- .resolveBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         stop(
@@ -1621,7 +1635,7 @@ supportedOrganisms <- function() {
 }
 
 
-.experimentHubDependencyRequirements <- function(resource, reason = NULL) {
+.experimentHubDependencyReqs <- function(resource, reason = NULL) {
     .makeDependencyRequirements(
         pkg_names = "ExperimentHub",
         reason = if (is.null(reason)) {
@@ -1636,10 +1650,12 @@ supportedOrganisms <- function() {
 }
 
 
-.buildDMRsDependencyRequirements <- function(beta, array, genome,
-                                            annotate_with_genes = TRUE,
-                                            extract_motifs = TRUE,
-                                            bed_provided = FALSE) {
+.buildDMRsDependencyReqs <- function(
+    beta, array, genome,
+    annotate_with_genes = TRUE,
+    extract_motifs = TRUE,
+    bed_provided = FALSE
+) {
     is_tabix_input <- is.character(beta) &&
         length(beta) == 1L &&
         file.exists(beta) &&
@@ -1654,7 +1670,7 @@ supportedOrganisms <- function() {
 
     .combineDependencyRequirements(
         if (needs_array_annotations) {
-            .arrayAnnotationDependencyRequirements(
+            .arrayAnnotDependencyReqs(
                 array = array,
                 genome = genome,
                 reason = paste0(
@@ -1664,7 +1680,7 @@ supportedOrganisms <- function() {
             )
         },
         if (isTRUE(annotate_with_genes)) {
-            .geneAnnotationDependencyRequirements(
+            .geneAnnotDependencyReqs(
                 genome = genome,
                 reason = paste0(
                     "'annotate_with_genes = TRUE' requires gene annotation packages for genome '",
@@ -1673,7 +1689,7 @@ supportedOrganisms <- function() {
             )
         },
         if (isTRUE(extract_motifs)) {
-            .bsgenomeDependencyRequirements(
+            .bsgenomeDependencyReqs(
                 genome = genome,
                 reason = paste0(
                     "'extract_motifs = TRUE' requires the BSgenome package for genome '",
@@ -1694,12 +1710,12 @@ supportedOrganisms <- function() {
         )
     }
     .combineDependencyRequirements(
-        .bsgenomeDependencyRequirements(
+        .bsgenomeDependencyReqs(
             genome = genome,
             reason = paste0(context, " requires the BSgenome package for genome '", genome, "'.")
         ),
         if (!is.null(array) && (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1L && file.exists(beta_locs)))) {
-            .arrayAnnotationDependencyRequirements(
+            .arrayAnnotDependencyReqs(
                 array = array,
                 genome = genome,
                 reason = paste0(
@@ -1720,7 +1736,8 @@ supportedOrganisms <- function() {
 #'
 #' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse"), ignored when locations_file is provided.
 #' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
-#' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
+#' @param locations_file Character. Optional path to a precomputed locations file (RDS format).
+#'  If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as site IDs and columns:
 #' \itemize{
@@ -1777,7 +1794,7 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
         .log_info("Using cached annotation file: ", cache_key, level = 3)
         return(locs)
     }
-    pkg_name <- .assertArrayAnnotationPackageInstalled(
+    pkg_name <- .assertArrayAnnotPkgInstalled(
         array = array,
         genome = genome,
         context = "getSortedGenomicLocs()"
@@ -2351,7 +2368,8 @@ orderByLoc <- function(x,
             obj[[1]] <- paste0("chr", obj[[1]])
             obj$chr_prefix_added <- TRUE
         }
-        # if the chromosome appears in the form of chr1:1230, save the original location in a separate column and parse the location into chr, start, end
+        # if the chromosome appears in the form of chr1:1230, save the original location
+        # in a separate column and parse the location into chr, start, end
         if (any(grepl(":", obj[[1]]))) {
             obj$original_location <- obj[[1]]
             loc_split <- base::strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
@@ -2370,7 +2388,6 @@ orderByLoc <- function(x,
             .resolveGRangesGenome(obj)
             return(obj)
         }
-        
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
         grs_genome <- unique(as.character(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))))
         grs_genome <- grs_genome[!is.na(grs_genome) & nzchar(grs_genome)]
@@ -2458,7 +2475,7 @@ orderByLoc <- function(x,
     }
     if (!is.data.frame(df)) {
         stop(
-            "Input must be a data.frame or coercible to a data.frame. ", 
+            "Input must be a data.frame or coercible to a data.frame. ",
             "Unable to coerce input of class: ",
             paste(class(df), collapse = ", "),
             call. = FALSE
@@ -2564,7 +2581,7 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
-.summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
+.summarizeCorrAssumptions <- function(x_mat, y_mat, n_valid) {
     min_nvalid_q10 <- getOption("CMEnt.auto_pval_min_nvalid_q10", 10)
     corr_delta_threshold <- getOption("CMEnt.auto_pval_corr_delta_threshold", 0.10)
     skew_threshold <- getOption("CMEnt.auto_pval_skew_threshold", 2)
@@ -2684,7 +2701,7 @@ orderByLoc <- function(x,
 
 
 .loadExampleInputDataSubset <- function(..., subset, envir) {
-    resources <- .normalizeExampleInputResources(list(...))
+    resources <- .normExInputResources(list(...))
     values <- .fetchExampleInputData(resources)
     subset_locs <- NULL
     get_subset_locs <- function() {
@@ -2710,7 +2727,7 @@ orderByLoc <- function(x,
     invisible(if (length(values) == 1L) values[[1L]] else values)
 }
 
-.normalizeExampleInputResources <- function(args) {
+.normExInputResources <- function(args) {
     available_resources <- c("beta", "pheno", "dmps", "array_type")
     if (length(args) == 0L) {
         return(available_resources)
@@ -2750,7 +2767,7 @@ orderByLoc <- function(x,
     )
 
     .assertDependencyRequirements(
-        requirements = .experimentHubDependencyRequirements(
+        requirements = .experimentHubDependencyReqs(
             resource = paste(resources, collapse = ", ")
         ),
         context = "loadExampleInputData()"

@@ -120,7 +120,7 @@ test_that("logging and parallel helpers handle quiet and fallback branches", {
     withr::local_options(list(CMEnt.verbose = 0, CMEnt.biocparallel_backend = "unknown"))
 
     expect_equal(CMEnt:::.fmt_dur(NULL), "")
-    expect_match(CMEnt:::.format_log_output("hello world", lead = ">", level = 2), ">")
+    expect_match(CMEnt:::.formatLogOutput("hello world", lead = ">", level = 2), ">")
     expect_warning(CMEnt:::.log_warn("careful"), "careful")
     expect_error(CMEnt:::.log_error("boom"), "boom")
     expect_equal(CMEnt:::.node_size(), if (8L * .Machine$sizeof.pointer == 32L) 28L else 56L)

@@ -18,7 +18,7 @@ test_that("buildDMRs Stage 2 single pass connectivity array outputs with ugap", 
     conn$reason[10] <- "end-of-input"
     splits <- matrix(c(1, 8), ncol = 2)
     expect_no_error(
-        CMEnt:::.buildConnectivityArraySinglePass(
+        CMEnt:::.buildCASinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno, group_inds = gi,
             testing_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -60,7 +60,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
     )
     splits <- matrix(c(1, 5), ncol = 2)
 
-    ret1 <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret1 <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -70,7 +70,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
     expect_true(ret1$connectivity_array$connected[[2]])
     expect_equal(ret1$recheck, 2L)
 
-    ret2 <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret2 <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -116,7 +116,7 @@ test_that("bridge recheck keeps the minimum p-value observed for bridged edges",
         stringsAsFactors = FALSE
     )
 
-    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = list(A = seq_along(x)),
         testing_mode_per_group = c(A = "parametric"),
@@ -171,7 +171,7 @@ test_that("downstream bridge recheck shifts back when the forward candidate is t
         stringsAsFactors = FALSE
     )
 
-    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = list(A = seq_along(x)),
         testing_mode_per_group = c(A = "parametric"),
@@ -251,10 +251,10 @@ test_that("BiocParallel connectivity matches sequential connectivity over multip
         mid_p = FALSE
     )
 
-    seq_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 1L)))
+    seq_ret <- do.call(CMEnt:::.buildCASinglePass, c(args, list(njobs = 1L)))
     withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
     local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
-    bp_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 2L)))
+    bp_ret <- do.call(CMEnt:::.buildCASinglePass, c(args, list(njobs = 2L)))
 
     expect_gt(nrow(bp_ret$splits), 1L)
     expect_equal(seq_ret$connectivity_array, bp_ret$connectivity_array)

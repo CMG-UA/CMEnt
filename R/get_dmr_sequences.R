@@ -59,7 +59,7 @@
 getDMRSequences <- function(dmrs, genome, use_online = FALSE, uflank_size = 0, dflank_size = 0,
                             batch_size = 100, njobs = 1) {
     if (!use_online) {
-        pkg_name <- .assertBSGenomePackageInstalled(genome, context = "getDMRSequences()")
+        pkg_name <- .assertBSGenomePkgInstalled(genome, context = "getDMRSequences()")
         use_bsgenome <- TRUE
     } else {
         pkg_name <- NULL

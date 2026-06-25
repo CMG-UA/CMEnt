@@ -30,7 +30,7 @@
 #' @export
 loadExampleInputData <- function(...) {
     .assignExampleInputData(
-        resources = .normalizeExampleInputResources(list(...)),
+        resources = .normExInputResources(list(...)),
         envir = parent.frame()
     )
 }

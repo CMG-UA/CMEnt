@@ -34,7 +34,7 @@
     )
     target_genome <- tolower(genome)
     annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
-    annotation_pkgs <- .assertGeneAnnotationPackagesInstalled(
+    annotation_pkgs <- .assertGeneAnnotPkgsInstalled(
         genome = genome,
         context = context
     )
@@ -249,7 +249,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
-    delta_beta_annotations <- .annotateDMRSiteDeltaBetaByFeature(
+    delta_beta_annotations <- .annotateDMRSiteDBByFeature(
         dmrs = dmrs,
         annotation_specs = annotation_specs,
         site_locs = site_locs,
@@ -269,8 +269,10 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
 
 #' @keywords internal
 #' @noRd
-.annotateDMRSiteDeltaBetaByFeature <- function(dmrs, annotation_specs, site_locs,
-                                               site_delta_beta, aggfun, genome) {
+.annotateDMRSiteDBByFeature <- function(
+    dmrs, annotation_specs, site_locs,
+    site_delta_beta, aggfun, genome
+) {
     out <- stats::setNames(
         replicate(length(annotation_specs), rep(NA_real_, length(dmrs)), simplify = FALSE),
         vapply(annotation_specs, `[[`, character(1), "delta_column")
@@ -285,15 +287,19 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
         names(site_locs)
     }
     site_locs <- .convertToGRanges(site_locs, genome)
-    if (!is.null(site_names) &&
-        length(site_names) == length(site_locs) &&
-        all(!is.na(site_names)) &&
-        all(nzchar(site_names))) {
+    if (
+        !is.null(site_names) &&
+            length(site_names) == length(site_locs) &&
+            all(!is.na(site_names)) &&
+            all(nzchar(site_names))
+    ) {
         names(site_locs) <- site_names
     }
-    if (is.null(names(site_locs)) ||
-        anyNA(names(site_locs)) ||
-        any(!nzchar(names(site_locs)))) {
+    if (
+        is.null(names(site_locs)) ||
+            anyNA(names(site_locs)) ||
+            any(!nzchar(names(site_locs)))
+    ) {
         return(out)
     }
 

@@ -1,7 +1,7 @@
 #' Reduce BSseq object around seed locations
 #'
 #' @description
-#' This function reduces a BSseq object to only include methylation data around specified seed locations. 
+#' This function reduces a BSseq object to only include methylation data around specified seed locations.
 #' It expands the seed locations by a given window size and merges overlapping windows to create a reduced BSseq object.
 #'
 #' @param bsseq_obj BSseq object containing the methylation data

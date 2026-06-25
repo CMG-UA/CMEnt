@@ -454,7 +454,7 @@ launchCMEntViewer <- function(
 
         if (
             file.exists(file.path(path, "R", "shiny_app.R")) &&
-            file.exists(file.path(path, "R", "shiny_modules.R"))
+                file.exists(file.path(path, "R", "shiny_modules.R"))
         ) {
             return(path)
         }
@@ -472,7 +472,7 @@ launchCMEntViewer <- function(
     grDevices::recordPlot()
 }
 
-.viewerRunBackgroundTaskFromData <- function(task_type, data, params) {
+.viewerRunBgTaskFromData <- function(task_type, data, params) {
     switch(task_type,
         single_dmr_plot = list(
             task_type = task_type,
@@ -560,7 +560,7 @@ launchCMEntViewer <- function(
 
 .viewerRunBackgroundTask <- function(task_type, output_prefix, params) {
     data <- .loadCMEntData(output_prefix)
-    .viewerRunBackgroundTaskFromData(
+    .viewerRunBgTaskFromData(
         task_type = task_type,
         data = data,
         params = params
@@ -572,9 +572,9 @@ launchCMEntViewer <- function(
         func = function(task_type, output_prefix, params, dev_pkg_path) {
             if (
                 !is.null(dev_pkg_path) &&
-                nzchar(dev_pkg_path) &&
-                file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
-                requireNamespace("pkgload", quietly = TRUE)
+                    nzchar(dev_pkg_path) &&
+                    file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                    requireNamespace("pkgload", quietly = TRUE)
             ) {
                 pkgload::load_all(
                     dev_pkg_path,
@@ -612,9 +612,9 @@ launchCMEntViewer <- function(
                 func = function(output_prefix, dev_pkg_path) {
                     if (
                         !is.null(dev_pkg_path) &&
-                        nzchar(dev_pkg_path) &&
-                        file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
-                        requireNamespace("pkgload", quietly = TRUE)
+                            nzchar(dev_pkg_path) &&
+                            file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                            requireNamespace("pkgload", quietly = TRUE)
                     ) {
                         pkgload::load_all(
                             dev_pkg_path,
@@ -775,7 +775,7 @@ launchCMEntViewer <- function(
             worker_state <- tryCatch(worker_session$get_state(), error = function(e) "finished")
             if (
                 identical(worker_state, "idle") &&
-                isTRUE(tryCatch(worker_session$is_alive(), error = function(e) FALSE))
+                    isTRUE(tryCatch(worker_session$is_alive(), error = function(e) FALSE))
             ) {
                 return(worker_session)
             }
@@ -897,7 +897,7 @@ launchCMEntViewer <- function(
                                 }
 
                                 data <- get(".cment_viewer_worker_data", envir = .viewer_worker_env, inherits = FALSE)
-                                result <- .viewerRunBackgroundTaskFromData(
+                                result <- .viewerRunBgTaskFromData(
                                     task_type = task_type,
                                     data = data,
                                     params = params
@@ -1100,7 +1100,7 @@ launchCMEntViewer <- function(
 
             if (
                 isTRUE(state$active) &&
-                (!spinner_visible || !identical(spinner_state_key, page_spinner_state_key()))
+                    (!spinner_visible || !identical(spinner_state_key, page_spinner_state_key()))
             ) {
                 .viewerShowPageSpinner(
                     message = if (is.null(state$message)) "Processing..." else state$message,

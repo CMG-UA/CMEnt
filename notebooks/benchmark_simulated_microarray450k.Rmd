@@ -83,7 +83,7 @@ save_method_cache <- function(cache_file, dmrs, time, params) {
 ```{r setup_dependencies, message=FALSE, warning=FALSE}
 r <- getOption("repos")
 if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
 }
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -604,7 +604,7 @@ if (!is.null(ret)) {
             coef = coef_col
         )
     }
-    has_informative_bumphunter_null <- function(fit) {
+    has_informative_bh_null <- function(fit) {
         null_values <- unlist(fit$null$value, use.names = FALSE)
         null_lengths <- unlist(fit$null$length, use.names = FALSE)
         length(null_values) > 0 &&
@@ -633,8 +633,10 @@ if (!is.null(ret)) {
     bh_bootstrap_adjust_iter <- 0L
     while (
         nrow(bumphunter_results$table) > 0 &&
-            (all(is.na(bumphunter_results$table$p.value)) ||
-                !has_informative_bumphunter_null(bumphunter_results)) &&
+            (
+                all(is.na(bumphunter_results$table$p.value)) ||
+                    !has_informative_bh_null(bumphunter_results)
+            ) &&
             final_cutoff > bumphunter_params$cutoff_floor &&
             bh_bootstrap_adjust_iter < bumphunter_params$max_bootstrap_adjust
     ) {
