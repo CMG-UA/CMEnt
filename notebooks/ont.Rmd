@@ -1,6 +1,6 @@
 ---
-title: "CMEnt Analysis of ONT Methylation Data on brain tumors"
-subtitle: "Biological interpretation of GSE289246"
+title: "CMEnt Analysis of ONT Methylation Data in Brain Tumors"
+subtitle: "GSE289246: pilocytic astrocytoma versus IDH-wildtype glioblastoma"
 author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output: 
@@ -67,11 +67,11 @@ short_label <- function(x, width = 65L) {
 
 ## Introduction
 
-This vignette analyzes GSE289246, a long-read ONT methylation dataset from brain tumors.
-We compare Pilocytic astrocytoma, used here as the benign reference group, against
-Glioblastoma, IDH-wildtype, used here as the aggressive cancer group. The goal is to
-identify coherent methylation regions and summarize which gene contexts and candidate
-biology distinguish the two tumor types.
+This report uses CMEnt to summarize long-read ONT methylation differences in GSE289246.
+The contrast is intentionally simple: Pilocytic astrocytoma is used as the lower-grade
+reference group and Glioblastoma, IDH-wildtype as the aggressive high-grade group. Rather
+than treating single CpGs as the final readout, the analysis asks whether significant
+methylation seeds can be assembled into coherent DMRs with interpretable genomic context.
 
 - CMEnt DMR size, score, and methylation effect summaries
 - promoter and gene-body overlap patterns
@@ -96,9 +96,10 @@ for (pkg in c("DSS", "TxDb.Hsapiens.UCSC.hg19.knownGene", "org.Hs.eg.db", "BSgen
 ```
 ## Load Data
 
-Downloading and parsing the GEO dataset samplesheet.
-We select 2 cancers, 5 samples of Pilocytic astrocytoma, a benign cancer,
-and 21 samples of Glioblastoma, IDH-wildtype, an aggressive cancer, all sequenced with PromethION with the R10.4.1 chemistry.
+The GEO SOFT file is used to reconstruct the sample sheet, then restricted to tumor
+samples with ONT methylation calls generated on PromethION. The selected comparison keeps
+Pilocytic astrocytoma and IDH-wildtype glioblastoma samples so that all downstream summaries
+refer to one clinically meaningful low-grade versus high-grade brain tumor contrast.
 ```{r samplesheet_creation}
 
 sample_group_col <- "tumor_type"
@@ -162,7 +163,10 @@ knitr::kable(
     caption = "Selected GSE289246 ONT samples"
 )
 ```
-The long-read ONT methylation data has low coverage, being low depth sequencing, so we will softly filter out sites with coverage < 2.
+Because these ONT methylation calls come from low-depth sequencing, CpG-level evidence is
+uneven across samples. A minimum coverage of 2 keeps the filter permissive enough for
+long-read data while removing single-read methylation calls that are too fragile for DMR
+construction.
 ```{r bsseq_creation}
 min_coverage <- 2
 input_bsseq_h5 <- getBenchmarkFile("input_h5")
@@ -247,6 +251,13 @@ if (file.exists(input_bsseq_h5)) {
 ```
 ## Find Differentially Methylated Positions
 
+CMEnt starts from DMPs as regional anchors. Here, seeds are CpG sites with nominal evidence
+for differential methylation between the two tumor groups; the distance distribution below
+shows whether those anchors are dense enough to support regional expansion.
+CMEnt reduces the BSseq object to windows around the seed sites before building regions.
+This keeps memory use practical for ONT-scale data while preserving nearby CpGs that can
+support or reject regional expansion around each seed.
+
 ```{r seeds_calculation}
 seeds_file <- getBenchmarkFile("seeds.rds")
 if (!file.exists(seeds_file)) {
@@ -286,20 +297,27 @@ knitr::kable(
     caption = sprintf("Seed distance quantiles")
 )
 cat("BSseq object dimensions: ", dim(bsseq_obj), "\n")
+reduced_bsseq_obj <- CMEnt::reduceBSseqAroundSeeds(bsseq_obj, seeds, expansion_window = 10000)
+beta_handler <- CMEnt::getBetaHandler(beta = reduced_bsseq_obj, genome = genome)
+cat("Reduced BSseq object dimensions: ", dim(reduced_bsseq_obj), "\n")
 ```
 
-## Method 1: CMEnt
+This leaves `r format(nrow(seeds), big.mark = ",")` seed CpGs across an input BSseq matrix
+with `r format(nrow(bsseq_obj), big.mark = ",")` loci and `r ncol(bsseq_obj)` samples.
+The median within-chromosome seed spacing is `r format(seeds_qs["50%"], big.mark = ",")`
+bp, with a long tail of isolated seeds; this is why the DMR builder later requires multiple
+seeds and enough covered sites before accepting a region.
 
+## Method 1: CMEnt
 ```{r cment}
 cment_file <- getBenchmarkFile("dmrs.rds")
 if (!file.exists(cment_file)) {
     # Reduce the BSseq object around the seeds with the specified expansion window,
     # so that to minimize memory usage and speed up the DMR building process.
-    reduced_bsseq_obj <- CMEnt::reduceBSseqAroundSeeds(bsseq_obj, seeds, expansion_window = 10000)
     cat("Reduced BSseq object dimensions: ", dim(reduced_bsseq_obj), "\n")
     start_time <- Sys.time()
     dmrs_cment <- CMEnt::buildDMRs(
-        reduced_bsseq_obj,
+        beta_handler,
         seeds,
         pheno,
         genome = genome,
@@ -327,6 +345,10 @@ if (!file.exists(cment_file)) {
 }
 cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
 ```
+
+The resulting call set contains `r format(length(dmrs_cment), big.mark = ",")` DMRs. In
+the following summaries, positive delta beta means higher methylation in IDH-wildtype
+glioblastoma relative to pilocytic astrocytoma.
 
 ## CMEnt Region Summary
 
@@ -368,7 +390,14 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for aggressive versus benign brain tumors")
 ```
 
-```{r cment_effect_plot, fig.width=8, fig.height=4}
+The called regions are mostly kilobase-scale: the median DMR spans
+`r format(round(dmr_summary$Median_width_bp), big.mark = ",")` bp and together the calls
+cover `r format(dmr_summary$Total_coverage_bp, big.mark = ",")` bp. The mean absolute
+delta beta of `r dmr_summary$Mean_abs_delta_beta` gives a compact effect-size summary, but
+individual loci should still be inspected because sparse ONT coverage can flatten aggregate
+regional means.
+
+```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect. The discrete effect-size bands are expected with sparse ONT beta estimates and should be interpreted together with coverage and sample-level plots."}
 if (length(dmrs_cment) > 0L) {
     dmr_effect_df <- data.frame(
         Width = width(dmrs_cment),
@@ -398,6 +427,10 @@ if (length(dmrs_cment) > 0L) {
 
 ## Gene Context
 
+Gene annotation is used as a prioritization layer, not as proof of mechanism. Promoter
+overlaps are useful for hypotheses about transcriptional regulation, while gene-body
+overlaps can reflect broader cell-state or regulatory differences.
+
 ```{r gene_context}
 gene_context_df <- data.frame(
     Context = c("Promoter", "Gene body", "Promoter and gene body", "No annotated gene overlap"),
@@ -413,7 +446,12 @@ gene_context_df <- data.frame(
 knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
 ```
 
-```{r gene_context_plot, fig.width=6, fig.height=3.5}
+In this run, `r gene_context_df$Percentage[gene_context_df$Context == "Gene body"]`% of DMRs
+overlap gene bodies and `r gene_context_df$Percentage[gene_context_df$Context == "Promoter"]`%
+overlap promoters. The sizeable unannotated fraction is expected for genome-wide methylation
+data and should not be discarded automatically.
+
+```{r gene_context_plot, fig.width=6, fig.height=3.5, fig.cap="Gene-body overlaps are the most common annotation class, followed by unannotated regions and promoter-overlapping DMRs."}
 ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
     geom_col(width = 0.7) +
     coord_flip() +
@@ -424,6 +462,10 @@ ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context
 ```
 
 ## Candidate CMEnt Gene-Overlapping Loci
+
+The next tables move from global summaries to loci that are easier to review manually.
+DMRs are ranked by CMEnt score, adjusted significance, and absolute methylation effect, then
+split into broad gene-overlapping candidates and a focused glioma/cancer gene panel.
 
 ```{r candidate_dmrs}
 dmr_table <- as.data.frame(dmrs_cment)
@@ -463,7 +505,7 @@ top_dmrs <- dmr_table |>
 knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overlapping CMEnt DMRs ranked by score")
 ```
 
-```{r top_dmr_genes_plot, fig.width=8, fig.height=4}
+```{r top_dmr_genes_plot, fig.width=8, fig.height=4, fig.cap="Genes most often overlapped by CMEnt DMRs. Recurrent gene-body hits are mostly hypomethylated in the aggressive group, while EGFR appears among the recurrent hypermethylated candidates."}
 gene_dmr_df <- if (nrow(dmr_table) > 0L) {
     do.call(rbind, lapply(seq_len(nrow(dmr_table)), function(i) {
         genes <- split_ids(dmr_table$genes[i])
@@ -532,33 +574,47 @@ if (nrow(cancer_dmrs) > 0L) {
 }
 ```
 
-```{r cancer_gene_candidates_plot, fig.width=8, fig.height=4}
+The focused cancer table is deliberately hypothesis-generating. It highlights DMRs that
+intersect genes with known glioma relevance, but the ranking still comes from the methylation
+data rather than from prior gene labels.
+
+```{r cancer_gene_candidates_plot, fig.width=8, fig.height=4, fig.cap="Non-zero effect sizes among DMRs overlapping the focused glioma/cancer gene set. The full table above keeps zero-effect overlaps for transparency."}
 if (nrow(cancer_dmrs) > 0L) {
     plot_cancer_dmrs <- cancer_dmrs |>
+        filter(abs(delta_beta_for_ranking) > 0) |>
         mutate(
             Label = short_label(paste0(genes, " | ", DMR), 70),
             Direction = ifelse(delta_beta_for_ranking > 0, "Hyper in aggressive", "Hypo in aggressive")
         )
 
-    ggplot(plot_cancer_dmrs, aes(x = reorder(Label, abs(delta_beta_for_ranking)), y = delta_beta_for_ranking, fill = Direction)) +
-        geom_col(width = 0.7) +
-        coord_flip() +
-        scale_fill_manual(values = c("Hyper in aggressive" = "#B8405E", "Hypo in aggressive" = "#247BA0")) +
-        theme_minimal() +
-        theme(legend.position = "bottom", axis.text.y = element_text(size = 7)) +
-        labs(
-            title = "Cancer-Relevant DMR Effect Sizes",
-            x = "",
-            y = paste0("Delta beta (", aggressive_label, " - ", benign_label, ")"),
-            fill = ""
-        )
+    if (nrow(plot_cancer_dmrs) > 0L) {
+        ggplot(plot_cancer_dmrs, aes(x = reorder(Label, abs(delta_beta_for_ranking)), y = delta_beta_for_ranking, fill = Direction)) +
+            geom_col(width = 0.7) +
+            coord_flip() +
+            scale_fill_manual(values = c("Hyper in aggressive" = "#B8405E", "Hypo in aggressive" = "#247BA0")) +
+            theme_minimal() +
+            theme(legend.position = "bottom", axis.text.y = element_text(size = 7)) +
+            labs(
+                title = "Cancer-Relevant DMR Effect Sizes",
+                x = "",
+                y = paste0("Delta beta (", aggressive_label, " - ", benign_label, ")"),
+                fill = ""
+            )
+    } else {
+        cat("No non-zero effect-size DMRs overlapped the focused glioma/cancer gene set.\n")
+    }
 }
 ```
 
 ## DMR-Level Methylation Separation
 
-```{r top_dmr_heatmap, fig.width=9, fig.height=6}
-beta_handler <- CMEnt::getBetaHandler(beta = reduced_bsseq_obj, genome = genome)
+The heatmap averages beta values over the highest-ranked DMRs for each sample. It is a
+sample-level sanity check rather than a classifier: grey cells indicate missing regional beta
+estimates, which are common in low-depth ONT data. Regions with patchy coverage or inconsistent
+within-group signal should be treated more cautiously than regions with clear blocks of beta
+differences.
+
+```{r top_dmr_heatmap, fig.width=9, fig.height=6, fig.cap="Top-ranked CMEnt DMR methylation by sample. Missing beta values are shown in grey, so visual separation should be judged only where coverage is present."}
 heatmap_dmrs <- dmr_table |>
     arrange(desc(score_for_ranking), qval, desc(abs_delta_beta)) |>
     slice_head(n = 15) |>
@@ -575,12 +631,15 @@ if (nrow(heatmap_dmrs) > 0L) {
         has_text(heatmap_dmrs$genes),
         paste0(heatmap_dmrs$genes, " | ", heatmap_dmrs$DMR),
         heatmap_dmrs$DMR
-    ), 75)
+    ), 55)
     sample_order <- order(pheno$tumor_type)
     region_beta <- region_beta[, rownames(pheno)[sample_order], drop = FALSE]
     heatmap_df <- as.data.frame(as.table(region_beta), stringsAsFactors = FALSE)
     colnames(heatmap_df) <- c("DMR", "Sample", "Beta")
-    heatmap_df$Tumor_type <- pheno[heatmap_df$Sample, "tumor_type"]
+    heatmap_df$Tumor_type <- factor(
+        ifelse(pheno[heatmap_df$Sample, "tumor_type"] == benign_label, "Pilocytic", "IDH-wt GBM"),
+        levels = c("Pilocytic", "IDH-wt GBM")
+    )
     heatmap_df$Sample <- factor(heatmap_df$Sample, levels = colnames(region_beta))
     heatmap_df$DMR <- factor(heatmap_df$DMR, levels = rev(rownames(region_beta)))
 
@@ -596,23 +655,60 @@ if (nrow(heatmap_dmrs) > 0L) {
 
 ## Top CMEnt DMR Visualization
 
-```{r top_dmr, fig.width=6, fig.height=6}
+The top-ranked DMR is then inspected at locus level. The sample-level methylation view above
+already carries the beta-value evidence, so this compact panel focuses on the DMR span, seed
+placement, supporting CpGs, and gene context of the call.
+
+```{r top_dmr, fig.width=8, fig.height=5, fig.cap="Structure-level view of the top-ranked DMR, including seed placement and gene context. Sample methylation is summarized in the heatmap above."}
 if (length(dmrs_cment) > 0L) {
-    CMEnt::plotDMR(
-        dmrs_cment,
-        dmr_index = top_dmr_index,
-        beta = beta_handler,
-        pheno = pheno,
-        sample_group_col = sample_group_col,
-        genome = genome,
-        plot_motif = FALSE
-    )
+    top_dmr_gr <- dmrs_cment[top_dmr_index]
+    top_dmr_sites <- split_ids(mcols(top_dmr_gr)$sites)
+    top_dmr_seeds <- split_ids(mcols(top_dmr_gr)$seeds)
+    beta_locs <- beta_handler$getBetaLocs()
+    top_site_ids <- intersect(unique(c(top_dmr_sites, top_dmr_seeds)), rownames(beta_locs))
+    top_locs <- as.data.frame(beta_locs[top_site_ids, ])
+    top_locs$start <- as.integer(top_locs$start)
+    top_locs$end <- as.integer(top_locs$end)
+    top_locs$site_id <- top_site_ids
+    top_locs$Role <- ifelse(top_locs$site_id %in% top_dmr_seeds, "Seed", "Supporting CpG")
+    top_genes <- paste(split_ids(c(mcols(top_dmr_gr)$in_promoter_of, mcols(top_dmr_gr)$in_gene_body_of)), collapse = ", ")
+    if (!nzchar(top_genes)) top_genes <- "No annotated gene overlap"
+
+    ggplot() +
+        annotate(
+            "rect",
+            xmin = start(top_dmr_gr),
+            xmax = end(top_dmr_gr),
+            ymin = 0.85,
+            ymax = 1.15,
+            fill = "#F6C7C7",
+            color = "#B8405E",
+            alpha = 0.65
+        ) +
+        geom_linerange(data = top_locs, aes(x = start, ymin = 0.78, ymax = 1.22, color = Role), linewidth = 0.35) +
+        geom_point(data = top_locs, aes(x = start, y = 1, color = Role), size = 1.6) +
+        scale_x_continuous(labels = comma) +
+        scale_y_continuous(NULL, breaks = 1, labels = "Top DMR") +
+        scale_color_manual(values = c("Seed" = "#B8405E", "Supporting CpG" = "#247BA0")) +
+        theme_minimal() +
+        theme(legend.position = "bottom", axis.text.y = element_text(size = 10)) +
+        labs(
+            title = paste0("Top CMEnt DMR: ", as.character(seqnames(top_dmr_gr)), ":", comma(start(top_dmr_gr)), "-", comma(end(top_dmr_gr))),
+            subtitle = paste0("Score: ", round(mcols(top_dmr_gr)$score, 3), "; genes: ", top_genes),
+            x = "Genomic position (bp)",
+            color = ""
+        )
 }
 ```
 
 ## CMEnt DMR Manhattan Plot
 
-```{r manhattan, fig.width=10, fig.height=4}
+The Manhattan plot places the full DMR set back onto the genome, making it easier to see
+whether high-scoring calls are isolated, clustered, or concentrated in specific chromosomes.
+Because the score range is narrow, the most useful signal here is genomic distribution and
+annotation class rather than large score outliers.
+
+```{r manhattan, fig.width=10, fig.height=4, fig.cap="Genome-wide DMR score distribution by primary annotation class. Scores cluster tightly, while DMRs are spread across many chromosomes."}
 if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
     CMEnt::plotDMRsManhattan(
         dmrs_cment,
@@ -623,7 +719,12 @@ if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
 
 ## CMEnt DMR Interaction Circos Visualization
 
-```{r circos, fig.width=10, fig.height=10}
+The circos view summarizes putative relationships among DMRs across the genome. It is best
+read as an exploratory structure plot after candidate regions have already passed the simpler
+effect-size, annotation, and heatmap checks above; grey links without JASPAR matches should
+not be over-interpreted as regulatory mechanisms.
+
+```{r circos, fig.width=10, fig.height=10, fig.cap="Circos summary of DMR positions, methylation direction, and detected DMR interactions. Grey links denote interactions without matched JASPAR motif support."}
 if (length(dmrs_cment) > 0L) {
     CMEnt::plotDMRsCircos(
         dmrs_cment,
@@ -634,22 +735,21 @@ if (length(dmrs_cment) > 0L) {
 
 ## Insights and Interpretation
 
-This ONT analysis treats positive delta beta values as hypermethylation in Glioblastoma,
-IDH-wildtype relative to Pilocytic astrocytoma. The most useful readout is therefore not
-only whether CMEnt finds many DMRs, but whether the highest-scoring regions show coherent
-sample-level methylation patterns that separate the aggressive and benign tumor groups.
+CMEnt identifies a broad DMR landscape for the pilocytic astrocytoma versus IDH-wildtype
+glioblastoma contrast, with many regions falling in gene bodies and a smaller but important
+promoter-overlapping subset. The most useful candidates are not simply the highest-scoring
+regions; they are the regions that combine statistical support, interpretable effect size,
+gene context, and visible sample-level separation in the heatmap or locus plot.
 
-The gene-context and candidate-locus plots help prioritize biological follow-up. Promoter
-DMRs are natural candidates for transcriptional regulation, while gene-body DMRs can mark
-broader regulatory or cell-state-associated methylation changes. The focused candidate table
-does not prove causality; it flags DMRs overlapping genes with known relevance to glioma,
-stemness, invasion, hypoxia, growth-factor signaling, and tumor suppression, which are
-plausible axes separating pilocytic astrocytoma from IDH-wildtype glioblastoma.
+The cancer-focused table provides a biological entry point for follow-up by flagging DMRs
+near genes involved in glioma, growth-factor signaling, stemness, invasion, hypoxia, or tumor
+suppression. These overlaps should be treated as prioritization evidence rather than causal
+claims, especially because the ONT data are low depth and the pilocytic astrocytoma group is
+small.
 
-The top-DMR heatmap is the sanity check for classification biology: strong candidate regions
-should show consistent methylation within tumor type and clear differences between the benign
-and aggressive groups. Regions that score highly but do not separate samples visually should
-be treated cautiously, especially given the low-depth ONT coverage and the small benign cohort.
+Overall, this report supports using CMEnt as a regional summarization layer for sparse ONT
+methylation data: DMP seeds provide sensitivity, DMR construction adds local coherence, and
+the downstream plots separate technical confidence checks from biological interpretation.
 
 ## Session Info
 
