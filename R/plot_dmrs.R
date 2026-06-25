@@ -125,8 +125,16 @@
                               min_extension_bp = 50,
                               plot_title = TRUE,
                               .ret_details = FALSE) {
+    .coercePlotLocs <- function(df) {
+        df <- as.data.frame(df)
+        for (col in intersect(c("start", "end"), colnames(df))) {
+            df[[col]] <- suppressWarnings(as.integer(as.character(df[[col]])))
+        }
+        df
+    }
+
     .locsToDf <- function(gr_subset) {
-        df <- as.data.frame(gr_subset)
+        df <- .coercePlotLocs(gr_subset)
         if (nrow(df) > 0) {
             df$site_id <- rownames(gr_subset)
         } else {
@@ -176,6 +184,7 @@
     beta_locs_rownames <- rownames(beta_locs)
 
     dmr_locs <- beta_locs[match(start_site, beta_locs_rownames):match(end_site, beta_locs_rownames), , drop = FALSE]
+    dmr_locs <- .coercePlotLocs(dmr_locs)
 
     nsup_sites <- setdiff(rownames(dmr_locs), sites)
     nsup_sites_locs <- .locsToDf(dmr_locs[nsup_sites, , drop = FALSE])
@@ -190,8 +199,8 @@
     start_site_pos <- as.integer(dmr_locs[start_site, "start"])
     end_site_pos <- as.integer(dmr_locs[end_site, "start"])
     seed_positions <- as.integer(dmr_locs[seeds, "start"])
-    start_seed_pos <- dmr_data$start_seed_pos
-    end_seed_pos <- dmr_data$end_seed_pos
+    start_seed_pos <- suppressWarnings(as.integer(as.character(dmr_data$start_seed_pos)))
+    end_seed_pos <- suppressWarnings(as.integer(as.character(dmr_data$end_seed_pos)))
 
     if (extend_by_dmr_size_ratio > 0) {
         dmr_size <- dmr_end - dmr_start

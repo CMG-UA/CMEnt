@@ -105,6 +105,28 @@ test_that(".plotDMRStructure retains only seed sites when no extension sites are
     expect_setequal(rownames(ret$total_locs), c("cgA", "cgB", "cgC"))
 })
 
+test_that(".plotDMRStructure accepts character-encoded genomic positions", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs
+    S4Vectors::mcols(dmrs)$start_seed_pos <- as.character(S4Vectors::mcols(dmrs)$start_seed_pos)
+    S4Vectors::mcols(dmrs)$end_seed_pos <- as.character(S4Vectors::mcols(dmrs)$end_seed_pos)
+    locs <- plot_fixture$locs
+    locs$start <- as.character(locs$start)
+    locs$end <- as.character(locs$end)
+
+    ret <- CMEnt:::.plotDMRStructure(
+        dmrs = dmrs,
+        dmr_index = 1,
+        beta_locs = locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
+
+    expect_no_error(ggplot2::ggplot_build(ret$structure_plot))
+    expect_type(ret$total_locs$start, "integer")
+})
+
 test_that("plotDMR accepts data.frame DMR input", {
     skip_if_not_installed("ggplot2")
 
