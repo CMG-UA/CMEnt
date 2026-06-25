@@ -77,7 +77,7 @@ if (!file.exists(samplesheet_file)) {
     unlink(soft_file)
     write.table(pheno, samplesheet_file, row.names = TRUE, col.names = NA, sep = "\t", quote = FALSE)
 } else {
-    pheno <- read.table(samplesheet_file, header = TRUE, sep = "\t", quote="", stringsAsFactors = FALSE, check.names = FALSE)
+    pheno <- read.table(samplesheet_file, header = TRUE, sep = "\t", quote = "", stringsAsFactors = FALSE, check.names = FALSE)
 }
 ```
 ```{r bsseq_creation}
