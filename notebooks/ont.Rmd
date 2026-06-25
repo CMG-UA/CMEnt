@@ -558,7 +558,7 @@ if (nrow(cancer_dmrs) > 0L) {
 ## DMR-Level Methylation Separation
 
 ```{r top_dmr_heatmap, fig.width=9, fig.height=6}
-beta_handler <- CMEnt::getBetaHandler(beta = bsseq_obj, genome = genome)
+beta_handler <- CMEnt::getBetaHandler(beta = reduced_bsseq_obj, genome = genome)
 heatmap_dmrs <- dmr_table |>
     arrange(desc(score_for_ranking), qval, desc(abs_delta_beta)) |>
     slice_head(n = 15) |>
