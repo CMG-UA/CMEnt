@@ -300,3 +300,42 @@ test_that("plotDMR with beta and pheno accepts precomputed PWM metadata", {
 
     expect_s3_class(p, "gtable")
 })
+
+test_that(".plotBetaHeatmap omits missing tiles and prioritizes covered seed samples", {
+    skip_if_not_installed("ggplot2")
+
+    site_ids <- c("cgA", "cgB", "cgC")
+    samples <- paste0(rep(c("A", "B"), each = 4), seq_len(4))
+    beta <- matrix(
+        NA_real_,
+        nrow = length(site_ids),
+        ncol = length(samples),
+        dimnames = list(site_ids, samples)
+    )
+    beta[c("cgA", "cgB"), c("A1", "A2", "B1", "B2")] <- c(0.1, 0.2, 0.8, 0.9)
+    beta["cgC", ] <- seq(0.2, 0.9, length.out = length(samples))
+    pheno <- data.frame(
+        group = rep(c("A", "B"), each = 4),
+        row.names = samples,
+        stringsAsFactors = FALSE
+    )
+    total_locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = c(100L, 200L, 300L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+
+    p <- CMEnt:::.plotBetaHeatmap(
+        dmr_data = data.frame(seeds = "cgA,cgB"),
+        beta_data = beta,
+        total_shown_positions = total_locs,
+        pheno = pheno,
+        max_samples_per_group = 2,
+        sample_group_col = "group"
+    )
+
+    expect_false(any(!is.finite(p$data$Beta)))
+    expect_setequal(as.character(unique(p$data$Sample)), c("A1", "A2", "B1", "B2"))
+    expect_s3_class(p$theme$panel.grid.major.x, "element_blank")
+})

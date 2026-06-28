@@ -92,7 +92,7 @@
     if (is.na(start_chr) || is.na(end_chr)) {
         return(chr)
     }
-    paste0(chr, ":", start_chr, "-", end_chr)
+    paste0(chr, ":", gsub(chr, "", start_chr), "-", gsub(chr, "", end_chr))
 }
 
 #' Plot DMR Structure with seeds and Extended sites
@@ -545,6 +545,7 @@
             plot.title = ggplot2::element_text(face = "bold", size = 9),
             axis.text.y = ggplot2::element_text(hjust = 0.5),
             panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         )
 
@@ -554,9 +555,11 @@
     breaks <- c(plot_start, as.integer(beta_locs[start_site_ind:end_site_ind, "start"]), plot_end)
     site_positions <- as.integer(beta_locs[start_site_ind:end_site_ind, "start"])
     site_ids <- rownames(beta_locs[start_site_ind:end_site_ind, , drop = FALSE])
+    # if site_id is like chr:pos, do not include it in the label, just show the position
+    sites_ids_labs <- ifelse(grepl(":", site_ids), "", paste0("(", site_ids, ")"))
     sites_labs <- paste0(
         format(site_positions, big.mark = ",", scientific = FALSE),
-        " (", site_ids, ")"
+        sites_ids_labs
     )
     breaks_labels <- c(
         format(plot_start, big.mark = ",", scientific = FALSE), sites_labs,
@@ -564,9 +567,10 @@
     )
     p <- p + ggplot2::scale_x_continuous(
         breaks = breaks,
-        labels = breaks_labels
+        labels = breaks_labels,
+        guide = ggplot2::guide_axis(check.overlap = TRUE)
     )
-    p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]))
+    p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]), clip = "off")
 
     if (!plot_title) {
         .log_info("Title of the generated plot:\n", title)
@@ -610,6 +614,18 @@
         label <- paste0(label, ", ...")
     }
     label
+}
+
+.padPlotGrob <- function(grob, padding = grid::unit(8, "pt")) {
+    gridExtra::arrangeGrob(
+        grobs = list(grob),
+        ncol = 1,
+        top = grid::nullGrob(),
+        bottom = grid::nullGrob(),
+        left = grid::nullGrob(),
+        right = grid::nullGrob(),
+        padding = padding
+    )
 }
 
 .siteTileBounds <- function(positions, plot_start, plot_end) {
@@ -782,6 +798,45 @@
     # Prepare data
     beta_data <- as.data.frame(beta_data)
     beta_data[, "site"] <- rownames(beta_data)
+    select_samples <- function(group_samples) {
+        if (length(group_samples) <= max_samples_per_group) {
+            return(group_samples)
+        }
+        sample_beta <- beta_data[, group_samples, drop = FALSE]
+        finite_beta <- is.finite(as.matrix(sample_beta))
+        priority_rows <- match(seed_ids, beta_data$site)
+        priority_rows <- priority_rows[!is.na(priority_rows)]
+        if (length(priority_rows) == 0L) {
+            priority_rows <- seq_len(nrow(finite_beta))
+        }
+        selected <- character()
+        target_coverage <- min(2L, max_samples_per_group)
+        coverage <- rep(0L, length(priority_rows))
+        while (length(selected) < max_samples_per_group && any(coverage < target_coverage)) {
+            remaining <- setdiff(group_samples, selected)
+            if (length(remaining) == 0L) {
+                break
+            }
+            remaining_idx <- match(remaining, group_samples)
+            deficit <- coverage < target_coverage
+            contribution <- colSums(finite_beta[priority_rows[deficit], remaining_idx, drop = FALSE])
+            total_observed <- colSums(finite_beta[, remaining_idx, drop = FALSE])
+            best <- order(contribution, total_observed, decreasing = TRUE)[1]
+            if (contribution[best] <= 0) {
+                break
+            }
+            pick <- remaining[best]
+            selected <- c(selected, pick)
+            coverage <- coverage + as.integer(finite_beta[priority_rows, match(pick, group_samples)])
+        }
+        remaining <- setdiff(group_samples, selected)
+        if (length(selected) < max_samples_per_group && length(remaining) > 0L) {
+            remaining_idx <- match(remaining, group_samples)
+            total_observed <- colSums(finite_beta[, remaining_idx, drop = FALSE])
+            selected <- c(selected, head(remaining[order(total_observed, decreasing = TRUE)], max_samples_per_group - length(selected)))
+        }
+        selected
+    }
 
     # if there are more than max_samples_per_group samples in any group, limit to max_samples_per_group samples per group for plotting
     selected_samples <- NULL
@@ -795,11 +850,7 @@
                     names(group_counts),
                     function(g) {
                         group_samples <- rownames(pheno)[pheno[[sample_group_col]] == g]
-                        if (length(group_samples) > max_samples_per_group) {
-                            sample(group_samples, max_samples_per_group)
-                        } else {
-                            group_samples
-                        }
+                        select_samples(group_samples)
                     }
                 )
             )
@@ -810,7 +861,7 @@
         if (ncol(beta_data) - 1 > max_samples_per_group) {
             .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
             sample_cols <- setdiff(colnames(beta_data), "site")
-            selected_samples <- sample(sample_cols, max_samples_per_group)
+            selected_samples <- select_samples(sample_cols)
         }
     }
     if (!is.null(selected_samples)) {
@@ -850,34 +901,48 @@
     sample_index <- seq_along(sample_order)
     names(sample_index) <- sample_order
     beta_melted$SampleIndex <- unname(sample_index[as.character(beta_melted$Sample)])
+    beta_melted <- beta_melted[is.finite(beta_melted$Beta), , drop = FALSE]
 
     valid_beta <- beta_melted$Beta[is.finite(beta_melted$Beta)]
-    beta_limits <- range(valid_beta, na.rm = TRUE)
-    q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
-    if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
-        q <- sort(c(q[1], 0.5, q[2]))
-        coloring <- ggplot2::scale_fill_gradientn(
-            colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
-        )
-    } else if (beta_limits[2] <= 0.5) {
+    if (length(valid_beta) == 0L) {
         coloring <- ggplot2::scale_fill_gradient(
             low = "#2b83ba",
-            high = "#f7f7f7",
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
+            high = "#d7191c",
+            limits = c(0, 1),
+            name = "Beta values",
+            na.value = "transparent"
         )
     } else {
-        coloring <- ggplot2::scale_fill_gradient(
-            low = "#f7f7f7",
-            high = "#d7191c",
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
-        )
+        beta_limits <- range(valid_beta, na.rm = TRUE)
+        q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
+        if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
+            q <- sort(c(q[1], 0.5, q[2]))
+            coloring <- ggplot2::scale_fill_gradientn(
+                colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        } else if (beta_limits[2] <= 0.5) {
+            coloring <- ggplot2::scale_fill_gradient(
+                low = "#2b83ba",
+                high = "#f7f7f7",
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        } else {
+            coloring <- ggplot2::scale_fill_gradient(
+                low = "#f7f7f7",
+                high = "#d7191c",
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        }
     }
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = SampleIndex, fill = Beta)) +
@@ -896,6 +961,7 @@
             axis.text.y = ggplot2::element_text(size = 8, face = "bold", color = "#222222"),
             axis.ticks.y = ggplot2::element_blank(),
             panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         ) +
         ggplot2::theme(
@@ -1050,10 +1116,10 @@ minmaxscale <- function(x) {
             family = "mono",
             lineheight = 0.95
         ) +
-        ggplot2::xlim(0, 1) +
+        ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0.25, length(lines) + 0.75), clip = "off") +
         ggplot2::theme_void() +
         ggplot2::theme(
-            plot.margin = ggplot2::margin(4, 4, 4, 4),
+            plot.margin = ggplot2::margin(4, 8, 4, 4),
             panel.background = ggplot2::element_rect(fill = "white", colour = NA)
         )
 }
@@ -1456,7 +1522,8 @@ plotDMR <- function(dmrs,
         heatmap_plot <- heatmap_plot +
             ggplot2::scale_x_continuous(
                 breaks = breaks,
-                labels = breaks_labels
+                labels = breaks_labels,
+                guide = ggplot2::guide_axis(check.overlap = TRUE)
             ) +
             ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)])) +
             ggplot2::labs(
@@ -1509,7 +1576,8 @@ plotDMR <- function(dmrs,
                 widths = c(0.58, 0.42)
             )
             grobs <- c(grobs, list(motif_panel))
-            heights <- c(heights, if (!is.null(beta)) 0.55 else 0.6)
+            motif_height <- max(if (!is.null(beta)) 0.55 else 0.6, length(motif_lines) * 0.055)
+            heights <- c(heights, motif_height)
         }
     }
 
@@ -1531,6 +1599,7 @@ plotDMR <- function(dmrs,
     } else {
         combined <- grobs[[1]]
     }
+    combined <- .padPlotGrob(combined)
     grid::grid.draw(combined)
     if (!is.null(output_file)) {
         grDevices::dev.off()

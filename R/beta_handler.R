@@ -4,6 +4,12 @@ is_file <- function(file_path) {
 file_is_tabix <- function(file_path) {
     endsWith(file_path, ".gz") && file.exists(paste0(file_path, ".tbi"))
 }
+file_is_bed <- function(file_path) {
+    endsWith(file_path, ".bed") || endsWith(file_path, ".BED") || endsWith(file_path, ".bed.gz") || endsWith(file_path, ".BED.GZ")
+}
+file_is_bsseq <- function(file_path) {
+    endsWith(file_path, ".rds") || endsWith(file_path, ".RDS") || endsWith(file_path, ".h5") || endsWith(file_path, ".hdf5")
+}
 is_bsseq <- function(obj) {
     inherits(obj, "BSseq")
 }
@@ -96,13 +102,22 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(beta) && is.character(beta) && length(beta) == 1 && !file.exists(beta)) {
                 stop("Provided beta file does not exist: ", beta)
             }
-            if (is.null(sorted_locs) && !(is_file(beta) && file_is_tabix(beta)) && !is_bsseq(beta)) {
-                beta_row_names_are_array_ids <- !grepl("chr", row.names(beta)[1])
-                if (is.null(array) && beta_row_names_are_array_ids) {
-                    stop("array must be provided when beta row names are array probe IDs and sorted_locs is not provided.", call. = FALSE)
+            if (is_file(beta) && file_is_bsseq(beta)) {
+                .log_info("Loading BSseq object from file: ", beta, level = 2)
+                if (endsWith(beta, ".rds") || endsWith(beta, ".RDS")) {
+                    beta <- readRDS(beta)
+                } else if (endsWith(beta, ".h5") || endsWith(beta, ".hdf5")) {
+                    beta <- HDF5Array::loadHDF5SummarizedExperiment(beta)
+                } else {
+                    stop("Unsupported BSseq file format. Supported formats are .rds, .RDS, .h5, and .hdf5 : ", beta, call. = FALSE)
                 }
-                if (is.null(genome) && beta_row_names_are_array_ids) {
-                    stop("genome must be provided when beta row names are array probe IDs and sorted_locs is not provided.", call. = FALSE)
+            }
+            if (is.null(sorted_locs) && !(is_file(beta) && (file_is_tabix(beta) || file_is_bed(beta))) && !is_bsseq(beta)) {
+                if (is.null(array)) {
+                    stop("array must be provided when non-BED-like or bsseq input are not given and sorted_locs is not provided.", call. = FALSE)
+                }
+                if (is.null(genome)) {
+                    stop("genome must be provided when non-BED-like or bsseq input are not given and sorted_locs is not provided.", call. = FALSE)
                 }
                 array <- strex::match_arg(array, choices = c("450K", "27K", "EPIC", "EPICv2"), ignore_case = TRUE)
                 self$array <- array

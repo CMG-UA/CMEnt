@@ -2900,7 +2900,11 @@
     } else {
         agg_df[, "sites_num"] <- match(agg_df$end_site, all_sites) - match(agg_df$start_site, all_sites) + 1
     }
-    agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_site, "-", agg_df$end_site)
+    agg_df[, "id"] <-  paste0(seqnames(merged_dmrs_ranges), ":",
+        gsub(paste0(seqnames(merged_dmrs_ranges), ":"), "", agg_df$start_site),
+        "-",
+        gsub(paste0(seqnames(merged_dmrs_ranges), ":"), "", agg_df$end_site)
+    )
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 2)
