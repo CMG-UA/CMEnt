@@ -1,0 +1,661 @@
+---
+title: "CMEnt Analysis of ONT Methylation Data in Brain Tumors"
+subtitle: "GSE289246: pilocytic astrocytoma (PA) versus IDH-wildtype glioblastoma (GBM)"
+author: "CMEnt Package"
+date: "`r Sys.Date()`"
+output: 
+    BiocStyle::html_document:
+        code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    results = "asis",
+    cache = FALSE,
+    echo = TRUE,
+    dev = "png",
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 8,
+    fig.height = 6,
+    dpi = 300
+)
+
+try(devtools::load_all(), silent = TRUE)
+suppressPackageStartupMessages({
+    try(library(CMEnt), silent = TRUE)
+    library(curl)
+    library(GenomicRanges)
+    library(GEOquery)
+    library(SummarizedExperiment)
+    library(data.table)
+    library(bsseq)
+    library(HDF5Array)
+    library(ggplot2)
+    library(dplyr)
+    library(scales)
+})
+
+
+getBenchmarkFile <- function(filename) {
+    benchmark_file <- ""
+    folder <- "ont.old"
+    if (getwd() == "notebooks") {
+        benchmark_file <- file.path("cached_results", folder, filename)
+    } else if ("NAMESPACE" %in% dir()) {
+        benchmark_file <- file.path("notebooks", "cached_results", folder, filename)
+    } else {
+        benchmark_file <- file.path("cached_results", folder, filename)
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
+
+split_ids <- function(x) {
+    ids <- unlist(strsplit(stats::na.omit(as.character(x)), ","), use.names = FALSE)
+    unique(ids[nzchar(ids)])
+}
+
+has_text <- function(x) {
+    !is.na(x) & nzchar(as.character(x))
+}
+
+short_label <- function(x, width = 65L) {
+    ifelse(nchar(x) > width, paste0(substr(x, 1L, width - 3L), "..."), x)
+}
+```
+
+## Introduction
+
+This report uses CMEnt to summarize long-read ONT methylation differences in GSE289246.
+The contrast is intentionally simple: Pilocytic astrocytoma (PA) is used as the lower-grade
+reference group and Glioblastoma, IDH-wildtype (GBM) as the aggressive high-grade group. Rather
+than treating single CpGs as the final readout, the analysis asks whether significant
+methylation seeds can be assembled into coherent DMRs with interpretable genomic context.
+
+- CMEnt DMR size, score, and methylation effect summaries
+- promoter and gene-body overlap patterns
+- DMR-level methylation heatmaps separating benign and aggressive samples
+- cancer-focused candidate gene loci and genome-wide visualization
+
+## Setup and Dependencies
+
+```{r install, eval=FALSE}
+r <- getOption("repos")
+if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+for (pkg in c("DSS", "TxDb.Hsapiens.UCSC.hg19.knownGene", "org.Hs.eg.db", "BSgenome.Hsapiens.UCSC.hg19")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+        BiocManager::install(pkg, update = FALSE, ask = FALSE)
+    }
+}
+```
+## Load Data
+
+The GEO SOFT file is used to reconstruct the sample sheet, then restricted to tumor
+samples with ONT methylation calls generated on PromethION. The selected comparison keeps
+PA and GBM samples so that all downstream summaries
+refer to one clinically meaningful low-grade versus high-grade brain tumor contrast.
+```{r samplesheet_creation}
+
+sample_group_col <- "tumor_type"
+casecontrol_col <- "aggressive"
+genome <- "hg19" # The authors of the original study used hg19.
+benign_label <- "PA"
+aggressive_label <- "GBM"
+
+URL <- "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE289nnn/GSE289246/soft/GSE289246_family.soft.gz"
+samplesheet_file <- getBenchmarkFile("samplesheet.tsv")
+if (!file.exists(samplesheet_file)) {
+    message("Downloading and parsing the GEO dataset samplesheet: ", URL)
+    soft_file <- getBenchmarkFile("GSE289246_family.soft.gz")
+    if (!file.exists(soft_file)) {
+        curl::curl_download(URL, soft_file)
+    }
+    soft_data <- getGEO(filename = soft_file)
+    gsms <- attr(soft_data, "gsms")
+    samplesheet <- list()
+    colnames <- unique(unlist(sapply(names(gsms), function(x) names(attr(gsms[[x]], "header")))))
+    for (gsm in names(gsms)) {
+        samplesheet[[gsm]] <- sapply(
+            attr(gsms[[gsm]], "header"), function(x) {
+                if (length(x) > 1) {
+                    x <- paste(x, collapse = "; ")
+                    x <- gsub("\\s+", " ", x)
+                }
+                x
+            }
+        )
+        missing_cols <- setdiff(colnames, names(samplesheet[[gsm]]))
+        if (length(missing_cols) > 0) {
+            samplesheet[[gsm]][missing_cols] <- NA
+            samplesheet[[gsm]] <- samplesheet[[gsm]][colnames]
+        }
+    }
+    samplesheet <- do.call(rbind, samplesheet)
+    pheno <- samplesheet[samplesheet[, "library_strategy"] == "OTHER", ]
+    instrument_models <- table(pheno[, "instrument_model"])
+    pheno <- pheno[pheno[, "instrument_model"] == "PromethION", ]
+    case1 <- "tissue: tumor; tumor type: Pilocytic astrocytoma"
+    case2 <- "tissue: tumor; tumor type: Glioblastoma, IDH-wildtype"
+    pheno <- pheno[pheno[, "characteristics_ch1"] %in% c(case1, case2), ]
+    unlink(soft_file)
+    write.table(pheno, samplesheet_file, row.names = TRUE, col.names = NA, sep = "\t", quote = FALSE)
+} else {
+    pheno <- read.table(samplesheet_file, header = TRUE, row.names = 1, sep = "\t", quote = "", stringsAsFactors = FALSE, check.names = FALSE)
+}
+pheno <- as.data.frame(pheno)
+pheno$tumor_type <- ifelse(
+    grepl("Glioblastoma, IDH-wildtype", pheno$characteristics_ch1, fixed = TRUE),
+    aggressive_label,
+    benign_label
+)
+pheno$tumor_type <- factor(pheno$tumor_type, levels = c(benign_label, aggressive_label))
+pheno$aggressive <- pheno$tumor_type == aggressive_label
+pheno$Sample_ID <- rownames(pheno)
+
+knitr::kable(
+    as.data.frame(table(Tumor_type = pheno$tumor_type)),
+    caption = "Selected GSE289246 ONT samples"
+)
+```
+Because these ONT methylation calls come from low-depth sequencing, CpG-level evidence is
+uneven across samples. A minimum coverage of 2 per sample keeps the filter permissive enough for
+long-read data while removing single-read methylation calls that are too fragile for DMR
+construction. We also apply a position filter based on the intra-group coverage, of at least 2 samples per group.
+```{r bsseq_creation}
+min_sample_coverage <- 2
+min_group_coverage <- 2
+group_filter_mode <- "samples_with_min_coverage"
+
+input_bsseq_h5 <- getBenchmarkFile("input_h5")
+filtering_summary_rds <- getBenchmarkFile("filtering_summary.rds")
+filtering_summary_exists <- file.exists(filtering_summary_rds)
+sample_filtering_matches <- FALSE
+if (filtering_summary_exists) {
+    filtering_summary <- readRDS(filtering_summary_rds)
+    sample_filtering_matches <- "min_sample_coverage" %in% names(filtering_summary) &&
+        filtering_summary$min_sample_coverage == min_sample_coverage
+    if (
+        !all(c("min_sample_coverage", "min_group_coverage") %in% names(filtering_summary)) ||
+            filtering_summary$min_sample_coverage != min_sample_coverage ||
+            filtering_summary$min_group_coverage != min_group_coverage ||
+            !identical(filtering_summary$group_filter_mode, group_filter_mode)
+    ) {
+        warning("Filtering summary exists but does not match the current coverage thresholds. Recalculating BSseq object.")
+        filtering_summary_exists <- FALSE
+    }
+}
+if (file.exists(input_bsseq_h5) && filtering_summary_exists) {
+    message("Loading BSseq object from ", input_bsseq_h5)
+    bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(input_bsseq_h5)
+} else {
+    filtering_summary <- list()
+    filtering_summary$min_sample_coverage <- min_sample_coverage
+    filtering_summary$min_group_coverage <- min_group_coverage
+    filtering_summary$group_filter_mode <- group_filter_mode
+    source_bed_files <- pheno[, "supplementary_file_1"]
+    names(source_bed_files) <- rownames(pheno)
+    target_bed_files <- sapply(names(source_bed_files), function(x) {
+        getBenchmarkFile(file.path("downloaded", paste0(x, ".bed.gz")))
+    })
+    message("Downloading ", length(target_bed_files), " bed files to ", dirname(target_bed_files[1]), "...")
+    pb <- txtProgressBar(min = 0, max = length(target_bed_files), style = 3)
+    # download the bed files to the raw_data directory
+    for (sample_name in names(source_bed_files)) {
+        if (!file.exists(target_bed_files[[sample_name]])) {
+            message("Downloading ", source_bed_files[[sample_name]])
+            max_attempts <- 5
+            attempt <- 1
+            while (TRUE) {
+                tryCatch({
+                    curl::curl_download(source_bed_files[[sample_name]], target_bed_files[[sample_name]])
+                    # get checksum of the downloaded file
+                    downloaded_checksum <- tools::md5sum(target_bed_files[[sample_name]])
+
+                    # verify that the file is a valid gzip file
+                    # try to unzip the file and check for errors
+                    unzip_success <- tryCatch({
+                        R.utils::gunzip(target_bed_files[[sample_name]], remove = FALSE, overwrite = TRUE)
+                        TRUE
+                    }, error = function(e) {
+                        FALSE
+                    })
+                    if (unzip_success) {
+                        message("Downloaded ", source_bed_files[[sample_name]], " successfully.")
+                        break
+                    } else {
+                        attempt <<- attempt + 1
+                        if (attempt > max_attempts) {
+                            stop("Failed to download ", source_bed_files[[sample_name]], " after ", max_attempts, " attempts.")
+                        }
+                        message("Downloaded file ", target_bed_files[[sample_name]], " is not a valid gzip file. Retrying...")
+                    }
+                }, error = function(e) {
+                    attempt <<- attempt + 1
+                    if (attempt > max_attempts) {
+                        stop("Failed to download ", source_bed_files[[sample_name]])
+                    }
+                    message("Error downloading ", source_bed_files[[sample_name]], ": ", e$message)
+                    message("Retrying in 5 seconds...")
+                    Sys.sleep(5)
+                })
+            }
+        }
+        setTxtProgressBar(pb, which(names(target_bed_files) == sample_name))
+    }
+
+    # Extract the methylation data from the bed files and create a BSseq object
+    bsseq_objects <- list()
+    message("Creating BSseq objects and saving to HDF5...")
+    progress_bar <- txtProgressBar(min = 0, max = length(target_bed_files), style = 3)
+    target_h5_dirs <- sapply(names(target_bed_files), function(x) {
+        getBenchmarkFile(file.path("h5", paste0(x)))
+    })
+    sample_ratio <- list()
+    for (sample_name in names(target_bed_files)) {
+        target_h5_folder <- target_h5_dirs[[sample_name]]
+        if (file.exists(file.path(target_h5_folder, "assays.h5")) && sample_filtering_matches) {
+            setTxtProgressBar(progress_bar, which(names(target_bed_files) == sample_name))
+            next
+        }
+        if (dir.exists(target_h5_folder)) {
+            unlink(target_h5_folder, recursive = TRUE)
+        }
+        bed_file <- target_bed_files[[sample_name]]
+        df <- data.table::fread(bed_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+        if (!exists("gr_list")) {
+            gr_list <- list()
+        }
+        gr <- GRanges(
+            seqnames = df$chrom,
+            ranges = IRanges(start = df$start + 1L, end = df$end),
+            strand = "*"
+        )
+        M <- as.matrix(as.integer(df$percentMeth * df$coverage / 100), ncol = 1)
+        Cov <- as.matrix(as.integer(df$coverage), ncol = 1)
+
+
+        bsseq_obj <- BSseq(
+            gr = gr,
+            M = M,
+            Cov = Cov,
+            sampleNames = sample_name
+        )
+        to_keep <- Cov >= min_sample_coverage
+        sample_ratio[[sample_name]] <- mean(to_keep)
+        if (sum(to_keep) == 0) {
+            warning("No sites with coverage >= ", min_sample_coverage, " for sample ", sample_name)
+            next
+        }
+        if (sum(to_keep) < nrow(bsseq_obj)) {
+            nfiltered <- nrow(bsseq_obj) - sum(to_keep)
+            message(
+                "Keeping ", sum(to_keep), " sites out of ", nrow(bsseq_obj), " (",
+                round(sum(to_keep) / nrow(bsseq_obj) * 100, 2),
+                "%) with coverage >= ", min_sample_coverage, " for sample ", sample_name
+            )
+        }
+        bsseq_obj <- bsseq_obj[to_keep, ]
+        HDF5Array::saveHDF5SummarizedExperiment(bsseq_obj, dir = target_h5_folder)
+        setTxtProgressBar(progress_bar, which(names(target_bed_files) == sample_name))
+    }
+    filtering_summary$sample_filter_ratio <- sample_ratio
+    message("Loading BSseq objects from HDF5 and combining into a single BSseq object...")
+    bsseq_objects <- list()
+    for (sample_name in names(target_bed_files)) {
+        target_h5_folder <- target_h5_dirs[[sample_name]]
+        bsseq_obj <- HDF5Array::loadHDF5SummarizedExperiment(target_h5_folder)
+        bsseq_objects[[sample_name]] <- bsseq_obj
+    }
+    suppressWarnings({
+        bsseq_obj <- do.call(bsseq::combineList, list(bsseq_objects, BACKEND = "HDF5Array"))
+    })
+    message("Filtering BSseq object to keep only sites with information in at least ", min_group_coverage, " sample(s) per group...")
+    group_filter <- rep(TRUE, nrow(bsseq_obj))
+    coverage <- SummarizedExperiment::assay(bsseq_obj, "Cov")
+
+    for (group in unique(pheno[[sample_group_col]])) {
+        group_samples <- rownames(pheno)[pheno[[sample_group_col]] == group]
+        group_pass <- rowSums(coverage[, group_samples, drop = FALSE] > 0, na.rm = TRUE) >= min_group_coverage
+        group_filter <- group_filter & group_pass
+    }
+    filtering_summary$group_filter_ratio <- mean(group_filter)
+    bsseq_obj <- bsseq_obj[group_filter, ]
+    message("Saving filtered BSseq object to HDF5...")
+    if (dir.exists(input_bsseq_h5)) {
+        unlink(input_bsseq_h5, recursive = TRUE)
+    }
+    bsseq_obj <- HDF5Array::saveHDF5SummarizedExperiment(bsseq_obj, dir = paste0(input_bsseq_h5))
+    saveRDS(filtering_summary, filtering_summary_rds)
+}
+
+
+```
+## Find Differentially Methylated Positions
+
+CMEnt starts from DMPs as regional anchors. Here, seeds are CpG sites with nominal evidence
+for differential methylation between the two tumor groups; the distance distribution below
+shows whether those anchors are dense enough to support regional expansion.
+CMEnt reduces the BSseq object to windows around the seed sites before building regions.
+This keeps memory use practical for ONT-scale data while preserving nearby CpGs that can
+support or reject regional expansion around each seed.
+We are using a rather lenient selection threshold, of **non-adjusted** p-value being less than 0.05.
+```{r seeds_calculation}
+pval_thres <- 0.05
+seeds_file <- getBenchmarkFile("seeds.rds")
+if (!file.exists(seeds_file)) {
+    dmps_file <- getBenchmarkFile("dmps.rds")
+    if (!file.exists(dmps_file)) {
+        message("Calculating DMPs...")
+        dmps <- CMEnt::findDMPsBSSeq(
+            bsseq_obj,
+            samplesheet = pheno,
+            sample_group_col = sample_group_col,
+            id_col = "Sample_ID",
+            case_group = aggressive_label,
+            njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
+        )
+        saveRDS(dmps, dmps_file)
+    } else {
+        message("Loading DMPs from ", dmps_file)
+        dmps <- readRDS(dmps_file)
+    }
+    seeds <- dmps[dmps$pval < pval_thres, ]
+    saveRDS(seeds, seeds_file)
+} else {
+    seeds <- readRDS(seeds_file)
+}
+rownames(seeds) <- seeds$site_id
+seeds$Row.names <- NULL
+seed_dist <- unlist(lapply(split(seeds$start, seeds$chr), function(x) {
+    if (length(x) < 2) return(numeric(0))
+    diff(x)
+}))
+seeds_qs <- round(stats::quantile(seed_dist, probs = c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)))
+cat(sprintf("Number of seeds for CMEnt: %d\n", nrow(seeds)))
+cat("BSseq object dimensions: ", dim(bsseq_obj), "\n")
+reduced_bsseq_obj <- CMEnt::reduceBSseqAroundSeeds(bsseq_obj, seeds, expansion_window = 10000)
+beta_handler <- CMEnt::getBetaHandler(beta = reduced_bsseq_obj, genome = genome)
+cat("Reduced BSseq object dimensions: ", dim(reduced_bsseq_obj), "\n")
+knitr::kable(
+    seeds_qs,
+    digits = 2,
+    col.names = "Distance (bp)",
+    caption = sprintf("Seed distance quantiles")
+)
+```
+
+This leaves `r format(nrow(seeds), big.mark = ",")` seed CpGs across an input BSseq matrix
+with `r format(nrow(bsseq_obj), big.mark = ",")` loci and `r ncol(bsseq_obj)` samples.
+The median within-chromosome seed spacing is `r format(seeds_qs["50%"], big.mark = ",")`
+bp, with a long tail of isolated seeds; this is why the DMR builder later requires multiple
+seeds and enough covered sites before accepting a region.
+
+## Method 1: CMEnt
+```{r cment}
+aggfun <- "mean"
+cment_file <- getBenchmarkFile(paste0("dmrs.", aggfun, ".rds"))
+if (!file.exists(cment_file)) {
+    # Reduce the BSseq object around the seeds with the specified expansion window,
+    # so that to minimize memory usage and speed up the DMR building process.
+    cat("Reduced BSseq object dimensions: ", dim(reduced_bsseq_obj), "\n")
+    start_time <- Sys.time()
+    dmrs_cment <- CMEnt::buildDMRs(
+        beta_handler,
+        seeds,
+        pheno,
+        genome = genome,
+        sample_group_col = sample_group_col,
+        casecontrol_col = casecontrol_col,
+        entanglement  = "weak",
+        testing_mode  = "parametric",
+        aggfun = aggfun, # Switching from median, to be more sensitive for larger effect size
+        expansion_window = 10000, # The maximum distance (in bp) to expand the DMRs from the seeds
+        min_seeds = 2, # The minimum number of seeds required to form a DMR
+        min_sites = 50, # The minimum number of sites required to form a DMR
+        max_pval = 0.05,
+        ext_site_delta_beta = 0.1,
+        max_lookup_dist = 1000,
+        njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)),
+        verbose = 2
+    )
+    end_time <- Sys.time()
+    time_cment <- end_time - start_time
+    saveRDS(list(dmrs = dmrs_cment, time = time_cment), cment_file)
+} else {
+    message("Loading CMEnt DMRs from ", cment_file)
+    cment_results <- readRDS(cment_file)
+    dmrs_cment <- cment_results$dmrs
+    time_cment <- cment_results$time
+}
+cat(sprintf("CMEnt: Found %d DMRs in %d seconds\n", length(dmrs_cment), round(as.numeric(time_cment, units = "secs"))))
+```
+
+The resulting call set contains `r format(length(dmrs_cment), big.mark = ",")` DMRs. In
+the following summaries, positive delta beta means higher methylation in GBM
+relative to PA.
+
+## CMEnt Region Summary
+
+```{r cment_summary}
+if (!"qval" %in% colnames(mcols(dmrs_cment))) {
+    mcols(dmrs_cment)$qval <- NA_real_
+}
+
+dmr_delta_col <- "sites_delta_beta"
+dmr_delta <- as.numeric(mcols(dmrs_cment)[[dmr_delta_col]])
+dmr_summary <- data.frame(
+    Contrast = paste(aggressive_label, "minus", benign_label),
+    DMRs = length(dmrs_cment),
+    Median_width_bp = median(width(dmrs_cment)),
+    Mean_width_bp = round(mean(width(dmrs_cment)), 1),
+    Total_coverage_bp = sum(width(dmrs_cment)),
+    Median_delta_beta = round(median(dmr_delta, na.rm = TRUE), 4),
+    Mean_abs_delta_beta = round(mean(abs(dmr_delta), na.rm = TRUE), 4),
+    Hypermethylated_DMRs = sum(dmr_delta > 0, na.rm = TRUE),
+    Hypomethylated_DMRs = sum(dmr_delta < 0, na.rm = TRUE)
+)
+
+knitr::kable(dmr_summary, caption = "CMEnt DMR summary for aggressive versus benign brain tumors")
+```
+
+The called regions are mostly kilobase-scale: the median DMR spans
+`r format(round(dmr_summary$Median_width_bp), big.mark = ",")` bp and together the calls
+cover `r format(dmr_summary$Total_coverage_bp, big.mark = ",")` bp. The mean absolute
+delta beta of `r dmr_summary$Mean_abs_delta_beta` gives a compact effect-size summary, but
+individual loci should still be inspected because sparse ONT coverage can flatten aggregate
+regional means.
+
+```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect. The discrete effect-size bands are expected with sparse ONT beta estimates and should be interpreted together with coverage and sample-level plots."}
+if (length(dmrs_cment) > 0L) {
+    dmr_effect_df <- data.frame(
+        Width = width(dmrs_cment),
+        Delta_beta = dmr_delta,
+        Score = if ("score" %in% colnames(mcols(dmrs_cment))) as.numeric(mcols(dmrs_cment)$score) else NA_real_
+    ) |>
+        filter(is.finite(Delta_beta), is.finite(Width), Width > 0) |>
+        mutate(Direction = factor(ifelse(Delta_beta > 0, "Hyper in aggressive", "Hypo in aggressive")))
+
+    ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction, size = Score)) +
+        geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
+        geom_point(alpha = 0.65) +
+        scale_y_log10(labels = comma) +
+        scale_size_continuous(range = c(0.8, 3)) +
+        scale_color_manual(values = c("Hyper in aggressive" = "#B8405E", "Hypo in aggressive" = "#247BA0")) +
+        theme_minimal() +
+        theme(legend.position = "bottom") +
+        labs(
+            title = "DMR Effect Size and Width",
+            x = paste0("Delta beta (", aggressive_label, " - ", benign_label, ")"),
+            y = "DMR width (bp, log scale)",
+            color = "",
+            size = "Score"
+        )
+}
+```
+
+## Gene Context
+
+Gene annotation is used as a prioritization layer, not as proof of mechanism. Promoter
+overlaps are useful for hypotheses about transcriptional regulation, while gene-body
+overlaps can reflect broader cell-state or regulatory differences.
+
+```{r gene_context}
+gene_context_df <- data.frame(
+    Context = c("Promoter", "Gene body", "Promoter and gene body", "No annotated gene overlap"),
+    DMRs = c(
+        sum(has_text(mcols(dmrs_cment)$in_promoter_of)),
+        sum(has_text(mcols(dmrs_cment)$in_gene_body_of)),
+        sum(has_text(mcols(dmrs_cment)$in_promoter_of) & has_text(mcols(dmrs_cment)$in_gene_body_of)),
+        sum(!has_text(mcols(dmrs_cment)$in_promoter_of) & !has_text(mcols(dmrs_cment)$in_gene_body_of))
+    )
+) |>
+    mutate(Percentage = round(100 * DMRs / max(1L, length(dmrs_cment)), 1))
+
+knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
+```
+
+In this run, `r gene_context_df$Percentage[gene_context_df$Context == "Gene body"]`% of DMRs
+overlap gene bodies and `r gene_context_df$Percentage[gene_context_df$Context == "Promoter"]`%
+overlap promoters. The sizeable unannotated fraction is expected for genome-wide methylation
+data and should not be discarded automatically.
+
+```{r gene_context_plot, fig.width=6, fig.height=3.5}
+ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
+    geom_col(width = 0.7) +
+    coord_flip() +
+    scale_y_continuous(labels = comma) +
+    theme_minimal() +
+    theme(legend.position = "none") +
+    labs(title = "DMR Gene Context", x = "", y = "DMRs")
+```
+
+## Candidate CMEnt Gene-Overlapping Loci
+
+The next tables move from global summaries to loci that are easier to review manually.
+DMRs are ranked by CMEnt score, adjusted significance, and absolute methylation effect, then
+split into broad gene-overlapping candidates and a focused glioma/cancer gene panel.
+
+```{r candidate_dmrs}
+dmr_table <- as.data.frame(dmrs_cment)
+dmr_table$dmr_index <- seq_along(dmrs_cment)
+dmr_table$DMR <- paste0(dmr_table$start, "-", dmr_table$end)
+dmr_table$seed_delta_beta <- if ("delta_beta" %in% colnames(dmr_table)) dmr_table$delta_beta else NA_real_
+dmr_table$region_delta_beta <- dmr_delta
+dmr_table$abs_region_delta_beta <- abs(dmr_table$region_delta_beta)
+dmr_table$score_for_ranking <- if ("score" %in% colnames(dmr_table)) dmr_table$score else 0
+dmr_table$cv_accuracy <- if ("cv_accuracy" %in% colnames(dmr_table)) dmr_table$cv_accuracy else NA_real_
+
+top_dmr_index <- dmr_table |>
+    arrange(desc(score_for_ranking), qval, desc(abs_region_delta_beta)) |>
+    slice_head(n = 1) |>
+    pull(dmr_index)
+
+top_dmrs <- dmr_table |>
+    filter(has_text(in_promoter_of) | has_text(in_gene_body_of)) |>
+    arrange(desc(score_for_ranking), qval, desc(abs_region_delta_beta)) |>
+    dplyr::select(
+        dmr_index,
+        DMR,
+        width,
+        score,
+        qval,
+        pval,
+        seed_delta_beta,
+        region_delta_beta,
+        any_of(c("delta_beta_promoter", "delta_beta_gene_body", "seeds_num", "sites_num", "in_promoter_of", "in_gene_body_of"))
+    ) |>
+    head(20)
+
+knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overlapping CMEnt DMRs ranked by score")
+```
+
+```{r top_dmr_genes_plot, fig.width=4, fig.height=6}
+gene_dmr_df <- if (nrow(dmr_table) > 0L) {
+    do.call(rbind, lapply(seq_len(nrow(dmr_table)), function(i) {
+        in_promoter_of <- split_ids(dmr_table$in_promoter_of[i])
+        if (length(in_promoter_of) == 0L) return(NULL)
+        data.frame(
+            Gene = in_promoter_of,
+            Delta_beta = dmr_table$region_delta_beta[i],
+            Score = dmr_table$score_for_ranking[i],
+            stringsAsFactors = FALSE
+        )
+    }))
+} else {
+    NULL
+}
+
+if (!is.null(gene_dmr_df) && nrow(gene_dmr_df) > 0L) {
+    top_gene_df <- gene_dmr_df |>
+        group_by(Gene) |>
+        summarise(
+            delta_beta = median(Delta_beta, na.rm = TRUE),
+            score = median(Score, na.rm = TRUE),
+            .groups = "drop"
+        ) |>
+        arrange(desc(score)) |>
+        slice_head(n = 20)
+
+    ggplot(top_gene_df, aes(x = reorder(Gene, score), y = delta_beta, fill = score)) +
+        geom_col(width = 0.7) +
+        coord_flip() +
+        scale_fill_continuous(type = "viridis", option = "C") +
+        guides(fill = guide_colorbar(barwidth = 0.5, barheight = 10, title = "Score", position="right")) +
+        scale_y_continuous(labels = comma) +
+        theme_minimal(base_size=12) +
+        theme(legend.position = "bottom") +
+        labs(title = "Genes Promoters Overlapped by top-scoring CMEnt DMRs", x = "", y = "Delta Beta", fill = "")
+}
+```
+
+## Top CMEnt DMR Visualization
+
+```{r top_dmr, fig.width=10, fig.height=8, fig.cap="Structure-level view of the top-ranked DMR, including seed placement and gene context. Sample methylation is summarized in the heatmap above."}
+CMEnt::plotDMRs(
+    dmrs_cment, top_n = 1, score_by = "score",
+    beta = beta_handler, pheno = pheno, genome = genome,
+    sample_group_col = sample_group_col,
+    max_samples_per_group = Inf
+)
+```
+
+## CMEnt DMR Manhattan Plot
+
+The Manhattan plot places the full DMR set back onto the genome, making it easier to see
+whether high-scoring calls are isolated, clustered, or concentrated in specific chromosomes.
+Because the score range is narrow, the most useful signal here is genomic distribution and
+annotation class rather than large score outliers.
+
+```{r manhattan, fig.width=10, fig.height=4, fig.cap="Genome-wide DMR score distribution by primary annotation class. Scores cluster tightly, while DMRs are spread across many chromosomes."}
+if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
+    CMEnt::plotDMRsManhattan(
+        dmrs_cment,
+        genome = genome
+    )
+}
+```
+
+## CMEnt DMR Interaction Circos Visualization
+
+```{r circos, fig.width=10, fig.height=10, fig.cap="Circos summary of DMR positions, methylation direction, and detected DMR interactions. Grey links denote interactions without matched JASPAR motif support."}
+if (length(dmrs_cment) > 0L) {
+    CMEnt::plotDMRsCircos(
+        dmrs_cment,
+        genome = genome,
+        beta = beta_handler,
+        sample_group_col = sample_group_col
+    )
+}
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

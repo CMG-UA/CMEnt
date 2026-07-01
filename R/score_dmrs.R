@@ -727,7 +727,8 @@
         bp_param <- .makeBiocParallelParam(
             njobs,
             n_tasks = length(chromosomes),
-            progressbar = verbose > 0L
+            progressbar = verbose > 0L,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
         )
         ret <- BiocParallel::bplapply(chromosomes, fun, BPPARAM = bp_param)
     }
@@ -885,7 +886,7 @@ scoreDMRs <- function(
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     if (! "sites" %in% colnames(mcols(dmrs))) {
         .log_step("Inferring DMR sites from genomic overlaps", level = 3)
-        beta_locs <- .convertToGRanges(beta_handler$getBetaLocs(), genome = genome)
+        beta_locs <- .convertSitesToGPos(beta_handler$getBetaLocs(), genome = genome)
         beta_site_ids <- names(beta_locs)
         hits <- GenomicRanges::findOverlaps(dmrs, beta_locs)
         sites <- rep("", length(dmrs))
@@ -923,7 +924,8 @@ scoreDMRs <- function(
     bp_param <- .makeBiocParallelParam(
         njobs,
         n_tasks = min(length(dmrs_m_values), njobs * 4L),
-        progressbar = verbose >= 3L
+        progressbar = verbose >= 3L,
+        log = getOption("CMEnt.verbose", 1L) >= 1L
     )
     cv_metrics <- BiocParallel::bplapply(
         dmrs_m_values,

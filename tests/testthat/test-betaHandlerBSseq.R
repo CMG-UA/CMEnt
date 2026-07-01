@@ -22,8 +22,8 @@ test_that("BetaHandler can be created from BSseq object", {
     )
     beta_handler <- getBetaHandler(beta = bsseq_obj)
     expect_s3_class(beta_handler, "BetaHandler")
-    expect_true(!is.null(beta_handler$sorted_locs))
-    expect_equal(nrow(beta_handler$sorted_locs), n_loci)
+    expect_null(beta_handler$sorted_locs)
+    expect_equal(nrow(beta_handler$getBetaLocs()), n_loci)
 })
 
 test_that("BetaHandler can extract row names from BSseq object", {
@@ -147,6 +147,7 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
     )
     beta_handler_hdf5 <- getBetaHandler(beta = bsseq_obj_hdf5)
     beta_subset_hdf5 <- beta_handler_hdf5$getBeta(row_names = subset_sites)
+    expect_s4_class(beta_subset_hdf5, "DelayedMatrix")
     expect_equal(nrow(beta_subset_hdf5), 3)
     expect_equal(rownames(beta_subset_hdf5), subset_sites)
 })
@@ -191,7 +192,7 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     beta_handler <- getBetaHandler(beta = bsseq_obj)
     beta_locs <- beta_handler$getBetaLocs()
     expect_equal(nrow(beta_locs), n_loci)
-    expect_true(all(c("chr", "start", "end") %in% colnames(beta_locs)))
+    expect_equal(colnames(beta_locs), c("chr", "start"))
     expect_equal(as.character(beta_locs$chr), rep("chr1", n_loci))
     expect_equal(beta_locs$start, start_positions)
     # convert the object to disk-backed and check that the genomic locations are still correct
@@ -204,7 +205,7 @@ test_that("BetaHandler extracts genomic locations from BSseq object", {
     beta_locs_hdf5 <- beta_handler_hdf5$getBetaLocs()
     expect_equal(as.character(beta_locs_hdf5$chr), rep("chr1", n_loci))
     expect_equal(as.character(beta_locs_hdf5$start), as.character(start_positions))
-    expect_equal(as.character(beta_locs_hdf5$end), as.character(start_positions + 1))
+    expect_equal(colnames(beta_locs_hdf5), c("chr", "start"))
 })
 
 test_that("BetaHandler sorts genomic locations from unsorted BSseq input", {
@@ -231,6 +232,26 @@ test_that("BetaHandler sorts genomic locations from unsorted BSseq input", {
     expect_true(all(diff(beta_locs$start) >= 0))
     expect_equal(rownames(beta_locs), paste0("chr1:", sort(unsorted_starts)))
     expect_equal(rownames(beta_locs), beta_handler$getBetaRowNames())
+})
+
+test_that("BetaHandler sorts stranded BSseq input by position, not strand", {
+    starts <- c(100L, 300L, 101L, 301L)
+    gr <- GRanges(
+        seqnames = rep("chr1", length(starts)),
+        ranges = IRanges(start = starts, width = 1),
+        strand = c("+", "+", "-", "-")
+    )
+    bsseq_obj <- BSseq(
+        M = matrix(1L, nrow = length(starts), ncol = 2),
+        Cov = matrix(10L, nrow = length(starts), ncol = 2),
+        gr = gr,
+        sampleNames = c("Sample1", "Sample2")
+    )
+
+    beta_locs <- getBetaHandler(beta = bsseq_obj)$getBetaLocs()
+
+    expect_equal(beta_locs$start, sort(starts))
+    expect_true(CMEnt:::.bsseqIsSorted(CMEnt:::.prepareBSseqForBetaHandler(bsseq_obj)))
 })
 
 test_that("BetaHandler handles missing row names in BSseq gracefully", {
@@ -457,7 +478,6 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
     seed_beta_index <- CMEnt:::.matchSequencingIdsToBeta(seed_ids, beta_chr, beta_start)
     seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
     rownames(seeds_locs) <- seed_ids
-    seed_pvals <- stats::setNames(rep(0.01, length(seed_ids)), seed_ids)
 
     tasks <- CMEnt:::.buildDMRsChromosomeTasks(
         beta_handler = beta_handler,
@@ -467,21 +487,21 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
         seed_ids = seed_ids,
         seed_beta_index = seed_beta_index,
         seed_chr = as.character(seeds_locs$chr),
-        seed_pvals = seed_pvals,
         beta_col_names = sample_names,
         use_numeric_sequencing_rows = TRUE
     )
 
     payload_names <- unique(unlist(lapply(tasks, names), use.names = FALSE))
-    expect_false(any(c("beta_chr", "beta_start", "seed_chr", "seeds_locs", "beta_row_ids_all") %in% payload_names))
+    expect_false(any(c("beta_chr", "beta_start", "seed_chr", "seeds_locs", "beta_row_ids_all", "beta_handler") %in% payload_names))
     expect_equal(tasks$chr1$seed_beta_index, c(3L, 8L))
     expect_equal(tasks$chr2$seed_beta_index, c(2L, 8L))
 
     for (task in tasks) {
-        task_bsseq <- task$beta_handler$.__enclos_env__$private$.bsseq_object
-        task_locs <- as.data.frame(task$beta_handler$getBetaLocs())
+        task_handler <- beta_handler$subset(row_names = task$row_ids, col_names = sample_names)
+        task_bsseq <- task_handler$.__enclos_env__$private$.bsseq_object
+        task_locs <- as.data.frame(task_handler$getBetaLocs())
         expect_s4_class(task_bsseq, "BSseq")
-        expect_null(task$beta_handler$.__enclos_env__$private$.beta_file_in_memory)
+        expect_null(task_handler$.__enclos_env__$private$.beta_file_in_memory)
         expect_equal(nrow(task_bsseq), nrow(task_locs))
         expect_equal(unique(as.character(task_locs$chr)), task$chr)
     }

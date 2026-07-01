@@ -19,10 +19,33 @@ is_bsseq <- function(obj) {
     if (length(gr) < 2L) {
         return(TRUE)
     }
+    chr_rle <- GenomeInfoDb::seqnames(gr)
+    chr_runs <- S4Vectors::runLength(chr_rle)
+    chr_values <- as.character(S4Vectors::runValue(chr_rle))
+    chr_rank <- match(chr_values, GenomeInfoDb::seqlevels(gr))
+    if (anyDuplicated(chr_values) || any(diff(chr_rank) < 0L, na.rm = TRUE)) {
+        return(FALSE)
+    }
+    run_ends <- cumsum(chr_runs)
+    run_starts <- c(1L, head(run_ends, -1L) + 1L)
+    starts <- GenomicRanges::start(gr)
+    for (i in seq_along(run_starts)) {
+        idx <- seq.int(run_starts[i], run_ends[i])
+        if (length(idx) > 1L && any(starts[idx][-1L] < starts[idx][-length(idx)])) {
+            return(FALSE)
+        }
+    }
+    TRUE
+}
+
+.bsseqPositionOrder <- function(obj) {
+    gr <- GenomicRanges::granges(obj)
+    if (length(gr) < 2L) {
+        return(seq_along(gr))
+    }
     chr <- as.character(seqnames(gr))
     chr_rank <- match(chr, GenomeInfoDb::seqlevels(gr))
-    row_order <- order(chr_rank, start(gr), end(gr), na.last = TRUE)
-    identical(row_order, seq_along(row_order))
+    order(chr_rank, start(gr), seq_along(gr), na.last = TRUE)
 }
 
 .bsseqIsInMemory <- function(obj) {
@@ -33,10 +56,42 @@ is_bsseq <- function(obj) {
 }
 
 .prepareBSseqForBetaHandler <- function(obj) {
-    if (.bsseqIsSorted(obj)) {
+    obj <- .compactBSseqRowRanges(obj)
+    if (!.bsseqIsSorted(obj)) {
+        obj <- obj[.bsseqPositionOrder(obj), ]
+    }
+    obj
+}
+
+.compactBSseqRowRanges <- function(obj) {
+    rr <- SummarizedExperiment::rowRanges(obj)
+    if (inherits(rr, "GPos")) {
         return(obj)
     }
-    sort(obj)
+    if (all(GenomicRanges::width(rr) == 1L)) {
+        SummarizedExperiment::rowRanges(obj) <- as(rr, "GPos")
+    }
+    obj
+}
+
+.bsseqLocsFromGRanges <- function(gr, idx = NULL) {
+    if (!is.null(idx)) {
+        gr <- gr[idx]
+    }
+    locs <- data.frame(
+        chr = as.character(GenomeInfoDb::seqnames(gr)),
+        start = GenomicRanges::start(gr),
+        stringsAsFactors = FALSE
+    )
+    rownames(locs) <- paste0(locs$chr, ":", locs$start)
+    locs
+}
+
+.bsseqRowNamesFromGRanges <- function(gr, idx = NULL) {
+    if (!is.null(idx)) {
+        gr <- gr[idx]
+    }
+    paste0(as.character(GenomeInfoDb::seqnames(gr)), ":", GenomicRanges::start(gr))
 }
 
 #' Beta Handler Class
@@ -145,18 +200,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 )
                 private$.self_contained <- TRUE
             } else if (is_bsseq(beta)) {
-                .log_step("Extracting genomic locations from BSseq object...", level = 2)
+                .log_step("Preparing BSseq object...", level = 2)
                 private$.bsseq_object <- .prepareBSseqForBetaHandler(beta)
                 self$beta <- NULL
-                gr <- granges(private$.bsseq_object)
-                .log_step("Constructing sorted_locs delayed data frame..", level = 3)
-                sorted_locs <- genomicLocsFromBsseq(
-                    input_bsseq = private$.bsseq_object,
-                    output_h5file = .getDerivedOutputPath(output_prefix, ".input_bsseq.locations.h5")
-                )
-                .log_success("Constructed sorted_locs delayed data frame..", level = 3)
-
-                .log_success("Genomic locations extracted from BSseq object: ", nrow(sorted_locs), " sites", level = 2)
+                .log_success("BSseq object prepared: ", nrow(private$.bsseq_object), " sites", level = 2)
                 private$.self_contained <- TRUE
             }
             self$sorted_locs <- sorted_locs
@@ -288,6 +335,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Get **all** provided sorted genomic locations
         #' @return data.frame or matrix of the genomic locations
         getGenomicLocs = function() {
+            if (!is.null(private$.bsseq_object)) {
+                return(self$getBetaLocs())
+            }
             if (is.null(self$sorted_locs)) {
                 self$sorted_locs <- getSortedGenomicLocs(
                     array = self$array,
@@ -401,11 +451,14 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
 
             self$load()
-            .log_info("Loading genomic locations for validation...", level = 2)
-            sorted_locs <- self$getGenomicLocs()
             if (!is.null(private$.bsseq_object)) {
                 .log_info("BSseq beta locations validated", level = 2)
-            } else if (is.null(private$.beta_file_in_memory)) {
+                private$.validated <- TRUE
+                return(invisible(self))
+            }
+            .log_info("Loading genomic locations for validation...", level = 2)
+            sorted_locs <- self$getGenomicLocs()
+            if (is.null(private$.beta_file_in_memory)) {
                 .log_info("Getting beta row names for validation...", level = 2)
                 beta_row_names <- self$getBetaRowNames()
                 .log_step("Validating beta file sorting by position...", level = 2)
@@ -486,6 +539,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             if (!is.null(private$.beta_locs)) {
                 return(private$.beta_locs)
             }
+            if (!is.null(private$.bsseq_object)) {
+                private$.beta_locs <- .bsseqLocsFromGRanges(GenomicRanges::granges(private$.bsseq_object))
+                return(private$.beta_locs)
+            }
             sorted_locs <- self$getGenomicLocs()
             if (private$.self_contained) {
                 private$.beta_locs <- sorted_locs
@@ -534,7 +591,28 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @return A BetaHandler object scoped to the requested subset
         subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
-            if (is.null(row_names)) {
+            bsseq_numeric_rows <- !is.null(private$.bsseq_object) && is.numeric(row_names)
+            if (bsseq_numeric_rows) {
+                row_idx <- as.integer(row_names)
+                n_all <- nrow(private$.bsseq_object)
+                if (allow_missing) {
+                    keep <- !is.na(row_idx) & row_idx >= 1L & row_idx <= n_all
+                    row_idx <- row_idx[keep]
+                } else {
+                    bad <- is.na(row_idx) | row_idx < 1L | row_idx > n_all
+                    if (any(bad)) {
+                        bad_idx <- unique(row_idx[bad])
+                        bad_idx <- bad_idx[!is.na(bad_idx)]
+                        stop(
+                            "Requested row indices out of bounds [1,", n_all, "]: ",
+                            paste(head(bad_idx, 10), collapse = ", ")
+                        )
+                    }
+                }
+                row_match <- row_idx
+                subset_row_names <- NULL
+                query_row_names <- row_match
+            } else if (is.null(row_names)) {
                 all_row_names <- self$getBetaRowNames()
                 subset_row_names <- all_row_names
                 row_match <- seq_along(all_row_names)
@@ -598,12 +676,39 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 }
             }
 
-            all_locs <- self$getBetaLocs()
-            if (is.numeric(row_names)) {
-                subset_locs <- all_locs[row_match, , drop = FALSE]
-                rownames(subset_locs) <- subset_row_names
-            } else {
-                subset_locs <- all_locs[match(subset_row_names, rownames(all_locs)), , drop = FALSE]
+            if (bsseq_numeric_rows && !.bsseqIsInMemory(private$.bsseq_object)) {
+                storage_rows <- if (!is.null(private$.beta_row_index_map)) {
+                    private$.beta_row_index_map[row_match]
+                } else {
+                    row_match
+                }
+                storage_cols <- match(subset_col_names, sampleNames(private$.bsseq_object))
+                subset_handler <- self$clone(deep = FALSE)
+                subset_handler$sorted_locs <- NULL
+                subset_handler$beta_row_names_file <- NULL
+                subset_handler$.__enclos_env__$private$.beta_locs <- NULL
+                subset_handler$.__enclos_env__$private$.beta_row_names <- NULL
+                subset_handler$.__enclos_env__$private$.beta_col_names <- subset_col_names
+                subset_handler$.__enclos_env__$private$.bsseq_object <- private$.bsseq_object[storage_rows, storage_cols]
+                subset_handler$.__enclos_env__$private$.beta_row_index_map <- NULL
+                subset_handler$.__enclos_env__$private$.loaded <- TRUE
+                subset_handler$.__enclos_env__$private$.validated <- TRUE
+                subset_handler$.__enclos_env__$private$.self_contained <- TRUE
+                return(subset_handler)
+            }
+
+            if (bsseq_numeric_rows) {
+                subset_locs <- .bsseqLocsFromGRanges(GenomicRanges::granges(private$.bsseq_object), row_match)
+                subset_row_names <- rownames(subset_locs)
+            }
+            if (!bsseq_numeric_rows) {
+                all_locs <- self$getBetaLocs()
+                if (is.numeric(row_names)) {
+                    subset_locs <- all_locs[row_match, , drop = FALSE]
+                    rownames(subset_locs) <- subset_row_names
+                } else {
+                    subset_locs <- all_locs[match(subset_row_names, rownames(all_locs)), , drop = FALSE]
+                }
             }
 
             if (!is.null(private$.beta_file_in_memory) || .bsseqIsInMemory(private$.bsseq_object)) {
@@ -652,7 +757,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param col_names Character vector of sample IDs to extract (default: NULL for all)
         #' @param allow_missing Logical. If TRUE, missing site sites will be ignored instead of throwing an error (default: FALSE)
         #' @param chr Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)
-        #' @return Matrix of beta values
+        #' @return Matrix-like object of beta values
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
             if (!is.null(row_names) && !is.null(chr)) {
                 stop("Cannot specify both row_names and chr for subsetting.")
@@ -848,16 +953,20 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (!is.null(private$.bsseq_object)) {
                 .log_step("Extracting beta values from BSseq object..", level = 3)
-                all_row_names <- private$.getExplicitRowNames(self$getBetaLocs())
+                bsseq_gr <- GenomicRanges::granges(private$.bsseq_object)
+                all_row_names <- if (!is.null(private$.beta_locs)) {
+                    private$.getExplicitRowNames(private$.beta_locs)
+                } else {
+                    NULL
+                }
                 if (is.null(all_row_names) && (!is.null(row_names) && !is.numeric(row_names))) {
                     all_row_names <- self$getBetaRowNames()
                 }
                 if (!is.null(chr)) {
-                    all_locs <- self$getBetaLocs()
-                    chr_idx <- which(all_locs$chr %in% chr)
+                    chr_idx <- which(GenomeInfoDb::seqnames(bsseq_gr) %in% chr)
                     view_idx <- chr_idx
                     selected_row_names <- if (is.null(all_row_names)) {
-                        private$.makeRowNamesFromLocs(all_locs, view_idx)
+                        .bsseqRowNamesFromGRanges(bsseq_gr, view_idx)
                     } else {
                         all_row_names[view_idx]
                     }
@@ -865,7 +974,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 } else if (!is.null(row_names)) {
                     if (is.numeric(row_names)) {
                         view_idx <- as.integer(row_names)
-                        n_all <- nrow(self$getBetaLocs())
+                        n_all <- nrow(private$.bsseq_object)
                         if (allow_missing) {
                             keep <- !is.na(view_idx) & view_idx >= 1L & view_idx <= n_all
                             view_idx <- view_idx[keep]
@@ -882,7 +991,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         }
                         row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
                         selected_row_names <- if (is.null(all_row_names)) {
-                            private$.makeRowNamesFromLocs(self$getBetaLocs(), view_idx)
+                            .bsseqRowNamesFromGRanges(bsseq_gr, view_idx)
                         } else {
                             all_row_names[view_idx]
                         }
@@ -903,9 +1012,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         row_idx <- if (!is.null(private$.beta_row_index_map)) private$.beta_row_index_map[view_idx] else view_idx
                     }
                 } else {
-                    view_idx <- seq_len(nrow(self$getBetaLocs()))
+                    view_idx <- seq_len(nrow(private$.bsseq_object))
                     selected_row_names <- if (is.null(all_row_names)) {
-                        private$.makeRowNamesFromLocs(self$getBetaLocs(), view_idx)
+                        .bsseqRowNamesFromGRanges(bsseq_gr, view_idx)
                     } else {
                         all_row_names
                     }
@@ -939,9 +1048,7 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
                 m_assay <- SummarizedExperiment::assay(private$.bsseq_object, "M", withDimnames = FALSE)
                 cov_assay <- SummarizedExperiment::assay(private$.bsseq_object, "Cov", withDimnames = FALSE)
-                beta_subset <- as.matrix(
-                    m_assay[row_idx, col_idx, drop = FALSE] / cov_assay[row_idx, col_idx, drop = FALSE]
-                )
+                beta_subset <- m_assay[row_idx, col_idx, drop = FALSE] / cov_assay[row_idx, col_idx, drop = FALSE]
                 beta_subset[!is.finite(beta_subset)] <- NA_real_
                 rownames(beta_subset) <- selected_row_names
                 colnames(beta_subset) <- selected_col_names

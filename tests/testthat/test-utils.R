@@ -117,22 +117,44 @@ test_that("processSamplesheet infers csv and tsv separators", {
 })
 
 test_that("logging and parallel helpers handle quiet and fallback branches", {
-    withr::local_options(list(CMEnt.verbose = 0, CMEnt.biocparallel_backend = "unknown"))
+    withr::local_options(list(
+        CMEnt.verbose = 0,
+        CMEnt.biocparallel_backend = "auto"
+    ))
 
     expect_equal(CMEnt:::.fmt_dur(NULL), "")
     expect_match(CMEnt:::.formatLogOutput("hello world", lead = ">", level = 2), ">")
-    expect_warning(CMEnt:::.log_warn("careful"), "careful")
-    expect_error(CMEnt:::.log_error("boom"), "boom")
+    warn_log <- capture.output(CMEnt:::.log_warn("careful"), type = "message")
+    expect_match(warn_log, "careful")
+    expect_false(any(grepl("^WARN \\[", warn_log)))
+    expect_equal(capture.output(CMEnt:::.log_info("quiet", level = 1), type = "message"), character(0))
+    info_log <- withr::with_options(
+        list(CMEnt.verbose = 1),
+        capture.output(CMEnt:::.log_info("hello", level = 1), type = "message")
+    )
+    expect_match(info_log, "hello")
+    expect_false(any(grepl("^INFO \\[", info_log)))
+    expect_error(capture.output(CMEnt:::.log_error("boom"), type = "message"), "boom")
     expect_equal(CMEnt:::.node_size(), if (8L * .Machine$sizeof.pointer == 32L) 28L else 56L)
 
-    expect_s4_class(CMEnt:::.makeBiocParallelParam(1), "SerialParam")
+    serial_param <- CMEnt:::.makeBiocParallelParam(1)
+    expect_s4_class(serial_param, "SerialParam")
+    expect_true(BiocParallel::bplog(serial_param))
+    expect_equal(BiocParallel::bpthreshold(serial_param), "INFO")
     expect_s4_class(CMEnt:::.makeBiocParallelParam(2, n_tasks = 1), "SerialParam")
     expect_error(CMEnt:::.makeBiocParallelParam(0), "positive integer")
-    expect_warning(
+    backend_warning <- capture.output(
         param <- CMEnt:::.makeBiocParallelParam(2, parallel_backend = "unknown"),
+        type = "message"
+    )
+    expect_match(
+        paste(backend_warning, collapse = "\n"),
         "Unsupported CMEnt BiocParallel backend"
     )
+    expect_false(any(grepl("^WARN \\[", backend_warning)))
     expect_true(inherits(param, "BiocParallelParam"))
+    expect_true(BiocParallel::bplog(param))
+    expect_equal(BiocParallel::bpthreshold(param), "INFO")
 
     withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = "TRUE")
     expect_lte(CMEnt:::.defaultNJobs(), 2L)
@@ -238,10 +260,12 @@ test_that("convertToGRanges fills missing GRanges genome without replacing seqle
     )
     old_seqlevels <- GenomeInfoDb::seqlevels(dmrs)
 
-    expect_warning(
+    genome_log <- capture.output(
         converted <- CMEnt:::.convertToGRanges(dmrs, genome = "hg19"),
-        "no genome information"
+        type = "message"
     )
+    expect_match(paste(genome_log, collapse = "\n"), "no genome information")
+    expect_false(any(grepl("^WARN \\[", genome_log)))
 
     expect_equal(GenomeInfoDb::seqlevels(converted), old_seqlevels)
     expect_true(all(GenomeInfoDb::genome(converted) == "hg19"))

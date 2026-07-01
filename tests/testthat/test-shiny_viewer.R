@@ -415,7 +415,7 @@ test_that("Circos heatmap prep skips DMR sites missing from viewer beta values",
     S4Vectors::mcols(dmrs)$sites <- c("cg1,cg2,cg4", "cg2,cg3,cg5")
 
     heatmap_data <- NULL
-    expect_warning(
+    heatmap_log <- capture.output(
         heatmap_data <- CMEnt:::.prepareCircosHeatmapData(
             dmrs = dmrs,
             beta_handler = beta_handler,
@@ -423,8 +423,10 @@ test_that("Circos heatmap prep skips DMR sites missing from viewer beta values",
             sample_group_col = "Sample_Group",
             max_num_samples_per_group = 0
         ),
-        "Skipping 2 supporting sites absent from beta values"
+        type = "message"
     )
+    expect_match(paste(heatmap_log, collapse = "\n"), "Skipping 2 supporting sites absent from beta values")
+    expect_false(any(grepl("^WARN \\[", heatmap_log)))
 
     expect_s3_class(heatmap_data$heatmap_df, "data.frame")
     expect_equal(rownames(heatmap_data$heatmap_df), c("cg1", "cg2", "cg3"))

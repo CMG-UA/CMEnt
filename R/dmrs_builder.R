@@ -197,6 +197,43 @@
 
 #' @keywords internal
 #' @noRd
+.bsseqBackendGRanges <- function(beta_handler) {
+    bsseq_object <- tryCatch(
+        beta_handler$.__enclos_env__$private$.bsseq_object,
+        error = function(e) NULL
+    )
+    if (is.null(bsseq_object)) {
+        return(NULL)
+    }
+    GenomicRanges::granges(bsseq_object)
+}
+
+
+#' @keywords internal
+#' @noRd
+.seedCoordinatesFromSeeds <- function(seeds_df, seeds_id_col) {
+    if (all(c("chr", "start") %in% colnames(seeds_df))) {
+        return(list(
+            chr = as.character(seeds_df$chr),
+            start = suppressWarnings(as.integer(as.numeric(seeds_df$start)))
+        ))
+    }
+    ids <- as.character(seeds_df[, seeds_id_col])
+    parsed <- regexec("^([^:]+):([0-9]+)$", ids)
+    pieces <- regmatches(ids, parsed)
+    ok <- lengths(pieces) == 3L
+    seed_chr <- rep(NA_character_, length(ids))
+    seed_start <- rep(NA_integer_, length(ids))
+    if (any(ok)) {
+        seed_chr[ok] <- vapply(pieces[ok], `[[`, character(1), 2L)
+        seed_start[ok] <- suppressWarnings(as.integer(vapply(pieces[ok], `[[`, character(1), 3L)))
+    }
+    list(chr = seed_chr, start = seed_start)
+}
+
+
+#' @keywords internal
+#' @noRd
 .buildDMRsChromosomeTasks <- function(beta_handler,
                                       beta_chr,
                                       beta_locs_rownames,
@@ -204,7 +241,6 @@
                                       seed_ids,
                                       seed_beta_index,
                                       seed_chr,
-                                      seed_pvals,
                                       beta_col_names,
                                       use_numeric_sequencing_rows) {
     tasks <- vector("list", length(chromosomes))
@@ -227,10 +263,8 @@
         } else {
             beta_locs_rownames[chr_beta_idx]
         }
-        chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names)
         chr_seed_mask <- seed_chr == chr
         chr_seed_ids <- seed_ids[chr_seed_mask]
-        chr_seed_pvals <- if (is.null(seed_pvals)) NULL else seed_pvals[chr_seed_ids]
         chr_seed_beta_index <- if (isTRUE(use_numeric_sequencing_rows)) {
             as.integer(seed_beta_index[chr_seed_mask] - chr_row_start + 1L)
         } else {
@@ -241,10 +275,9 @@
             chr = chr,
             row_start = chr_row_start,
             row_end = chr_row_end,
-            beta_handler = chr_handler,
+            row_ids = chr_row_ids,
             seed_ids = chr_seed_ids,
-            seed_beta_index = chr_seed_beta_index,
-            seed_pvals = chr_seed_pvals
+            seed_beta_index = chr_seed_beta_index
         )
     }
 
@@ -279,6 +312,34 @@
         }
         hit <- match(id_start[query_pos], beta_start[beta_pos])
         idx[ok_pos[query_pos]] <- beta_pos[hit]
+    }
+    idx
+}
+
+
+#' @keywords internal
+#' @noRd
+.matchSequencingCoordinatesToBeta <- function(seed_chr, seed_start, beta_chr, beta_start) {
+    seed_chr <- as.character(seed_chr)
+    seed_start <- suppressWarnings(as.integer(seed_start))
+    idx <- rep(NA_integer_, length(seed_chr))
+    ok <- !is.na(seed_chr) & nzchar(seed_chr) & !is.na(seed_start)
+    if (!any(ok)) {
+        return(idx)
+    }
+    for (chr in unique(seed_chr[ok])) {
+        query_pos <- which(ok & seed_chr == chr)
+        beta_pos <- which(beta_chr == chr)
+        if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
+            beta_pos <- which(beta_chr == sub("^chr", "", chr))
+        } else if (length(beta_pos) == 0L) {
+            beta_pos <- which(beta_chr == paste0("chr", chr))
+        }
+        if (length(beta_pos) == 0L) {
+            next
+        }
+        hit <- match(seed_start[query_pos], beta_start[beta_pos])
+        idx[query_pos] <- beta_pos[hit]
     }
     idx
 }
@@ -2337,6 +2398,133 @@
     }, numeric(1))
 }
 
+#' @keywords internal
+#' @noRd
+.seedPvalColumn <- function(seeds_df) {
+    candidates <- c("pval", "P.Value", "p.value", "p_value")
+    candidates[candidates %in% colnames(seeds_df)][1L]
+}
+
+#' @keywords internal
+#' @noRd
+.seedPvalSource <- function(seeds_df, seeds_id_col) {
+    pval_col <- .seedPvalColumn(seeds_df)
+    if (is.na(pval_col)) {
+        return(NULL)
+    }
+    list(
+        ids = as.character(seeds_df[[seeds_id_col]]),
+        pvals = seeds_df[[pval_col]],
+        pval_col = pval_col
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.seedPvaluesForSelectedSeeds <- function(seed_pval_source, selected_seed_ids) {
+    if (is.null(seed_pval_source) || length(selected_seed_ids) == 0L) {
+        return(NULL)
+    }
+    selected_seed_ids <- unique(as.character(selected_seed_ids))
+    ids <- seed_pval_source$ids
+    keep <- !is.na(ids) & nzchar(ids) & ids %in% selected_seed_ids
+    if (!any(keep)) {
+        return(NULL)
+    }
+    raw_pvals <- seed_pval_source$pvals[keep]
+    if (is.list(raw_pvals)) {
+        raw_pvals <- vapply(raw_pvals, function(x) {
+            if (length(x) == 0L) NA_character_ else as.character(x[[1L]])
+        }, character(1))
+    }
+    pvals <- suppressWarnings(as.numeric(as.character(raw_pvals)))
+    invalid <- !is.na(pvals) & (pvals < 0 | pvals > 1)
+    if (any(invalid)) {
+        stop("Seed p-values in column '", seed_pval_source$pval_col, "' must be between 0 and 1.")
+    }
+    ids <- ids[keep]
+    pvals_by_id <- tapply(pvals, ids, function(x) {
+        if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+    })
+    stats::setNames(as.numeric(pvals_by_id), names(pvals_by_id))
+}
+
+#' @keywords internal
+#' @noRd
+.stage1SeedChunkRanges <- function(n_seeds, max_chunk_seeds = getOption("CMEnt.max_stage1_seeds_per_chunk", 50000)) {
+    n_seeds <- as.integer(n_seeds)
+    max_chunk_seeds <- suppressWarnings(as.integer(max_chunk_seeds))
+    if (length(max_chunk_seeds) == 0L || is.na(max_chunk_seeds) || max_chunk_seeds < 2L) {
+        max_chunk_seeds <- 50000
+    }
+    if (n_seeds <= 0L) {
+        out <- matrix(integer(0), ncol = 2L)
+        colnames(out) <- c("start", "end")
+        return(out)
+    }
+    if (n_seeds <= max_chunk_seeds) {
+        out <- matrix(c(1L, n_seeds), ncol = 2L)
+        colnames(out) <- c("start", "end")
+        return(out)
+    }
+    starts <- seq.int(1L, n_seeds - 1L, by = max_chunk_seeds - 1L)
+    ends <- pmin(starts + max_chunk_seeds - 1L, n_seeds)
+    cbind(start = starts, end = ends)
+}
+
+#' @keywords internal
+#' @noRd
+.dmrsFromSeedConnectivity <- function(seeds_connectivity_array, seed_ids, seeds_locs, min_seeds) {
+    connected_seeds <- seeds_connectivity_array$connected
+    breakpoints <- which(!connected_seeds)
+    if (length(breakpoints) == 0L || breakpoints[[length(breakpoints)]] != length(seed_ids)) {
+        breakpoints <- c(breakpoints, length(seed_ids))
+    }
+
+    segment_starts <- c(1L, head(breakpoints, -1L) + 1L)
+    segment_ends <- breakpoints
+    segment_lengths <- segment_ends - segment_starts + 1L
+    ids <- seq_along(segment_starts)
+    edge_ids <- rep(ids, segment_lengths)
+    edge_ids[segment_ends] <- NA_integer_
+
+    valid_edge <- !is.na(edge_ids)
+    if (any(valid_edge)) {
+        pvals <- tapply(
+            seeds_connectivity_array$pval[valid_edge],
+            edge_ids[valid_edge],
+            function(x) if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+        )
+    } else {
+        pvals <- numeric(0)
+    }
+
+    dmrs <- data.frame(
+        chr = as.character(seeds_locs[segment_starts, "chr"]),
+        start_seed = seed_ids[segment_starts],
+        end_seed = seed_ids[segment_ends],
+        start_seed_pos = as.integer(seeds_locs[segment_starts, "start"]),
+        end_seed_pos = as.integer(seeds_locs[segment_ends, "start"]),
+        seeds_num = segment_lengths,
+        stop_connection_reason = seeds_connectivity_array$reason[segment_ends],
+        id = ids,
+        stringsAsFactors = FALSE
+    )
+    dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+    if (nrow(dmrs) == 0L) {
+        dmrs$connection_corr_pval <- numeric(0)
+        dmrs$seeds <- character(0)
+        return(dmrs)
+    }
+
+    dmrs$connection_corr_pval <- as.numeric(pvals[as.character(dmrs$id)])
+    dmrs$seeds <- mapply(function(start_idx, end_idx) {
+        paste(seed_ids[start_idx:end_idx], collapse = ",")
+    }, segment_starts[dmrs$id], segment_ends[dmrs$id], USE.NAMES = FALSE)
+    rownames(dmrs) <- NULL
+    dmrs
+}
+
 .checkResult <- function(dmrs, stage, start_col = "start", end_col = "end") {
     end_less_than_start <- dmrs[[end_col]] - dmrs[[start_col]] < 0
 
@@ -2360,7 +2548,6 @@
     beta_handler,
     seed_ids,
     seed_beta_index,
-    seed_pvals,
     pheno_detection,
     group_inds,
     testing_mode_per_group,
@@ -2397,9 +2584,16 @@
         stop(".buildDMRsChr expects a chromosome-scoped BetaHandler.")
     }
     array_based <- beta_handler$isArrayBased()
-    beta_locs <- beta_handler$getBetaLocs()
-    all_sites <- .explicitRowNames(beta_locs)
-    chromosome <- unique(as.character(beta_locs[, "chr"]))
+    bsseq_gr <- if (.usesBSseqBackend(beta_handler)) .bsseqBackendGRanges(beta_handler) else NULL
+    if (is.null(bsseq_gr)) {
+        beta_locs <- beta_handler$getBetaLocs()
+        all_sites <- .explicitRowNames(beta_locs)
+        chromosome <- unique(as.character(beta_locs[, "chr"]))
+    } else {
+        beta_locs <- NULL
+        all_sites <- NULL
+        chromosome <- unique(as.character(GenomeInfoDb::seqnames(bsseq_gr)))
+    }
     .log_step("Building DMRs for ", chromosome, "..", level = 1)
 
     chromosome_progress <- NULL
@@ -2454,40 +2648,7 @@
         stop("seed_ids and seed_beta_index must have the same length for chromosome-specific DMR detection.")
     }
 
-    .log_info("Subsetting beta matrix for seeds...", level = 3)
-    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
-    rownames(seeds_locs) <- seed_ids
-    seeds_beta <- beta_handler$getBeta(row_names = seed_beta_index, col_names = beta_col_names_detection)
-    rownames(seeds_beta) <- seed_ids
-
-    if (nrow(seeds_locs) != nrow(seeds_beta)) {
-        stop(
-            "Number of rows in the queried seeds beta file does not match the number of seeds. Number of rows in beta file: ",
-            nrow(seeds_beta),
-            " Number of rows in seeds: ",
-            nrow(seeds_locs)
-        )
-    }
-    .log_info("Checking for seeds with all NA beta values...", level = 3)
-    all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
-
-    if (any(all.na.rows)) {
-        stop(
-            "Beta extraction failure: the following Seed rows have all NA beta values: ",
-            paste(rownames(seeds_beta)[all.na.rows], collapse = ","),
-            ". This indicates a mismatch between requested site IDs and beta file columns or a parsing issue."
-        )
-    }
-
-    seeds_beta_handler <- getBetaHandler(
-        beta = seeds_beta,
-        array = array,
-        genome = genome,
-        sorted_locs = seeds_locs,
-        njobs = njobs
-    )
     .log_info("Number of provided chromosome-scoped seeds: ", length(seed_ids), level = 2)
-    rm(seeds_beta)
 
     .log_success("Input preparation complete.", level = 2)
     .advanceChromosomeProgress()
@@ -2506,104 +2667,105 @@
             row.names = NULL
         )
     } else {
-        .log_step("Building seed connectivity array...", level = 3)
-        ret <- .buildConnectivityArray(
-            beta_handler = seeds_beta_handler,
-            beta_locs = seeds_locs,
-            pheno = pheno_detection,
-            group_inds = group_inds,
-            testing_mode_per_group = testing_mode_per_group,
-            empirical_strategy_per_group = empirical_strategy_per_group,
-            col_names = beta_col_names_detection,
-            max_pval = max_pval,
-            ext_site_delta_beta = NA_real_, # delta-beta based rescue is applied later during the extension
-            covariates = covariates,
-            covariate_models = covariate_models,
-            max_lookup_dist = max_lookup_dist,
-            entanglement = entanglement,
-            aggfun = aggfun,
-            ntries = ntries,
-            mid_p = mid_p,
-            njobs = njobs,
-            expansion_windows = NULL,
-            max_bridge_gaps = max_bridge_seeds_gaps,
-            verbose = verbose
+        seed_chunk_ranges <- .stage1SeedChunkRanges(length(seed_ids))
+        .log_step(
+            "Building seed connectivity array in ", nrow(seed_chunk_ranges),
+            " chunk(s) with up to ",
+            getOption("CMEnt.max_stage1_seeds_per_chunk", 50000),
+            " seeds per chunk...",
+            level = 3
         )
-        rm(seeds_beta_handler)
-        seeds_connectivity_array <- ret$connectivity_array
-        testing_mode_per_group <- ret$testing_mode_per_group
-        empirical_strategy_per_group <- ret$empirical_strategy_per_group
-        # connected_seeds[i] encodes edge i -> i+1
-        connected_seeds <- seeds_connectivity_array$connected
-
-        # vector already includes chromosome-end sentinels as FALSE:
-        breakpoints <- which(!connected_seeds)
-
-        con_seeds_segments_starts <- c(1L, head(breakpoints, -1L) + 1L)
-        con_seeds_segments_ends <- breakpoints
-        con_seeds_segments_lengths <- con_seeds_segments_ends - con_seeds_segments_starts + 1L
-        connected_seeds_segments_chrs <- as.character(
-            seeds_locs[con_seeds_segments_starts, "chr"]
-        )
-        con_seeds_segments_starts_locs <- as.integer(
-            seeds_locs[con_seeds_segments_starts, "start"]
-        )
-        con_seeds_segments_ends_locs <- as.integer(
-            seeds_locs[con_seeds_segments_ends, "start"]
-        )
-        stop_reasons <- seeds_connectivity_array$reason[con_seeds_segments_ends]
-        mask <- rep(FALSE, length(seed_ids))
-        mask[con_seeds_segments_starts] <- TRUE
-        seeds_connectivity_array$id <- cumsum(mask)
-        seeds_connectivity_array$cid <- seeds_connectivity_array$id
-        ids <- unique(seeds_connectivity_array$id)
-        seeds_connectivity_array$id[con_seeds_segments_ends] <- NA
-        seeds_connectivity_array$seeds <- seed_ids
-        .log_info(
-            "Number of segments (potential DMRs before filtering): ",
-            length(connected_seeds_segments_chrs),
-            level = 2
-        )
-        valid_id_mask <- !is.na(seeds_connectivity_array$id)
-        if (any(valid_id_mask)) {
-            agg_data <- seeds_connectivity_array[valid_id_mask, , drop = FALSE]
-            connected_seeds_corr_pval <- aggregate(
-                pval ~ id,
-                data = agg_data, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
+        dmrs_chunks <- vector("list", nrow(seed_chunk_ranges))
+        for (chunk_i in seq_len(nrow(seed_chunk_ranges))) {
+            chunk_idx <- seq.int(seed_chunk_ranges[chunk_i, "start"], seed_chunk_ranges[chunk_i, "end"])
+            chunk_seed_ids <- seed_ids[chunk_idx]
+            .log_info(
+                "Processing seed chunk ", chunk_i, "/", nrow(seed_chunk_ranges),
+                " (", length(chunk_idx), " seeds).",
+                level = 3
             )
-        } else {
-            connected_seeds_corr_pval <- data.frame(
-                id = ids,
-                pval = rep(NA_real_, length(ids))
+            seeds_locs <- if (is.null(bsseq_gr)) {
+                as.data.frame(beta_locs[seed_beta_index[chunk_idx], , drop = FALSE])
+            } else {
+                .bsseqLocsFromGRanges(bsseq_gr, seed_beta_index[chunk_idx])
+            }
+            rownames(seeds_locs) <- chunk_seed_ids
+            seeds_beta <- beta_handler$getBeta(row_names = seed_beta_index[chunk_idx], col_names = beta_col_names_detection)
+            rownames(seeds_beta) <- chunk_seed_ids
+
+            if (nrow(seeds_locs) != nrow(seeds_beta)) {
+                stop(
+                    "Number of rows in the queried seeds beta file does not match the number of seeds. Number of rows in beta file: ",
+                    nrow(seeds_beta),
+                    " Number of rows in seeds: ",
+                    nrow(seeds_locs)
+                )
+            }
+            all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
+            if (any(all.na.rows)) {
+                stop(
+                    "Beta extraction failure: the following Seed rows have all NA beta values: ",
+                    paste(rownames(seeds_beta)[all.na.rows], collapse = ","),
+                    ". This indicates a mismatch between requested site IDs and beta file columns or a parsing issue."
+                )
+            }
+
+            seeds_beta_handler <- getBetaHandler(
+                beta = seeds_beta,
+                array = array,
+                genome = genome,
+                sorted_locs = seeds_locs,
+                njobs = njobs
             )
+            rm(seeds_beta)
+
+            ret <- .buildConnectivityArray(
+                beta_handler = seeds_beta_handler,
+                beta_locs = seeds_locs,
+                pheno = pheno_detection,
+                group_inds = group_inds,
+                testing_mode_per_group = testing_mode_per_group,
+                empirical_strategy_per_group = empirical_strategy_per_group,
+                col_names = beta_col_names_detection,
+                max_pval = max_pval,
+                ext_site_delta_beta = NA_real_, # delta-beta based rescue is applied later during the extension
+                covariates = covariates,
+                covariate_models = covariate_models,
+                max_lookup_dist = max_lookup_dist,
+                entanglement = entanglement,
+                aggfun = aggfun,
+                ntries = ntries,
+                mid_p = mid_p,
+                njobs = njobs,
+                expansion_windows = NULL,
+                max_bridge_gaps = max_bridge_seeds_gaps,
+                verbose = verbose
+            )
+            testing_mode_per_group <- ret$testing_mode_per_group
+            empirical_strategy_per_group <- ret$empirical_strategy_per_group
+            dmrs_chunks[[chunk_i]] <- .dmrsFromSeedConnectivity(
+                seeds_connectivity_array = ret$connectivity_array,
+                seed_ids = chunk_seed_ids,
+                seeds_locs = seeds_locs,
+                min_seeds = min_seeds
+            )
+            rm(ret, seeds_beta_handler, seeds_locs)
+            gc(FALSE)
         }
-        dmrs_seeds <- data.frame(
-            id = ids,
-            seeds = mapply(function(start_idx, end_idx) {
-                paste(seed_ids[start_idx:end_idx], collapse = ",")
-            }, con_seeds_segments_starts, con_seeds_segments_ends, USE.NAMES = FALSE),
-            stringsAsFactors = FALSE
-        )
 
-        dmrs <- data.frame(
-            chr = connected_seeds_segments_chrs,
-            start_seed = seed_ids[con_seeds_segments_starts],
-            end_seed = seed_ids[con_seeds_segments_ends],
-            start_seed_pos = con_seeds_segments_starts_locs,
-            end_seed_pos = con_seeds_segments_ends_locs,
-            seeds_num = con_seeds_segments_lengths,
-            stop_connection_reason = stop_reasons,
-            id = ids,
-            stringsAsFactors = FALSE
-        )
-        dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+        dmrs_chunks <- Filter(function(x) !is.null(x) && nrow(x) > 0L, dmrs_chunks)
+        dmrs <- if (length(dmrs_chunks) > 0L) {
+            do.call(rbind, dmrs_chunks)
+        } else {
+            data.frame()
+        }
+        if (nrow(dmrs) > 0L) {
+            rownames(dmrs) <- NULL
+            dmrs$id <- seq_len(nrow(dmrs))
+        }
         if (min_seeds > 0) {
             .log_info("Number of DMRs after filtering by min_seeds: ", nrow(dmrs), level = 2)
         }
-        dmrs <- merge(dmrs, connected_seeds_corr_pval, by = "id", all.x = TRUE)
-        colnames(dmrs)[colnames(dmrs) == "pval"] <- "connection_corr_pval"
-        dmrs <- merge(dmrs, dmrs_seeds, by = "id", all.x = TRUE)
-
 
         if (nrow(dmrs) == 0) {
             .log_warn("No DMRs remain after filtering based on min_seeds.")
@@ -2630,6 +2792,10 @@
 
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)
+    if (is.null(beta_locs)) {
+        beta_locs <- beta_handler$getBetaLocs()
+        all_sites <- .explicitRowNames(beta_locs)
+    }
     stage2_beta_handler <- beta_handler
     stage2_beta_locs <- beta_locs
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "connectivity_array.rds"))) {
@@ -2892,7 +3058,7 @@
     agg_df[, "supporting_sites_num"] <- vapply(agg_df$sites, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
-    agg_df[, "pval"] <- .combineDMRSeedPvalues(agg_df$seeds, seed_pvals)
+    agg_df[, "pval"] <- NA_real_
     if (is.null(all_sites)) {
         agg_df[, "sites_num"] <- vapply(agg_df$sites, function(x) {
             length(.splitCsvValues(x))
@@ -3124,6 +3290,7 @@
 #' @noRd
 .buildDMRsChromosomeTask <- function(
     task,
+    beta_handler,
     pheno_detection,
     group_inds,
     testing_mode_per_group,
@@ -3157,7 +3324,7 @@
     extract_motifs
 ) {
     .log_step("Processing chromosome ", task$chr, "...", level = 1)
-    chr_handler <- task$beta_handler
+    chr_handler <- beta_handler$subset(row_names = task$row_ids, col_names = beta_col_names)
     on.exit(
         {
             rm(chr_handler)
@@ -3171,7 +3338,6 @@
             beta_handler = chr_handler,
             seed_ids = task$seed_ids,
             seed_beta_index = task$seed_beta_index,
-            seed_pvals = task$seed_pvals,
             pheno_detection = pheno_detection,
             group_inds = group_inds,
             testing_mode_per_group = testing_mode_per_group,
@@ -3241,8 +3407,8 @@
 #'  with the locations separately saved and queried as a DelayedDataFrame. object.
 #' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
 #'  in a format like the one produced by dmpFinder. If a `pval`, `P.Value`, `p.value`,
-#'  or `p_value` column is present, DMR-level `pval` is computed from supporting
-#'  seed p-values using Stouffer's method and `qval` is FDR-corrected globally.
+#'  or `p_value` column is present, DMR-level `pval` is computed from final
+#'  supporting seed p-values using Stouffer's method and `qval` is FDR-corrected globally.
 #' @param pheno Character. Path to the phenotype TSV file or the phenotype dataframe,
 #'  containing sample information including group labels and optionally covariates.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file.
@@ -3309,7 +3475,7 @@
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #'
 #' @return GRanges object of identified DMRs with metadata including DMR-level
-#'  `pval` and FDR-adjusted `qval` when seed p-values are available.
+#'  `pval` and FDR-adjusted `qval` when seed p-value aggregation is enabled.
 #'
 #' @examples
 #' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
@@ -3454,33 +3620,6 @@ buildDMRs <- function(
         }
         pheno_df
     }
-    .seedPvalColumn <- function(seeds_df) {
-        candidates <- c("pval", "P.Value", "p.value", "p_value")
-        candidates[candidates %in% colnames(seeds_df)][1L]
-    }
-    .prepareSeedPvalues <- function(seeds_df, seeds_id_col) {
-        pval_col <- .seedPvalColumn(seeds_df)
-        if (is.na(pval_col)) {
-            return(NULL)
-        }
-        ids <- as.character(seeds_df[[seeds_id_col]])
-        raw_pvals <- seeds_df[[pval_col]]
-        if (is.list(raw_pvals)) {
-            raw_pvals <- vapply(raw_pvals, function(x) {
-                if (length(x) == 0L) NA_character_ else as.character(x[[1L]])
-            }, character(1))
-        }
-        pvals <- suppressWarnings(as.numeric(as.character(raw_pvals)))
-        invalid <- !is.na(pvals) & (pvals < 0 | pvals > 1)
-        if (any(invalid)) {
-            stop("Seed p-values in column '", pval_col, "' must be between 0 and 1.")
-        }
-        keep <- !is.na(ids) & nzchar(ids)
-        pvals_by_id <- tapply(pvals[keep], ids[keep], function(x) {
-            if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
-        })
-        stats::setNames(as.numeric(pvals_by_id), names(pvals_by_id))
-    }
     .addCaseControlColumn <- function(pheno_df) {
         sample_group_values <- pheno_df[[sample_group_col]]
         if (is.null(casecontrol_col)) {
@@ -3503,8 +3642,11 @@ buildDMRs <- function(
     }
 
     .log_step("Preparing DMR input...")
+    .log_step("Reading seeds and phenotype files...", level = 3)
     seeds_ret <- .readSeeds(seeds, seeds_id_col)
+    .log_step("Validating sample group column in phenotype data...", level = 3)
     sample_group_col <- .requireSampleGroupCol(sample_group_col, "buildDMRs()")
+    .log_step("Reading phenotype file...", level = 3)
     pheno <- .readPheno(pheno)
     seeds_df <- seeds_ret$data
     seeds_id_col <- seeds_ret$id_col
@@ -3513,7 +3655,6 @@ buildDMRs <- function(
         .emptyOutputs(output_prefix)
         return(NULL)
     }
-
 
     array <- .normalizeBuildDMRsArray(array)
     requested_genome <- .normalizeBuildDMRsGenome(genome)
@@ -3538,6 +3679,7 @@ buildDMRs <- function(
         dir.create(dirname(output_prefix_base), showWarnings = FALSE, recursive = TRUE)
         output_prefix_dot <- paste0(output_prefix_base, ".")
     }
+    .log_step("Preparing beta data handler...", level = 3)
     beta_locs <- NULL
     if (!inherits(beta, "BetaHandler") && is.character(beta) && length(beta) == 1 && file.exists(beta)) {
         beta_file_ext <- tools::file_ext(beta)
@@ -3572,6 +3714,7 @@ buildDMRs <- function(
     )
     beta <- NULL
     array_based <- beta_handler$isArrayBased()
+    .log_step("Validating parameters...", level = 3)
 
     if (!is.function(aggfun)) {
         aggfun_choice <- strex::match_arg(aggfun, ignore_case = TRUE)
@@ -3702,52 +3845,69 @@ buildDMRs <- function(
         )
     }
 
-    beta_locs <- beta_handler$getBetaLocs()
-    beta_chr <- as.character(beta_locs[, "chr"])
-    beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
-    if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
-        stop("Beta locations contain missing chromosome labels.", call. = FALSE)
-    }
-    if (anyNA(beta_start)) {
-        stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
-    }
-    if (length(beta_chr) > 1L) {
-        chr_runs <- rle(beta_chr)
-        if (anyDuplicated(chr_runs$values)) {
-            dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
-            stop(
-                "Beta locations are not grouped by chromosome: ", dup_chr,
-                " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
-                call. = FALSE
-            )
+    bsseq_gr <- if (.usesBSseqBackend(beta_handler)) .bsseqBackendGRanges(beta_handler) else NULL
+    if (!is.null(bsseq_gr)) {
+        beta_locs <- NULL
+        beta_chr <- GenomeInfoDb::seqnames(bsseq_gr)
+        beta_start <- GenomicRanges::start(bsseq_gr)
+        beta_locs_rownames <- NULL
+    } else {
+        beta_locs <- beta_handler$getBetaLocs()
+        beta_chr <- as.character(beta_locs[, "chr"])
+        beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
+        if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
+            stop("Beta locations contain missing chromosome labels.", call. = FALSE)
         }
-        same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
-        unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
-        if (any(unsorted_adj, na.rm = TRUE)) {
-            bad_idx <- which(unsorted_adj)[1L] + 1L
-            stop("Beta locations are not sorted within chromosome ", beta_chr[bad_idx], call. = FALSE)
+        if (anyNA(beta_start)) {
+            stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
         }
+        if (length(beta_chr) > 1L) {
+            chr_runs <- rle(beta_chr)
+            if (anyDuplicated(chr_runs$values)) {
+                dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
+                stop(
+                    "Beta locations are not grouped by chromosome: ", dup_chr,
+                    " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
+                    call. = FALSE
+                )
+            }
+            same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
+            unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
+            if (any(unsorted_adj, na.rm = TRUE)) {
+                bad_idx <- which(unsorted_adj)[1L] + 1L
+                stop("Beta locations are not sorted within chromosome ", beta_chr[bad_idx], call. = FALSE)
+            }
+        }
+        beta_locs_rownames <- .explicitRowNames(beta_locs)
     }
-
-    beta_locs_rownames <- .explicitRowNames(beta_locs)
     use_numeric_sequencing_rows <- !array_based &&
         (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler))
     beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
     if (use_numeric_sequencing_rows) {
-        seed_beta_index <- .matchSequencingIdsToBeta(seeds_df[, seeds_id_col], beta_chr, beta_start)
+        .log_step("Matching seed IDs to beta genomic locations...", level = 3)
+        seed_coords <- .seedCoordinatesFromSeeds(seeds_df, seeds_id_col)
+        seed_beta_index <- .matchSequencingCoordinatesToBeta(seed_coords$chr, seed_coords$start, beta_chr, beta_start)
         if (all(is.na(seed_beta_index))) {
             stop("None of the IDs in seeds_id_col match the beta genomic locations.")
         }
         if (anyNA(seed_beta_index)) {
-            seeds_df <- seeds_df[!is.na(seed_beta_index), , drop = FALSE]
-            seed_beta_index <- seed_beta_index[!is.na(seed_beta_index)]
+            keep_matched <- !is.na(seed_beta_index)
+            seeds_df <- seeds_df[keep_matched, , drop = FALSE]
+            seed_coords$chr <- seed_coords$chr[keep_matched]
+            seed_coords$start <- seed_coords$start[keep_matched]
+            seed_beta_index <- seed_beta_index[keep_matched]
         }
         seeds_df$.__beta_row_index__ <- seed_beta_index
-        seeds_df <- seeds_df[order(seeds_df$.__beta_row_index__), , drop = FALSE]
+        seed_order <- order(seeds_df$.__beta_row_index__)
+        seeds_df <- seeds_df[seed_order, , drop = FALSE]
+        seed_coords$chr <- seed_coords$chr[seed_order]
+        seed_coords$start <- seed_coords$start[seed_order]
         keep_unique <- !duplicated(seeds_df[, seeds_id_col])
         seed_ids <- as.character(seeds_df[keep_unique, seeds_id_col])
         seed_beta_index <- seeds_df[keep_unique, ".__beta_row_index__"]
+        seed_chr <- as.character(beta_chr[seed_beta_index])
     } else {
+        .log_info("Matching seed IDs to beta row names...", level = 2)
         if (!all(seeds_df[, seeds_id_col] %in% beta_row_names)) {
             if (!any(seeds_df[, seeds_id_col] %in% beta_row_names)) {
                 seeds_id_col_found <- NULL
@@ -3770,14 +3930,17 @@ buildDMRs <- function(
         seed_ids <- seed_ids[orderByLoc(seed_ids, genome = genome, genomic_locs = beta_locs)]
         seed_beta_index <- seed_ids
     }
+    .log_success("", level = 3)
     if (length(seed_ids) == 0L) {
         stop("No seeds remain after filtering against beta locations.")
     }
-    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
-    rownames(seeds_locs) <- seed_ids
-    seed_chr <- as.character(seeds_locs[, "chr"])
+    if (!use_numeric_sequencing_rows) {
+        seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
+        rownames(seeds_locs) <- seed_ids
+        seed_chr <- as.character(seeds_locs[, "chr"])
+    }
     chromosomes <- unique(seed_chr)
-    seed_pvals <- .prepareSeedPvalues(seeds_df, seeds_id_col)
+    seed_pval_source <- .seedPvalSource(seeds_df, seeds_id_col)
     .log_info("Processing ", length(chromosomes), " chromosome(s): ", paste(chromosomes, collapse = ", "), level = 1)
 
     chromosome_tasks <- .buildDMRsChromosomeTasks(
@@ -3788,7 +3951,6 @@ buildDMRs <- function(
         seed_ids = seed_ids,
         seed_beta_index = seed_beta_index,
         seed_chr = seed_chr,
-        seed_pvals = seed_pvals,
         beta_col_names = beta_col_names,
         use_numeric_sequencing_rows = use_numeric_sequencing_rows
     )
@@ -3798,15 +3960,22 @@ buildDMRs <- function(
         beta_chr,
         beta_start,
         beta_locs_rownames,
-        seeds_locs,
         seed_chr,
         seed_ids,
         seed_beta_index,
-        seed_pvals,
         use_numeric_sequencing_rows,
         seeds_df,
         chromosomes
     )
+    if (exists("seeds_locs", inherits = FALSE)) {
+        rm(seeds_locs)
+    }
+    if (exists("seed_coords", inherits = FALSE)) {
+        rm(seed_coords)
+    }
+    if (exists("bsseq_gr", inherits = FALSE)) {
+        rm(bsseq_gr)
+    }
     if (exists("beta_row_names", inherits = FALSE)) {
         rm(beta_row_names)
     }
@@ -3825,6 +3994,7 @@ buildDMRs <- function(
         chr_results <- BiocParallel::bplapply(
             chromosome_tasks,
             .buildDMRsChromosomeTask,
+            beta_handler = beta_handler,
             pheno_detection = pheno_detection,
             group_inds = group_inds,
             testing_mode_per_group = testing_mode_per_group,
@@ -3865,6 +4035,7 @@ buildDMRs <- function(
         chr_results <- lapply(
             chromosome_tasks,
             .buildDMRsChromosomeTask,
+            beta_handler = beta_handler,
             pheno_detection = pheno_detection,
             group_inds = group_inds,
             testing_mode_per_group = testing_mode_per_group,
@@ -3917,6 +4088,15 @@ buildDMRs <- function(
         GenomicRanges::end(final_dmrs_granges)
     )
     final_dmrs_granges <- final_dmrs_granges[final_ord]
+    final_seed_ids <- unique(unlist(
+        lapply(S4Vectors::mcols(final_dmrs_granges)$seeds, .splitCsvValues),
+        use.names = FALSE
+    ))
+    seed_pvals <- .seedPvaluesForSelectedSeeds(seed_pval_source, final_seed_ids)
+    S4Vectors::mcols(final_dmrs_granges)$pval <- .combineDMRSeedPvalues(
+        S4Vectors::mcols(final_dmrs_granges)$seeds,
+        seed_pvals
+    )
     S4Vectors::mcols(final_dmrs_granges)$qval <- stats::p.adjust(
         S4Vectors::mcols(final_dmrs_granges)$pval,
         method = "BH"

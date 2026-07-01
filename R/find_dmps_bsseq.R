@@ -213,7 +213,8 @@ findDMPsBSSeq <- function(
         bp_param <- .makeBiocParallelParam(
             nworkers,
             n_tasks = length(chr_in_bsseq),
-            parallel_backend = parallel_backend
+            parallel_backend = parallel_backend,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
         )
         dml_by_chr <- tryCatch(
             BiocParallel::bplapply(

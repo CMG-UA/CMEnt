@@ -54,5 +54,5 @@ reduceBSseqAroundSeeds <- function(bsseq_obj, seeds, expansion_window) {
     )
     windows <- .mergeGenomicWindows(windows, return_granges = TRUE)
     bsseq_obj <- bsseq::subsetByOverlaps(bsseq_obj, windows)
-    bsseq_obj
+    .prepareBSseqForBetaHandler(bsseq_obj)
 }

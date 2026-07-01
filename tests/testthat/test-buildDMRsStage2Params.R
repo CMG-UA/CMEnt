@@ -223,6 +223,7 @@ test_that("buildDMRs does not bridge across chromosome boundaries", {
     )
     seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
+    withr::local_options(list(CMEnt.max_stage1_seeds_per_chunk = 2L))
     dmrs <- expect_no_error(buildDMRs(
         score_dmrs = FALSE,
         extract_motifs = FALSE,

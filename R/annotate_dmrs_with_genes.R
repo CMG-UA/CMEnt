@@ -229,7 +229,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     bp_param <- .makeBiocParallelParam(
         njobs,
         n_tasks = length(annotation_specs),
-        progressbar = FALSE
+        progressbar = FALSE,
+        log = getOption("CMEnt.verbose", 1L) >= 1L
     )
     annotation_results <- BiocParallel::bplapply(
         annotation_specs,
@@ -286,7 +287,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     } else {
         names(site_locs)
     }
-    site_locs <- .convertToGRanges(site_locs, genome)
+    site_locs <- .convertSitesToGPos(site_locs, genome)
     if (
         !is.null(site_names) &&
             length(site_names) == length(site_locs) &&

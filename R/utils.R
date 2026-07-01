@@ -385,7 +385,7 @@
     subset_samplesheet
 }
 
-# Lightweight styled logging helpers -----------------------------------------
+# Lightweight futile.logger-backed logging helpers ----------------------------
 
 # Internal state for timing steps
 .CMEnt_log_env <- local({ # nolint
@@ -433,8 +433,6 @@
     )
 }
 
-
-
 #' @keywords internal
 #' @noRd
 .formatLogOutput <- function(msg, lead, level, width = getOption("width")) {
@@ -447,20 +445,35 @@
     )
 }
 
+.CMEntFutileLayout <- function(level, msg, id = "", ...) {
+    if (length(list(...)) > 0L) {
+        msg <- do.call(sprintf, c(msg, list(...)))
+    }
+    paste0(msg, "\n")
+}
+
+.configureCMEntFutileLogger <- function() {
+    futile.logger::flog.layout(.CMEntFutileLayout, name = "CMEnt")
+    invisible()
+}
+
 #' @keywords internal
 #' @noRd
 .log_error <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$cross, "red")
-    stop(.formatLogOutput(msg, lead = lead, level = 0), call. = FALSE)
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$cross, "red"), level = 0)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.error("%s", msg, name = "CMEnt")
+    stop(msg, call. = FALSE)
 }
 
 #' @keywords internal
 #' @noRd
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$warning, "yellow")
-    warning(.formatLogOutput(msg, lead = lead, level = 0))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$warning, "yellow"), level = 0)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.warn("%s", msg, name = "CMEnt")
     invisible()
 }
 
@@ -486,9 +499,9 @@
         dur <- ""
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
-    # if level is equal or greater than 2, report memory usage in MBs as well
-    lead <- .col(cli::symbol$tick, "green")
-    message(.formatLogOutput(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$tick, "green"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     # Clear the recorded step time for this level after reporting success
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- NULL # nolint
     invisible()
@@ -526,8 +539,9 @@
         return(invisible())
     }
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$info, "blue")
-    message(.formatLogOutput(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$info, "blue"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     invisible()
 }
 
@@ -544,14 +558,15 @@
     }
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$arrow_right, "cyan")
-    message(.formatLogOutput(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$arrow_right, "cyan"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     invisible()
 }
 
 #' @keywords internal
 #' @noRd
-.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL) {
+.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL, log = TRUE) {
     workers <- suppressWarnings(as.integer(njobs))
     if (length(workers) == 0L || is.na(workers) || workers < 1L) {
         stop("njobs must be a positive integer.", call. = FALSE)
@@ -567,30 +582,40 @@
         workers <- min(workers, 2L)
     }
 
-    if (workers <= 1L) {
-        return(BiocParallel::SerialParam(progressbar = progressbar))
-    }
-
     if (is.null(parallel_backend)) {
         parallel_backend <- getOption("CMEnt.biocparallel_backend", "auto")
     }
     parallel_backend <- tolower(as.character(parallel_backend)[1L])
     if (!parallel_backend %in% c("auto", "multicore", "snow", "sock", "multisession")) {
-        warning("Unsupported CMEnt BiocParallel backend='", parallel_backend, "'. Falling back to 'auto'.")
+        .log_warn("Unsupported CMEnt BiocParallel backend='", parallel_backend, "'. Falling back to 'auto'.")
         parallel_backend <- "auto"
     }
 
-    if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
+    if (workers <= 1L) {
+        BiocParallel::SerialParam(progressbar = progressbar, log = log, threshold = "INFO")
+    } else if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
         if (is.null(n_tasks)) {
-            BiocParallel::MulticoreParam(workers = workers, progressbar = progressbar)
+            BiocParallel::MulticoreParam(
+                workers = workers, progressbar = progressbar, log = log,
+                threshold = "INFO"
+            )
         } else {
-            BiocParallel::MulticoreParam(workers = workers, tasks = n_tasks, progressbar = progressbar)
+            BiocParallel::MulticoreParam(
+                workers = workers, tasks = n_tasks, progressbar = progressbar,
+                log = log, threshold = "INFO"
+            )
         }
     } else {
         if (is.null(n_tasks)) {
-            BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = progressbar)
+            BiocParallel::SnowParam(
+                workers = workers, type = "SOCK", progressbar = progressbar,
+                log = log, threshold = "INFO"
+            )
         } else {
-            BiocParallel::SnowParam(workers = workers, tasks = n_tasks, type = "SOCK", progressbar = progressbar)
+            BiocParallel::SnowParam(
+                workers = workers, tasks = n_tasks, type = "SOCK",
+                progressbar = progressbar, log = log, threshold = "INFO"
+            )
         }
     }
 }
@@ -888,7 +913,6 @@ getRegistry <- function(obj, indices = NULL, select_columns = NULL, rename = NUL
     if (inherits(obj, "BSseq") && inherits(SummarizedExperiment::assays(obj)$M, "matrix")) {
         gr <- GenomicRanges::granges(obj)
         obj <- as.data.frame(gr)
-        obj$end <- obj$start + 1
     }
     if (is.data.frame(obj)) {
         return(.postProcessRegistry(obj, select_columns = select_columns, rename = rename, derive = derive, indices = indices))
@@ -900,7 +924,6 @@ getRegistry <- function(obj, indices = NULL, select_columns = NULL, rename = NUL
         .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
         .log_step("Loading genomic locations from BSseq object into memory.", level = 4)
         df <- as.data.frame(GenomicRanges::granges(obj))
-        df$end <- df$start + 1
         .log_success("Finished loading genomic locations from BSseq object into memory.", level = 4)
         createH5fileFromDf(
             df = df,
@@ -962,7 +985,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, hash = NULL,
     if (!use_id_as_rownames) {
         sorted_locs <- getRegistry(
             input_tabix,
-            select_columns = c(chrom_col, start_col, "end"),
+            select_columns = c(chrom_col, start_col),
             rename = renaming,
             derive = list(
                 index = list(
@@ -977,7 +1000,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, hash = NULL,
     } else {
         sorted_locs <- getRegistry(
             input_tabix,
-            select_columns = c(chrom_col, start_col, "end", "id"),
+            select_columns = c(chrom_col, start_col, "id"),
             rename = renaming,
             indices = "id",
             chunk_size = chunk_size,
@@ -1008,7 +1031,6 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
         gr <- granges(input_bsseq)
         df <- as.data.frame(gr)[, c("seqnames", "start")]
         colnames(df) <- c("chr", "start")
-        df[, "end"] <- df$start + 1
         df$index <- paste0(df$chr, ":", df$start)
         rownames(df) <- df$index
         return(df)
@@ -1031,7 +1053,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     # If bsseq is not memory backed, we extract the genomic locations from the bsseq object and store them in an HDF5 file for efficient access.
     sorted_locs <- getRegistry(
         input_bsseq,
-        select_columns = c("seqnames", "start", "end"),
+        select_columns = c("seqnames", "start"),
         rename = renaming,
         derive = list(
             index = list(
@@ -1819,13 +1841,7 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
-    if (!"end" %in% colnames(locs)) {
-        locs[, "end"] <- locs[, "start"] + 1
-    }
-    locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[
-        ,
-        "end"
-    ] == locs[, "start"], "start"] + 1
+    locs$end <- NULL
     locs$name <- rownames(locs)
     locs <- getRegistry(locs, "name")
     tryCatch(
@@ -2259,7 +2275,11 @@ orderByLoc <- function(x,
     }
 
     if (njobs > 1 && n_batches > 1) {
-        bp_param <- .makeBiocParallelParam(njobs, n_tasks = n_batches)
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = n_batches,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
+        )
         batch_results <- BiocParallel::bplapply(
             seq_len(n_batches),
             fetch_batch,
@@ -2375,6 +2395,9 @@ orderByLoc <- function(x,
             loc_split <- base::strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
             obj[[1]] <- vapply(loc_split, function(x) x[1], character(1))
         }
+        if (!"end" %in% colnames(obj) && "start" %in% colnames(obj)) {
+            obj$end <- obj$start
+        }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
             seqinfo = GenomeInfoDb::Seqinfo(genome = genome),
@@ -2401,6 +2424,31 @@ orderByLoc <- function(x,
         if (grs_genome != genome) {
             obj <- .liftOverFromGenomeToGenome(obj, grs_genome, genome)
         }
+    }
+    obj
+}
+
+#' @keywords internal
+#' @noRd
+.convertSitesToGPos <- function(obj, genome = NULL) {
+    site_names <- if (is.data.frame(obj)) {
+        rn_info <- .row_names_info(obj, type = 0L)
+        if (
+            is.integer(rn_info) && length(rn_info) == 2L &&
+                is.na(rn_info[1L]) && rn_info[2L] < 0L
+        ) NULL else rownames(obj)
+    } else {
+        names(obj)
+    }
+    obj <- .convertToGRanges(obj, genome)
+    if (!inherits(obj, "GPos")) {
+        obj <- as(GenomicRanges::resize(obj, width = 1, fix = "start"), "GPos")
+    }
+    if (
+        !is.null(site_names) && length(site_names) == length(obj) &&
+            all(!is.na(site_names)) && all(nzchar(site_names))
+    ) {
+        names(obj) <- site_names
     }
     obj
 }
@@ -2815,4 +2863,17 @@ orderByLoc <- function(x,
     values <- .fetchExampleInputData(resources)
     list2env(values, envir = envir)
     invisible(if (length(values) == 1L) values[[1L]] else values)
+}
+
+.orderChromosomesNaturally <- function(chromosomes) {
+    chromosomes <- unique(as.character(chromosomes))
+    if (length(chromosomes) == 0) {
+        return(chromosomes)
+    }
+    chr_clean <- gsub("^chr", "", chromosomes, ignore.case = TRUE)
+    chr_num <- suppressWarnings(as.numeric(chr_clean))
+    chr_special <- match(toupper(chr_clean), c("X", "Y", "M", "MT"))
+    chr_special[is.na(chr_special)] <- Inf
+    ord <- order(is.na(chr_num), chr_num, chr_special, chr_clean)
+    chromosomes[ord]
 }

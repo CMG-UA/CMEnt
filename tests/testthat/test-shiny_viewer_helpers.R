@@ -44,10 +44,12 @@ test_that("viewer tabular cache handles missing, empty, valid, and invalid files
     invalid_file <- tempfile()
     dir.create(invalid_file)
     withr::defer(unlink(invalid_file, recursive = TRUE), teardown_env())
-    expect_warning(
+    invalid_log <- capture.output(
         expect_null(CMEnt:::.readViewerTabularCache(invalid_file, "invalid")),
-        "Failed to load invalid"
+        type = "message"
     )
+    expect_match(paste(invalid_log, collapse = "\n"), "Failed to load invalid")
+    expect_false(any(grepl("^WARN \\[", invalid_log)))
 })
 
 test_that("viewer metadata validation resolves sample group columns", {

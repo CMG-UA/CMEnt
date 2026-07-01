@@ -53,6 +53,7 @@ Imports:
     e1071,
     filelock,
     FNN,
+    futile.logger,
     GenomeInfoDb,
     GenomicFeatures,
     GenomicRanges,

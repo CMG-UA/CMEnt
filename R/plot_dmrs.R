@@ -651,10 +651,9 @@
     }
 
     site_ids <- rownames(total_shown_positions)
-    site_end <- if ("end" %in% colnames(total_shown_positions)) total_shown_positions$end else total_shown_positions$start
-    site_gr <- GenomicRanges::GRanges(
+    site_gr <- GenomicRanges::GPos(
         seqnames = total_shown_positions$chr,
-        ranges = IRanges::IRanges(start = total_shown_positions$start, end = site_end),
+        pos = total_shown_positions$start,
         seqinfo = GenomeInfoDb::seqinfo(dmr)
     )
     names(site_gr) <- site_ids

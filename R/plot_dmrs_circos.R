@@ -209,18 +209,6 @@
     ret
 }
 
-.orderChromosomesNaturally <- function(chromosomes) {
-    chromosomes <- unique(as.character(chromosomes))
-    if (length(chromosomes) == 0) {
-        return(chromosomes)
-    }
-    chr_clean <- gsub("^chr", "", chromosomes, ignore.case = TRUE)
-    chr_num <- suppressWarnings(as.numeric(chr_clean))
-    chr_special <- match(toupper(chr_clean), c("X", "Y", "M", "MT"))
-    chr_special[is.na(chr_special)] <- Inf
-    ord <- order(is.na(chr_num), chr_num, chr_special, chr_clean)
-    chromosomes[ord]
-}
 
 .subsetCytobandForCircos <- function(cytoband, unique_chrs = NULL, region_df = NULL) {
     if (is.null(cytoband) || nrow(cytoband) == 0) {
@@ -2501,17 +2489,16 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
 
-    shown_locs <- beta_handler$getBetaLocs()[dmrs_sites_inds, c("chr", "start", "end"), drop = FALSE]
+    shown_locs <- beta_handler$getBetaLocs()[dmrs_sites_inds, c("chr", "start"), drop = FALSE]
     shown_locs <- as.data.frame(shown_locs)
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
-    shown_locs$end <- as.numeric(shown_locs$end)
+    shown_locs$end <- shown_locs$start
     if (nrow(shown_locs) > 1) {
         chr_levels <- .orderChromosomesNaturally(shown_locs$chr)
         ord <- order(
             factor(shown_locs$chr, levels = chr_levels),
             shown_locs$start,
-            shown_locs$end,
             rownames(shown_locs)
         )
         shown_locs <- shown_locs[ord, , drop = FALSE]
