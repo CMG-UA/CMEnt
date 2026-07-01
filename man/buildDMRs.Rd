@@ -52,8 +52,8 @@ with the locations separately saved and queried as a DelayedDataFrame. object.}
 
 \item{seeds}{Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
 in a format like the one produced by dmpFinder. If a \code{pval}, \code{P.Value}, \code{p.value},
-or \code{p_value} column is present, DMR-level \code{pval} is computed from supporting
-seed p-values using Stouffer's method and \code{qval} is FDR-corrected globally.}
+or \code{p_value} column is present, DMR-level \code{pval} is computed from final
+supporting seed p-values using Stouffer's method and \code{qval} is FDR-corrected globally.}
 
 \item{pheno}{Character. Path to the phenotype TSV file or the phenotype dataframe,
 containing sample information including group labels and optionally covariates.}
@@ -110,7 +110,8 @@ Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (1
 \item{max_bridge_seeds_gaps}{Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1
 when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.}
 
-\item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).}
+\item{max_bridge_extension_gaps}{Integer. Maximum gap size to consider during Stage 2 extension.
+Default is 1 (i.e., at most 1 consecutive failing site to bridge).}
 
 \item{min_seeds}{Numeric. Minimum number of connected seeds in a DMR. Minimum is 1. Default is 2.}
 
@@ -154,7 +155,7 @@ Default is retrieved from option "CMEnt.verbose".}
 }
 \value{
 GRanges object of identified DMRs with metadata including DMR-level
-\code{pval} and FDR-adjusted \code{qval} when seed p-values are available.
+\code{pval} and FDR-adjusted \code{qval} when seed p-value aggregation is enabled.
 }
 \description{
 This function assembles DMRs from a given set of seeds and a beta value file. It operates in three main stages:
@@ -185,11 +186,11 @@ but avoid filtering based on beta value thresholds or effect size cutoffs before
 loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 \donttest{
 dmrs <- buildDMRs(
-  beta = beta,
-  seeds = dmps,
-  pheno = pheno,
-  array = array_type,
-  sample_group_col = "Sample_Group"
+    beta = beta,
+    seeds = dmps,
+    pheno = pheno,
+    array = array_type,
+    sample_group_col = "Sample_Group"
 )
 }
 }

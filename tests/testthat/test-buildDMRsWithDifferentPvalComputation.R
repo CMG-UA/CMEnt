@@ -1,5 +1,38 @@
 options("CMEnt.verbose" = 0)
 
+test_that(".rowPairCorrelationStats matches centered matrix calculations", {
+    mat <- matrix(
+        c(
+            0.10, 0.20, NA, 0.40,
+            0.30, NA, 0.50, 0.60,
+            0.40, 0.45, 0.55, 0.65,
+            NA, NA, NA, NA,
+            0.20, 0.30, 0.40, 0.50
+        ),
+        nrow = 5,
+        byrow = TRUE
+    )
+    start_inds <- c(1L, 2L, 4L)
+    end_inds <- c(2L, 3L, 5L)
+    x_mat <- mat[start_inds, , drop = FALSE]
+    y_mat <- mat[end_inds, , drop = FALSE]
+
+    x_means <- rowMeans(x_mat, na.rm = TRUE)
+    y_means <- rowMeans(y_mat, na.rm = TRUE)
+    x_centered <- x_mat - x_means
+    y_centered <- y_mat - y_means
+    valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
+
+    ret <- CMEnt:::.rowPairCorrelationStats(mat, start_inds, end_inds)
+
+    expect_equal(ret$x_means, x_means)
+    expect_equal(ret$y_means, y_means)
+    expect_equal(ret$sum_xy, rowSums(x_centered * y_centered, na.rm = TRUE))
+    expect_equal(ret$sum_x2, rowSums(x_centered^2, na.rm = TRUE))
+    expect_equal(ret$sum_y2, rowSums(y_centered^2, na.rm = TRUE))
+    expect_equal(ret$n_valid, rowSums(valid_pairs))
+})
+
 test_that("empirical Monte Carlo connectivity is reproducible under the same RNG seed", {
     sites_beta <- rbind(
         c(0.30, 0.35, 0.40, 0.45, 0.50),
@@ -112,7 +145,7 @@ test_that(".testConnectivityBatch marks edges as failing when empirical permutat
     pheno[["__casecontrol__"]] <- c(rep(0L, 6), rep(1L, 6))
     group_inds <- list(g1 = 1:6, g2 = 7:12)
 
-    expect_warning(
+    expect_message(
         ret_strong <- CMEnt:::.testConnectivityBatch(
             sites_beta = sites_beta,
             group_inds = group_inds,

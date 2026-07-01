@@ -149,6 +149,7 @@ Collate:
     'shiny_modules.R'
     'score_dmrs.R'
     'simulate_dmrs.R'
+    'sparsify_seeds.R'
     'sort_beta_file_by_coordinates.R'
     'utils.R'
     'zzz.R'

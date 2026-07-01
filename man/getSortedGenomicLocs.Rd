@@ -11,7 +11,8 @@ getSortedGenomicLocs(array = NULL, genome = NULL, locations_file = NULL)
 
 \item{genome}{Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided}
 
-\item{locations_file}{Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)}
+\item{locations_file}{Character. Optional path to a precomputed locations file (RDS format).
+If provided, this file will be used directly (default: NULL)}
 }
 \value{
 A data frame containing sorted genomic locations with rownames as site IDs and columns:

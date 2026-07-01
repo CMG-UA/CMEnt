@@ -654,6 +654,99 @@
     list(testing_mode = testing_mode, empirical_strategy = empirical_strategy)
 }
 
+#' @keywords internal
+#' @noRd
+.rowPairCorrelationStats <- function(mat, start_inds, end_inds) {
+    n_pairs <- length(start_inds)
+    if (n_pairs == 0L) {
+        return(list(
+            x_means = numeric(0),
+            y_means = numeric(0),
+            sum_xy = numeric(0),
+            sum_x2 = numeric(0),
+            sum_y2 = numeric(0),
+            n_valid = integer(0)
+        ))
+    }
+
+    x_sum <- numeric(n_pairs)
+    y_sum <- numeric(n_pairs)
+    x_count <- integer(n_pairs)
+    y_count <- integer(n_pairs)
+    n_valid <- integer(n_pairs)
+
+    for (j in seq_len(ncol(mat))) {
+        x <- mat[start_inds, j]
+        y <- mat[end_inds, j]
+        x_has_na <- anyNA(x)
+        y_has_na <- anyNA(y)
+
+        if (x_has_na) {
+            x_ok <- !is.na(x)
+            x_sum[x_ok] <- x_sum[x_ok] + x[x_ok]
+            x_count <- x_count + as.integer(x_ok)
+        } else {
+            x_sum <- x_sum + x
+            x_count <- x_count + 1L
+        }
+
+        if (y_has_na) {
+            y_ok <- !is.na(y)
+            y_sum[y_ok] <- y_sum[y_ok] + y[y_ok]
+            y_count <- y_count + as.integer(y_ok)
+        } else {
+            y_sum <- y_sum + y
+            y_count <- y_count + 1L
+        }
+
+        if (x_has_na || y_has_na) {
+            if (!x_has_na) {
+                x_ok <- rep(TRUE, n_pairs)
+            }
+            if (!y_has_na) {
+                y_ok <- rep(TRUE, n_pairs)
+            }
+            n_valid <- n_valid + as.integer(x_ok & y_ok)
+        } else {
+            n_valid <- n_valid + 1L
+        }
+    }
+
+    x_means <- x_sum / x_count
+    y_means <- y_sum / y_count
+    sum_xy <- numeric(n_pairs)
+    sum_x2 <- numeric(n_pairs)
+    sum_y2 <- numeric(n_pairs)
+
+    for (j in seq_len(ncol(mat))) {
+        x <- mat[start_inds, j]
+        y <- mat[end_inds, j]
+        x_centered <- x - x_means
+        y_centered <- y - y_means
+
+        if (anyNA(x)) {
+            x_centered[is.na(x)] <- 0
+        }
+        if (anyNA(y)) {
+            y_centered[is.na(y)] <- 0
+        }
+
+        sum_xy <- sum_xy + x_centered * y_centered
+        sum_x2 <- sum_x2 + x_centered * x_centered
+        sum_y2 <- sum_y2 + y_centered * y_centered
+    }
+
+    list(
+        x_means = x_means,
+        y_means = y_means,
+        sum_xy = sum_xy,
+        sum_x2 = sum_x2,
+        sum_y2 = sum_y2,
+        n_valid = n_valid
+    )
+}
+
+
 .permutationIndexMatrix <- local({
     cache <- new.env(parent = emptyenv())
     build <- function(n) {
@@ -1981,12 +2074,11 @@
             covariate_model = covariate_models[[g]]
         )
 
-        # Extract only correlation-eligible pair rows; this avoids retaining
+        # Compute only correlation-eligible pair rows; this avoids retaining
         # full pair matrices for distance-filtered or delta-beta-rescued chunks.
-        x_mat <- group_m[start_pair_inds[corr_mask], , drop = FALSE]
-        y_mat <- group_m[end_pair_inds[corr_mask], , drop = FALSE]
-
-        sn_pairs <- nrow(x_mat)
+        corr_start_inds <- start_pair_inds[corr_mask]
+        corr_end_inds <- end_pair_inds[corr_mask]
+        sn_pairs <- length(corr_start_inds)
         if (sn_pairs == 0L) {
             next
         }
@@ -1998,18 +2090,13 @@
             g_mask <- rep(TRUE, sn_pairs)
         }
 
-        # Compute means for each pair (vectorized)
-        x_means <- rowMeans(x_mat, na.rm = TRUE)
-        y_means <- rowMeans(y_mat, na.rm = TRUE)
-
-        # Center the data
-        x_centered <- x_mat - x_means
-        y_centered <- y_mat - y_means
-
-        # Compute sum of products (numerator of correlation)
-        sum_xy <- rowSums(x_centered * y_centered, na.rm = TRUE)
-        sum_x2 <- rowSums(x_centered^2, na.rm = TRUE)
-        sum_y2 <- rowSums(y_centered^2, na.rm = TRUE)
+        corr_stats <- .rowPairCorrelationStats(group_m, corr_start_inds, corr_end_inds)
+        x_means <- corr_stats$x_means
+        y_means <- corr_stats$y_means
+        sum_xy <- corr_stats$sum_xy
+        sum_x2 <- corr_stats$sum_x2
+        sum_y2 <- corr_stats$sum_y2
+        n_valid <- corr_stats$n_valid
         denom <- sqrt(sum_x2 * sum_y2)
 
         # Compute correlations (fully vectorized)
@@ -2017,10 +2104,6 @@
         zero_variance_cor <- g_mask & is.finite(sum_x2) & is.finite(sum_y2) &
             (sum_x2 <= .Machine$double.eps | sum_y2 <= .Machine$double.eps)
 
-        # Compute degrees of freedom (vectorized)
-        # Count non-NA pairs for each row
-        valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
-        n_valid <- rowSums(valid_pairs)
         dfs <- n_valid - 2L
 
         low_df <- (dfs < 1) & g_mask
@@ -2051,6 +2134,10 @@
             # Only compute for rows that are still connected and have finite cors
             mask <- is.finite(cors) & g_mask & !zero_variance_cor
             if (any(mask)) {
+                x_mat <- group_m[corr_start_inds, , drop = FALSE]
+                y_mat <- group_m[corr_end_inds, , drop = FALSE]
+                x_centered <- x_mat - x_means
+                y_centered <- y_mat - y_means
                 counts_ge <- integer(sn_pairs)
                 counts_eq <- integer(sn_pairs)
                 # Number of samples in this group
@@ -2451,11 +2538,11 @@
 
 #' @keywords internal
 #' @noRd
-.stage1SeedChunkRanges <- function(n_seeds, max_chunk_seeds = getOption("CMEnt.max_stage1_seeds_per_chunk", 50000)) {
+.stage1SeedChunkRanges <- function(n_seeds, max_chunk_seeds = getOption("CMEnt.max_stage1_seeds_per_chunk", 100000)) {
     n_seeds <- as.integer(n_seeds)
     max_chunk_seeds <- suppressWarnings(as.integer(max_chunk_seeds))
     if (length(max_chunk_seeds) == 0L || is.na(max_chunk_seeds) || max_chunk_seeds < 2L) {
-        max_chunk_seeds <- 50000
+        max_chunk_seeds <- 100000
     }
     if (n_seeds <= 0L) {
         out <- matrix(integer(0), ncol = 2L)
@@ -2671,7 +2758,7 @@
         .log_step(
             "Building seed connectivity array in ", nrow(seed_chunk_ranges),
             " chunk(s) with up to ",
-            getOption("CMEnt.max_stage1_seeds_per_chunk", 50000),
+            getOption("CMEnt.max_stage1_seeds_per_chunk", 100000),
             " seeds per chunk...",
             level = 3
         )
