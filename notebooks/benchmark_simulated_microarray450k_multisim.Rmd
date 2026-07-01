@@ -1,0 +1,738 @@
+---
+title: "Benchmarking CMEnt on Repeated Simulated Microarray Data"
+subtitle: "CMEnt vs comb-p, probeLasso, DMRcate, and Bumphunter across repeated simulateDMRs runs"
+author: "CMEnt Package"
+date: "`r Sys.Date()`"
+output:
+    BiocStyle::html_document:
+        code_folding: hide
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+    results = "asis",
+    cache = TRUE,
+    echo = TRUE,
+    dev = "png",
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 8,
+    fig.height = 6,
+    dpi = 300
+)
+```
+
+## Introduction
+
+This vignette repeats the simulated 450K benchmark over multiple independently
+simulated datasets. Each dataset is produced from the same GSE40279 chr20/chr21
+beta-value subset with `CMEnt::simulateDMRs()`, using simulation parameters drawn
+from fixed ranges under a master seed of 42. Method outputs and simulation
+bundles are cached per iteration, and summary plots show medians with observed
+interval ranges across simulations.
+
+Methods:
+
+- **CMEnt**: correlation-based seed-guided assembly approach
+- **comb-p**: adjacent p-value combination
+- **probeLasso**: lasso-based feature selection for DMR detection
+- **DMRcate**: Gaussian kernel smoothing approach
+- **Bumphunter**: permutation-based regional testing
+
+## Setup and Dependencies
+
+```{r load_packages, message=FALSE, warning=FALSE}
+.loadCMEnt <- function() {
+    root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
+    if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
+        ok <- tryCatch({
+            pkgload::load_all(root, quiet = TRUE)
+            TRUE
+        }, error = function(e) {
+            message("Could not load local CMEnt source: ", conditionMessage(e))
+            FALSE
+        })
+        if (ok) return(invisible(TRUE))
+    }
+    suppressPackageStartupMessages(library(CMEnt))
+}
+.loadCMEnt()
+suppressPackageStartupMessages({
+    library(data.table)
+    library(dplyr)
+    library(GenomicRanges)
+    library(ggplot2)
+})
+
+getBenchmarkFile <- function(filename) {
+    folder <- "simulated_microarray450k_multisim"
+    benchmark_file <- if (getwd() == "notebooks") {
+        file.path("cached_results", folder, filename)
+    } else if ("NAMESPACE" %in% dir()) {
+        file.path("notebooks", "cached_results", folder, filename)
+    } else {
+        file.path("cached_results", folder, filename)
+    }
+    dir.create(dirname(benchmark_file), showWarnings = FALSE, recursive = TRUE)
+    benchmark_file
+}
+
+getSimulationFile <- function(sim_id, filename) {
+    getBenchmarkFile(file.path(sprintf("sim_%02d", sim_id), filename))
+}
+
+read_cache <- function(path, params = NULL) {
+    if (!file.exists(path)) return(NULL)
+    out <- readRDS(path)
+    if (is.null(params) || identical(out$params, params)) out else NULL
+}
+
+save_cache <- function(path, value, params = NULL) {
+    saveRDS(list(value = value, params = params), path)
+}
+
+nsim <- suppressWarnings(as.integer(Sys.getenv("CMENT_BENCHMARK_NSIM", "10")))
+nsim <- ifelse(is.na(nsim) || nsim < 1L, 10L, nsim)
+
+set.seed(42)
+simulation_plan <- data.frame(
+    simulation_id = seq_len(nsim),
+    seed = sample(0:1000, nsim),
+    delta_beta_max = round(runif(nsim, 0.1, 0.3), 2),
+    expected_corr = round(runif(nsim, 0.6, 0.8), 2),
+    truth_min_delta_beta = round(runif(nsim, 0, 0.2), 2)
+)
+
+plan_file <- getBenchmarkFile("simulation_parameters.tsv")
+data.table::fwrite(simulation_plan, plan_file, sep = "\t")
+knitr::kable(simulation_plan, caption = "Simulation parameters generated under master seed 42")
+```
+
+### Install External Dependencies
+
+```{r setup_dependencies, message=FALSE, warning=FALSE}
+r <- getOption("repos")
+if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+}
+pkg_installed <- function(pkg) pkg %in% rownames(utils::installed.packages())
+if (!pkg_installed("BiocManager")) install.packages("BiocManager")
+if (!pkg_installed("DMRcate")) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
+if (!pkg_installed("bumphunter")) BiocManager::install("bumphunter", update = FALSE, ask = FALSE)
+if (!pkg_installed("doParallel")) install.packages("doParallel")
+if (!pkg_installed("tidyr")) install.packages("tidyr")
+if (!pkg_installed("callr")) install.packages("callr")
+if (!pkg_installed("ChAMP")) BiocManager::install("ChAMP", update = FALSE, ask = FALSE)
+anno_pkg <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
+if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, update = FALSE, ask = FALSE)
+```
+
+**Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
+
+```{bash, engine.opts='-l', eval=FALSE}
+{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || {
+    conda create -n cment_microarray_exp python=3.9
+    conda activate cment_microarray_exp
+    conda install -yc bioconda combined-pvalues bedtools
+}
+```
+
+## Load Input Data and Simulate
+
+```{r simulate_data}
+array_type <- "450K"
+genome <- "hg19"
+input_beta_path <- getBenchmarkFile("GSE40279_beta_subset.tsv.gz")
+zenodo_url <- "https://zenodo.org/records/20592944/files/GSE40279_beta_subset.tsv.gz?download=1"
+if (!file.exists(input_beta_path)) {
+    curl::curl_download(zenodo_url, input_beta_path)
+}
+
+base_simulation <- list(
+    delta_jitter = 0.1,
+    max_gap = 500L,
+    min_dmr_size = 50L,
+    max_dmr_size = 2000L,
+    min_sites = 5L,
+    max_sites = 500L,
+    num_dmrs = 500L,
+    genome = genome
+)
+
+simulate_one <- function(plan_row) {
+    sim_file <- getSimulationFile(plan_row$simulation_id, "simulation.rds")
+    params <- c(base_simulation, list(
+        seed = plan_row$seed,
+        delta_beta_max = plan_row$delta_beta_max,
+        expected_corr = plan_row$expected_corr,
+        truth_min_delta_beta = plan_row$truth_min_delta_beta
+    ))
+    cached <- read_cache(sim_file, params)
+    if (!is.null(cached)) return(cached$value)
+
+    set.seed(plan_row$seed)
+    sim <- CMEnt::simulateDMRs(
+        beta = input_beta_path,
+        array = array_type,
+        genome = genome,
+        sample_group_col = "Sample_Group",
+        num_dmrs = base_simulation$num_dmrs,
+        delta_max0 = plan_row$delta_beta_max,
+        delta_jitter = base_simulation$delta_jitter,
+        expected_correlation = plan_row$expected_corr,
+        truth_min_delta_beta = plan_row$truth_min_delta_beta,
+        max_gap = base_simulation$max_gap,
+        min_dmr_size = base_simulation$min_dmr_size,
+        max_dmr_size = base_simulation$max_dmr_size,
+        min_sites = base_simulation$min_sites,
+        max_sites = base_simulation$max_sites,
+        verbose = 1
+    )
+    sim$pheno$Sample_ID <- rownames(sim$pheno)
+    sim$pheno$casecontrol <- sim$pheno$Sample_Group == "case"
+    data.table::fwrite(sim$truth, getSimulationFile(plan_row$simulation_id, "truth.tsv"), sep = "\t")
+    data.table::fwrite(sim$pheno, getSimulationFile(plan_row$simulation_id, "samplesheet.tsv"), sep = "\t")
+    save_cache(sim_file, sim, params)
+    sim
+}
+```
+
+## Method Runners
+
+```{r method_helpers}
+as_truth_gr <- function(sim) {
+    force_genome(makeGRangesFromDataFrame(
+        sim$truth,
+        seqnames.field = "seqnames",
+        start.field = "start",
+        end.field = "end",
+        keep.extra.columns = TRUE,
+        seqinfo = Seqinfo(genome = genome)
+    ))
+}
+
+force_genome <- function(gr) {
+    GenomeInfoDb::genome(gr) <- genome
+    gr
+}
+
+logit2 <- function(x) log2(pmax(pmin(x, 1 - 1e-6), 1e-6)) - log2(1 - pmax(pmin(x, 1 - 1e-6), 1e-6))
+
+prepare_array_data <- function(sim) {
+    beta_handler <- CMEnt::getBetaHandler(sim$simulated, sorted_locs = sim$beta_locs)
+    beta_mat <- as.matrix(beta_handler$getBeta())
+    locs <- beta_handler$getBetaLocs()
+    pheno <- sim$pheno[colnames(beta_mat), , drop = FALSE]
+    pheno$Sample_Group <- factor(pheno$Sample_Group, levels = c("control", "case"))
+    pheno$casecontrol <- pheno$Sample_Group == "case"
+
+    dmps <- CMEnt::findDMPsArray(
+        beta_handler,
+        pheno,
+        sample_group_col = "Sample_Group",
+        id_col = "Sample_ID",
+        array = array_type,
+        sorted_locs = sim$beta_locs,
+        case_group = "case"
+    )
+    rownames(dmps) <- dmps$site_id
+    dmps <- dmps[!is.na(dmps$pval), ]
+    dmp_locs <- locs[rownames(locs) %in% rownames(dmps), , drop = FALSE]
+    dmps <- dmps[rownames(dmp_locs), , drop = FALSE]
+
+    dmps_gr <- makeGRangesFromDataFrame(
+        data.frame(
+            chr = dmp_locs$chr,
+            start = dmp_locs$start,
+            end = dmp_locs$end,
+            id = rownames(dmps),
+            pval = dmps$pval,
+            qval = dmps$qval,
+            delta_beta = dmps$delta_beta
+        ),
+        keep.extra.columns = TRUE
+    )
+    dmps_gr <- sort(dmps_gr)
+    names(dmps_gr) <- mcols(dmps_gr)$id
+
+    list(
+        beta_handler = beta_handler,
+        beta_mat = beta_mat,
+        locs = locs,
+        pheno = pheno,
+        dmps = dmps,
+        dmps_gr = dmps_gr,
+        seeds = mcols(dmps_gr[mcols(dmps_gr)$qval < 0.1])$id
+    )
+}
+
+run_combp <- function(dmps_gr, params) {
+    if (Sys.which("bedtools") == "" || Sys.which("comb-p") == "") {
+        warning("comb-p or bedtools not found in PATH; returning empty set.")
+        return(GRanges())
+    }
+    tmpdir <- tempdir()
+    bed_file <- file.path(tmpdir, "dmps_for_combp.bed")
+    bed_df <- data.frame(
+        chrom = as.character(seqnames(dmps_gr)),
+        start = start(dmps_gr) - 1L,
+        end = end(dmps_gr),
+        pval = mcols(dmps_gr)$pval
+    )
+    write.table(bed_df[order(bed_df$chrom, bed_df$start), ], bed_file, quote = FALSE, sep = "\t", row.names = FALSE)
+    out_prefix <- file.path(tmpdir, "output.")
+    cmd <- sprintf(
+        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
+        params$seed, params$dist, out_prefix, params$region_filter_p, params$region_filter_n, bed_file
+    )
+    if (system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE) != 0L) return(GRanges())
+    regions_file <- paste0(out_prefix, "regions-p.bed.gz")
+    if (!file.exists(regions_file)) return(GRanges())
+    regions <- data.table::fread(cmd = sprintf("zcat %s", shQuote(regions_file)))
+    colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
+    regions <- regions[regions$z_sidak_p < params$region_sidak_p & regions$n_probes >= params$region_filter_n, ]
+    if (nrow(regions) == 0L) return(GRanges())
+    makeGRangesFromDataFrame(regions, seqnames.field = "chr", start.field = "start", end.field = "end", keep.extra.columns = TRUE)
+}
+
+run_probelasso_champ <- function(beta_mat, pheno, params) {
+    if (!requireNamespace("callr", quietly = TRUE)) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    pl_dmr <- tryCatch({
+        callr::r(
+            function(beta_mat, sample_group, params) {
+                if (!requireNamespace("ChAMP", quietly = TRUE)) stop("ChAMP is not installed.")
+                result <- ChAMP::champ.DMR(
+                    beta = beta_mat,
+                    pheno = sample_group,
+                    arraytype = params$array_type,
+                    method = "ProbeLasso",
+                    minProbes = params$minProbes,
+                    adjPvalDmr = params$adjPvalDmr,
+                    adjPvalProbe = params$adjPvalProbe,
+                    meanLassoRadius = params$meanLassoRadius,
+                    minDmrSep = params$minDmrSep,
+                    minDmrSize = params$minDmrSize,
+                    PDFplot = FALSE,
+                    Rplot = FALSE,
+                    resultsDir = file.path(tempdir(), "champ_probelasso")
+                )
+                pl_dmr <- result$ProbeLassoDMR
+                if (is.null(pl_dmr) || nrow(pl_dmr) == 0L) return(data.frame())
+                as.data.frame(pl_dmr)
+            },
+            args = list(
+                beta_mat = beta_mat,
+                sample_group = as.character(pheno$Sample_Group),
+                params = params
+            ),
+            show = TRUE
+        )
+    }, error = function(e) {
+        warning(sprintf("probeLasso failed: %s", e$message))
+        data.frame()
+    })
+    if (nrow(pl_dmr) == 0L) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    if (!"seqnames" %in% names(pl_dmr) && "dmrChrom" %in% names(pl_dmr)) pl_dmr$seqnames <- pl_dmr$dmrChrom
+    if (!"start" %in% names(pl_dmr) && "dmrStart" %in% names(pl_dmr)) pl_dmr$start <- pl_dmr$dmrStart
+    if (!"end" %in% names(pl_dmr) && "dmrEnd" %in% names(pl_dmr)) pl_dmr$end <- pl_dmr$dmrEnd
+    makeGRangesFromDataFrame(pl_dmr, seqnames.field = "seqnames", start.field = "start", end.field = "end", seqinfo = Seqinfo(genome = params$genome), keep.extra.columns = TRUE)
+}
+
+run_dmrcate_array <- function(beta_mat, pheno, params) {
+    if (!requireNamespace("DMRcate", quietly = TRUE)) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    design <- model.matrix(~ Sample_Group, data = pheno)
+    coef_col <- which(colnames(design) == "Sample_Groupcase")
+    colnames(design)[1] <- "(Intercept)"
+    colnames(design)[coef_col] <- "case_vs_control"
+    ann <- DMRcate::cpg.annotate(
+        "array",
+        logit2(beta_mat),
+        what = "M",
+        arraytype = params$array_type,
+        analysis.type = "differential",
+        design = design,
+        coef = coef_col,
+        fdr = params$fdr
+    )
+    DMRcate::extractRanges(DMRcate::dmrcate(
+        ann,
+        C = params$C,
+        lambda = params$lambda,
+        min.cpgs = params$min.cpgs,
+        betacutoff = params$betacutoff
+    ), genome = params$genome)
+}
+
+run_bumphunter_array <- function(beta_mat, locs, pheno, params) {
+    if (!requireNamespace("bumphunter", quietly = TRUE) || !requireNamespace("doParallel", quietly = TRUE)) return(GRanges())
+    design <- model.matrix(~ Sample_Group, data = pheno)
+    coef_col <- which(colnames(design) == "Sample_Groupcase")
+    bh_cores <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
+    doParallel::registerDoParallel(cores = bh_cores)
+    on.exit({
+        try(doParallel::stopImplicitCluster(), silent = TRUE)
+        gc()
+    }, add = TRUE)
+    cluster <- bumphunter::clusterMaker(as.character(locs$chr), locs$start, maxGap = params$max_gap)
+
+    run_fit <- function(cutoff, B) {
+        bumphunter::bumphunter(
+            beta_mat,
+            design = design,
+            chr = as.character(locs$chr),
+            pos = locs$start,
+            cluster = cluster,
+            cutoff = cutoff,
+            maxGap = params$max_gap,
+            nullMethod = "bootstrap",
+            B = B,
+            type = "Beta",
+            coef = coef_col
+        )
+    }
+    has_informative_null <- function(fit) {
+        null_values <- unlist(fit$null$value, use.names = FALSE)
+        null_lengths <- unlist(fit$null$length, use.names = FALSE)
+        length(null_values) > 0L &&
+            any(abs(null_values) > 0) &&
+            length(null_lengths) > 0L &&
+            any(null_lengths > 0)
+    }
+
+    cutoff <- params$cutoff_start
+    n_candidates <- Inf
+    iter <- 0L
+    while (n_candidates > params$max_dmrs && iter < params$max_iter) {
+        iter <- iter + 1L
+        fit0 <- run_fit(cutoff = cutoff, B = 0L)
+        n_candidates <- nrow(fit0$table)
+        cutoff <- cutoff * 1.2
+        rm(fit0)
+        gc()
+    }
+    cutoff <- cutoff / 1.2
+    cat(sprintf(
+        "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
+        cutoff, n_candidates, params$min_l, params$max_gap, bh_cores, params$B
+    ))
+
+    fit <- run_fit(cutoff = cutoff, B = params$B)
+    adjust_iter <- 0L
+    while (
+        nrow(fit$table) > 0L &&
+            (all(is.na(fit$table$p.value)) || !has_informative_null(fit)) &&
+            cutoff > params$cutoff_floor &&
+            adjust_iter < params$max_bootstrap_adjust
+    ) {
+        prev_cutoff <- cutoff
+        cutoff <- max(cutoff / 2, params$cutoff_floor)
+        if (identical(cutoff, prev_cutoff)) break
+        adjust_iter <- adjust_iter + 1L
+        cat(sprintf(
+            "Bumphunter: bootstrap null degenerate at cutoff=%.4f; retrying with cutoff=%.4f\n",
+            prev_cutoff, cutoff
+        ))
+        fit <- run_fit(cutoff = cutoff, B = params$B)
+    }
+
+    tab <- fit$table
+    keep <- tab$L >= params$min_l &
+        is.finite(tab$p.value) &
+        tab$p.value <= params$region_p &
+        is.finite(tab$start) &
+        is.finite(tab$end)
+    tab <- tab[keep, , drop = FALSE]
+    if (nrow(tab) == 0L) return(GRanges())
+    makeGRangesFromDataFrame(tab, seqnames.field = "chr", start.field = "start", end.field = "end", keep.extra.columns = TRUE)
+}
+
+time_method <- function(expr) {
+    start <- Sys.time()
+    value <- force(expr)
+    list(dmrs = value, time = Sys.time() - start)
+}
+```
+
+## Run Benchmark
+
+```{r run_benchmark}
+run_one_simulation <- function(plan_row) {
+    sim <- simulate_one(plan_row)
+    truth_dmrs <- as_truth_gr(sim)
+    dat <- prepare_array_data(sim)
+    sim_dir <- sprintf("sim_%02d", plan_row$simulation_id)
+    common <- list(delta_beta_max = plan_row$delta_beta_max, simulation_seed = plan_row$seed)
+
+    method_specs <- list(
+        CMEnt = list(
+            params = c(common, list(
+                sample_group_col = "Sample_Group", casecontrol_col = "casecontrol",
+                max_bridge_seeds_gaps = 0L, max_bridge_extension_gaps = 1L,
+                min_seeds = 2L, min_sites = 3L, ext_site_delta_beta = plan_row$delta_beta_max / 3,
+                max_lookup_dist = base_simulation$max_gap,
+                expansion_window = base_simulation$max_dmr_size,
+                max_pval = 0.05, testing_mode = "parametric", entanglement = "weak",
+                genome = genome
+            )),
+            run = function(params) time_method(do.call(CMEnt::buildDMRs, c(list(
+                beta = dat$beta_handler, seeds = dat$seeds, pheno = dat$pheno,
+                verbose = 2, score_dmrs = FALSE, extract_motifs = FALSE, annotate_with_genes = FALSE
+            ), params[setdiff(names(params), c("delta_beta_max", "simulation_seed"))])))
+        ),
+        `comb-p` = list(
+            params = c(common, list(seed = base_simulation$max_gap, dist = base_simulation$max_gap, region_filter_p = 0.01, region_filter_n = base_simulation$min_sites, region_sidak_p = 0.05)),
+            run = function(params) time_method(run_combp(dat$dmps_gr, params))
+        ),
+        probeLasso = list(
+            params = c(common, list(runner = "callr", array_type = array_type, genome = genome, minProbes = base_simulation$min_sites, adjPvalDmr = 0.05, adjPvalProbe = 0.1, meanLassoRadius = base_simulation$max_gap, minDmrSep = base_simulation$max_gap, minDmrSize = base_simulation$min_dmr_size)),
+            run = function(params) time_method(run_probelasso_champ(dat$beta_mat, dat$pheno, params))
+        ),
+        DMRcate = list(
+            params = c(common, list(array_type = array_type, genome = genome, fdr = 0.05, C = 2, lambda = base_simulation$max_gap * 2, min.cpgs = base_simulation$min_sites, betacutoff = 0.05)),
+            run = function(params) time_method(run_dmrcate_array(dat$beta_mat, dat$pheno, params))
+        ),
+        Bumphunter = list(
+            params = c(common, list(
+                runner = "adaptive_bootstrap_v2",
+                B = 100L,
+                max_dmrs = 100000L,
+                max_gap = base_simulation$max_gap,
+                min_l = base_simulation$min_sites,
+                region_p = 0.05,
+                cutoff_start = plan_row$delta_beta_max / 3,
+                cutoff_floor = 0.005,
+                max_iter = 10L,
+                max_bootstrap_adjust = 6L
+            )),
+            run = function(params) time_method(run_bumphunter_array(dat$beta_mat, dat$locs, dat$pheno, params))
+        )
+    )
+
+    method_outputs <- lapply(names(method_specs), function(method) {
+        spec <- method_specs[[method]]
+        cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
+        cached <- read_cache(cache_file, spec$params)
+        out <- if (!is.null(cached)) cached$value else {
+            value <- spec$run(spec$params)
+            save_cache(cache_file, value, spec$params)
+            value
+        }
+        out$dmrs <- force_genome(out$dmrs)
+        list(method = method, dmrs = out$dmrs, time = out$time)
+    })
+    names(method_outputs) <- names(method_specs)
+
+    list(
+        simulation_id = plan_row$simulation_id,
+        params = plan_row,
+        truth = truth_dmrs,
+        seeds_n = length(dat$seeds),
+        methods = method_outputs
+    )
+}
+
+benchmark_results <- lapply(seq_len(nrow(simulation_plan)), function(i) {
+    run_one_simulation(simulation_plan[i, , drop = FALSE])
+})
+```
+
+## Comparative Analysis
+
+```{r analysis_helpers}
+get_dmr_stats <- function(dmrs, method, simulation_id) {
+    data.frame(
+        simulation_id = simulation_id,
+        Method = method,
+        Number_of_DMRs = length(dmrs),
+        Median_DMR_Width = ifelse(length(dmrs) == 0L, NA_real_, median(width(dmrs))),
+        Total_Coverage_bp = ifelse(length(dmrs) == 0L, 0, sum(width(reduce(dmrs)))),
+        Min_Width = ifelse(length(dmrs) == 0L, NA_real_, min(width(dmrs))),
+        Max_Width = ifelse(length(dmrs) == 0L, NA_real_, max(width(dmrs)))
+    )
+}
+
+evaluate_against_truth <- function(pred, truth) {
+    pred <- force_genome(pred)
+    truth <- force_genome(truth)
+    n_pred <- length(pred)
+    n_truth <- length(truth)
+    pred_hit <- sum(overlapsAny(pred, truth))
+    truth_hit <- sum(overlapsAny(truth, pred))
+    precision <- ifelse(n_pred == 0L, 0, pred_hit / n_pred)
+    recall <- ifelse(n_truth == 0L, 0, truth_hit / n_truth)
+    pred_red <- reduce(pred)
+    truth_red <- reduce(truth)
+    inter_bp <- sum(width(GenomicRanges::intersect(pred_red, truth_red)))
+    pred_bp <- sum(width(pred_red))
+    truth_bp <- sum(width(truth_red))
+    union_bp <- pred_bp + truth_bp - inter_bp
+    precision_bp <- ifelse(pred_bp == 0L, 0, inter_bp / pred_bp)
+    recall_bp <- ifelse(truth_bp == 0L, 0, inter_bp / truth_bp)
+    data.frame(
+        TP_regions = truth_hit,
+        FP_regions = n_pred - pred_hit,
+        FN_regions = n_truth - truth_hit,
+        Precision_regions = precision,
+        Recall_regions = recall,
+        F1_regions = ifelse(precision + recall == 0, 0, 2 * precision * recall / (precision + recall)),
+        Precision_bp = precision_bp,
+        Recall_bp = recall_bp,
+        F1_bp = ifelse(precision_bp + recall_bp == 0, 0, 2 * precision_bp * recall_bp / (precision_bp + recall_bp)),
+        IoU_bp = ifelse(union_bp == 0L, 0, inter_bp / union_bp)
+    )
+}
+
+summarise_interval <- function(df, group_cols, value_cols) {
+    df |>
+        tidyr::pivot_longer(dplyr::all_of(value_cols), names_to = "Metric", values_to = "Value") |>
+        dplyr::group_by(dplyr::across(dplyr::all_of(c(group_cols, "Metric")))) |>
+        dplyr::summarise(
+            Median = median(Value, na.rm = TRUE),
+            Min = min(Value, na.rm = TRUE),
+            Max = max(Value, na.rm = TRUE),
+            .groups = "drop"
+        )
+}
+
+stats_all <- do.call(rbind, lapply(benchmark_results, function(res) {
+    rbind(
+        do.call(rbind, lapply(res$methods, function(x) get_dmr_stats(x$dmrs, x$method, res$simulation_id))),
+        get_dmr_stats(res$truth, "Truth", res$simulation_id)
+    )
+}))
+
+truth_eval_all <- do.call(rbind, lapply(benchmark_results, function(res) {
+    do.call(rbind, lapply(res$methods, function(x) {
+        out <- evaluate_against_truth(x$dmrs, res$truth)
+        out$simulation_id <- res$simulation_id
+        out$Method <- x$method
+        out
+    }))
+}))
+
+runtime_all <- do.call(rbind, lapply(benchmark_results, function(res) {
+    do.call(rbind, lapply(res$methods, function(x) {
+        data.frame(simulation_id = res$simulation_id, Method = x$method, Seconds = as.numeric(x$time, units = "secs"))
+    }))
+}))
+```
+
+### Basic Statistics
+
+```{r}
+stats_summary <- summarise_interval(
+    stats_all,
+    "Method",
+    c("Number_of_DMRs", "Median_DMR_Width", "Total_Coverage_bp", "Min_Width", "Max_Width")
+)
+knitr::kable(stats_summary, digits = 2, caption = "Basic DMR statistics across simulations")
+```
+
+```{r, fig.width=9, fig.height=4}
+stats_plot <- stats_all |>
+    dplyr::select(Method, simulation_id, Number_of_DMRs, Total_Coverage_bp) |>
+    tidyr::pivot_longer(c(Number_of_DMRs, Total_Coverage_bp), names_to = "Metric", values_to = "Value") |>
+    dplyr::group_by(Method, Metric) |>
+    dplyr::mutate(Median = median(Value), Min = min(Value), Max = max(Value)) |>
+    dplyr::ungroup()
+
+ggplot(stats_plot, aes(Method, Value, colour = Method)) +
+    geom_point(alpha = 0.45, position = position_jitter(width = 0.08, height = 0)) +
+    stat_summary(fun = median, geom = "point", size = 2.6, colour = "black") +
+    stat_summary(fun.min = min, fun.max = max, geom = "errorbar", width = 0.25, colour = "black") +
+    facet_wrap(~ Metric, scales = "free_y") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+    labs(title = "DMR counts and coverage across simulations", x = "", y = "Value")
+```
+
+## Ground-Truth Evaluation
+
+```{r}
+regions_truth_eval <- summarise_interval(
+    truth_eval_all,
+    "Method",
+    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions")
+)
+bp_truth_eval <- summarise_interval(
+    truth_eval_all,
+    "Method",
+    c("Precision_bp", "Recall_bp", "F1_bp", "IoU_bp")
+)
+knitr::kable(regions_truth_eval, digits = 4, caption = "Macro region-level performance intervals against ground truth")
+```
+
+```{r}
+knitr::kable(bp_truth_eval, digits = 4, caption = "Micro base-pair-level performance intervals against ground truth")
+```
+
+```{r, fig.width=10, fig.height=5}
+metric_plot <- truth_eval_all |>
+    dplyr::select(Method, simulation_id, F1_regions, F1_bp, IoU_bp) |>
+    tidyr::pivot_longer(c(F1_regions, F1_bp, IoU_bp), names_to = "Metric", values_to = "Value")
+metric_plot$Metric <- factor(metric_plot$Metric, levels = c("F1_regions", "F1_bp", "IoU_bp"), labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)"))
+
+ggplot(metric_plot, aes(Method, Value, colour = Method)) +
+    geom_point(alpha = 0.5, position = position_jitter(width = 0.08, height = 0)) +
+    stat_summary(fun = median, geom = "point", size = 2.6, colour = "black") +
+    stat_summary(fun.min = min, fun.max = max, geom = "errorbar", width = 0.25, colour = "black") +
+    facet_wrap(~ Metric, nrow = 1) +
+    coord_cartesian(ylim = c(0, 1)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+    labs(title = "Method performance vs ground truth across simulations", x = "", y = "Score")
+```
+
+### Runtime
+
+```{r}
+runtime_summary <- summarise_interval(runtime_all, "Method", "Seconds")
+knitr::kable(runtime_summary, digits = 2, caption = "Runtime intervals across simulations")
+```
+
+```{r, fig.width=8, fig.height=4}
+ggplot(runtime_all, aes(Method, Seconds, colour = Method)) +
+    geom_point(alpha = 0.45, position = position_jitter(width = 0.08, height = 0)) +
+    stat_summary(fun = median, geom = "point", size = 2.6, colour = "black") +
+    stat_summary(fun.min = min, fun.max = max, geom = "errorbar", width = 0.25, colour = "black") +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+    labs(title = "Runtime across simulations", x = "", y = "Seconds")
+```
+
+### Width Distributions
+
+```{r, fig.width=8, fig.height=6}
+width_data <- do.call(rbind, lapply(benchmark_results, function(res) {
+    sets <- c(lapply(res$methods, `[[`, "dmrs"), list(Truth = res$truth))
+    do.call(rbind, lapply(names(sets), function(method) {
+        if (length(sets[[method]]) == 0L) return(NULL)
+        data.frame(simulation_id = res$simulation_id, Method = method, Width = width(sets[[method]]))
+    }))
+}))
+
+ggplot(width_data, aes(Method, Width, fill = Method)) +
+    geom_violin(alpha = 0.55) +
+    geom_boxplot(width = 0.18, alpha = 0.55, outlier.size = 0.4) +
+    scale_y_log10(labels = scales::comma) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
+    labs(title = "DMR width distributions pooled across simulations", x = "", y = "Width (bp, log scale)")
+```
+
+## Summary
+
+```{r}
+best_f1 <- truth_eval_all |>
+    dplyr::group_by(Method) |>
+    dplyr::summarise(Median_F1 = median(F1_regions), Median_IoU = median(IoU_bp), .groups = "drop")
+cat(sprintf("- Best median region-level F1: **%s** (%.3f)\n", best_f1$Method[which.max(best_f1$Median_F1)], max(best_f1$Median_F1)))
+cat(sprintf("- Best median base-pair IoU: **%s** (%.3f)\n", best_f1$Method[which.max(best_f1$Median_IoU)], max(best_f1$Median_IoU)))
+```
+
+## Session Info
+
+```{r}
+sessionInfo()
+```

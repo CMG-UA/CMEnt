@@ -65,8 +65,12 @@ notebooks/metastudy_cache
 notebooks/*.html
 dmps.rds
 publication/*
-notebooks/cached_results/ont/downloaded
-notebooks/cached_results/ont/h5
-notebooks/cached_results/ont/input_h5
+notebooks/cached_results/ont.old/downloaded
+notebooks/cached_results/ont.old/h5
+notebooks/cached_results/ont.old/input_h5
 
-notebooks/cached_results/ont/dmps.rds
+notebooks/cached_results/pannet_ont/pannet.h5.tar.gz
+notebooks/cached_results/pannet_ont/pannet.h5
+notebooks/cached_results/pannet_ont/seeds.rds
+notebooks/cached_results/pannet_ont/filtered_bsseq.h5
+notebooks/cached_results/pannet_ont/reduced_bsseq.h5
