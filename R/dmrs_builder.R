@@ -1812,181 +1812,6 @@
 
 #' @keywords internal
 #' @noRd
-.expandDMR <- function(dmr,
-                       connectivity_array,
-                       locs,
-                       min_sites = 3,
-                       locs_idx_map,
-                       expansion_boundaries) {
-    .log_step("Expanding DMR..", level = 4)
-    if (is.data.frame(dmr)) {
-        if (nrow(dmr) != 1L) {
-            stop("dmr must contain exactly one row.")
-        }
-        dmr <- dmr[1L, , drop = FALSE]
-    } else {
-        dmr <- as.data.frame(as.list(dmr), stringsAsFactors = FALSE)
-    }
-    dmr_start <- as.character(dmr[["start_seed"]][[1]])
-    dmr_end <- as.character(dmr[["end_seed"]][[1]])
-
-    dmr_start_ind <- locs_idx_map[[dmr_start]]
-    dmr_end_ind <- locs_idx_map[[dmr_end]]
-    if (is.null(dmr_start_ind)) {
-        stop("Could not find the start site ", dmr_start, " in the beta file row names.")
-    }
-    if (is.null(dmr_end_ind)) {
-        stop("Could not find the end site ", dmr_end, " in the beta file row names.")
-    }
-    dmr_start_ind <- as.integer(dmr_start_ind)
-    dmr_end_ind <- as.integer(dmr_end_ind)
-    locs_rownames <- names(locs_idx_map)
-    projected_site_ids <- locs_rownames
-    projected_positions <- as.integer(locs[, "start"])
-
-    .check_upstream <- function(ustream_exp, exp_step) {
-        ustream_end_lookup_site_ind <- as.integer(ustream_exp - 1L)
-        if (ustream_end_lookup_site_ind < 1L) {
-            return(list(
-                ustream_stop_reason = "end-of-input",
-                ustream_exp = ustream_exp
-            ))
-        }
-        fail_edge <- expansion_boundaries$previous_failed_edge[ustream_end_lookup_site_ind]
-        if (is.na(fail_edge) || fail_edge < 1L) {
-            return(list(
-                ustream_stop_reason = "end-of-input",
-                ustream_exp = 1L
-            ))
-        }
-        list(
-            ustream_stop_reason = expansion_boundaries$reason[fail_edge],
-            ustream_exp = as.integer(fail_edge + 1L)
-        )
-    }
-
-    .check_downstream <- function(dstream_exp, exp_step) {
-        dstream_start_lookup_site_ind <- as.integer(dstream_exp)
-        if (dstream_start_lookup_site_ind >= nrow(locs)) {
-            return(list(
-                dstream_stop_reason = "end-of-input",
-                dstream_exp = dstream_exp
-            ))
-        }
-        fail_edge <- expansion_boundaries$next_failed_edge[dstream_start_lookup_site_ind]
-        if (is.na(fail_edge) || fail_edge > nrow(locs)) {
-            return(list(
-                dstream_stop_reason = "end-of-input",
-                dstream_exp = nrow(locs)
-            ))
-        }
-        list(
-            dstream_stop_reason = expansion_boundaries$reason[fail_edge],
-            dstream_exp = as.integer(fail_edge)
-        )
-    }
-
-    ustream_exp <- dmr_start_ind
-    ustream_stop_reason <- NULL
-    dstream_exp <- dmr_end_ind
-    dstream_stop_reason <- NULL
-
-    t <- 0
-    while (TRUE) {
-        exp_step <- nrow(locs)
-        if (t == 0) { # first iteration, use min_sites and remove the DMRs that are not long enough
-            csites <- dstream_exp - ustream_exp + 1
-            if (csites < (min_sites)) {
-                .log_info("DMR  too short (", csites, " sites). Expanding to reach min_sites=", min_sites, ".", level = 4)
-                exp_step <- min_sites - csites
-            }
-            .log_info("Number of sites in DMR: ", csites, level = 5)
-        }
-        .log_info("Expansion step size: ", exp_step, " bp.", level = 5)
-        .log_step("Checking upstream expansion...", level = 5)
-        if (is.null(ustream_stop_reason)) {
-            res <- .check_upstream(ustream_exp, exp_step)
-            ustream_stop_reason <- res$ustream_stop_reason
-            if (res$ustream_exp > ustream_exp) {
-                .log_info("Upstream expanded by ", ustream_exp - res$ustream_exp, " sites.", level = 5)
-            }
-            ustream_exp <- res$ustream_exp
-        }
-        .log_success("Upstream expansion checked.", level = 5)
-        .log_step("Checking downstream expansion...", level = 5)
-        if (is.null(dstream_stop_reason)) {
-            res <- .check_downstream(dstream_exp, exp_step)
-            dstream_stop_reason <- res$dstream_stop_reason
-            if (res$dstream_exp > dstream_exp) {
-                .log_info("Downstream expanded by ", res$dstream_exp - dstream_exp, " sites.", level = 5)
-            }
-            dstream_exp <- res$dstream_exp
-        }
-        .log_success("Downstream expansion checked.", level = 5)
-        if (t == 0) {
-            new_csites <- dstream_exp - ustream_exp + 1
-            .log_info("Number of sites in expanded DMR after first iteration: ", new_csites, " from ", csites, level = 4)
-            if (new_csites < min_sites) {
-                ustream_stop_reason <- "min-sites-not-reached"
-                dstream_stop_reason <- "min-sites-not-reached"
-                .log_info("DMR could not reach min_sites=", min_sites, " after expansion (", new_csites, "). Stopping expansion.", level = 4)
-            }
-            t <- 1
-        }
-        if (!is.null(ustream_stop_reason) && !is.null(dstream_stop_reason)) {
-            break
-        }
-    }
-    .log_step("Finalizing expanded DMR.", level = 4)
-    dmr[["start_site"]] <- projected_site_ids[ustream_exp]
-    dmr[["end_site"]] <- projected_site_ids[dstream_exp]
-    dmr[["start"]] <- projected_positions[ustream_exp]
-    dmr[["end"]] <- projected_positions[dstream_exp]
-
-    to_site_ids <- function(local_inds) {
-        if (length(local_inds) == 0) {
-            return(character(0))
-        }
-        projected_site_ids[local_inds]
-    }
-
-    dmr[["upstream_expansion_stop_reason"]] <- ustream_stop_reason
-    upstream_candidate <- if (ustream_exp <= (dmr_start_ind - 1L)) {
-        seq.int(ustream_exp, dmr_start_ind - 1L)
-    } else {
-        integer(0)
-    }
-    if (length(upstream_candidate) > 0) {
-        bridged_upstream_m <- connectivity_array[upstream_candidate, "reason"] == "bridged"
-        upstream_kept <- upstream_candidate[!bridged_upstream_m]
-    } else {
-        upstream_kept <- integer(0)
-    }
-    dmr[["upstream_sites"]] <- paste(to_site_ids(upstream_kept), collapse = ",")
-    dmr[["upstream_expansion_length"]] <- length(upstream_kept)
-
-    dmr[["downstream_expansion_stop_reason"]] <- dstream_stop_reason
-    downstream_candidate <- if ((dmr_end_ind + 1L) <= dstream_exp) {
-        seq.int(dmr_end_ind + 1L, dstream_exp)
-    } else {
-        integer(0)
-    }
-    if (length(downstream_candidate) > 0) {
-        bridged_downstream_m <- connectivity_array[downstream_candidate, "reason"] == "bridged"
-        downstream_kept <- downstream_candidate[!bridged_downstream_m]
-    } else {
-        downstream_kept <- integer(0)
-    }
-    dmr[["downstream_sites"]] <- paste(to_site_ids(downstream_kept), collapse = ",")
-    dmr[["downstream_expansion_length"]] <- length(downstream_kept)
-
-    .log_success("Expanded DMR finalized: (start_site: ", dmr[["start_site"]], ", end_site: ", dmr[["end_site"]], ").", level = 4)
-    dmr
-}
-
-
-#' @keywords internal
-#' @noRd
 .expandDMRChunk <- function(dmr_inds,
                             dmrs,
                             connectivity_array,
@@ -2001,18 +1826,105 @@
     on.exit(options(warn = old_warn), add = TRUE)
     options(warn = 2)
 
-    ret <- vector("list", length(dmr_inds))
-    for (i in seq_along(dmr_inds)) {
-        ret[[i]] <- .expandDMR(
-            dmr = dmrs[dmr_inds[[i]], , drop = FALSE],
-            connectivity_array = connectivity_array,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries
-        )
+    dmrs_chunk <- dmrs[dmr_inds, , drop = FALSE]
+    n_dmrs <- nrow(dmrs_chunk)
+    n_locs <- nrow(locs)
+    locs_rownames <- names(locs_idx_map)
+    projected_positions <- as.integer(locs[, "start"])
+    connectivity_reason <- as.character(connectivity_array[["reason"]])
+
+    start_seed <- as.character(dmrs_chunk[["start_seed"]])
+    end_seed <- as.character(dmrs_chunk[["end_seed"]])
+    start_idx <- unname(as.integer(locs_idx_map[start_seed]))
+    end_idx <- unname(as.integer(locs_idx_map[end_seed]))
+    if (anyNA(start_idx)) {
+        stop("Could not find the start site ", start_seed[which(is.na(start_idx))[1L]], " in the beta file row names.")
     }
-    ret
+    if (anyNA(end_idx)) {
+        stop("Could not find the end site ", end_seed[which(is.na(end_idx))[1L]], " in the beta file row names.")
+    }
+
+    upstream_exp <- start_idx
+    upstream_stop_reason <- rep(NA_character_, n_dmrs)
+    upstream_lookup <- start_idx - 1L
+    has_upstream_lookup <- upstream_lookup >= 1L
+    upstream_stop_reason[!has_upstream_lookup] <- "end-of-input"
+    upstream_fail_edge <- rep(NA_integer_, n_dmrs)
+    upstream_fail_edge[has_upstream_lookup] <- expansion_boundaries$previous_failed_edge[upstream_lookup[has_upstream_lookup]]
+    upstream_no_failure <- has_upstream_lookup & (is.na(upstream_fail_edge) | upstream_fail_edge < 1L)
+    upstream_exp[upstream_no_failure] <- 1L
+    upstream_stop_reason[upstream_no_failure] <- "end-of-input"
+    upstream_has_failure <- has_upstream_lookup & !upstream_no_failure
+    upstream_exp[upstream_has_failure] <- upstream_fail_edge[upstream_has_failure] + 1L
+    upstream_stop_reason[upstream_has_failure] <- expansion_boundaries$reason[upstream_fail_edge[upstream_has_failure]]
+
+    downstream_exp <- end_idx
+    downstream_stop_reason <- rep(NA_character_, n_dmrs)
+    downstream_lookup <- end_idx
+    has_downstream_lookup <- downstream_lookup < n_locs
+    downstream_stop_reason[!has_downstream_lookup] <- "end-of-input"
+    downstream_fail_edge <- rep(NA_integer_, n_dmrs)
+    downstream_fail_edge[has_downstream_lookup] <- expansion_boundaries$next_failed_edge[downstream_lookup[has_downstream_lookup]]
+    downstream_no_failure <- has_downstream_lookup & (is.na(downstream_fail_edge) | downstream_fail_edge > n_locs)
+    downstream_exp[downstream_no_failure] <- n_locs
+    downstream_stop_reason[downstream_no_failure] <- "end-of-input"
+    downstream_has_failure <- has_downstream_lookup & !downstream_no_failure
+    downstream_exp[downstream_has_failure] <- downstream_fail_edge[downstream_has_failure]
+    downstream_stop_reason[downstream_has_failure] <- expansion_boundaries$reason[downstream_fail_edge[downstream_has_failure]]
+
+    too_short <- (downstream_exp - upstream_exp + 1L) < min_sites
+    upstream_stop_reason[too_short] <- "min-sites-not-reached"
+    downstream_stop_reason[too_short] <- "min-sites-not-reached"
+
+    expansion_kept_indices <- function(local_inds) {
+        if (length(local_inds) == 0L) {
+            return(integer(0))
+        }
+        bridged <- connectivity_reason[local_inds] == "bridged"
+        local_inds[!bridged]
+    }
+
+    expansion_site_ids <- function(local_inds) {
+        kept <- expansion_kept_indices(local_inds)
+        if (length(kept) == 0L) {
+            return("")
+        }
+        paste(locs_rownames[kept], collapse = ",")
+    }
+
+    upstream_sites <- character(n_dmrs)
+    downstream_sites <- character(n_dmrs)
+    upstream_expansion_length <- integer(n_dmrs)
+    downstream_expansion_length <- integer(n_dmrs)
+    for (i in seq_len(n_dmrs)) {
+        upstream_candidate <- if (upstream_exp[[i]] <= (start_idx[[i]] - 1L)) {
+            seq.int(upstream_exp[[i]], start_idx[[i]] - 1L)
+        } else {
+            integer(0)
+        }
+        downstream_candidate <- if ((end_idx[[i]] + 1L) <= downstream_exp[[i]]) {
+            seq.int(end_idx[[i]] + 1L, downstream_exp[[i]])
+        } else {
+            integer(0)
+        }
+        upstream_sites[[i]] <- expansion_site_ids(upstream_candidate)
+        downstream_sites[[i]] <- expansion_site_ids(downstream_candidate)
+        upstream_expansion_length[[i]] <- length(expansion_kept_indices(upstream_candidate))
+        downstream_expansion_length[[i]] <- length(expansion_kept_indices(downstream_candidate))
+    }
+
+    dmrs_chunk[["start_site"]] <- locs_rownames[upstream_exp]
+    dmrs_chunk[["end_site"]] <- locs_rownames[downstream_exp]
+    dmrs_chunk[["start"]] <- projected_positions[upstream_exp]
+    dmrs_chunk[["end"]] <- projected_positions[downstream_exp]
+    dmrs_chunk[["upstream_expansion_stop_reason"]] <- upstream_stop_reason
+    dmrs_chunk[["upstream_sites"]] <- upstream_sites
+    dmrs_chunk[["upstream_expansion_length"]] <- upstream_expansion_length
+    dmrs_chunk[["downstream_expansion_stop_reason"]] <- downstream_stop_reason
+    dmrs_chunk[["downstream_sites"]] <- downstream_sites
+    dmrs_chunk[["downstream_expansion_length"]] <- downstream_expansion_length
+
+    dmrs_chunk
 }
 
 
@@ -2980,39 +2892,6 @@
             } else {
                 .log_info("No connectivity windows were generated; Stage 2 will return disconnected sites outside chromosome termini.", level = 2)
             }
-            # Find DMRs with fewer than min_seeds occupying a single window and 
-            # remove them from the expansion windows to avoid unnecessary computation
-            if (min_seeds > 0) {
-                # Count the number of seeds in each window
-                seed_counts_per_window <- vapply(seq_len(nrow(expansion_windows)), function(i) {
-                    sum(dmrs$start_seed_pos >= expansion_windows$start[i] & dmrs$end_seed_pos <= expansion_windows$end[i])
-                }, integer(1))
-                # Identify windows that have fewer than min_seeds
-                windows_to_remove <- which(seed_counts_per_window < min_seeds)
-                if (length(windows_to_remove) > 0) {
-                    .log_info(
-                        "Removing ", length(windows_to_remove),
-                        " expansion windows that contain fewer than min_seeds (", min_seeds, ") seeds.",
-                        level = 3
-                    )
-                    expansion_windows <- expansion_windows[-windows_to_remove, , drop = FALSE]
-                    # Also remove any DMRs that are now outside the remaining expansion windows
-                    dmrs_in_remaining_windows <- vapply(seq_len(nrow(dmrs)), function(i) {
-                        any(dmrs$start_seed_pos[i] >= expansion_windows$start & dmrs$end_seed_pos[i] <= expansion_windows$end)
-                    }, logical(1))
-                    dmrs <- dmrs[dmrs_in_remaining_windows, , drop = FALSE]
-                    if (!all(dmrs_in_remaining_windows)) {
-                        .log_info(
-                            "Removed ", sum(!dmrs_in_remaining_windows),
-                            " initial DMRs with fewer than min_seeds, and no opportunities for merging with adjacent DMRs after expansion.",
-                            level = 2
-                        )
-                    }
-                }
-
-            }
-
-
         } else {
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
@@ -3120,15 +2999,15 @@
             BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
         )
     }
-    ret <- unlist(ret, recursive = FALSE, use.names = FALSE)
     if (inherits(ret, "try-error")) {
         stop(ret)
     }
+    extended_dmrs <- as.data.frame(do.call(rbind, ret))
     u_exp_len_table <- table(
-        vapply(ret, function(x) x[["upstream_expansion_length"]], numeric(1))
+        extended_dmrs$upstream_expansion_length
     )
     d_exp_len_table <- table(
-        vapply(ret, function(x) x[["downstream_expansion_length"]], numeric(1))
+        extended_dmrs$downstream_expansion_length
     )
     # sort tables by names (expansion sizes)
     u_exp_len_table <- u_exp_len_table[order(as.integer(names(u_exp_len_table)))]
@@ -3154,7 +3033,6 @@
     .advanceChromosomeProgress()
     .log_step("Post-processing extended DMRs..", level = 2)
 
-    extended_dmrs <- as.data.frame(do.call(rbind, ret))
     extended_dmrs$end <- as.numeric(extended_dmrs$end)
     extended_dmrs$start <- as.numeric(extended_dmrs$start)
     extended_dmrs$start_seed_pos <- as.numeric(extended_dmrs$start_seed_pos)
@@ -3288,10 +3166,9 @@
     .advanceChromosomeProgress()
     .log_step("Stage 4: Filtering resulting DMRs..", level = 2)
 
-    if (min_sites > 1 || min_seeds > 1) {
+    if (min_sites > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
-            GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
-                GenomicRanges::mcols(merged_dmrs_ranges)$sites_num >= min_sites
+            GenomicRanges::mcols(merged_dmrs_ranges)$sites_num >= min_sites
         ]
         .log_info(
             "Keeping ",
@@ -3299,8 +3176,6 @@
             " out of ",
             length(merged_dmrs_ranges),
             " with at least ",
-            min_seeds,
-            " supporting seeds and at least ",
             min_sites,
             " sites in the DMR interval.",
             level = 2

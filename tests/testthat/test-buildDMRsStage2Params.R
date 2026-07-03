@@ -252,7 +252,7 @@ test_that("buildDMRs does not bridge across chromosome boundaries", {
     expect_true(all(site_chr[dmr_df$start_seed] == site_chr[dmr_df$end_seed]))
 })
 
-test_that("buildDMRs stores all seed IDs including the terminal seed", {
+test_that("buildDMRs stores all seed IDs including the terminal seed with expansion windows", {
     site_ids <- c("cgA", "cgB", "cgC")
     beta <- matrix(
         c(
@@ -298,6 +298,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         testing_mode = "parametric",
+        expansion_window = 1,
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
         njobs = 1

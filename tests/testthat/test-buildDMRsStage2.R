@@ -293,3 +293,79 @@ test_that("connectivity split pooling does not invent chunks beyond natural chun
     )
     expect_equal(nrow(sparse), 2L)
 })
+
+test_that("Stage 2 DMR expansion chunk handles boundaries and bridged sites", {
+    site_ids <- paste0("cg", seq_len(6))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = seq(100L, 600L, 100L),
+        end = seq(101L, 601L, 100L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    connectivity <- data.frame(
+        connected = c(FALSE, TRUE, TRUE, FALSE, TRUE, FALSE),
+        pval = NA_real_,
+        reason = c("u-stop", "bridged", "", "d-stop", "bridged", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+    dmrs <- data.frame(
+        start_seed = c("cg3", "cg1", "cg5"),
+        end_seed = c("cg3", "cg1", "cg6"),
+        stringsAsFactors = FALSE
+    )
+
+    ret <- CMEnt:::.expandDMRChunk(
+        dmr_inds = seq_len(nrow(dmrs)),
+        dmrs = dmrs,
+        connectivity_array = connectivity,
+        locs = locs,
+        min_sites = 2L,
+        locs_idx_map = setNames(seq_along(site_ids), site_ids),
+        expansion_boundaries = CMEnt:::.buildExpansionBoundaryLookup(connectivity)
+    )
+    out <- ret
+    rownames(out) <- NULL
+
+    expect_equal(nrow(out), 3L)
+    expect_identical(out$start_site, c("cg2", "cg1", "cg5"))
+    expect_identical(out$end_site, c("cg4", "cg1", "cg6"))
+    expect_identical(out$start, c(200L, 100L, 500L))
+    expect_identical(out$end, c(400L, 100L, 600L))
+    expect_identical(out$upstream_expansion_stop_reason, c("u-stop", "min-sites-not-reached", "d-stop"))
+    expect_identical(out$downstream_expansion_stop_reason, c("d-stop", "min-sites-not-reached", "end-of-input"))
+    expect_identical(out$upstream_sites, c("", "", ""))
+    expect_identical(out$downstream_sites, c("cg4", "", ""))
+    expect_identical(out$upstream_expansion_length, c(0L, 0L, 0L))
+    expect_identical(out$downstream_expansion_length, c(1L, 0L, 0L))
+})
+
+test_that("Stage 2 DMR expansion chunk reports missing seed rows", {
+    site_ids <- paste0("cg", seq_len(3))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = seq(100L, 300L, 100L),
+        end = seq(101L, 301L, 100L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    connectivity <- data.frame(
+        connected = c(TRUE, TRUE, FALSE),
+        pval = NA_real_,
+        reason = c("", "", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+
+    expect_error(
+        CMEnt:::.expandDMRChunk(
+            dmr_inds = 1L,
+            dmrs = data.frame(start_seed = "missing", end_seed = "cg2", stringsAsFactors = FALSE),
+            connectivity_array = connectivity,
+            locs = locs,
+            min_sites = 2L,
+            locs_idx_map = setNames(seq_along(site_ids), site_ids),
+            expansion_boundaries = CMEnt:::.buildExpansionBoundaryLookup(connectivity)
+        ),
+        "Could not find the start site missing"
+    )
+})
