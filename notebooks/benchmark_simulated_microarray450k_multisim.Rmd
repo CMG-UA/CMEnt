@@ -26,10 +26,11 @@ knitr::opts_chunk$set(
 
 This vignette repeats the simulated 450K benchmark over multiple independently
 simulated datasets. Each dataset is produced from the same GSE40279 chr20/chr21
-beta-value subset with `CMEnt::simulateDMRs()`, using simulation parameters drawn
-from fixed ranges under a master seed of 42. Method outputs and simulation
-bundles are cached per iteration, and summary plots show medians with observed
-interval ranges across simulations.
+beta-value subset and 100-sample covariate subset used by the single-run
+benchmark, with `CMEnt::simulateDMRs()` parameters drawn from fixed ranges under
+a master seed of 42. Method outputs and simulation bundles are cached per
+iteration, and summary plots show medians with observed interval ranges across
+simulations.
 
 Methods:
 
@@ -98,8 +99,8 @@ set.seed(42)
 simulation_plan <- data.frame(
     simulation_id = seq_len(nsim),
     seed = sample(0:1000, nsim),
-    delta_beta_max = round(runif(nsim, 0.1, 0.3), 2),
-    expected_corr = round(runif(nsim, 0.6, 0.8), 2),
+    delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
+    expected_corr = round(runif(nsim, 0.5, 0.8), 2),
     truth_min_delta_beta = round(runif(nsim, 0, 0.2), 2)
 )
 
@@ -143,10 +144,20 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 array_type <- "450K"
 genome <- "hg19"
 input_beta_path <- getBenchmarkFile("GSE40279_beta_subset.tsv.gz")
+input_samplesheet_path <- getBenchmarkFile("GSE40279_sim_samplesheet.tsv")
 zenodo_url <- "https://zenodo.org/records/20592944/files/GSE40279_beta_subset.tsv.gz?download=1"
+zenodo_samplesheet_url <- "https://zenodo.org/records/20592944/files/GSE40279_sim_samplesheet.tsv?download=1"
 if (!file.exists(input_beta_path)) {
     curl::curl_download(zenodo_url, input_beta_path)
 }
+if (!file.exists(input_samplesheet_path)) {
+    curl::curl_download(zenodo_samplesheet_url, input_samplesheet_path)
+}
+
+simulation_samplesheet <- data.table::fread(input_samplesheet_path, data.table = FALSE, check.names = FALSE)
+rownames(simulation_samplesheet) <- simulation_samplesheet[[1L]]
+simulation_samplesheet <- simulation_samplesheet[, -1L, drop = FALSE]
+simulation_samplesheet$Sample_Group <- NULL
 
 base_simulation <- list(
     delta_jitter = 0.1,
@@ -156,7 +167,9 @@ base_simulation <- list(
     min_sites = 5L,
     max_sites = 500L,
     num_dmrs = 500L,
-    genome = genome
+    genome = genome,
+    sample_ids = rownames(simulation_samplesheet),
+    covariates = c("age..y..ch1", "predictedSex")
 )
 
 simulate_one <- function(plan_row) {
@@ -175,7 +188,9 @@ simulate_one <- function(plan_row) {
         beta = input_beta_path,
         array = array_type,
         genome = genome,
+        samplesheet = simulation_samplesheet,
         sample_group_col = "Sample_Group",
+        covariates = base_simulation$covariates,
         num_dmrs = base_simulation$num_dmrs,
         delta_max0 = plan_row$delta_beta_max,
         delta_jitter = base_simulation$delta_jitter,
@@ -262,7 +277,7 @@ prepare_array_data <- function(sim) {
         pheno = pheno,
         dmps = dmps,
         dmps_gr = dmps_gr,
-        seeds = mcols(dmps_gr[mcols(dmps_gr)$qval < 0.1])$id
+        seeds = mcols(dmps_gr[mcols(dmps_gr)$qval < 0.05])$id
     )
 }
 
@@ -301,6 +316,7 @@ run_probelasso_champ <- function(beta_mat, pheno, params) {
         callr::r(
             function(beta_mat, sample_group, params) {
                 if (!requireNamespace("ChAMP", quietly = TRUE)) stop("ChAMP is not installed.")
+                suppressPackageStartupMessages(library(ChAMP))
                 result <- ChAMP::champ.DMR(
                     beta = beta_mat,
                     pheno = sample_group,
@@ -484,7 +500,7 @@ run_one_simulation <- function(plan_row) {
             run = function(params) time_method(run_combp(dat$dmps_gr, params))
         ),
         probeLasso = list(
-            params = c(common, list(runner = "callr", array_type = array_type, genome = genome, minProbes = base_simulation$min_sites, adjPvalDmr = 0.05, adjPvalProbe = 0.1, meanLassoRadius = base_simulation$max_gap, minDmrSep = base_simulation$max_gap, minDmrSize = base_simulation$min_dmr_size)),
+            params = c(common, list(runner = "callr_attach_champ", array_type = array_type, genome = genome, minProbes = base_simulation$min_sites, adjPvalDmr = 0.05, adjPvalProbe = 0.1, meanLassoRadius = base_simulation$max_gap, minDmrSep = base_simulation$max_gap, minDmrSize = base_simulation$min_dmr_size)),
             run = function(params) time_method(run_probelasso_champ(dat$beta_mat, dat$pheno, params))
         ),
         DMRcate = list(
@@ -582,14 +598,56 @@ evaluate_against_truth <- function(pred, truth) {
     )
 }
 
-summarise_interval <- function(df, group_cols, value_cols) {
+format_mean_pm <- function(x, digits = 2L) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) return(NA_character_)
+    sd_x <- if (length(x) > 1L) stats::sd(x) else 0
+    sprintf(paste0("%.", digits, "f (+/- %.", digits, "f)"), mean(x), sd_x)
+}
+
+summarise_mean_pm <- function(df, group_cols, value_cols, digits = 2L) {
+    metric_digits <- if (length(digits) == 1L) {
+        stats::setNames(rep(digits, length(value_cols)), value_cols)
+    } else {
+        stats::setNames(as.integer(digits), names(digits))
+    }
     df |>
         tidyr::pivot_longer(dplyr::all_of(value_cols), names_to = "Metric", values_to = "Value") |>
         dplyr::group_by(dplyr::across(dplyr::all_of(c(group_cols, "Metric")))) |>
         dplyr::summarise(
-            Median = median(Value, na.rm = TRUE),
-            Min = min(Value, na.rm = TRUE),
-            Max = max(Value, na.rm = TRUE),
+            Value = format_mean_pm(Value, digits = metric_digits[dplyr::first(Metric)]),
+            .groups = "drop"
+        ) |>
+        tidyr::pivot_wider(names_from = Metric, values_from = Value)
+}
+
+summarise_benchmark_table <- function(stats_all, runtime_all) {
+    stats_all |>
+        dplyr::select(
+            simulation_id,
+            Method,
+            dmrs_number = Number_of_DMRs,
+            median_width_bp = Median_DMR_Width,
+            min_width_bp = Min_Width,
+            max_width_bp = Max_Width,
+            Total_Coverage_bp
+        ) |>
+        dplyr::mutate(total_coverage_kb = Total_Coverage_bp / 1000) |>
+        dplyr::select(-Total_Coverage_bp) |>
+        dplyr::left_join(
+            runtime_all |>
+                dplyr::rename(runtime_sec = Seconds),
+            by = c("simulation_id", "Method")
+        ) |>
+        dplyr::rename(method = Method) |>
+        dplyr::group_by(method) |>
+        dplyr::summarise(
+            dmrs_number = format_mean_pm(dmrs_number, digits = 0L),
+            median_width_bp = format_mean_pm(median_width_bp, digits = 0L),
+            min_width_bp = format_mean_pm(min_width_bp, digits = 0L),
+            max_width_bp = format_mean_pm(max_width_bp, digits = 0L),
+            total_coverage_kb = format_mean_pm(total_coverage_kb, digits = 1L),
+            runtime_sec = format_mean_pm(runtime_sec, digits = 1L),
             .groups = "drop"
         )
 }
@@ -620,12 +678,8 @@ runtime_all <- do.call(rbind, lapply(benchmark_results, function(res) {
 ### Basic Statistics
 
 ```{r}
-stats_summary <- summarise_interval(
-    stats_all,
-    "Method",
-    c("Number_of_DMRs", "Median_DMR_Width", "Total_Coverage_bp", "Min_Width", "Max_Width")
-)
-knitr::kable(stats_summary, digits = 2, caption = "Basic DMR statistics across simulations")
+stats_summary <- summarise_benchmark_table(stats_all, runtime_all)
+knitr::kable(stats_summary, caption = "Benchmark statistics across simulations, mean (+/- SD)")
 ```
 
 ```{r, fig.width=9, fig.height=4}
@@ -649,21 +703,23 @@ ggplot(stats_plot, aes(Method, Value, colour = Method)) +
 ## Ground-Truth Evaluation
 
 ```{r}
-regions_truth_eval <- summarise_interval(
+regions_truth_eval <- summarise_mean_pm(
     truth_eval_all,
     "Method",
-    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions")
+    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions"),
+    digits = c(TP_regions = 0L, FP_regions = 0L, FN_regions = 0L, Precision_regions = 2L, Recall_regions = 2L, F1_regions = 2L)
 )
-bp_truth_eval <- summarise_interval(
+bp_truth_eval <- summarise_mean_pm(
     truth_eval_all,
     "Method",
-    c("Precision_bp", "Recall_bp", "F1_bp", "IoU_bp")
+    c("Precision_bp", "Recall_bp", "F1_bp", "IoU_bp"),
+    digits = 2
 )
-knitr::kable(regions_truth_eval, digits = 4, caption = "Macro region-level performance intervals against ground truth")
+knitr::kable(regions_truth_eval, caption = "Macro region-level performance against ground truth, mean (+/- SD)")
 ```
 
 ```{r}
-knitr::kable(bp_truth_eval, digits = 4, caption = "Micro base-pair-level performance intervals against ground truth")
+knitr::kable(bp_truth_eval, caption = "Micro base-pair-level performance against ground truth, mean (+/- SD)")
 ```
 
 ```{r, fig.width=10, fig.height=5}
@@ -686,8 +742,8 @@ ggplot(metric_plot, aes(Method, Value, colour = Method)) +
 ### Runtime
 
 ```{r}
-runtime_summary <- summarise_interval(runtime_all, "Method", "Seconds")
-knitr::kable(runtime_summary, digits = 2, caption = "Runtime intervals across simulations")
+runtime_summary <- summarise_mean_pm(runtime_all, "Method", "Seconds", digits = 2)
+knitr::kable(runtime_summary, caption = "Runtime across simulations, mean (+/- SD)")
 ```
 
 ```{r, fig.width=8, fig.height=4}

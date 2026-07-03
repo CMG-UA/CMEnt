@@ -100,7 +100,7 @@ simulation_plan <- data.frame(
     simulation_id = seq_len(nsim),
     seed = sample(0:1000, nsim),
     delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
-    expected_corr = round(runif(nsim, 0.6, 0.8), 2),
+    expected_corr = round(runif(nsim, 0.5, 0.8), 2),
     truth_min_delta_beta = round(runif(nsim, 0, 0.2), 2)
 )
 
@@ -135,7 +135,7 @@ base_simulation <- list(
     max_gap = 500L,
     min_dmr_size = 50L,
     max_dmr_size = 2000L,
-    min_sites = 50L,
+    min_sites = 5L,
     max_sites = 500L,
     num_dmrs = 1000L,
     genome = "hg38"
@@ -508,14 +508,56 @@ evaluate_against_truth <- function(pred, truth) {
     )
 }
 
-summarise_interval <- function(df, group_cols, value_cols) {
+format_mean_pm <- function(x, digits = 2L) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) return(NA_character_)
+    sd_x <- if (length(x) > 1L) stats::sd(x) else 0
+    sprintf(paste0("%.", digits, "f (+/- %.", digits, "f)"), mean(x), sd_x)
+}
+
+summarise_mean_pm <- function(df, group_cols, value_cols, digits = 2L) {
+    metric_digits <- if (length(digits) == 1L) {
+        stats::setNames(rep(digits, length(value_cols)), value_cols)
+    } else {
+        stats::setNames(as.integer(digits), names(digits))
+    }
     df |>
         tidyr::pivot_longer(dplyr::all_of(value_cols), names_to = "Metric", values_to = "Value") |>
         dplyr::group_by(dplyr::across(dplyr::all_of(c(group_cols, "Metric")))) |>
         dplyr::summarise(
-            Median = median(Value, na.rm = TRUE),
-            Min = min(Value, na.rm = TRUE),
-            Max = max(Value, na.rm = TRUE),
+            Value = format_mean_pm(Value, digits = metric_digits[dplyr::first(Metric)]),
+            .groups = "drop"
+        ) |>
+        tidyr::pivot_wider(names_from = Metric, values_from = Value)
+}
+
+summarise_benchmark_table <- function(stats_all, runtime_all) {
+    stats_all |>
+        dplyr::select(
+            simulation_id,
+            Method,
+            dmrs_number = Number_of_DMRs,
+            median_width_bp = Median_DMR_Width,
+            min_width_bp = Min_Width,
+            max_width_bp = Max_Width,
+            Total_Coverage_bp
+        ) |>
+        dplyr::mutate(total_coverage_kb = Total_Coverage_bp / 1000) |>
+        dplyr::select(-Total_Coverage_bp) |>
+        dplyr::left_join(
+            runtime_all |>
+                dplyr::rename(runtime_sec = Seconds),
+            by = c("simulation_id", "Method")
+        ) |>
+        dplyr::rename(method = Method) |>
+        dplyr::group_by(method) |>
+        dplyr::summarise(
+            dmrs_number = format_mean_pm(dmrs_number, digits = 0L),
+            median_width_bp = format_mean_pm(median_width_bp, digits = 0L),
+            min_width_bp = format_mean_pm(min_width_bp, digits = 0L),
+            max_width_bp = format_mean_pm(max_width_bp, digits = 0L),
+            total_coverage_kb = format_mean_pm(total_coverage_kb, digits = 1L),
+            runtime_sec = format_mean_pm(runtime_sec, digits = 1L),
             .groups = "drop"
         )
 }
@@ -546,12 +588,8 @@ runtime_all <- do.call(rbind, lapply(benchmark_results, function(res) {
 ### Basic Statistics
 
 ```{r}
-stats_summary <- summarise_interval(
-    stats_all,
-    "Method",
-    c("Number_of_DMRs", "Median_DMR_Width", "Total_Coverage_bp", "Min_Width", "Max_Width")
-)
-knitr::kable(stats_summary, digits = 2, caption = "Basic DMR statistics across simulations")
+stats_summary <- summarise_benchmark_table(stats_all, runtime_all)
+knitr::kable(stats_summary, caption = "Benchmark statistics across simulations, mean (+/- SD)")
 ```
 
 ```{r, fig.width=9, fig.height=4}
@@ -572,21 +610,23 @@ ggplot(stats_plot, aes(Method, Value, colour = Method)) +
 ## Ground-Truth Evaluation
 
 ```{r}
-regions_truth_eval <- summarise_interval(
+regions_truth_eval <- summarise_mean_pm(
     truth_eval_all,
     "Method",
-    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions")
+    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions"),
+    digits = c(TP_regions = 0L, FP_regions = 0L, FN_regions = 0L, Precision_regions = 2L, Recall_regions = 2L, F1_regions = 2L)
 )
-bp_truth_eval <- summarise_interval(
+bp_truth_eval <- summarise_mean_pm(
     truth_eval_all,
     "Method",
-    c("Precision_bp", "Recall_bp", "F1_bp", "IoU_bp")
+    c("Precision_bp", "Recall_bp", "F1_bp", "IoU_bp"),
+    digits = 2
 )
-knitr::kable(regions_truth_eval, digits = 4, caption = "Macro region-level performance intervals against ground truth")
+knitr::kable(regions_truth_eval, caption = "Macro region-level performance against ground truth, mean (+/- SD)")
 ```
 
 ```{r}
-knitr::kable(bp_truth_eval, digits = 4, caption = "Micro base-pair-level performance intervals against ground truth")
+knitr::kable(bp_truth_eval, caption = "Micro base-pair-level performance against ground truth, mean (+/- SD)")
 ```
 
 ```{r, fig.width=10, fig.height=5}
@@ -612,7 +652,7 @@ ggplot(metric_plot, aes(Method, Value, colour = Method)) +
 seed_summary <- do.call(rbind, lapply(benchmark_results, function(res) {
     data.frame(simulation_id = res$simulation_id, Seeds = res$seeds_n, Truth_DMRs = length(res$truth))
 }))
-knitr::kable(summarise_interval(seed_summary, character(0), c("Seeds", "Truth_DMRs")), digits = 2, caption = "Seed and truth-set size intervals")
+knitr::kable(summarise_mean_pm(seed_summary, character(0), c("Seeds", "Truth_DMRs"), digits = 2), caption = "Seed and truth-set sizes, mean (+/- SD)")
 ```
 
 ```{r, fig.width=7, fig.height=4}
@@ -626,8 +666,8 @@ ggplot(seed_summary, aes(simulation_id, Seeds)) +
 ### Runtime
 
 ```{r}
-runtime_summary <- summarise_interval(runtime_all, "Method", "Seconds")
-knitr::kable(runtime_summary, digits = 2, caption = "Runtime intervals across simulations")
+runtime_summary <- summarise_mean_pm(runtime_all, "Method", "Seconds", digits = 2)
+knitr::kable(runtime_summary, caption = "Runtime across simulations, mean (+/- SD)")
 ```
 
 ```{r, fig.width=8, fig.height=4}
