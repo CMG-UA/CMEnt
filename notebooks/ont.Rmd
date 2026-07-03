@@ -308,7 +308,7 @@ if (need_seeds_obj) {
                 sample_group_col = sample_group_col,
                 id_col = "Sample_ID",
                 case_group = case_label,
-                njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
+                njobs = as.integer(Sys.getenv("NJOBS", unset=as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)))))
             )
             saveRDS(dmps, dmps_file)
         } else {
