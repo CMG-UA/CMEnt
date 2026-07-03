@@ -491,7 +491,7 @@ if (!file.exists(cment_file)) {
         ext_site_delta_beta = 0.1,
         max_lookup_dist = 1000,
         score_dmrs = TRUE,
-        njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)),
+        njobs = as.integer(Sys.getenv("NJOBS", unset=as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))))),
         verbose = 2
     )
     time_cment <- Sys.time() - start_time
