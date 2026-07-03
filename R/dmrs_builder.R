@@ -600,8 +600,7 @@
 #' @keywords internal
 #' @noRd
 .subsetStage2BetaToWindows <- function(beta_handler, beta_locs, col_names, expansion_windows, njobs = 1L) {
-    active_wins <- .mergeGenomicWindows(expansion_windows)
-    if (nrow(active_wins) == 0L) {
+    if (nrow(expansion_windows) == 0L) {
         return(NULL)
     }
     n_sites <- nrow(beta_locs)
@@ -610,10 +609,10 @@
     }
     beta_start <- as.integer(beta_locs[, "start"])
     keep <- rep(FALSE, n_sites)
-    if (nrow(active_wins) > 0L) {
+    if (nrow(expansion_windows) > 0L) {
         win_ir <- IRanges::IRanges(
-            start = as.integer(active_wins$start),
-            end = as.integer(active_wins$end)
+            start = as.integer(expansion_windows$start),
+            end = as.integer(expansion_windows$end)
         )
         site_ir <- IRanges::IRanges(
             start = beta_start,
@@ -660,8 +659,7 @@
     )
     list(
         beta_handler = subset_beta_handler,
-        beta_locs = subset_locs,
-        expansion_windows = active_wins
+        beta_locs = subset_locs
     )
 }
 
@@ -1123,17 +1121,16 @@
     }
 
     .build_window_pair_ranges <- function() {
-        active_wins <- .mergeGenomicWindows(expansion_windows)
-        if (nrow(active_wins) == 0L) {
+        if (nrow(expansion_windows) == 0L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
         beta_start <- as.integer(beta_locs[, "start"])
-        if (nrow(active_wins) == 0L || n_sites < 2L) {
+        if (nrow(expansion_windows) == 0L || n_sites < 2L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
         win_ir <- IRanges::IRanges(
-            start = as.integer(round(as.numeric(active_wins$start))),
-            end = as.integer(round(as.numeric(active_wins$end)))
+            start = as.integer(round(as.numeric(expansion_windows$start))),
+            end = as.integer(round(as.numeric(expansion_windows$end)))
         )
         site_ir <- IRanges::IRanges(
             start = beta_start,
@@ -2999,7 +2996,6 @@
             }
             stage2_beta_handler <- subset_ret$beta_handler
             stage2_beta_locs <- subset_ret$beta_locs
-            expansion_windows <- subset_ret$expansion_windows
             if (!isTRUE(extract_motifs)) {
                 beta_locs <- stage2_beta_locs
             }
