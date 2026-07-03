@@ -490,6 +490,7 @@ if (!file.exists(cment_file)) {
         max_pval = 0.05,
         ext_site_delta_beta = 0.1,
         max_lookup_dist = 1000,
+        score_dmrs = TRUE,
         njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)),
         verbose = 2
     )

@@ -2917,6 +2917,7 @@
                 BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
             )
         }
+        .log_success("", level = 2) 
         if (inherits(ret, "try-error")) {
             stop(ret)
         }
