@@ -2869,11 +2869,67 @@
         beta_locs <- beta_handler$getBetaLocs()
         all_sites <- .explicitRowNames(beta_locs)
     }
-    stage2_beta_handler <- beta_handler
-    stage2_beta_locs <- beta_locs
+    .expandStage2DMRs <- function(dmrs_to_expand, stage2_beta_locs, connectivity_array) {
+        if (nrow(connectivity_array) != nrow(stage2_beta_locs)) {
+            stop(
+                "Stage 2 connectivity_array row count (", nrow(connectivity_array),
+                ") does not match Stage 2 beta_locs row count (", nrow(stage2_beta_locs),
+                "). If using .load_debug, rebuild debug artifacts with the current code."
+            )
+        }
+        .log_step("Expanding ", nrow(dmrs_to_expand), " DMRs using ", njobs, " jobs...", level = 2)
+        locs <- as.data.frame(stage2_beta_locs)
+        connectivity <- connectivity_array
+        locs_rownames <- rownames(locs)
+        locs_idx_map <- setNames(seq_along(locs_rownames), locs_rownames)
+        expansion_boundaries <- .buildExpansionBoundaryLookup(connectivity)
+
+        dmr_inds <- seq_len(nrow(dmrs_to_expand))
+        default_dmr_chunk_size <- max(1L, ceiling(length(dmr_inds) / max(njobs * 4L, 1L)))
+        dmr_chunk_size <- min(default_dmr_chunk_size, length(dmr_inds))
+        dmr_chunks <- split(dmr_inds, ceiling(dmr_inds / dmr_chunk_size))
+        min_dmrs_for_parallel <- suppressWarnings(as.integer(getOption("CMEnt.min_dmrs_for_parallel", 1000L)))
+        if (is.na(min_dmrs_for_parallel) || min_dmrs_for_parallel < 1L) {
+            min_dmrs_for_parallel <- 1L
+        }
+
+        if (njobs == 1L || length(dmr_chunks) == 1L || length(dmr_inds) < min_dmrs_for_parallel) {
+            ret <- lapply(
+                dmr_chunks,
+                .expandDMRChunk,
+                dmrs = dmrs_to_expand,
+                connectivity_array = connectivity,
+                min_sites = min_sites,
+                locs = locs,
+                locs_idx_map = locs_idx_map,
+                expansion_boundaries = expansion_boundaries
+            )
+        } else {
+            ret <- .safeBiocParallelApply(
+                X = dmr_chunks,
+                FUN = .expandDMRChunk,
+                dmrs = dmrs_to_expand,
+                connectivity_array = connectivity,
+                min_sites = min_sites,
+                locs = locs,
+                locs_idx_map = locs_idx_map,
+                expansion_boundaries = expansion_boundaries,
+                BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
+            )
+        }
+        if (inherits(ret, "try-error")) {
+            stop(ret)
+        }
+        as.data.frame(do.call(rbind, ret))
+    }
+
+    connectivity_array <- NULL
+    connectivity_connected_total <- 0L
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "connectivity_array.rds"))) {
         .log_info("Loading debug connectivity array from file...", level = 2)
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
+        extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
+        connectivity_connected_total <- sum(connectivity_array$connected)
     } else {
         expansion_windows <- NULL
         if (is.finite(expansion_window) && expansion_window > 0) {
@@ -2896,113 +2952,182 @@
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
         if (!is.null(expansion_windows) && nrow(expansion_windows) > 0L) {
-            subset_ret <- .subsetStage2BetaToWindows(
-                beta_handler = beta_handler,
-                beta_locs = beta_locs,
-                col_names = beta_col_names_detection,
-                expansion_windows = expansion_windows,
-                njobs = njobs
+            stage2_site_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(beta_locs[, "chr"]),
+                ranges = IRanges::IRanges(start = as.integer(beta_locs[, "start"]), width = 1L)
             )
-            if (is.null(subset_ret)) {
-                stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
+            expansion_window_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(expansion_windows$chr),
+                ranges = IRanges::IRanges(
+                    start = as.integer(expansion_windows$start),
+                    end = as.integer(expansion_windows$end)
+                )
+            )
+            window_hits <- GenomicRanges::findOverlaps(expansion_window_gr, stage2_site_gr, ignore.strand = TRUE)
+            window_site_counts <- tabulate(S4Vectors::queryHits(window_hits), nbins = nrow(expansion_windows))
+            window_pair_counts <- pmax(1L, window_site_counts - 1L)
+            target_pairs_per_chunk <- .connectivityChunkSize(
+                n_samples = length(beta_col_names_detection),
+                njobs = njobs,
+                n_pairs = sum(window_pair_counts)
+            )
+            window_chunk_ranges <- vector("list", nrow(expansion_windows))
+            window_chunk_n <- 0L
+            window_chunk_start <- 1L
+            window_chunk_pairs <- 0L
+            for (window_i in seq_len(nrow(expansion_windows))) {
+                next_pairs <- as.integer(window_pair_counts[[window_i]])
+                if (window_i > window_chunk_start && window_chunk_pairs + next_pairs > target_pairs_per_chunk) {
+                    window_chunk_n <- window_chunk_n + 1L
+                    window_chunk_ranges[[window_chunk_n]] <- c(window_chunk_start, window_i - 1L)
+                    window_chunk_start <- window_i
+                    window_chunk_pairs <- 0L
+                }
+                window_chunk_pairs <- window_chunk_pairs + next_pairs
             }
-            stage2_beta_handler <- subset_ret$beta_handler
-            stage2_beta_locs <- subset_ret$beta_locs
-            if (!isTRUE(extract_motifs)) {
-                beta_locs <- stage2_beta_locs
-            }
+            window_chunk_n <- window_chunk_n + 1L
+            window_chunk_ranges[[window_chunk_n]] <- c(window_chunk_start, nrow(expansion_windows))
+            window_chunk_ranges <- window_chunk_ranges[seq_len(window_chunk_n)]
             .log_info(
-                "Stage 2 beta subset contains ",
-                format(nrow(stage2_beta_locs), big.mark = ","),
-                " sites after subsetting to expansion windows.",
+                "Stage 2 expansion windows split into ", length(window_chunk_ranges),
+                " chunk(s) before connectivity array construction.",
                 level = 2
             )
+
+            dmr_seed_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(dmrs$chr),
+                ranges = IRanges::IRanges(
+                    start = as.integer(dmrs$start_seed_pos),
+                    end = as.integer(dmrs$end_seed_pos)
+                )
+            )
+            extended_chunks <- vector("list", length(window_chunk_ranges))
+            expanded_dmr_mask <- rep(FALSE, nrow(dmrs))
+            for (window_chunk_i in seq_along(window_chunk_ranges)) {
+                window_chunk_range <- window_chunk_ranges[[window_chunk_i]]
+                window <- expansion_windows[seq.int(window_chunk_range[[1L]], window_chunk_range[[2L]]), , drop = FALSE]
+                window_gr <- GenomicRanges::GRanges(
+                    seqnames = as.character(window$chr),
+                    ranges = IRanges::IRanges(
+                        start = as.integer(window$start),
+                        end = as.integer(window$end)
+                    )
+                )
+                dmr_hits <- GenomicRanges::findOverlaps(dmr_seed_gr, window_gr, type = "within", ignore.strand = TRUE)
+                dmr_chunk_inds <- sort(unique(S4Vectors::queryHits(dmr_hits)))
+                if (length(dmr_chunk_inds) == 0L) {
+                    next
+                }
+                if (any(expanded_dmr_mask[dmr_chunk_inds])) {
+                    stop("Stage 2 expansion window chunking assigned a DMR to more than one chunk.")
+                }
+                expanded_dmr_mask[dmr_chunk_inds] <- TRUE
+                subset_ret <- .subsetStage2BetaToWindows(
+                    beta_handler = beta_handler,
+                    beta_locs = beta_locs,
+                    col_names = beta_col_names_detection,
+                    expansion_windows = window,
+                    njobs = njobs
+                )
+                if (is.null(subset_ret)) {
+                    stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
+                }
+                .log_info(
+                    "Stage 2 beta subset contains ",
+                    format(nrow(subset_ret$beta_locs), big.mark = ","),
+                    " sites for expansion window chunk ", window_chunk_i, "/", length(window_chunk_ranges),
+                    " (", nrow(window), " window(s)).",
+                    level = 2
+                )
+                .log_step(
+                    "Building expansion connectivity array for window chunk ",
+                    window_chunk_i, "/", length(window_chunk_ranges), "..",
+                    level = 2
+                )
+                ret <- .buildConnectivityArray(
+                    beta_handler = subset_ret$beta_handler,
+                    beta_locs = subset_ret$beta_locs,
+                    pheno = pheno_detection,
+                    group_inds = group_inds,
+                    testing_mode_per_group = testing_mode_per_group,
+                    empirical_strategy_per_group = empirical_strategy_per_group,
+                    col_names = beta_col_names_detection,
+                    max_pval = max_pval,
+                    ext_site_delta_beta = ext_site_delta_beta,
+                    covariates = covariates,
+                    covariate_models = covariate_models,
+                    max_lookup_dist = max_lookup_dist,
+                    entanglement = entanglement,
+                    aggfun = aggfun,
+                    ntries = ntries,
+                    mid_p = mid_p,
+                    njobs = njobs,
+                    expansion_windows = window,
+                    max_bridge_gaps = max_bridge_extension_gaps,
+                    verbose = verbose
+                )
+                testing_mode_per_group <- ret$testing_mode_per_group
+                empirical_strategy_per_group <- ret$empirical_strategy_per_group
+                connectivity_connected_total <- connectivity_connected_total + sum(ret$connectivity_array$connected)
+                if (getOption("CMEnt.make_debug_dir", FALSE)) {
+                    debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, "_window_chunk", window_chunk_i, ".rds"))
+                    .log_info("Saving connectivity array to ", debug_path, level = 1)
+                    dir.create("debug", showWarnings = FALSE)
+                    saveRDS(ret$connectivity_array, file = debug_path)
+                }
+                extended_chunks[[window_chunk_i]] <- .expandStage2DMRs(
+                    dmrs_to_expand = dmrs[dmr_chunk_inds, , drop = FALSE],
+                    stage2_beta_locs = subset_ret$beta_locs,
+                    connectivity_array = ret$connectivity_array
+                )
+                rm(ret, subset_ret)
+                gc(FALSE)
+            }
+            if (!all(expanded_dmr_mask)) {
+                stop("Stage 2 expansion window assignment missed one or more DMRs.")
+            }
+            extended_chunks <- Filter(function(x) !is.null(x) && nrow(x) > 0L, extended_chunks)
+            extended_dmrs <- as.data.frame(do.call(rbind, extended_chunks))
+        } else {
+            .log_step("Building expansion connectivity array..", level = 2)
+            ret <- .buildConnectivityArray(
+                beta_handler = beta_handler,
+                beta_locs = beta_locs,
+                pheno = pheno_detection,
+                group_inds = group_inds,
+                testing_mode_per_group = testing_mode_per_group,
+                empirical_strategy_per_group = empirical_strategy_per_group,
+                col_names = beta_col_names_detection,
+                max_pval = max_pval,
+                ext_site_delta_beta = ext_site_delta_beta,
+                covariates = covariates,
+                covariate_models = covariate_models,
+                max_lookup_dist = max_lookup_dist,
+                entanglement = entanglement,
+                aggfun = aggfun,
+                ntries = ntries,
+                mid_p = mid_p,
+                njobs = njobs,
+                expansion_windows = NULL,
+                max_bridge_gaps = max_bridge_extension_gaps,
+                verbose = verbose
+            )
+            testing_mode_per_group <- ret$testing_mode_per_group
+            empirical_strategy_per_group <- ret$empirical_strategy_per_group
+            connectivity_array <- ret$connectivity_array
+            connectivity_connected_total <- sum(connectivity_array$connected)
+            extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
         }
-        .log_step("Building expansion connectivity array..", level = 2)
-        ret <- .buildConnectivityArray(
-            beta_handler = stage2_beta_handler,
-            beta_locs = stage2_beta_locs,
-            pheno = pheno_detection,
-            group_inds = group_inds,
-            testing_mode_per_group = testing_mode_per_group,
-            empirical_strategy_per_group = empirical_strategy_per_group,
-            col_names = beta_col_names_detection,
-            max_pval = max_pval,
-            ext_site_delta_beta = ext_site_delta_beta,
-            covariates = covariates,
-            covariate_models = covariate_models,
-            max_lookup_dist = max_lookup_dist,
-            entanglement = entanglement,
-            aggfun = aggfun,
-            ntries = ntries,
-            mid_p = mid_p,
-            njobs = njobs,
-            expansion_windows = expansion_windows,
-            max_bridge_gaps = max_bridge_extension_gaps,
-            verbose = verbose
-        )
-        connectivity_array <- ret$connectivity_array
     }
     .log_success("Connectivity array built.", level = 2)
-    .log_info("Number of underlying correlated sites found: ", sum(connectivity_array$connected), level = 2)
-    if (getOption("CMEnt.make_debug_dir", FALSE)) {
+    .log_info("Number of underlying correlated sites found: ", connectivity_connected_total, level = 2)
+    if (!is.null(connectivity_array) && getOption("CMEnt.make_debug_dir", FALSE)) {
         debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, ".rds"))
         .log_info("Saving connectivity array to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
         saveRDS(connectivity_array, file = debug_path)
     }
-    if (nrow(connectivity_array) != nrow(stage2_beta_locs)) {
-        stop(
-            "Stage 2 connectivity_array row count (", nrow(connectivity_array),
-            ") does not match Stage 2 beta_locs row count (", nrow(stage2_beta_locs),
-            "). If using .load_debug, rebuild debug artifacts with the current code."
-        )
-    }
-    .log_step("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
-    dmrs_to_expand <- dmrs
-    locs <- as.data.frame(stage2_beta_locs)
-    connectivity <- connectivity_array
-    locs_rownames <- rownames(locs)
-    locs_idx_map <- setNames(seq_along(locs_rownames), locs_rownames)
-    expansion_boundaries <- .buildExpansionBoundaryLookup(connectivity)
-
-    dmr_inds <- seq_len(nrow(dmrs_to_expand))
-    default_dmr_chunk_size <- max(1L, ceiling(length(dmr_inds) / max(njobs * 4L, 1L)))
-    dmr_chunk_size <- min(default_dmr_chunk_size, length(dmr_inds))
-    dmr_chunks <- split(dmr_inds, ceiling(dmr_inds / dmr_chunk_size))
-    min_dmrs_for_parallel <- suppressWarnings(as.integer(getOption("CMEnt.min_dmrs_for_parallel", 1000L)))
-    if (is.na(min_dmrs_for_parallel) || min_dmrs_for_parallel < 1L) {
-        min_dmrs_for_parallel <- 1L
-    }
-
-    if (njobs == 1L || length(dmr_chunks) == 1L || length(dmr_inds) < min_dmrs_for_parallel) {
-        ret <- lapply(
-            dmr_chunks,
-            .expandDMRChunk,
-            dmrs = dmrs_to_expand,
-            connectivity_array = connectivity,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries
-        )
-    } else {
-        ret <- .safeBiocParallelApply(
-            X = dmr_chunks,
-            FUN = .expandDMRChunk,
-            dmrs = dmrs_to_expand,
-            connectivity_array = connectivity,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries,
-            BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
-        )
-    }
-    if (inherits(ret, "try-error")) {
-        stop(ret)
-    }
-    extended_dmrs <- as.data.frame(do.call(rbind, ret))
+    rownames(extended_dmrs) <- NULL
     u_exp_len_table <- table(
         extended_dmrs$upstream_expansion_length
     )
