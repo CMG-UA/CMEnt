@@ -2980,6 +2980,39 @@
             } else {
                 .log_info("No connectivity windows were generated; Stage 2 will return disconnected sites outside chromosome termini.", level = 2)
             }
+            # Find DMRs with fewer than min_seeds occupying a single window and 
+            # remove them from the expansion windows to avoid unnecessary computation
+            if (min_seeds > 0) {
+                # Count the number of seeds in each window
+                seed_counts_per_window <- vapply(seq_len(nrow(expansion_windows)), function(i) {
+                    sum(dmrs$start_seed_pos >= expansion_windows$start[i] & dmrs$end_seed_pos <= expansion_windows$end[i])
+                }, integer(1))
+                # Identify windows that have fewer than min_seeds
+                windows_to_remove <- which(seed_counts_per_window < min_seeds)
+                if (length(windows_to_remove) > 0) {
+                    .log_info(
+                        "Removing ", length(windows_to_remove),
+                        " expansion windows that contain fewer than min_seeds (", min_seeds, ") seeds.",
+                        level = 3
+                    )
+                    expansion_windows <- expansion_windows[-windows_to_remove, , drop = FALSE]
+                    # Also remove any DMRs that are now outside the remaining expansion windows
+                    dmrs_in_remaining_windows <- vapply(seq_len(nrow(dmrs)), function(i) {
+                        any(dmrs$start_seed_pos[i] >= expansion_windows$start & dmrs$end_seed_pos[i] <= expansion_windows$end)
+                    }, logical(1))
+                    dmrs <- dmrs[dmrs_in_remaining_windows, , drop = FALSE]
+                    if (!all(dmrs_in_remaining_windows)) {
+                        .log_info(
+                            "Removed ", sum(!dmrs_in_remaining_windows),
+                            " initial DMRs with fewer than min_seeds, and no opportunities for merging with adjacent DMRs after expansion.",
+                            level = 2
+                        )
+                    }
+                }
+
+            }
+
+
         } else {
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
@@ -3117,8 +3150,9 @@
         level = 3
     )
 
+    .log_success("DMR expansion complete.", level = 2)
     .advanceChromosomeProgress()
-    .log_step("Post-processing extended DMRs..", level = 3)
+    .log_step("Post-processing extended DMRs..", level = 2)
 
     extended_dmrs <- as.data.frame(do.call(rbind, ret))
     extended_dmrs$end <- as.numeric(extended_dmrs$end)
@@ -3130,8 +3164,7 @@
 
 
     .checkResult(extended_dmrs, "2", start_col = "start", end_col = "end")
-    .log_success("Post-processing complete.", level = 3)
-    .log_success("DMR expansion complete.", level = 2)
+    .log_success("Post-processing complete.", level = 2)
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
         debug_path <- file.path("debug", paste0("02_extended_dmrs_", chromosome, ".tsv"))
         .log_info("Saving extended DMRs prior to filtering to ", debug_path, level = 1)
@@ -3226,10 +3259,13 @@
     } else {
         agg_df[, "sites_num"] <- match(agg_df$end_site, all_sites) - match(agg_df$start_site, all_sites) + 1
     }
-    agg_df[, "id"] <-  paste0(seqnames(merged_dmrs_ranges), ":",
-        gsub(paste0(seqnames(merged_dmrs_ranges), ":"), "", agg_df$start_site),
+    start_site_pos <- sub("^[^:]+:", "", agg_df$start_site)
+    end_site_pos <- sub("^[^:]+:", "", agg_df$end_site)
+    agg_df[, "id"] <- paste0(
+        as.character(seqnames(merged_dmrs_ranges)), ":",
+        start_site_pos,
         "-",
-        gsub(paste0(seqnames(merged_dmrs_ranges), ":"), "", agg_df$end_site)
+        end_site_pos
     )
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
@@ -3250,7 +3286,7 @@
     }
 
     .advanceChromosomeProgress()
-    .log_step("Stage 4: Filtering and annotating resulting DMRs..", level = 2)
+    .log_step("Stage 4: Filtering resulting DMRs..", level = 2)
 
     if (min_sites > 1 || min_seeds > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
@@ -3389,10 +3425,10 @@
     annotated_dmrs$sites_controls_beta_max <- sites_agg$controls_beta_max
 
     .log_success("DMR delta-beta information added.", level = 3)
-
+    .log_success("DMR filtering complete.", level = 2)
     if (annotate_with_genes) {
+        .log_step("Annotating DMRs with gene information...", level = 2)
         .advanceChromosomeProgress()
-        .log_step("Annotating DMRs with gene information...", level = 3)
         site_delta_beta <- beta_stats$cases_beta - beta_stats$controls_beta
         names(site_delta_beta) <- rownames(beta_stats)
         annotated_dmrs <- annotateDMRsWithGenes(
@@ -3403,7 +3439,7 @@
             site_delta_beta = site_delta_beta,
             aggfun = aggfun
         )
-        .log_success("DMR annotation completed.", level = 2)
+        .log_success("DMR annotation complete.", level = 2)
     }
 
     if (score_dmrs) {
@@ -3421,7 +3457,7 @@
             njobs = njobs,
             .dmr_beta = all_selected_sites_beta
         )
-        .log_success("DMR scoring completed.", level = 2)
+        .log_success("DMR scoring complete.", level = 2)
     }
     rm(all_selected_sites_beta)
 

@@ -964,20 +964,25 @@ scoreDMRs <- function(
     })
     .log_success("DMR-specific beta matrix row indices prepared", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
-    bp_param <- .makeBiocParallelParam(
-        njobs,
-        n_tasks = min(length(dmr_site_indices), njobs * 4L),
-        progressbar = verbose >= 3L,
-        log = getOption("CMEnt.verbose", 1L) >= 1L
-    )
-    cv_metrics <- .safeBiocParallelApply(
-        dmr_site_indices,
-        function(idx) {
-            m <- dmrs_m[idx, , drop = FALSE]
-            .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
-        },
-        BPPARAM = bp_param
-    )
+    task <- function(idx) {
+        m <- dmrs_m[idx, , drop = FALSE]
+        .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
+    }
+    if (njobs > 1L) {
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = min(length(dmr_site_indices), njobs * 4L),
+            progressbar = verbose >= 3L,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
+        )
+        cv_metrics <- .safeBiocParallelApply(
+            dmr_site_indices,
+            task,
+            BPPARAM = bp_param
+        )
+    } else {
+        cv_metrics <- lapply(dmr_site_indices, task)
+    }
     cv_metrics <- do.call(rbind, cv_metrics)
 
     .log_success("Cross-validated classification scores computed", level = 3)

@@ -226,27 +226,35 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
             feature_type = "gene_body"
         )
     )
-    bp_param <- .makeBiocParallelParam(
-        njobs,
-        n_tasks = length(annotation_specs),
-        progressbar = FALSE,
-        log = getOption("CMEnt.verbose", 1L) >= 1L
-    )
-    annotation_results <- .safeBiocParallelApply(
-        annotation_specs,
-        function(spec) {
-            list(
-                column = spec$column,
-                values = .annotateDMRsWithGeneFeature(
-                    dmrs = dmrs,
-                    features = spec$features,
-                    orgdb_pkg = orgdb_pkg,
-                    feature_type = spec$feature_type
-                )
+    task <- function(spec) {
+        list(
+            column = spec$column,
+            values = .annotateDMRsWithGeneFeature(
+                dmrs = dmrs,
+                features = spec$features,
+                orgdb_pkg = orgdb_pkg,
+                feature_type = spec$feature_type
             )
-        },
-        BPPARAM = bp_param
-    )
+        )
+    }
+    if (njobs > 1) {
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = length(annotation_specs),
+            progressbar = FALSE,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
+        )
+        annotation_results <- .safeBiocParallelApply(
+            annotation_specs,
+            task,
+            BPPARAM = bp_param
+        )
+    } else {
+        annotation_results <- lapply(
+            annotation_specs,
+            task
+        )
+    }
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
