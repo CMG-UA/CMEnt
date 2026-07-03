@@ -445,6 +445,69 @@ test_that("disk-backed BSseq window subsetting uses integer row lookup", {
     )
 })
 
+test_that("disk-backed BSseq connectivity avoids full row-name materialization", {
+    skip_if_not_installed("HDF5Array")
+
+    set.seed(124)
+    n_loci <- 12
+    n_samples <- 4
+    cov <- matrix(rpois(n_loci * n_samples, lambda = 20), ncol = n_samples)
+    met <- matrix(rbinom(n_loci * n_samples, size = cov, prob = 0.5), ncol = n_samples)
+    gr <- GRanges(
+        seqnames = rep("chr1", n_loci),
+        ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
+    )
+    sample_names <- paste0("Sample", seq_len(n_samples))
+    bsseq_obj <- BSseq(
+        M = met, Cov = cov, gr = gr,
+        sampleNames = sample_names
+    )
+    bsseq_hdf5 <- HDF5Array::saveHDF5SummarizedExperiment(
+        bsseq_obj,
+        dir = tempfile("bsseq_hdf5_"),
+        replace = TRUE
+    )
+    beta_handler <- getBetaHandler(beta = bsseq_hdf5)
+    subset <- CMEnt:::.subsetStage2BetaToWindows(
+        beta_handler = beta_handler,
+        beta_locs = beta_handler$getBetaLocs(),
+        col_names = sample_names,
+        expansion_windows = data.frame(chr = "chr1", start = 1100L, end = 1400L)
+    )
+    pheno <- data.frame(
+        Sample_Group = rep(c("A", "B"), each = n_samples / 2L),
+        row.names = sample_names,
+        stringsAsFactors = FALSE
+    )
+    group_inds <- split(seq_len(n_samples), pheno$Sample_Group)
+
+    withr::local_options(list(CMEnt.verbose = 2))
+    log <- capture.output(
+        ret <- CMEnt:::.buildCASinglePass(
+            beta_handler = subset$beta_handler,
+            beta_locs = subset$beta_locs,
+            pheno = pheno,
+            group_inds = group_inds,
+            testing_mode_per_group = c(A = "parametric", B = "parametric"),
+            empirical_strategy_per_group = c(A = "auto", B = "auto"),
+            col_names = sample_names,
+            max_pval = 0.05,
+            ext_site_delta_beta = NA_real_,
+            max_lookup_dist = 1000,
+            entanglement = "strong",
+            aggfun = stats::median,
+            ntries = 0,
+            mid_p = FALSE,
+            njobs = 1
+        ),
+        type = "message"
+    )
+
+    expect_equal(nrow(ret$connectivity_array), nrow(subset$beta_locs))
+    expect_false(any(grepl("Reading row names from input", log, fixed = TRUE)))
+    expect_false(any(grepl("Row names read:", log, fixed = TRUE)))
+})
+
 test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
     skip_if_not_installed("HDF5Array")
 
@@ -475,7 +538,13 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
     beta_chr <- as.character(beta_locs[, "chr"])
     beta_start <- as.numeric(beta_locs[, "start"])
     seed_ids <- site_names[c(3L, 8L, 12L, 18L)]
-    seed_beta_index <- CMEnt:::.matchSequencingIdsToBeta(seed_ids, beta_chr, beta_start)
+    chromosome_runs <- CMEnt:::.chromosomeRunIndex(beta_chr, require_unique = TRUE)
+    seed_beta_index <- CMEnt:::.matchSequencingIdsToBeta(
+        seed_ids,
+        beta_chr,
+        beta_start,
+        chromosome_runs = chromosome_runs
+    )
     seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
     rownames(seeds_locs) <- seed_ids
 
@@ -488,16 +557,17 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
         seed_beta_index = seed_beta_index,
         seed_chr = as.character(seeds_locs$chr),
         beta_col_names = sample_names,
-        use_numeric_sequencing_rows = TRUE
+        use_numeric_sequencing_rows = TRUE,
+        chromosome_runs = chromosome_runs
     )
 
     payload_names <- unique(unlist(lapply(tasks, names), use.names = FALSE))
-    expect_false(any(c("beta_chr", "beta_start", "seed_chr", "seeds_locs", "beta_row_ids_all", "beta_handler") %in% payload_names))
+    expect_false(any(c("beta_chr", "beta_start", "seed_chr", "seeds_locs", "beta_row_ids_all", "beta_handler", "row_ids") %in% payload_names))
     expect_equal(tasks$chr1$seed_beta_index, c(3L, 8L))
     expect_equal(tasks$chr2$seed_beta_index, c(2L, 8L))
 
     for (task in tasks) {
-        task_handler <- beta_handler$subset(row_names = task$row_ids, col_names = sample_names)
+        task_handler <- beta_handler$subset(row_names = seq.int(task$row_start, task$row_end), col_names = sample_names)
         task_bsseq <- task_handler$.__enclos_env__$private$.bsseq_object
         task_locs <- as.data.frame(task_handler$getBetaLocs())
         expect_s4_class(task_bsseq, "BSseq")
@@ -505,6 +575,32 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
         expect_equal(nrow(task_bsseq), nrow(task_locs))
         expect_equal(unique(as.character(task_locs$chr)), task$chr)
     }
+})
+
+test_that("sequencing coordinate matching uses chromosome run lookup with chr-prefix fallback", {
+    beta_chr <- c(rep("1", 3), rep("2", 2), rep("chrM", 2))
+    beta_start <- c(10, 20, 30, 15, 25, 5, 8)
+    chromosome_runs <- CMEnt:::.chromosomeRunIndex(beta_chr, require_unique = TRUE)
+
+    expect_equal(
+        CMEnt:::.matchSequencingCoordinatesToBeta(
+            seed_chr = c("chr1", "1", "chr2", "M", "chr3"),
+            seed_start = c(20, 30, 15, 8, 1),
+            beta_chr = beta_chr,
+            beta_start = beta_start,
+            chromosome_runs = chromosome_runs
+        ),
+        c(2L, 3L, 4L, 7L, NA_integer_)
+    )
+    expect_equal(
+        CMEnt:::.matchSequencingIdsToBeta(
+            c("chr1:20", "1:30", "chr2:15", "M:8", "chr3:1"),
+            beta_chr,
+            beta_start,
+            chromosome_runs = chromosome_runs
+        ),
+        c(2L, 3L, 4L, 7L, NA_integer_)
+    )
 })
 
 test_that("BetaHandler subset supports numeric row indexing", {

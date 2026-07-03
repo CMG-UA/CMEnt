@@ -622,6 +622,33 @@
 
 #' @keywords internal
 #' @noRd
+.safeBiocParallelApply <- function(X, FUN, ..., BPPARAM) {
+    tryCatch(
+        {
+            BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
+        },
+        error = function(e) {
+            error_message <- conditionMessage(e)
+            reducer_cache_error <- grepl(
+                "reducer\\$value\\.cache|wrong args for environment subassignment",
+                error_message
+            )
+            if (!reducer_cache_error) {
+                stop(e)
+            }
+
+            .log_warn(
+                "BiocParallel parallel collection failed with a reducer cache error; ",
+                "retrying sequentially for this batch. Original error: ",
+                error_message
+            )
+            lapply(X, FUN, ...)
+        }
+    )
+}
+
+#' @keywords internal
+#' @noRd
 .processSamplesheet <- function(args,
                                 subset = NULL) {
     samplesheet_file <- args$samplesheet
@@ -1132,9 +1159,13 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     signal - fitted
 }
 
-.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
+.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL, cols = NULL) {
     if (inherits(beta, "DelayedDataFrame")) {
         beta <- DelayedArray::DelayedArray(beta)
+    }
+    if (!is.null(cols)) {
+        beta <- beta[, cols, drop = FALSE]
+        pheno <- pheno[cols, , drop = FALSE]
     }
     m_values <- log2(beta / (1 - beta + 1e-6) + 1e-6)
     if (is.null(covariate_model)) {

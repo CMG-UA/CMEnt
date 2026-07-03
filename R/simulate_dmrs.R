@@ -1106,8 +1106,9 @@ simulateDMRs <- function(
             return(numeric(0))
         }
         m_values <- .transformBeta(
-            beta_ord[, idx, drop = FALSE],
-            pheno = data.frame(sample = seq_len(length(idx)))
+            beta_ord,
+            pheno = data.frame(sample = seq_len(ncol(beta_ord))),
+            cols = idx
         )
         pair_corr <- .simulationComputePairCorrelations(
             x = m_values[pair_start, , drop = FALSE],

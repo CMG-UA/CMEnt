@@ -232,7 +232,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
         progressbar = FALSE,
         log = getOption("CMEnt.verbose", 1L) >= 1L
     )
-    annotation_results <- BiocParallel::bplapply(
+    annotation_results <- .safeBiocParallelApply(
         annotation_specs,
         function(spec) {
             list(
@@ -313,28 +313,38 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     if (length(site_locs) == 0L) {
         return(out)
     }
-    site_delta_beta <- site_delta_beta[names(site_locs)]
+    site_names <- names(site_locs)
+    site_delta_beta <- site_delta_beta[site_names]
 
     mcols_names <- colnames(S4Vectors::mcols(dmrs))
     if ("sites" %in% mcols_names) {
-        dmr_site_ids <- lapply(as.character(S4Vectors::mcols(dmrs)$sites), .splitCsvValues)
+        dmr_site_idx <- lapply(
+            as.character(S4Vectors::mcols(dmrs)$sites),
+            function(ids) {
+                idx <- match(.splitCsvValues(ids), site_names)
+                unique(idx[!is.na(idx)])
+            }
+        )
     } else {
         site_hits <- GenomicRanges::findOverlaps(dmrs, site_locs, ignore.strand = TRUE)
-        dmr_site_ids <- vector("list", length(dmrs))
+        dmr_site_idx <- vector("list", length(dmrs))
         if (length(site_hits) > 0L) {
             hits_by_dmr <- split(
                 S4Vectors::subjectHits(site_hits),
                 S4Vectors::queryHits(site_hits)
             )
-            dmr_site_ids[as.integer(names(hits_by_dmr))] <- lapply(
+            dmr_site_idx[as.integer(names(hits_by_dmr))] <- lapply(
                 hits_by_dmr,
-                function(i) names(site_locs)[i]
+                unique
             )
         }
     }
 
-    aggregate_delta <- function(ids) {
-        vals <- site_delta_beta[unique(ids)]
+    aggregate_delta <- function(idx) {
+        if (length(idx) == 0L) {
+            return(NA_real_)
+        }
+        vals <- site_delta_beta[idx]
         vals <- vals[is.finite(vals)]
         if (length(vals) == 0L) {
             return(NA_real_)
@@ -358,10 +368,12 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
         if (length(feature_hits) == 0L) {
             next
         }
-        feature_site_ids <- unique(names(site_locs)[S4Vectors::queryHits(feature_hits)])
+        feature_site_idx <- unique(S4Vectors::queryHits(feature_hits))
+        feature_site_mask <- rep(FALSE, length(site_locs))
+        feature_site_mask[feature_site_idx] <- TRUE
         out[[spec$delta_column]] <- vapply(
-            dmr_site_ids,
-            function(ids) aggregate_delta(intersect(ids, feature_site_ids)),
+            dmr_site_idx,
+            function(idx) aggregate_delta(idx[feature_site_mask[idx]]),
             numeric(1)
         )
     }

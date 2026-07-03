@@ -218,6 +218,10 @@ test_that("covariate transformation residualizes nonsingular covariates", {
     transformed <- CMEnt:::.transformBeta(beta, pheno, covariate_model = model)
     expect_equal(dim(transformed), dim(beta))
     expect_false(anyNA(transformed))
+    expect_equal(
+        CMEnt:::.transformBeta(beta, pheno, cols = c(1, 3)),
+        CMEnt:::.transformBeta(beta[, c(1, 3), drop = FALSE], pheno[c(1, 3), , drop = FALSE])
+    )
 
     constant <- CMEnt:::.prepareCovariateModel(
         data.frame(batch = c("A", "A", "A")),

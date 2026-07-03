@@ -234,6 +234,65 @@
 
 #' @keywords internal
 #' @noRd
+.chromosomeRunIndex <- function(beta_chr, require_unique = FALSE) {
+    if (inherits(beta_chr, "Rle")) {
+        chr_values <- as.character(S4Vectors::runValue(beta_chr))
+        chr_lengths <- as.integer(S4Vectors::runLength(beta_chr))
+    } else {
+        beta_chr <- as.character(beta_chr)
+        if (length(beta_chr) == 0L) {
+            return(data.frame(chr = character(0), start = integer(0), end = integer(0)))
+        }
+        chr_runs <- rle(beta_chr)
+        chr_values <- as.character(chr_runs$values)
+        chr_lengths <- as.integer(chr_runs$lengths)
+    }
+
+    if (length(chr_values) == 0L) {
+        return(data.frame(chr = character(0), start = integer(0), end = integer(0)))
+    }
+    if (isTRUE(require_unique) && anyDuplicated(chr_values)) {
+        dup_chr <- chr_values[duplicated(chr_values)][1L]
+        stop(
+            "Beta locations are not grouped by chromosome: ", dup_chr,
+            " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
+            call. = FALSE
+        )
+    }
+    chr_end <- cumsum(chr_lengths)
+    data.frame(
+        chr = chr_values,
+        start = as.integer(chr_end - chr_lengths + 1L),
+        end = as.integer(chr_end),
+        stringsAsFactors = FALSE
+    )
+}
+
+
+#' @keywords internal
+#' @noRd
+.chromosomeRunFor <- function(chr, chromosome_runs) {
+    chr <- as.character(chr)[1L]
+    if (is.na(chr) || !nzchar(chr)) {
+        return(NULL)
+    }
+    candidates <- chr
+    if (startsWith(chr, "chr")) {
+        candidates <- c(candidates, sub("^chr", "", chr))
+    } else {
+        candidates <- c(candidates, paste0("chr", chr))
+    }
+    run_idx <- match(candidates, chromosome_runs$chr)
+    run_idx <- run_idx[!is.na(run_idx)]
+    if (length(run_idx) == 0L) {
+        return(NULL)
+    }
+    chromosome_runs[run_idx, , drop = FALSE]
+}
+
+
+#' @keywords internal
+#' @noRd
 .buildDMRsChromosomeTasks <- function(beta_handler,
                                       beta_chr,
                                       beta_locs_rownames,
@@ -242,26 +301,27 @@
                                       seed_beta_index,
                                       seed_chr,
                                       beta_col_names,
-                                      use_numeric_sequencing_rows) {
+                                      use_numeric_sequencing_rows,
+                                      chromosome_runs = .chromosomeRunIndex(beta_chr, require_unique = TRUE)) {
     tasks <- vector("list", length(chromosomes))
     names(tasks) <- chromosomes
 
     for (i in seq_along(chromosomes)) {
         chr <- chromosomes[[i]]
-        chr_beta_idx <- which(beta_chr == chr)
-        if (length(chr_beta_idx) == 0L) {
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
             stop("No beta rows found for chromosome ", chr, call. = FALSE)
         }
-        chr_row_start <- chr_beta_idx[[1L]]
-        chr_row_end <- chr_beta_idx[[length(chr_beta_idx)]]
-        if (!identical(chr_beta_idx, seq.int(chr_row_start, chr_row_end))) {
+        if (nrow(chr_run) != 1L) {
             stop("Beta rows for chromosome ", chr, " are not contiguous.", call. = FALSE)
         }
+        chr_row_start <- chr_run$start[[1L]]
+        chr_row_end <- chr_run$end[[1L]]
 
         chr_row_ids <- if (isTRUE(use_numeric_sequencing_rows) || is.null(beta_locs_rownames)) {
-            chr_beta_idx
+            NULL
         } else {
-            beta_locs_rownames[chr_beta_idx]
+            beta_locs_rownames[seq.int(chr_row_start, chr_row_end)]
         }
         chr_seed_mask <- seed_chr == chr
         chr_seed_ids <- seed_ids[chr_seed_mask]
@@ -275,10 +335,12 @@
             chr = chr,
             row_start = chr_row_start,
             row_end = chr_row_end,
-            row_ids = chr_row_ids,
             seed_ids = chr_seed_ids,
             seed_beta_index = chr_seed_beta_index
         )
+        if (!is.null(chr_row_ids)) {
+            tasks[[i]]$row_ids <- chr_row_ids
+        }
     }
 
     tasks
@@ -287,7 +349,8 @@
 
 #' @keywords internal
 #' @noRd
-.matchSequencingIdsToBeta <- function(ids, beta_chr, beta_start) {
+.matchSequencingIdsToBeta <- function(ids, beta_chr, beta_start,
+                                      chromosome_runs = .chromosomeRunIndex(beta_chr)) {
     ids <- as.character(ids)
     parsed <- regexec("^([^:]+):([0-9]+)$", ids)
     pieces <- regmatches(ids, parsed)
@@ -301,17 +364,16 @@
     ok_pos <- which(ok)
     for (chr in unique(id_chr[!is.na(id_start)])) {
         query_pos <- which(id_chr == chr & !is.na(id_start))
-        beta_pos <- which(beta_chr == chr)
-        if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
-            beta_pos <- which(beta_chr == sub("^chr", "", chr))
-        } else if (length(beta_pos) == 0L) {
-            beta_pos <- which(beta_chr == paste0("chr", chr))
-        }
-        if (length(beta_pos) == 0L) {
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
             next
         }
+        beta_pos <- unlist(
+            Map(seq.int, chr_run$start, chr_run$end),
+            use.names = FALSE
+        )
         hit <- match(id_start[query_pos], beta_start[beta_pos])
-        idx[ok_pos[query_pos]] <- beta_pos[hit]
+        idx[ok_pos[query_pos]] <- as.integer(beta_pos[hit])
     }
     idx
 }
@@ -319,7 +381,8 @@
 
 #' @keywords internal
 #' @noRd
-.matchSequencingCoordinatesToBeta <- function(seed_chr, seed_start, beta_chr, beta_start) {
+.matchSequencingCoordinatesToBeta <- function(seed_chr, seed_start, beta_chr, beta_start,
+                                             chromosome_runs = .chromosomeRunIndex(beta_chr)) {
     seed_chr <- as.character(seed_chr)
     seed_start <- suppressWarnings(as.integer(seed_start))
     idx <- rep(NA_integer_, length(seed_chr))
@@ -329,17 +392,16 @@
     }
     for (chr in unique(seed_chr[ok])) {
         query_pos <- which(ok & seed_chr == chr)
-        beta_pos <- which(beta_chr == chr)
-        if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
-            beta_pos <- which(beta_chr == sub("^chr", "", chr))
-        } else if (length(beta_pos) == 0L) {
-            beta_pos <- which(beta_chr == paste0("chr", chr))
-        }
-        if (length(beta_pos) == 0L) {
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
             next
         }
+        beta_pos <- unlist(
+            Map(seq.int, chr_run$start, chr_run$end),
+            use.names = FALSE
+        )
         hit <- match(seed_start[query_pos], beta_start[beta_pos])
-        idx[query_pos] <- beta_pos[hit]
+        idx[query_pos] <- as.integer(beta_pos[hit])
     }
     idx
 }
@@ -855,6 +917,7 @@
         ext_site_delta_beta = ext_site_delta_beta,
         max_lookup_dist = max_lookup_dist,
         site_starts = site_starts,
+        n_sites = length(inds),
         entanglement = entanglement,
         aggfun = aggfun,
         testing_mode_per_group = testing_mode_per_group,
@@ -1277,8 +1340,14 @@
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
     # all backends query the same sites during connectivity estimation.
-    handler_row_names_for_numeric <- tryCatch(beta_handler$getBetaRowNames(), error = function(e) NULL)
-    numeric_row_index_matches_locs <- is.null(handler_row_names_for_numeric) ||
+    use_bsseq_numeric_index <- .usesBSseqBackend(beta_handler)
+    handler_row_names_for_numeric <- if (use_bsseq_numeric_index) {
+        NULL
+    } else {
+        tryCatch(beta_handler$getBetaRowNames(), error = function(e) NULL)
+    }
+    numeric_row_index_matches_locs <- use_bsseq_numeric_index ||
+        is.null(handler_row_names_for_numeric) ||
         (
             length(handler_row_names_for_numeric) >= n_sites &&
                 identical(handler_row_names_for_numeric[seq_len(n_sites)], beta_row_ids_full)
@@ -1319,10 +1388,11 @@
             function(x) {
                 idx <- group_inds[[x]]
                 chunk_m <- .transformBeta(
-                    first_chunk[, idx, drop = FALSE],
-                    pheno = pheno[idx, , drop = FALSE],
+                    first_chunk,
+                    pheno = pheno,
                     covariates = covariates,
-                    covariate_model = covariate_models[[x]]
+                    covariate_model = covariate_models[[x]],
+                    cols = idx
                 )
                 .chooseTestingOptions(
                     group = x,
@@ -1585,7 +1655,7 @@
     splits <- NULL
     for (gap in seq(0L, max_bridge_gaps)) {
         if (gap == 0L) {
-            .log_info("Building initial connectivity array with no gap bridging.", level = 2)
+            .log_info("Building connectivity array with no gap bridging.", level = 2)
         } else {
             .log_info(
                 "Building bridged connectivity array allowing up to ", gap,
@@ -1962,11 +2032,19 @@
                                    ext_site_delta_beta = NA_real_,
                                    max_lookup_dist = NULL,
                                    site_starts = NULL,
+                                   n_sites = NULL,
                                    entanglement = "weak",
                                    aggfun = mean,
                                    ntries = 0, mid_p = FALSE,
                                    check_non_overlapping = FALSE) {
-    n_sites <- nrow(sites_beta)
+    if (is.null(n_sites)) {
+        n_sites <- nrow(sites_beta)
+    } else {
+        n_sites <- suppressWarnings(as.integer(n_sites)[1L])
+        if (!is.finite(n_sites) || is.na(n_sites) || n_sites < 0L) {
+            stop("n_sites must be a non-negative integer.", call. = FALSE)
+        }
+    }
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
         ret <- data.frame(
@@ -2065,13 +2143,12 @@
         idx <- group_inds[[g]]
         if (length(idx) < 3) next
 
-        # Get data for this group - subset columns
-        group_beta <- sites_beta[, idx, drop = FALSE]
         group_m <- .transformBeta(
-            group_beta,
-            pheno = pheno[idx, ],
+            sites_beta,
+            pheno = pheno,
             covariates = covariates,
-            covariate_model = covariate_models[[g]]
+            covariate_model = covariate_models[[g]],
+            cols = idx
         )
 
         # Compute only correlation-eligible pair rows; this avoids retaining
@@ -3002,7 +3079,7 @@
             expansion_boundaries = expansion_boundaries
         )
     } else {
-        ret <- BiocParallel::bplapply(
+        ret <- .safeBiocParallelApply(
             X = dmr_chunks,
             FUN = .expandDMRChunk,
             dmrs = dmrs_to_expand,
@@ -3250,7 +3327,6 @@
         pheno = pheno,
         aggfun = aggfun
     )
-    rm(all_selected_sites_beta)
     .log_success("Per-site beta statistics calculated.", level = 3)
 
     beta_stats <- as.data.frame(beta_stats)
@@ -3346,10 +3422,12 @@
             sorted_locs = beta_handler$getGenomicLocs(),
             sample_group_col = sample_group_col,
             covariates = covariates,
-            njobs = njobs
+            njobs = njobs,
+            .dmr_beta = all_selected_sites_beta
         )
         .log_success("DMR scoring completed.", level = 2)
     }
+    rm(all_selected_sites_beta)
 
 
     if (is.data.frame(annotated_dmrs)) {
@@ -3411,10 +3489,15 @@
     extract_motifs
 ) {
     .log_step("Processing chromosome ", task$chr, "...", level = 1)
-    chr_handler <- beta_handler$subset(row_names = task$row_ids, col_names = beta_col_names)
+    task_row_ids <- if (!is.null(task$row_ids)) {
+        task$row_ids
+    } else {
+        seq.int(task$row_start, task$row_end)
+    }
+    chr_handler <- beta_handler$subset(row_names = task_row_ids, col_names = beta_col_names)
     on.exit(
         {
-            rm(chr_handler)
+            rm(chr_handler, task_row_ids)
             gc(FALSE)
         },
         add = TRUE
@@ -3948,16 +4031,8 @@ buildDMRs <- function(
         if (anyNA(beta_start)) {
             stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
         }
+        beta_chr_runs <- .chromosomeRunIndex(beta_chr, require_unique = TRUE)
         if (length(beta_chr) > 1L) {
-            chr_runs <- rle(beta_chr)
-            if (anyDuplicated(chr_runs$values)) {
-                dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
-                stop(
-                    "Beta locations are not grouped by chromosome: ", dup_chr,
-                    " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
-                    call. = FALSE
-                )
-            }
             same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
             unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
             if (any(unsorted_adj, na.rm = TRUE)) {
@@ -3967,13 +4042,22 @@ buildDMRs <- function(
         }
         beta_locs_rownames <- .explicitRowNames(beta_locs)
     }
+    if (!exists("beta_chr_runs", inherits = FALSE)) {
+        beta_chr_runs <- .chromosomeRunIndex(beta_chr, require_unique = TRUE)
+    }
     use_numeric_sequencing_rows <- !array_based &&
         (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler))
     beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
     if (use_numeric_sequencing_rows) {
         .log_step("Matching seed IDs to beta genomic locations...", level = 3)
         seed_coords <- .seedCoordinatesFromSeeds(seeds_df, seeds_id_col)
-        seed_beta_index <- .matchSequencingCoordinatesToBeta(seed_coords$chr, seed_coords$start, beta_chr, beta_start)
+        seed_beta_index <- .matchSequencingCoordinatesToBeta(
+            seed_coords$chr,
+            seed_coords$start,
+            beta_chr,
+            beta_start,
+            chromosome_runs = beta_chr_runs
+        )
         if (all(is.na(seed_beta_index))) {
             stop("None of the IDs in seeds_id_col match the beta genomic locations.")
         }
@@ -4039,7 +4123,8 @@ buildDMRs <- function(
         seed_beta_index = seed_beta_index,
         seed_chr = seed_chr,
         beta_col_names = beta_col_names,
-        use_numeric_sequencing_rows = use_numeric_sequencing_rows
+        use_numeric_sequencing_rows = use_numeric_sequencing_rows,
+        chromosome_runs = beta_chr_runs
     )
     task_chromosomes <- names(chromosome_tasks)
     rm(
@@ -4047,6 +4132,7 @@ buildDMRs <- function(
         beta_chr,
         beta_start,
         beta_locs_rownames,
+        beta_chr_runs,
         seed_chr,
         seed_ids,
         seed_beta_index,
@@ -4078,7 +4164,7 @@ buildDMRs <- function(
         )
     }
     if (chr_parallel_jobs > 1L) {
-        chr_results <- BiocParallel::bplapply(
+        chr_results <- .safeBiocParallelApply(
             chromosome_tasks,
             .buildDMRsChromosomeTask,
             beta_handler = beta_handler,

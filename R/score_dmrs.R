@@ -730,7 +730,7 @@
             progressbar = verbose > 0L,
             log = getOption("CMEnt.verbose", 1L) >= 1L
         )
-        ret <- BiocParallel::bplapply(chromosomes, fun, BPPARAM = bp_param)
+        ret <- .safeBiocParallelApply(chromosomes, fun, BPPARAM = bp_param)
     }
     details <- list()
     for (res in ret) {
@@ -798,6 +798,9 @@
 #' gap threshold (bp). Default is `5000000`.
 #' @param njobs Integer. Number of parallel jobs used for cross-validated scoring. Default comes from `getOption("CMEnt.njobs")`.
 #' @param verbose Numeric. Logging verbosity level. Default comes from `getOption("CMEnt.verbose")`.
+#' @param .dmr_beta Internal optional matrix-like object of preloaded beta values
+#'   for all DMR sites. When provided, it must contain all sites referenced by
+#'   `mcols(dmrs)$sites` and all beta sample columns.
 #'
 #' @return GRanges object with DMRs ordered by complementary classification score
 #' and additional metadata columns:
@@ -852,7 +855,8 @@ scoreDMRs <- function(
     block_gap_min_bp = 250000,
     block_gap_max_bp = 5000000,
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
-    verbose = getOption("CMEnt.verbose", 1L)
+    verbose = getOption("CMEnt.verbose", 1L),
+    .dmr_beta = NULL
 ) {
     old_setting <- options("CMEnt.verbose" = verbose)
     on.exit(options(old_setting), add = TRUE)
@@ -903,33 +907,73 @@ scoreDMRs <- function(
     }
     dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
-    .log_step("Loading beta values for DMR scoring", level = 3)
-    dmr_beta <- beta_handler$getBeta(
-        row_names = unique(unlist(dmr_sites)),
-        col_names = beta_col_names
-    )
+    required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
+    if (is.null(.dmr_beta)) {
+        .log_step("Loading beta values for DMR scoring", level = 3)
+        dmr_beta <- beta_handler$getBeta(
+            row_names = required_sites,
+            col_names = beta_col_names
+        )
+    } else {
+        .log_step("Using preloaded beta values for DMR scoring", level = 3)
+        dmr_beta <- .dmr_beta
+        if (is.null(rownames(dmr_beta))) {
+            stop("Internal scoring beta matrix must have row names.")
+        }
+        missing_sites <- setdiff(required_sites, rownames(dmr_beta))
+        if (length(missing_sites) > 0L) {
+            stop(
+                "Internal scoring beta matrix is missing DMR sites: ",
+                paste(head(missing_sites, 10), collapse = ", "),
+                if (length(missing_sites) > 10L) " ..." else ""
+            )
+        }
+        if (is.null(colnames(dmr_beta))) {
+            stop("Internal scoring beta matrix must have column names.")
+        }
+        missing_cols <- setdiff(beta_col_names, colnames(dmr_beta))
+        if (length(missing_cols) > 0L) {
+            stop(
+                "Internal scoring beta matrix is missing beta samples: ",
+                paste(head(missing_cols, 10), collapse = ", "),
+                if (length(missing_cols) > 10L) " ..." else ""
+            )
+        }
+        dmr_beta <- dmr_beta[required_sites, beta_col_names, drop = FALSE]
+    }
     .log_step("Transforming beta values for DMR scoring", level = 3)
     dmrs_m <- .transformBeta(dmr_beta, pheno = pheno, covariate_model = covariate_model)
     .log_success("Beta values transformed", level = 3)
-    .log_step("Extracting DMR-specific beta matrices for classification", level = 3)
-    dmrs_m_values <- lapply(seq_along(dmrs), function(i) {
+    .log_step("Preparing DMR-specific beta matrix row indices for classification", level = 3)
+    dmrs_m_row_names <- rownames(dmrs_m)
+    dmr_site_indices <- lapply(seq_along(dmrs), function(i) {
         dmr_sites_i <- dmr_sites[[i]]
         if (length(dmr_sites_i) == 0L) {
-            return(NULL)
+            return(integer(0))
         }
-        dmrs_m[dmr_sites_i, , drop = FALSE]
+        idx <- match(dmr_sites_i, dmrs_m_row_names)
+        if (anyNA(idx)) {
+            missing_sites <- unique(dmr_sites_i[is.na(idx)])
+            stop(
+                "Requested DMR sites not found in transformed beta matrix: ",
+                paste(head(missing_sites, 10), collapse = ", "),
+                if (length(missing_sites) > 10L) " ..." else ""
+            )
+        }
+        idx
     })
-    .log_success("DMR-specific beta matrices extracted", level = 3)
+    .log_success("DMR-specific beta matrix row indices prepared", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
     bp_param <- .makeBiocParallelParam(
         njobs,
-        n_tasks = min(length(dmrs_m_values), njobs * 4L),
+        n_tasks = min(length(dmr_site_indices), njobs * 4L),
         progressbar = verbose >= 3L,
         log = getOption("CMEnt.verbose", 1L) >= 1L
     )
-    cv_metrics <- BiocParallel::bplapply(
-        dmrs_m_values,
-        function(m) {
+    cv_metrics <- .safeBiocParallelApply(
+        dmr_site_indices,
+        function(idx) {
+            m <- dmrs_m[idx, , drop = FALSE]
             .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
         },
         BPPARAM = bp_param

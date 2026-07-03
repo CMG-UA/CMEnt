@@ -33,6 +33,28 @@ test_that(".rowPairCorrelationStats matches centered matrix calculations", {
     expect_equal(ret$n_valid, rowSums(valid_pairs))
 })
 
+test_that(".testConnectivityBatch can use supplied n_sites without forcing sites_beta dimensions", {
+    dim.lazy_beta <- function(x) {
+        stop("sites_beta dimensions were forced")
+    }
+    sites_beta <- structure(list(), class = "lazy_beta")
+    pheno <- data.frame(sample = integer(0))
+
+    ret <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = list(),
+        pheno = pheno,
+        max_pval = 0.05,
+        entanglement = "strong",
+        aggfun = mean,
+        testing_mode_per_group = character(0),
+        empirical_strategy_per_group = character(0),
+        n_sites = 1L
+    )
+
+    expect_equal(nrow(ret), 0L)
+})
+
 test_that("empirical Monte Carlo connectivity is reproducible under the same RNG seed", {
     sites_beta <- rbind(
         c(0.30, 0.35, 0.40, 0.45, 0.50),

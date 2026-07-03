@@ -20,7 +20,8 @@ scoreDMRs(
   block_gap_min_bp = 250000,
   block_gap_max_bp = 5e+06,
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
-  verbose = getOption("CMEnt.verbose", 1L)
+  verbose = getOption("CMEnt.verbose", 1L),
+  .dmr_beta = NULL
 )
 }
 \arguments{
@@ -61,6 +62,10 @@ gap threshold (bp). Default is \code{5000000}.}
 \item{njobs}{Integer. Number of parallel jobs used for cross-validated scoring. Default comes from \code{getOption("CMEnt.njobs")}.}
 
 \item{verbose}{Numeric. Logging verbosity level. Default comes from \code{getOption("CMEnt.verbose")}.}
+
+\item{.dmr_beta}{Internal optional matrix-like object of preloaded beta values
+for all DMR sites. When provided, it must contain all sites referenced by
+\code{mcols(dmrs)$sites} and all beta sample columns.}
 }
 \value{
 GRanges object with DMRs ordered by complementary classification score

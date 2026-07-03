@@ -67,6 +67,39 @@ test_that("scoreDMRs accepts a BetaHandler input", {
     expect_true("cv_accuracy" %in% names(mcols(scoring_dmrs)))
 })
 
+test_that("scoreDMRs can reuse preloaded DMR beta values", {
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))[1:2]
+    dmr_sites <- strsplit(as.character(S4Vectors::mcols(dmrs)$sites), ",", fixed = TRUE)
+    required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
+    preloaded_beta <- beta[required_sites, , drop = FALSE]
+
+    scoring_dmrs <- scoreDMRs(
+        dmrs = dmrs,
+        beta = beta,
+        pheno = pheno,
+        array = "450K",
+        genome = "hg19",
+        sample_group_col = "Sample_Group",
+        njobs = 1,
+        .dmr_beta = preloaded_beta
+    )
+
+    expect_true("score" %in% names(mcols(scoring_dmrs)))
+    expect_error(
+        scoreDMRs(
+            dmrs = dmrs,
+            beta = beta,
+            pheno = pheno,
+            array = "450K",
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            njobs = 1,
+            .dmr_beta = preloaded_beta[-1, , drop = FALSE]
+        ),
+        "missing DMR sites"
+    )
+})
+
 test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
     old_options <- options(CMEnt.scoring_nfold = 2)
     on.exit(options(old_options), add = TRUE)
