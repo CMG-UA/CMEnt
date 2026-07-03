@@ -254,9 +254,9 @@ dmps_gr <- makeGRangesFromDataFrame(
 dmps_gr <- sort(dmps_gr)
 names(dmps_gr) <- rownames(dmps)
 
-seeds_gr <- dmps_gr[mcols(dmps_gr)$qval < 0.1]
+seeds_gr <- dmps_gr[mcols(dmps_gr)$qval < 0.05]
 seeds <- mcols(seeds_gr)$id
-cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.1)\n", length(seeds)))
+cat(sprintf("Found %d significant DMPs to be used as seeds (FDR < 0.05)\n", length(seeds)))
 
 ```
 
