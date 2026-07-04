@@ -2877,7 +2877,7 @@
                 "). If using .load_debug, rebuild debug artifacts with the current code."
             )
         }
-        .log_step("Expanding ", nrow(dmrs_to_expand), " DMRs using ", njobs, " jobs...", level = 2)
+        .log_step("Expanding ", nrow(dmrs_to_expand), " DMRs using ", njobs, " jobs...", level = 3)
         locs <- as.data.frame(stage2_beta_locs)
         connectivity <- connectivity_array
         locs_rownames <- rownames(locs)
@@ -2917,7 +2917,7 @@
                 BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
             )
         }
-        .log_success("", level = 2) 
+        .log_success("", level = 3) 
         if (inherits(ret, "try-error")) {
             stop(ret)
         }
@@ -3038,12 +3038,12 @@
                     format(nrow(subset_ret$beta_locs), big.mark = ","),
                     " sites for expansion window chunk ", window_chunk_i, "/", length(window_chunk_ranges),
                     " (", nrow(window), " window(s)).",
-                    level = 2
+                    level = 3
                 )
                 .log_step(
                     "Building expansion connectivity array for window chunk ",
                     window_chunk_i, "/", length(window_chunk_ranges), "..",
-                    level = 2
+                    level = 3
                 )
                 ret <- .buildConnectivityArray(
                     beta_handler = subset_ret$beta_handler,
@@ -3083,6 +3083,7 @@
                 )
                 rm(ret, subset_ret)
                 gc(FALSE)
+                .log_success("Stage 2 expansion window chunk ", window_chunk_i, "/", length(window_chunk_ranges), " complete.", level = 3)
             }
             if (!all(expanded_dmr_mask)) {
                 stop("Stage 2 expansion window assignment missed one or more DMRs.")
@@ -3090,7 +3091,7 @@
             extended_chunks <- Filter(function(x) !is.null(x) && nrow(x) > 0L, extended_chunks)
             extended_dmrs <- as.data.frame(do.call(rbind, extended_chunks))
         } else {
-            .log_step("Building expansion connectivity array..", level = 2)
+            .log_step("Building expansion connectivity array..", level = 3)
             ret <- .buildConnectivityArray(
                 beta_handler = beta_handler,
                 beta_locs = beta_locs,
@@ -3118,10 +3119,10 @@
             connectivity_array <- ret$connectivity_array
             connectivity_connected_total <- sum(connectivity_array$connected)
             extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
+            .log_success("Connectivity array built.", level = 3)
         }
     }
-    .log_success("Connectivity array built.", level = 2)
-    .log_info("Number of underlying correlated sites found: ", connectivity_connected_total, level = 2)
+    .log_info("Number of underlying correlated sites found: ", connectivity_connected_total, level = 3)
     if (!is.null(connectivity_array) && getOption("CMEnt.make_debug_dir", FALSE)) {
         debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, ".rds"))
         .log_info("Saving connectivity array to ", debug_path, level = 1)
