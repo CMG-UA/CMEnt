@@ -3457,6 +3457,7 @@
             sample_group_col = sample_group_col,
             covariates = covariates,
             njobs = njobs,
+            show_progress = verbose >=2,
             .dmr_beta = all_selected_sites_beta
         )
         .log_success("DMR scoring complete.", level = 2)

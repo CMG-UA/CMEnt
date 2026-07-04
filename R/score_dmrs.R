@@ -903,6 +903,7 @@
 #' @param block_gap_max_bp Numeric >= `block_gap_min_bp`. Upper clamp for adaptive
 #' gap threshold (bp). Default is `5000000`.
 #' @param njobs Integer. Number of parallel jobs used for cross-validated scoring. Default comes from `getOption("CMEnt.njobs")`.
+#' @param show_progress Logical. Whether to display a progress bar during scoring. Default is `TRUE`.
 #' @param verbose Numeric. Logging verbosity level. Default comes from `getOption("CMEnt.verbose")`.
 #' @param .dmr_beta Internal optional matrix-like object of preloaded beta values
 #'   for all DMR sites. When provided, it must contain all sites referenced by
@@ -961,6 +962,7 @@ scoreDMRs <- function(
     block_gap_min_bp = 250000,
     block_gap_max_bp = 5000000,
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
+    show_progress = TRUE,
     verbose = getOption("CMEnt.verbose", 1L),
     .dmr_beta = NULL
 ) {
@@ -1117,7 +1119,7 @@ scoreDMRs <- function(
         bp_param <- .makeBiocParallelParam(
             njobs,
             n_tasks = min(length(dmr_index_chunks), njobs * 4L),
-            progressbar = verbose >= 3L,
+            progressbar = show_progress,
             log = getOption("CMEnt.verbose", 1L) >= 1L
         )
         cv_metrics_chunks <- .safeBiocParallelApply(
@@ -1126,7 +1128,24 @@ scoreDMRs <- function(
             BPPARAM = bp_param
         )
     } else {
-        cv_metrics_chunks <- lapply(dmr_index_chunks, score_chunk)
+        if (show_progress) {
+            pb <- utils::txtProgressBar(min = 0, max = length(dmr_index_chunks), style = 3)
+            cv_metrics_chunks <- lapply(
+                seq_along(dmr_index_chunks),
+                function(i) {
+                    .log_info(
+                        "Scoring DMR chunk ", i, " of ", length(dmr_index_chunks),
+                        level = 3
+                    )
+                    r <- score_chunk(dmr_index_chunks[[i]])
+                    utils::setTxtProgressBar(pb, i)
+                    r
+                }
+            )
+            close(pb)
+        } else {
+            cv_metrics_chunks <- lapply(dmr_index_chunks, score_chunk)
+        }
     }
     cv_metrics <- do.call(rbind, cv_metrics_chunks)
 
