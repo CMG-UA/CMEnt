@@ -410,30 +410,27 @@ extractDMRMotifs <- function(
         dmrs, genome, uflank_size = motif_site_flank_size, dflank_size = motif_site_flank_size + 1
     )
     dmrs_seeds <- base::strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
-    all_seeds <- unique(unlist(dmrs_seeds, use.names = FALSE))
-    all_seeds <- all_seeds[nzchar(all_seeds)]
-    beta_locs_start <- as.integer(beta_locs[all_seeds, "start", drop = TRUE])
-    names(beta_locs_start) <- all_seeds
+    dmrs_seeds <- lapply(dmrs_seeds, function(x) x[nzchar(x)])
+    dmr_seed_indices <- .matchListToReference(
+        dmrs_seeds,
+        rownames(beta_locs),
+        return_missing = TRUE
+    )
+    missing_seed_ids <- attr(dmr_seed_indices, "missing_values")
     expected_len <- 2 * motif_site_flank_size + 2
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
-        dmr_seeds <- dmrs_seeds[[i]]
-        dmr_seeds <- dmr_seeds[nzchar(dmr_seeds)]
-        if (length(dmr_seeds) == 0) {
-            next
-        }
-
-        start_locs <- beta_locs_start[dmr_seeds]
-        valid_start_locs <- !is.na(start_locs)
-        if (!all(valid_start_locs)) {
+        seed_idx <- dmr_seed_indices[[i]]
+        missing_seeds <- missing_seed_ids[[i]]
+        if (length(missing_seeds) > 0L) {
             .log_warn(
-                sum(!valid_start_locs), " seed(s) were missing genomic locations",
+                length(missing_seeds), " seed(s) were missing genomic locations",
                 " and were ignored in DMR motif extraction. (Genome used: ",
                 genome, "; array: ", array, ")"
             )
-            start_locs <- start_locs[valid_start_locs]
         }
+        start_locs <- as.integer(beta_locs[seed_idx, "start", drop = TRUE])
         if (length(start_locs) == 0) {
             next
         }

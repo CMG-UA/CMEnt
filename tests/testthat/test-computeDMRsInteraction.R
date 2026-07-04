@@ -424,6 +424,55 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
     expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 2L), "CG")
 })
 
+test_that("extractDMRMotifs warns and ignores seeds missing genomic locations", {
+    motif_site_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_site = "cg_seed1",
+        end_site = "cg_seed2",
+        start_seed = "cg_seed1",
+        end_seed = "cg_seed2",
+        seeds = "cg_seed1,cg_missing,cg_seed2",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(110L, 130L),
+        end = c(111L, 131L),
+        row.names = c("cg_seed1", "cg_seed2"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    site_positions <- beta_locs$start - dmrs$start + 1L + motif_site_flank_size
+    seq_chars[site_positions] <- "C"
+    seq_chars[site_positions + 1L] <- "G"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    out <- expect_warning(
+        extractDMRMotifs(
+            dmrs,
+            genome = "hg38",
+            array = NULL,
+            beta_locs = beta_locs,
+            motif_site_flank_size = motif_site_flank_size
+        ),
+        "1 seed\\(s\\) were missing genomic locations"
+    )
+
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACGAAAAA")
+})
+
 test_that("extractDMRMotifs rescues BED-style zero-based CpG starts", {
     motif_site_flank_size <- 5L
     dmrs <- data.frame(

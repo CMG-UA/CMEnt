@@ -249,6 +249,41 @@ test_that("small pure utility helpers handle edge cases", {
     expect_equal(CMEnt:::.splitCsvValues(" a, ,b,NA "), c("a", "b", "NA"))
     expect_equal(CMEnt:::.splitCsvValues(NA_character_), character(0))
     expect_equal(CMEnt:::.splitCsvIndices("1, two, 3"), c(1L, 3L))
+    expect_identical(
+        CMEnt:::.matchListToReference(
+            list(c("b", "a"), character(0), c("c", "b", "b")),
+            c("a", "b", "c"),
+            missing_context = "missing: "
+        ),
+        list(c(2L, 1L), integer(0), c(3L, 2L, 2L))
+    )
+    expect_identical(
+        CMEnt:::.matchListToReference(
+            list(c("b", "z", "b"), c("a")),
+            c("a", "b"),
+            unique_matches = TRUE
+        ),
+        list(2L, 1L)
+    )
+    expect_error(
+        CMEnt:::.matchListToReference(
+            list(c("z")),
+            c("a"),
+            missing_context = "missing: "
+        ),
+        "missing: z",
+        fixed = TRUE
+    )
+    matched_with_missing <- CMEnt:::.matchListToReference(
+        list(c("b", "z", "b"), c("x", "a")),
+        c("a", "b"),
+        return_missing = TRUE
+    )
+    expect_identical(matched_with_missing, list(c(2L, 2L), 1L))
+    expect_identical(
+        attr(matched_with_missing, "missing_values"),
+        list("z", "x")
+    )
     expect_equal(CMEnt:::.downsampleFlankIndices(1:10, 3), c(1L, 5L, 9L))
     expect_equal(CMEnt:::.downsampleFlankIndices(1:3, 10), 1:3)
     expect_null(CMEnt:::.getDerivedOutputPath(NULL, ".txt"))

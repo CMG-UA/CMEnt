@@ -1962,6 +1962,59 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
+.matchListToReference <- function(values_list,
+                                  reference_values,
+                                  missing_context = NULL,
+                                  unique_matches = FALSE,
+                                  return_missing = FALSE) {
+    groups <- rep(seq_along(values_list), lengths(values_list))
+    out <- replicate(length(values_list), integer(0), simplify = FALSE)
+    if (length(groups) == 0L) {
+        if (isTRUE(return_missing)) {
+            attr(out, "missing_values") <- replicate(length(values_list), character(0), simplify = FALSE)
+        }
+        return(out)
+    }
+
+    values <- unlist(values_list, use.names = FALSE)
+    matched <- match(values, reference_values)
+    keep_matched <- !is.na(matched)
+    missing_out <- NULL
+    if (any(!keep_matched)) {
+        if (!is.null(missing_context)) {
+            missing_values <- unique(values[!keep_matched])
+            stop(
+                missing_context,
+                paste(head(missing_values, 10), collapse = ", "),
+                if (length(missing_values) > 10L) " ..." else ""
+            )
+        }
+        if (isTRUE(return_missing)) {
+            missing_split <- split(values[!keep_matched], groups[!keep_matched])
+            missing_out <- replicate(length(values_list), character(0), simplify = FALSE)
+            missing_out[as.integer(names(missing_split))] <- missing_split
+        }
+        matched <- matched[keep_matched]
+        groups <- groups[keep_matched]
+    }
+
+    matched_split <- split(matched, groups)
+    if (isTRUE(unique_matches)) {
+        matched_split <- lapply(matched_split, unique)
+    }
+    out[as.integer(names(matched_split))] <- matched_split
+    if (isTRUE(return_missing)) {
+        if (is.null(missing_out)) {
+            missing_out <- replicate(length(values_list), character(0), simplify = FALSE)
+        }
+        attr(out, "missing_values") <- missing_out
+    }
+    out
+}
+
+
+#' @keywords internal
+#' @noRd
 .downsampleFlankIndices <- function(indices, max_sup_sites_per_dmr_side) {
     if (is.null(max_sup_sites_per_dmr_side) || max_sup_sites_per_dmr_side <= 0) {
         return(indices)

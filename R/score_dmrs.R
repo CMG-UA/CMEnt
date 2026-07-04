@@ -1055,22 +1055,11 @@ scoreDMRs <- function(
     .log_success("Beta values transformed", level = 3)
     .log_step("Preparing DMR-specific beta matrix row indices for classification", level = 3)
     dmrs_m_row_names <- rownames(dmrs_m)
-    dmr_site_indices <- lapply(seq_along(dmrs), function(i) {
-        dmr_sites_i <- dmr_sites[[i]]
-        if (length(dmr_sites_i) == 0L) {
-            return(integer(0))
-        }
-        idx <- match(dmr_sites_i, dmrs_m_row_names)
-        if (anyNA(idx)) {
-            missing_sites <- unique(dmr_sites_i[is.na(idx)])
-            stop(
-                "Requested DMR sites not found in transformed beta matrix: ",
-                paste(head(missing_sites, 10), collapse = ", "),
-                if (length(missing_sites) > 10L) " ..." else ""
-            )
-        }
-        idx
-    })
+    dmr_site_indices <- .matchListToReference(
+        dmr_sites,
+        dmrs_m_row_names,
+        missing_context = "Requested DMR sites not found in transformed beta matrix: "
+    )
     .log_success("DMR-specific beta matrix row indices prepared", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
     max_materialized_rows <- .scoringMaterializationChunkRows(
@@ -1106,8 +1095,12 @@ scoreDMRs <- function(
         } else {
             chunk_m <- as.matrix(t(dmrs_m[chunk_rows, , drop = FALSE]))
         }
-        ret <- lapply(chunk_site_indices, function(idx) {
-            local_idx <- match(idx, chunk_rows)
+        chunk_local_site_indices <- .matchListToReference(
+            chunk_site_indices,
+            chunk_rows,
+            missing_context = "Internal failure while mapping DMR sites to materialized scoring chunk: "
+        )
+        ret <- lapply(chunk_local_site_indices, function(local_idx) {
             .performCrossPredictionTransposed(
                 chunk_m[, local_idx, drop = FALSE],
                 fold_plan = fold_plan
