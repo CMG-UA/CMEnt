@@ -458,17 +458,18 @@ test_that("extractDMRMotifs warns and ignores seeds missing genomic locations", 
         .package = "CMEnt"
     )
 
-    out <- expect_warning(
-        extractDMRMotifs(
+    motif_log <- capture.output(
+        out <- extractDMRMotifs(
             dmrs,
             genome = "hg38",
             array = NULL,
             beta_locs = beta_locs,
             motif_site_flank_size = motif_site_flank_size
         ),
-        "1 seed\\(s\\) were missing genomic locations"
+        type = "message"
     )
 
+    expect_true(any(grepl("1 seed(s) were missing genomic locations", motif_log, fixed = TRUE)))
     consensus_seq <- as.character(out$consensus_seq[[1]])
     expect_equal(consensus_seq, "AAAAACGAAAAA")
 })

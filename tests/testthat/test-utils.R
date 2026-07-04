@@ -279,7 +279,9 @@ test_that("small pure utility helpers handle edge cases", {
         c("a", "b"),
         return_missing = TRUE
     )
-    expect_identical(matched_with_missing, list(c(2L, 2L), 1L))
+    matched_without_attrs <- matched_with_missing
+    attr(matched_without_attrs, "missing_values") <- NULL
+    expect_identical(matched_without_attrs, list(c(2L, 2L), 1L))
     expect_identical(
         attr(matched_with_missing, "missing_values"),
         list("z", "x")
