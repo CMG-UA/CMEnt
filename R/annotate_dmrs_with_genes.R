@@ -326,13 +326,27 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
 
     mcols_names <- colnames(S4Vectors::mcols(dmrs))
     if ("sites" %in% mcols_names) {
-        dmr_site_idx <- lapply(
+        dmr_sites_list <- lapply(
             as.character(S4Vectors::mcols(dmrs)$sites),
-            function(ids) {
-                idx <- match(.splitCsvValues(ids), site_names)
-                unique(idx[!is.na(idx)])
-            }
+            .splitCsvValues
         )
+        dmr_site_groups <- rep(seq_along(dmr_sites_list), lengths(dmr_sites_list))
+        dmr_site_idx <- replicate(length(dmrs), integer(0), simplify = FALSE)
+        if (length(dmr_site_groups) > 0L) {
+            dmr_site_match <- match(
+                unlist(dmr_sites_list, use.names = FALSE),
+                site_names
+            )
+            keep_matched <- !is.na(dmr_site_match)
+            dmr_site_idx_split <- split(
+                dmr_site_match[keep_matched],
+                dmr_site_groups[keep_matched]
+            )
+            dmr_site_idx[as.integer(names(dmr_site_idx_split))] <- lapply(
+                dmr_site_idx_split,
+                unique
+            )
+        }
     } else {
         site_hits <- GenomicRanges::findOverlaps(dmrs, site_locs, ignore.strand = TRUE)
         dmr_site_idx <- vector("list", length(dmrs))
