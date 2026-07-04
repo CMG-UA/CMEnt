@@ -100,6 +100,39 @@ test_that("scoreDMRs can reuse preloaded DMR beta values", {
     )
 })
 
+test_that("scoreDMRs materialization chunk rows are derived from available RAM", {
+    chunk_rows <- CMEnt:::.scoringMaterializationChunkRows(
+        n_samples = 6,
+        njobs = 2,
+        n_rows = 5000,
+        available_ram_bytes = 1024^2
+    )
+    expect_equal(chunk_rows, floor(0.9 * 1024^2 / (2 * 6 * 8 * 12)))
+    expect_equal(
+        CMEnt:::.scoringMaterializationChunkRows(6, 2, 10, available_ram_bytes = 1024^2),
+        10L
+    )
+})
+
+test_that("scoreDMRs materialization chunks respect unique transformed row budget", {
+    chunks <- CMEnt:::.scoreDMRIndexChunks(
+        list(
+            c(1L, 2L),
+            c(2L, 3L),
+            c(3L, 4L),
+            c(10L, 11L, 12L),
+            c(12L)
+        ),
+        max_unique_rows = 3L
+    )
+
+    expect_identical(chunks, list(1:2, 3L, 4:5))
+    expect_identical(
+        CMEnt:::.scoreDMRIndexChunks(list(1:5, 5L), max_unique_rows = 3L),
+        list(1L, 2L)
+    )
+})
+
 test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
     old_options <- options(CMEnt.scoring_nfold = 2)
     on.exit(options(old_options), add = TRUE)

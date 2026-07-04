@@ -27,24 +27,18 @@
 #' @keywords internal
 #' @importFrom stats predict
 #' @noRd
-.performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("CMEnt.scoring_nfold", 5)) {
+.prepareCrossPredictionFolds <- function(groups, folds = NULL, nfold = getOption("CMEnt.scoring_nfold", 5)) {
     groups <- as.factor(groups)
-    if (ncol(beta_mat) != length(groups)) {
-        stop(
-            "Mismatch between beta matrix columns (", ncol(beta_mat),
-            ") and group labels (", length(groups), ")."
-        )
-    }
     if (nlevels(groups) < 2) {
         stop("scoring requires at least two classes in '__casecontrol__'.")
     }
     if (is.null(folds)) {
         folds <- .buildStratifiedFolds(groups, nfold = nfold)
     } else {
-        if (length(folds) != ncol(beta_mat)) {
+        if (length(folds) != length(groups)) {
             stop(
                 "Mismatch between folds length (", length(folds),
-                ") and number of samples (", ncol(beta_mat), ")."
+                ") and number of samples (", length(groups), ")."
             )
         }
         folds <- as.integer(folds)
@@ -54,18 +48,51 @@
         nfold <- max(folds)
     }
 
-    beta_mat_t <- t(beta_mat)
-    predictions <- vector("character", ncol(beta_mat))
-    decision_values <- rep(NA_real_, ncol(beta_mat))
-    groups_chr <- as.character(groups)
-
-    for (fold in seq_len(nfold)) {
+    fold_info <- lapply(seq_len(nfold), function(fold) {
         test_indices <- which(folds == fold)
         if (length(test_indices) == 0L) {
-            next
+            return(NULL)
         }
         train_indices <- which(folds != fold)
         train_groups <- as.factor(groups[train_indices])
+        list(
+            test_indices = test_indices,
+            train_indices = train_indices,
+            train_groups = train_groups,
+            train_levels = levels(train_groups)
+        )
+    })
+    fold_info <- Filter(Negate(is.null), fold_info)
+
+    list(
+        groups = groups,
+        groups_chr = as.character(groups),
+        groups_y = ifelse(as.character(groups) == levels(groups)[1], 1, -1),
+        folds = folds,
+        nfold = nfold,
+        fold_info = fold_info
+    )
+}
+
+#' @keywords internal
+#' @importFrom stats predict
+#' @noRd
+.performCrossPredictionTransposed <- function(beta_mat_t, fold_plan) {
+    if (nrow(beta_mat_t) != length(fold_plan$groups)) {
+        stop(
+            "Mismatch between beta matrix rows (", nrow(beta_mat_t),
+            ") and group labels (", length(fold_plan$groups), ")."
+        )
+    }
+
+    predictions <- vector("character", nrow(beta_mat_t))
+    decision_values <- rep(NA_real_, nrow(beta_mat_t))
+    groups_chr <- fold_plan$groups_chr
+
+    for (fold_info in fold_plan$fold_info) {
+        test_indices <- fold_info$test_indices
+        train_indices <- fold_info$train_indices
+        train_groups <- fold_info$train_groups
         suppressWarnings({
             model <- e1071::svm(
                 beta_mat_t[train_indices, , drop = FALSE],
@@ -82,7 +109,7 @@
         if (length(fold_decision) != length(test_indices)) {
             fold_decision <- rep(NA_real_, length(test_indices))
         } else {
-            train_levels <- levels(train_groups)
+            train_levels <- fold_info$train_levels
             pred_from_sign <- ifelse(fold_decision >= 0, train_levels[1], train_levels[2])
             if (mean(pred_from_sign == fold_pred_chr, na.rm = TRUE) < 0.5) {
                 fold_decision <- -fold_decision
@@ -94,7 +121,7 @@
 
     # Margin-sensitive score (in (0, 1]) based on logistic loss of SVM decision values.
     # This breaks ties among perfect-accuracy DMRs by rewarding larger separating margins.
-    y <- ifelse(groups_chr == levels(groups)[1], 1, -1)
+    y <- fold_plan$groups_y
     finite_mask <- is.finite(decision_values)
     if (!any(finite_mask)) {
         margin_score <- cv_accuracy
@@ -103,6 +130,85 @@
         margin_score <- exp(-mean(logistic_loss))
     }
     c(score = margin_score, cv_accuracy = cv_accuracy)
+}
+
+#' @keywords internal
+#' @importFrom stats predict
+#' @noRd
+.performCrossPrediction <- function(beta_mat, groups, folds = NULL, nfold = getOption("CMEnt.scoring_nfold", 5)) {
+    if (ncol(beta_mat) != length(groups)) {
+        stop(
+            "Mismatch between beta matrix columns (", ncol(beta_mat),
+            ") and group labels (", length(groups), ")."
+        )
+    }
+    fold_plan <- .prepareCrossPredictionFolds(groups, folds = folds, nfold = nfold)
+    .performCrossPredictionTransposed(t(beta_mat), fold_plan = fold_plan)
+}
+
+#' @keywords internal
+#' @noRd
+.scoringMaterializationChunkRows <- function(n_samples,
+                                             njobs,
+                                             n_rows,
+                                             available_ram_bytes = .availableRamBytes()) {
+    n_rows <- as.integer(n_rows)
+    if (!is.finite(n_rows) || is.na(n_rows) || n_rows < 1L) {
+        return(1L)
+    }
+    denom <- max(1, as.integer(njobs)) * max(1, as.integer(n_samples)) * 8 * 12
+    chunk_rows <- floor(0.9 * as.numeric(available_ram_bytes) / denom)
+    if (!is.finite(chunk_rows) || is.na(chunk_rows) || chunk_rows < 1) {
+        chunk_rows <- 1
+    }
+    as.integer(max(1L, min(n_rows, chunk_rows)))
+}
+
+#' @keywords internal
+#' @noRd
+.scoreDMRIndexChunks <- function(dmr_site_indices, max_unique_rows) {
+    n_dmrs <- length(dmr_site_indices)
+    if (n_dmrs == 0L) {
+        return(list())
+    }
+    max_unique_rows <- as.integer(max_unique_rows)
+    if (!is.finite(max_unique_rows) || is.na(max_unique_rows) || max_unique_rows < 1L) {
+        max_unique_rows <- 1L
+    }
+
+    chunks <- list()
+    current_dmrs <- integer(0)
+    current_rows <- integer(0)
+
+    flush_current <- function() {
+        if (length(current_dmrs) > 0L) {
+            chunks[[length(chunks) + 1L]] <<- current_dmrs
+        }
+    }
+
+    for (i in seq_len(n_dmrs)) {
+        rows_i <- unique(as.integer(dmr_site_indices[[i]]))
+        rows_i <- rows_i[!is.na(rows_i)]
+        if (length(current_dmrs) == 0L) {
+            current_dmrs <- i
+            current_rows <- rows_i
+            next
+        }
+
+        new_rows <- rows_i[!(rows_i %in% current_rows)]
+        if (length(current_rows) + length(new_rows) > max_unique_rows) {
+            flush_current()
+            current_dmrs <- i
+            current_rows <- rows_i
+        } else {
+            current_dmrs <- c(current_dmrs, i)
+            if (length(new_rows) > 0L) {
+                current_rows <- c(current_rows, new_rows)
+            }
+        }
+    }
+    flush_current()
+    chunks
 }
 
 #' @keywords internal
@@ -888,6 +994,7 @@ scoreDMRs <- function(
     groups <- pheno[, "__casecontrol__"]
     nfold <- getOption("CMEnt.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
+    fold_plan <- .prepareCrossPredictionFolds(groups, folds = folds, nfold = nfold)
     if (! "sites" %in% colnames(mcols(dmrs))) {
         .log_step("Inferring DMR sites from genomic overlaps", level = 3)
         beta_locs <- .convertSitesToGPos(beta_handler$getBetaLocs(), genome = genome)
@@ -964,26 +1071,64 @@ scoreDMRs <- function(
     })
     .log_success("DMR-specific beta matrix row indices prepared", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
-    task <- function(idx) {
-        m <- dmrs_m[idx, , drop = FALSE]
-        .performCrossPrediction(m, groups = groups, folds = folds, nfold = nfold)
+    max_materialized_rows <- .scoringMaterializationChunkRows(
+        n_samples = ncol(dmrs_m),
+        njobs = njobs,
+        n_rows = nrow(dmrs_m)
+    )
+    dmr_index_chunks <- .scoreDMRIndexChunks(
+        dmr_site_indices = dmr_site_indices,
+        max_unique_rows = max_materialized_rows
+    )
+    .log_info(
+        "DMR scoring materialization chunk size: ", max_materialized_rows,
+        " transformed row(s), derived from available RAM, ", ncol(dmrs_m),
+        " sample column(s), and ", max(1L, as.integer(njobs)), " job(s).",
+        level = 3
+    )
+    .log_info(
+        "Scoring DMRs in ", length(dmr_index_chunks),
+        " materialized chunk(s).",
+        level = 3
+    )
+    score_chunk <- function(dmr_idx) {
+        chunk_site_indices <- dmr_site_indices[dmr_idx]
+        chunk_rows <- unique(unlist(chunk_site_indices, use.names = FALSE))
+        if (length(chunk_rows) == 0L) {
+            chunk_m <- matrix(
+                numeric(0),
+                nrow = ncol(dmrs_m),
+                ncol = 0L,
+                dimnames = list(colnames(dmrs_m), NULL)
+            )
+        } else {
+            chunk_m <- as.matrix(t(dmrs_m[chunk_rows, , drop = FALSE]))
+        }
+        ret <- lapply(chunk_site_indices, function(idx) {
+            local_idx <- match(idx, chunk_rows)
+            .performCrossPredictionTransposed(
+                chunk_m[, local_idx, drop = FALSE],
+                fold_plan = fold_plan
+            )
+        })
+        do.call(rbind, ret)
     }
     if (njobs > 1L) {
         bp_param <- .makeBiocParallelParam(
             njobs,
-            n_tasks = min(length(dmr_site_indices), njobs * 4L),
+            n_tasks = min(length(dmr_index_chunks), njobs * 4L),
             progressbar = verbose >= 3L,
             log = getOption("CMEnt.verbose", 1L) >= 1L
         )
-        cv_metrics <- .safeBiocParallelApply(
-            dmr_site_indices,
-            task,
+        cv_metrics_chunks <- .safeBiocParallelApply(
+            dmr_index_chunks,
+            score_chunk,
             BPPARAM = bp_param
         )
     } else {
-        cv_metrics <- lapply(dmr_site_indices, task)
+        cv_metrics_chunks <- lapply(dmr_index_chunks, score_chunk)
     }
-    cv_metrics <- do.call(rbind, cv_metrics)
+    cv_metrics <- do.call(rbind, cv_metrics_chunks)
 
     .log_success("Cross-validated classification scores computed", level = 3)
     mcols(dmrs)$score <- as.numeric(cv_metrics[, "score"])
