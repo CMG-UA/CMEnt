@@ -359,7 +359,14 @@ run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_l
         )
         tryCatch({
             fit <- hummingbird::hummingbirdEM(experimentInfoControl = control_se, experimentInfoCase = case_se, binSize = 40)
-            fit <- hummingbird::hummingbirdPostAdjustment(fit, control_se, case_se, maxGap = as.integer(max_gap), minCpGs = as.integer(min_sites), minLength = as.integer(min_length))
+            fit <- hummingbird::hummingbirdPostAdjustment(
+                emInfo = fit,
+                experimentInfoControl = control_se,
+                experimentInfoCase = case_se,
+                maxGap = as.integer(max_gap),
+                minCpGs = as.integer(min_sites),
+                minLength = as.integer(min_length)
+            )
             fit$DMRs
         }, error = function(e) {
             warning(sprintf("hummingbird failed (%s): %s", chr_name, e$message))
