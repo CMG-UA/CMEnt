@@ -100,8 +100,7 @@ simulation_plan <- data.frame(
     simulation_id = seq_len(nsim),
     seed = sample(0:1000, nsim),
     delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
-    expected_corr = round(runif(nsim, 0.5, 0.8), 2),
-    truth_min_delta_beta = round(runif(nsim, 0, 0.2), 2)
+    expected_corr = round(runif(nsim, 0.5, 0.8), 2)
 )
 
 plan_file <- getBenchmarkFile("simulation_parameters.tsv")
@@ -177,8 +176,7 @@ simulate_one <- function(plan_row) {
     params <- c(base_simulation, list(
         seed = plan_row$seed,
         delta_beta_max = plan_row$delta_beta_max,
-        expected_corr = plan_row$expected_corr,
-        truth_min_delta_beta = plan_row$truth_min_delta_beta
+        expected_corr = plan_row$expected_corr
     ))
     cached <- read_cache(sim_file, params)
     if (!is.null(cached)) return(cached$value)
@@ -195,7 +193,6 @@ simulate_one <- function(plan_row) {
         delta_max0 = plan_row$delta_beta_max,
         delta_jitter = base_simulation$delta_jitter,
         expected_correlation = plan_row$expected_corr,
-        truth_min_delta_beta = plan_row$truth_min_delta_beta,
         max_gap = base_simulation$max_gap,
         min_dmr_size = base_simulation$min_dmr_size,
         max_dmr_size = base_simulation$max_dmr_size,
