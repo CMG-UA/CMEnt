@@ -132,7 +132,6 @@ genome <- "hg19"
 simulation <- list(
     delta_max0 = 0.3,
     delta_jitter = 0.1,
-    truth_min_delta_beta = 0.1,
     expected_correlation = 0.7,
     max_gap = 500L,
     min_dmr_size = 50L,

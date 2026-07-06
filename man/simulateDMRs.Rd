@@ -19,7 +19,6 @@ simulateDMRs(
   max_sites = 500L,
   min_dmr_size = 50L,
   max_dmr_size = 2000L,
-  truth_min_delta_beta = 0,
   delta_jitter = 1/3,
   expected_correlation = 0.7,
   neighbor_window = 5L,
@@ -80,11 +79,6 @@ baseline is retained.}
 \item{min_dmr_size}{Minimum genomic width, in bp, per candidate DMR segment.}
 
 \item{max_dmr_size}{Maximum genomic width, in bp, per candidate DMR segment.}
-
-\item{truth_min_delta_beta}{Minimum intended beta-scale perturbation for a
-site to define the reported truth interval. The default, \code{0}, reports the
-full selected segment so simulated flanks are not treated as false
-positives during benchmarking.}
 
 \item{delta_jitter}{Width of the random effect-size jitter around
 \code{delta_max0}.}
@@ -178,7 +172,7 @@ Finally, touched methylated counts are regenerated from the shifted
 probabilities and original coverage. With \code{resample_counts = TRUE}, counts
 are drawn as \code{Binomial(C, p)}; otherwise they are deterministically rounded
 as \code{round(C * p)}. Reported truth intervals are based on the intended
-beta-scale perturbation and \code{truth_min_delta_beta}, with a fallback to at
+beta-scale perturbation, with a fallback to at
 least \code{min_sites} strongest sites per DMR.
 }
 \examples{

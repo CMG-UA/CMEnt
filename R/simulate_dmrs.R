@@ -43,10 +43,8 @@
 #' Finally, touched methylated counts are regenerated from the shifted
 #' probabilities and original coverage. With `resample_counts = TRUE`, counts
 #' are drawn as `Binomial(C, p)`; otherwise they are deterministically rounded
-#' as `round(C * p)`. Reported truth intervals are based on the intended
-#' beta-scale perturbation and `truth_min_delta_beta`, with a fallback to at
-#' least `min_sites` strongest sites per DMR.
-#'
+#' as `round(C * p)`.
+#' 
 #' @param beta A BSseq object, a [BetaHandler] object, a beta matrix/data
 #'   frame, a path to a beta/tabix file, or a path to an `.rds` file
 #'   containing a BSseq object.
@@ -78,10 +76,6 @@
 #' @param max_sites Maximum number of sites per candidate DMR segment.
 #' @param min_dmr_size Minimum genomic width, in bp, per candidate DMR segment.
 #' @param max_dmr_size Maximum genomic width, in bp, per candidate DMR segment.
-#' @param truth_min_delta_beta Minimum intended beta-scale perturbation for a
-#'   site to define the reported truth interval. The default, `0`, reports the
-#'   full selected segment so simulated flanks are not treated as false
-#'   positives during benchmarking.
 #' @param delta_jitter Width of the random effect-size jitter around
 #'   `delta_max0`.
 #' @param expected_correlation Minimum within-DMR expected correlation target.
@@ -147,7 +141,6 @@ simulateDMRs <- function(
     max_sites = 500L,
     min_dmr_size = 50L,
     max_dmr_size = 2000L,
-    truth_min_delta_beta = 0,
     delta_jitter = 1 / 3,
     expected_correlation = 0.7,
     neighbor_window = 5L,
@@ -195,9 +188,6 @@ simulateDMRs <- function(
     }
     if (length(max_dmr_size) != 1L || is.na(max_dmr_size) || max_dmr_size < min_dmr_size) {
         stop("'max_dmr_size' must be an integer greater than or equal to 'min_dmr_size'.")
-    }
-    if (length(truth_min_delta_beta) != 1L || !is.finite(truth_min_delta_beta) || truth_min_delta_beta < 0) {
-        stop("'truth_min_delta_beta' must be a non-negative numeric scalar.")
     }
     if (length(delta_jitter) != 1L || !is.finite(delta_jitter) || delta_jitter < 0) {
         stop("'delta_jitter' must be a non-negative numeric scalar.")
@@ -449,7 +439,7 @@ simulateDMRs <- function(
         intended_delta <- rowMeans(p1_case, na.rm = TRUE) -
             rowMeans(p0[, case_samples, drop = FALSE], na.rm = TRUE)
         intended_delta[!is.finite(intended_delta)] <- 0
-        truth_local <- which(abs(intended_delta) >= truth_min_delta_beta)
+        truth_local <- which(abs(intended_delta) >= 0)
         if (length(truth_local) < min(min_sites, length(idx))) {
             truth_local <- order(abs(intended_delta), decreasing = TRUE)[seq_len(min(min_sites, length(idx)))]
         }

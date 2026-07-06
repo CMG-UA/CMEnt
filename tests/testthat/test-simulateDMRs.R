@@ -501,7 +501,6 @@ test_that("simulateDMRs restores smooth autocorrelated site profiles within DMRs
         delta_max0 = 0.3,
         min_sites = length(pos),
         max_sites = length(pos),
-        truth_min_delta_beta = 0,
         resample_counts = FALSE,
         sample_group_col = "Sample_Group"
     )

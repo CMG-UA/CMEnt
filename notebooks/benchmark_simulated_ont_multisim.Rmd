@@ -92,20 +92,23 @@ save_cache <- function(path, value, params = NULL) {
     saveRDS(list(value = value, params = params), path)
 }
 
+
 nsim <- suppressWarnings(as.integer(Sys.getenv("CMENT_BENCHMARK_NSIM", "10")))
 nsim <- ifelse(is.na(nsim) || nsim < 1L, 10L, nsim)
+plan_file <- getBenchmarkFile(paste0("simulation_parameters", nsim, ".tsv"))
+if (file.exists(plan_file)) {
+    simulation_plan <- data.table::fread(plan_file)
+} else {
+    set.seed(42)
+    simulation_plan <- data.frame(
+        simulation_id = seq_len(nsim),
+        seed = sample(0:1000, nsim),
+        delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
+        expected_corr = round(runif(nsim, 0.3, 0.7), 2)
+    )
 
-set.seed(42)
-simulation_plan <- data.frame(
-    simulation_id = seq_len(nsim),
-    seed = sample(0:1000, nsim),
-    delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
-    expected_corr = round(runif(nsim, 0.5, 0.8), 2),
-    truth_min_delta_beta = round(runif(nsim, 0, 0.2), 2)
-)
-
-plan_file <- getBenchmarkFile("simulation_parameters.tsv")
-data.table::fwrite(simulation_plan, plan_file, sep = "\t")
+    data.table::fwrite(simulation_plan, plan_file, sep = "\t")
+}
 knitr::kable(simulation_plan, caption = "Simulation parameters generated under master seed 42")
 ```
 
@@ -133,10 +136,10 @@ stopifnot(inherits(input_bsseq, "BSseq"))
 base_simulation <- list(
     delta_jitter = 0.1,
     max_gap = 500L,
-    min_dmr_size = 50L,
-    max_dmr_size = 2000L,
-    min_sites = 5L,
-    max_sites = 500L,
+    min_dmr_size = 500L,
+    max_dmr_size = 5000L,
+    min_sites = 50L,
+    max_sites = 2000L,
     num_dmrs = 1000L,
     genome = "hg38"
 )
@@ -155,8 +158,7 @@ simulate_one <- function(plan_row) {
     params <- c(base_simulation, list(
         seed = plan_row$seed,
         delta_beta_max = plan_row$delta_beta_max,
-        expected_corr = plan_row$expected_corr,
-        truth_min_delta_beta = plan_row$truth_min_delta_beta
+        expected_corr = plan_row$expected_corr
     ))
     cached <- read_cache(sim_file, params)
     if (!is.null(cached)) return(cached$value)
@@ -169,7 +171,6 @@ simulate_one <- function(plan_row) {
         delta_max0 = plan_row$delta_beta_max,
         delta_jitter = base_simulation$delta_jitter,
         expected_correlation = plan_row$expected_corr,
-        truth_min_delta_beta = plan_row$truth_min_delta_beta,
         max_gap = base_simulation$max_gap,
         min_dmr_size = base_simulation$min_dmr_size,
         max_dmr_size = base_simulation$max_dmr_size,
@@ -185,6 +186,18 @@ simulate_one <- function(plan_row) {
     save_cache(sim_file, sim, params)
     sim
 }
+
+NJOBS <- as.integer(
+    Sys.getenv(
+        "NJOBS",
+        unset = as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)))
+    )
+)
+
+system("lscpu | grep 'Model name:'")
+system("lsmem | grep 'Total online memory'")
+cat("Using", NJOBS, "parallel jobs\n")
+
 ```
 
 ## Method Runners
@@ -218,7 +231,7 @@ prepare_bsseq_data <- function(sim, plan_row) {
             id_col = "Sample_ID",
             case_group = "case",
             output_file = seeds_file,
-            njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
+            njobs = NJOBS
         )
     } else {
         seeds <- data.table::fread(seeds_file)
@@ -241,41 +254,54 @@ run_dmrcate_bsseq <- function(bs_obj, design, max_sites_per_chunk = 500000L, chu
     if (length(contrast_candidates) == 0L) return(GRanges())
     selected_coef <- match(ifelse("case" %in% contrast_candidates, "case", tail(contrast_candidates, 1L)), coef_names)
 
-    all_gr <- bsseq::granges(bs_obj)
-    all_seqnames <- as.character(seqnames(all_gr))
-    all_pos <- start(all_gr)
-    chr_vec <- unique(all_seqnames[!is.na(all_seqnames) & nzchar(all_seqnames)])
-    dmrs_by_chr <- lapply(chr_vec, function(chr_name) {
-        chr_idx <- which(all_seqnames == chr_name)
-        chunk_starts <- seq.int(1L, length(chr_idx), by = as.integer(max_sites_per_chunk))
-        chr_chunks <- lapply(seq_along(chunk_starts), function(chunk_i) {
-            core_from <- chunk_starts[chunk_i]
-            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, length(chr_idx))
-            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
-            ext_to <- min(length(chr_idx), core_to + as.integer(chunk_overlap_sites))
-            idx_ext <- chr_idx[ext_from:ext_to]
-            core_start_pos <- all_pos[chr_idx[core_from]]
-            core_end_pos <- all_pos[chr_idx[core_to]]
-            chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
-            if (nrow(chunk_bs) < 3L) return(GRanges())
-            tryCatch({
-                ann <- DMRcate::sequencing.annotate(chunk_bs, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
-                out <- DMRcate::extractRanges(DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites), genome = base_simulation$genome)
-                if (length(out) > 0L) {
-                    mids <- floor((start(out) + end(out)) / 2)
-                    out <- out[mids >= core_start_pos & mids <= core_end_pos]
-                }
-                out
-            }, error = function(e) {
-                warning(sprintf("DMRcate failed (%s chunk %d): %s", chr_name, chunk_i, e$message))
-                GRanges()
-            })
-        })
-        chr_chunks <- Filter(function(x) length(x) > 0L, chr_chunks)
-        if (length(chr_chunks) == 0L) NULL else sort(do.call(c, chr_chunks))
-    })
-    dmrs_by_chr <- Filter(Negate(is.null), dmrs_by_chr)
-    if (length(dmrs_by_chr) == 0L) GRanges() else sort(do.call(c, unname(dmrs_by_chr)))
+    # all_gr <- bsseq::granges(bs_obj)
+    # all_seqnames <- as.character(seqnames(all_gr))
+    # all_pos <- start(all_gr)
+    # chr_vec <- unique(all_seqnames[!is.na(all_seqnames) & nzchar(all_seqnames)])
+    # dmrs_by_chr <- lapply(chr_vec, function(chr_name) {
+    #     chr_idx <- which(all_seqnames == chr_name)
+    #     chunk_starts <- seq.int(1L, length(chr_idx), by = as.integer(max_sites_per_chunk))
+    #     chr_chunks <- lapply(seq_along(chunk_starts), function(chunk_i) {
+    #         core_from <- chunk_starts[chunk_i]
+    #         core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, length(chr_idx))
+    #         ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+    #         ext_to <- min(length(chr_idx), core_to + as.integer(chunk_overlap_sites))
+    #         idx_ext <- chr_idx[ext_from:ext_to]
+    #         core_start_pos <- all_pos[chr_idx[core_from]]
+    #         core_end_pos <- all_pos[chr_idx[core_to]]
+    #         chunk_bs <- bs_obj[idx_ext, , drop = FALSE]
+    #         if (nrow(chunk_bs) < 3L) return(GRanges())
+    #         tryCatch({
+    #             ann <- DMRcate::sequencing.annotate(chunk_bs, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
+    #             out <- DMRcate::extractRanges(
+    #                 DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites, mc.cores = NJOBS),
+    #                 genome = base_simulation$genome
+    #             )
+    #             if (length(out) > 0L) {
+    #                 mids <- floor((start(out) + end(out)) / 2)
+    #                 out <- out[mids >= core_start_pos & mids <= core_end_pos]
+    #             }
+    #             out
+    #         }, error = function(e) {
+    #             warning(sprintf("DMRcate failed (%s chunk %d): %s", chr_name, chunk_i, e$message))
+    #             GRanges()
+    #         })
+    #     })
+    #     chr_chunks <- Filter(function(x) length(x) > 0L, chr_chunks)
+    #     if (length(chr_chunks) == 0L) NULL else sort(do.call(c, chr_chunks))
+    # })
+    # dmrs_by_chr <- Filter(Negate(is.null), dmrs_by_chr)
+    # if (length(dmrs_by_chr) == 0L) GRanges() else sort(do.call(c, unname(dmrs_by_chr)))
+
+
+    ann <- DMRcate::sequencing.annotate(bs_obj, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
+    out <- DMRcate::extractRanges(
+        DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites, mc.cores = NJOBS),
+        genome = base_simulation$genome
+    )
+    out
+
+
 }
 
 run_dmrseq_bsseq <- function(bs_obj, max_sites_per_chunk = 500000L, chunk_overlap_sites = 2000L) {
@@ -290,7 +316,14 @@ run_dmrseq_bsseq <- function(bs_obj, max_sites_per_chunk = 500000L, chunk_overla
     bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
     run_chunk <- function(chunk_bs, core_start_pos = NA_integer_, core_end_pos = NA_integer_) {
         tryCatch({
-            fit <- dmrseq::dmrseq(bs = chunk_bs, testCovariate = "Sample_Group", cutoff = 0.1, minNumRegion = min_sites, verbose = FALSE, BPPARAM = bpparam)
+            fit <- dmrseq::dmrseq(
+                bs = chunk_bs,
+                testCovariate = "Sample_Group",
+                cutoff = 0.1,
+                minNumRegion = min_sites,
+                verbose = FALSE,
+                BPPARAM = bpparam # parallelization is handled at the chunks level, not within dmrseq
+            )
             if (is.null(fit) || length(fit) == 0L) return(GRanges())
             qvals <- mcols(fit)$qval
             if (any(is.finite(qvals))) fit <- fit[is.finite(qvals) & qvals < 0.05]
@@ -304,26 +337,29 @@ run_dmrseq_bsseq <- function(bs_obj, max_sites_per_chunk = 500000L, chunk_overla
             GRanges()
         })
     }
-    all_gr <- bsseq::granges(bs_obj)
-    all_seqnames <- as.character(seqnames(all_gr))
-    all_pos <- start(all_gr)
-    chr_vec <- unique(all_seqnames[!is.na(all_seqnames) & nzchar(all_seqnames)])
-    dmrs_by_chr <- lapply(chr_vec, function(chr_name) {
-        chr_idx <- which(all_seqnames == chr_name)
-        chunk_starts <- seq.int(1L, length(chr_idx), by = as.integer(max_sites_per_chunk))
-        chr_chunks <- lapply(seq_along(chunk_starts), function(chunk_i) {
-            core_from <- chunk_starts[chunk_i]
-            core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, length(chr_idx))
-            ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
-            ext_to <- min(length(chr_idx), core_to + as.integer(chunk_overlap_sites))
-            idx_ext <- chr_idx[ext_from:ext_to]
-            run_chunk(materialize(bs_obj[idx_ext, , drop = FALSE]), all_pos[chr_idx[core_from]], all_pos[chr_idx[core_to]])
-        })
-        chr_chunks <- Filter(function(x) length(x) > 0L, chr_chunks)
-        if (length(chr_chunks) == 0L) NULL else sort(do.call(c, chr_chunks))
-    })
-    dmrs_by_chr <- Filter(Negate(is.null), dmrs_by_chr)
-    if (length(dmrs_by_chr) == 0L) GRanges() else sort(do.call(c, unname(dmrs_by_chr)))
+    # all_gr <- bsseq::granges(bs_obj)
+    # all_pos <- start(all_gr)
+    # all_seqnames <- as.character(seqnames(all_gr))
+    # chr_vec <- unique(all_seqnames[!is.na(all_seqnames) & nzchar(all_seqnames)])
+    # dmrs_by_chr <- lapply(chr_vec, function(chr_name) {
+    #     chr_idx <- which(all_seqnames == chr_name)
+    #     chunk_starts <- seq.int(1L, length(chr_idx), by = as.integer(max_sites_per_chunk))
+    #     chr_chunks <- BiocParallel::bplapply(seq_along(chunk_starts), function(chunk_i) {
+    #         core_from <- chunk_starts[chunk_i]
+    #         core_to <- min(core_from + as.integer(max_sites_per_chunk) - 1L, length(chr_idx))
+    #         ext_from <- max(1L, core_from - as.integer(chunk_overlap_sites))
+    #         ext_to <- min(length(chr_idx), core_to + as.integer(chunk_overlap_sites))
+    #         idx_ext <- chr_idx[ext_from:ext_to]
+    #         run_chunk(materialize(bs_obj[idx_ext, , drop = FALSE]), all_pos[chr_idx[core_from]], all_pos[chr_idx[core_to]])
+    #     }, BPPARAM = bpparam)
+    #     chr_chunks <- Filter(function(x) length(x) > 0L, chr_chunks)
+    #     if (length(chr_chunks) == 0L) NULL else sort(do.call(c, chr_chunks))
+    # })
+    # dmrs_by_chr <- Filter(Negate(is.null), dmrs_by_chr)
+    # if (length(dmrs_by_chr) == 0L) GRanges() else sort(do.call(c, unname(dmrs_by_chr)))
+
+    dmrs_by_chr <- run_chunk(materialize(bs_obj))
+    sort(dmrs_by_chr)
 }
 
 run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_length = 50L) {
@@ -426,7 +462,7 @@ run_one_simulation <- function(plan_row) {
                     max_lookup_dist = max_lookup_dist,
                     annotate_with_genes = FALSE,
                     extract_motifs = FALSE,
-                    njobs = max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
+                    njobs = NJOBS
                 )
             })
         ),
