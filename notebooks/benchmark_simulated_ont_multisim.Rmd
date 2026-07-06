@@ -193,6 +193,7 @@ NJOBS <- as.integer(
         unset = as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)))
     )
 )
+doParallel::registerDoParallel(cores = NJOBS)
 
 system("lscpu | grep 'Model name:'")
 system("lsmem | grep 'Total online memory'")
@@ -274,7 +275,7 @@ run_dmrcate_bsseq <- function(bs_obj, design, max_sites_per_chunk = 500000L, chu
     #         tryCatch({
     #             ann <- DMRcate::sequencing.annotate(chunk_bs, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
     #             out <- DMRcate::extractRanges(
-    #                 DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites, mc.cores = NJOBS),
+    #                 DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites),
     #                 genome = base_simulation$genome
     #             )
     #             if (length(out) > 0L) {
@@ -296,7 +297,7 @@ run_dmrcate_bsseq <- function(bs_obj, design, max_sites_per_chunk = 500000L, chu
 
     ann <- DMRcate::sequencing.annotate(bs_obj, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
     out <- DMRcate::extractRanges(
-        DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites, mc.cores = NJOBS),
+        DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites),
         genome = base_simulation$genome
     )
     out
