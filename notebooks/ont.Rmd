@@ -36,7 +36,7 @@ suppressPackageStartupMessages({
 })
 
 getBenchmarkFile <- function(filename) {
-    folder <- "pannet_ont"
+    folder <- "ont"
     if (getwd() == "notebooks") {
         benchmark_file <- file.path("cached_results", folder, filename)
     } else if ("NAMESPACE" %in% dir()) {
