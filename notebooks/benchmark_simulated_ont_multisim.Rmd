@@ -39,7 +39,7 @@ Methods:
 
 ## Setup and Dependencies
 
-```{r load_packages, warning=FALSE, message=FALSE}
+```{r load_packages, warning=FALSE, message=FALSE, cache=FALSE}
 .loadCMEnt <- function() {
     root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
     if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
@@ -114,7 +114,7 @@ knitr::kable(simulation_plan, caption = "Simulation parameters generated under m
 
 ### Install External Dependencies
 
-```{r install_dependencies, warning=FALSE, message=FALSE}
+```{r install_dependencies, warning=FALSE, message=FALSE, cache=FALSE}
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 if (!requireNamespace("DMRcate", quietly = TRUE)) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
 if (!requireNamespace("dmrseq", quietly = TRUE)) BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
@@ -302,11 +302,11 @@ run_dmrseq_bsseq <- function(bs_obj, max_sites_per_chunk = 500000L, chunk_overla
 }
 
 run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_length = 50L) {
-    if (!requireNamespace("hummingbird", quietly = TRUE)) return(GPos())
+    if (!requireNamespace("hummingbird", quietly = TRUE)) return(GRanges())
     sample_df <- as.data.frame(SummarizedExperiment::colData(bs_obj))
     ctrl_idx <- which(sample_df$Sample_Group == "control")
     case_idx <- which(sample_df$Sample_Group == "case")
-    if (length(ctrl_idx) == 0L || length(case_idx) == 0L) return(GPos())
+    if (length(ctrl_idx) == 0L || length(case_idx) == 0L) return(GRanges())
     row_gr <- bsseq::granges(bs_obj)
     row_gr <- GPos(seqnames = seqnames(row_gr), pos = start(row_gr))
     to_count_matrix <- function(x) {
@@ -342,14 +342,20 @@ run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_l
                 minCpGs = as.integer(min_sites),
                 minLength = as.integer(min_length)
             )
-            fit$DMRs
+            dmrs <- fit$DMRs
+            if (!inherits(dmrs, "GenomicRanges") || length(dmrs) == 0L) return(NULL)
+            as(dmrs, "GRanges")
         }, error = function(e) {
             warning(sprintf("hummingbird failed (%s): %s", chr_name, e$message))
             NULL
         })
     })
     dmrs_by_chr <- Filter(function(x) !is.null(x) && length(x) > 0L, dmrs_by_chr)
-    if (length(dmrs_by_chr) == 0L) GPos() else sort(suppressWarnings(do.call(c, unname(dmrs_by_chr))))
+    if (length(dmrs_by_chr) == 0L) {
+        GRanges()
+    } else {
+        sort(unlist(GRangesList(dmrs_by_chr), use.names = FALSE))
+    }
 }
 
 time_method <- function(expr) {
@@ -361,7 +367,7 @@ time_method <- function(expr) {
 
 ## Run Benchmark
 
-```{r run_benchmark}
+```{r run_benchmark, cache=FALSE}
 run_one_simulation <- function(plan_row) {
     sim <- simulate_one(plan_row)
     truth_dmrs <- as_truth_gr(sim)
@@ -423,7 +429,11 @@ run_one_simulation <- function(plan_row) {
         spec <- method_specs[[method]]
         cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
         cached <- read_cache(cache_file, spec$params)
-        out <- if (!is.null(cached) && length(cached$value$dmrs) > 0) {
+        out <- if (
+            !is.null(cached) &&
+                inherits(cached$value$dmrs, "GenomicRanges") &&
+                length(cached$value$dmrs) > 0L
+        ) {
             cached$value
         } else {
             value <- spec$run(spec$params)
@@ -448,9 +458,13 @@ benchmark_results <- lapply(seq_len(nrow(simulation_plan)), function(i) {
 })
 ```
 
+```{r analysis_cache, include=FALSE}
+knitr::opts_chunk$set(cache = FALSE)
+```
+
 ## Comparative Analysis
 
-```{r analysis_helpers}
+```{r analysis_helpers, cache=FALSE}
 get_dmr_stats <- function(dmrs, method, simulation_id) {
     data.frame(
         simulation_id = simulation_id,
