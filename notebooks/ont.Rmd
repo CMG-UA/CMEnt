@@ -771,16 +771,6 @@ if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
 }
 ```
 
-## CMEnt DMR Interaction Circos Visualization
-
-```{r circos, fig.width=10, fig.height=10}
-if (length(dmrs_cment) > 0L) {
-    CMEnt::plotDMRsCircos(
-        dmrs_cment,
-        genome = genome
-    )
-}
-```
 
 ## Session Info
 
