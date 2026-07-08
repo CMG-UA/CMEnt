@@ -908,6 +908,8 @@
 #' @param .dmr_beta Internal optional matrix-like object of preloaded beta values
 #'   for all DMR sites. When provided, it must contain all sites referenced by
 #'   `mcols(dmrs)$sites` and all beta sample columns.
+#' @param .memory_njobs Internal number of concurrently active jobs to use for
+#'   RAM-derived materialization chunk sizing. Defaults to `njobs`.
 #'
 #' @return GRanges object with DMRs ordered by complementary classification score
 #' and additional metadata columns:
@@ -964,7 +966,8 @@ scoreDMRs <- function(
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     show_progress = TRUE,
     verbose = getOption("CMEnt.verbose", 1L),
-    .dmr_beta = NULL
+    .dmr_beta = NULL,
+    .memory_njobs = njobs
 ) {
     old_setting <- options("CMEnt.verbose" = verbose)
     on.exit(options(old_setting), add = TRUE)
@@ -1064,7 +1067,7 @@ scoreDMRs <- function(
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
     max_materialized_rows <- .scoringMaterializationChunkRows(
         n_samples = ncol(dmrs_m),
-        njobs = njobs,
+        njobs = .memory_njobs,
         n_rows = nrow(dmrs_m)
     )
     dmr_index_chunks <- .scoreDMRIndexChunks(
@@ -1074,7 +1077,7 @@ scoreDMRs <- function(
     .log_info(
         "DMR scoring materialization chunk size: ", max_materialized_rows,
         " transformed row(s), derived from available RAM, ", ncol(dmrs_m),
-        " sample column(s), and ", max(1L, as.integer(njobs)), " job(s).",
+        " sample column(s), and ", max(1L, as.integer(.memory_njobs)), " budgeted job(s).",
         level = 3
     )
     .log_info(

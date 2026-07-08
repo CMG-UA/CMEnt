@@ -133,6 +133,31 @@ test_that("scoreDMRs materialization chunks respect unique transformed row budge
     )
 })
 
+test_that("scoreDMRs internal memory job budget tightens materialization chunks", {
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))[1:4]
+    dmr_sites <- strsplit(as.character(S4Vectors::mcols(dmrs)$sites), ",", fixed = TRUE)
+    required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
+    preloaded_beta <- beta[required_sites, , drop = FALSE]
+
+    local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
+    expect_message(
+        scoreDMRs(
+            dmrs = dmrs,
+            beta = beta,
+            pheno = pheno,
+            array = "450K",
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            njobs = 1,
+            verbose = 3,
+            show_progress = FALSE,
+            .dmr_beta = preloaded_beta,
+            .memory_njobs = 4L
+        ),
+        "4 budgeted job\\(s\\)"
+    )
+})
+
 test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
     old_options <- options(CMEnt.scoring_nfold = 2)
     on.exit(options(old_options), add = TRUE)

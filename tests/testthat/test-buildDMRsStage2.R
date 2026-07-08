@@ -211,6 +211,97 @@ test_that("connectivity chunk size is derived from available RAM", {
     )
 })
 
+test_that("available RAM uses cgroup limit when it is tighter than host meminfo", {
+    meminfo <- tempfile()
+    limit <- tempfile()
+    current <- tempfile()
+    writeLines(c(
+        "MemTotal:       1048576 kB",
+        "MemAvailable:    900000 kB"
+    ), meminfo)
+    writeLines(as.character(800 * 1024^2), limit)
+    writeLines(as.character(300 * 1024^2), current)
+
+    expect_equal(
+        CMEnt:::.availableRamBytes(
+            meminfo_path = meminfo,
+            cgroup_limit_paths = limit,
+            cgroup_current_paths = current
+        ),
+        500 * 1024^2
+    )
+
+    writeLines("max", limit)
+    expect_equal(
+        CMEnt:::.availableRamBytes(
+            meminfo_path = meminfo,
+            cgroup_limit_paths = limit,
+            cgroup_current_paths = current
+        ),
+        900000 * 1024
+    )
+})
+
+test_that("connectivity single pass budgets chunks with nested worker count", {
+    set.seed(42)
+    n_sites <- 1200L
+    n_samples <- 6L
+    site_ids <- paste0("cg", seq_len(n_sites))
+    beta <- matrix(runif(n_sites * n_samples), nrow = n_sites)
+    rownames(beta) <- site_ids
+    colnames(beta) <- paste0("S", seq_len(n_samples))
+    locs <- data.frame(
+        chr = rep("chr1", n_sites),
+        start = seq_len(n_sites) * 10L,
+        end = seq_len(n_sites) * 10L + 1L,
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        Sample_Group = rep(c("A", "B"), each = n_samples / 2L),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    pheno[[CMEnt:::.CASE_CONTROL_COL]] <- rep(c(0L, 1L), each = n_samples / 2L)
+    group_inds <- split(seq_len(n_samples), pheno$Sample_Group)
+
+    local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
+    ret <- CMEnt:::.buildCASinglePass(
+        beta_handler = bh,
+        beta_locs = locs,
+        pheno = pheno,
+        group_inds = group_inds,
+        testing_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"),
+        col_names = colnames(beta),
+        max_pval = 0.05,
+        ext_site_delta_beta = NA_real_,
+        max_lookup_dist = 1000,
+        entanglement = "strong",
+        aggfun = stats::median,
+        ntries = 0,
+        mid_p = FALSE,
+        njobs = 2L,
+        memory_njobs = 4L
+    )
+
+    expected_chunk <- CMEnt:::.connectivityChunkSize(
+        n_samples = n_samples,
+        njobs = 4L,
+        n_pairs = n_sites - 1L,
+        available_ram_bytes = 1024^2
+    )
+    split_widths <- as.integer(ret$splits[, 2L] - ret$splits[, 1L] + 1L)
+    expect_true(all(split_widths <= expected_chunk))
+    expect_gt(nrow(ret$splits), ceiling((n_sites - 1L) / CMEnt:::.connectivityChunkSize(
+        n_samples = n_samples,
+        njobs = 2L,
+        n_pairs = n_sites - 1L,
+        available_ram_bytes = 1024^2
+    )))
+})
+
 test_that("BiocParallel connectivity matches sequential connectivity over multiple chunks", {
     set.seed(42)
     n_sites <- 4100L

@@ -22,7 +22,8 @@ scoreDMRs(
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
   show_progress = TRUE,
   verbose = getOption("CMEnt.verbose", 1L),
-  .dmr_beta = NULL
+  .dmr_beta = NULL,
+  .memory_njobs = njobs
 )
 }
 \arguments{
@@ -69,6 +70,9 @@ gap threshold (bp). Default is \code{5000000}.}
 \item{.dmr_beta}{Internal optional matrix-like object of preloaded beta values
 for all DMR sites. When provided, it must contain all sites referenced by
 \code{mcols(dmrs)$sites} and all beta sample columns.}
+
+\item{.memory_njobs}{Internal number of concurrently active jobs to use for
+RAM-derived materialization chunk sizing. Defaults to \code{njobs}.}
 }
 \value{
 GRanges object with DMRs ordered by complementary classification score

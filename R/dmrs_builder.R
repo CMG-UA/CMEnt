@@ -420,15 +420,72 @@
 
 #' @keywords internal
 #' @noRd
-.availableRamBytes <- function(default_gb = 2) {
-    if (file.exists("/proc/meminfo")) {
-        mem_available <- grep("^MemAvailable:", readLines("/proc/meminfo"), value = TRUE)
-        if (length(mem_available) == 1L) {
-            kb <- suppressWarnings(as.numeric(strsplit(mem_available, "\\s+")[[1]][2L]))
-            if (is.finite(kb) && !is.na(kb) && kb > 0) {
-                return(kb * 1024)
-            }
-        }
+.readMemoryBytesFile <- function(path) {
+    if (!file.exists(path)) {
+        return(NA_real_)
+    }
+    value <- tryCatch(readLines(path, n = 1L, warn = FALSE), error = function(e) character(0))
+    if (length(value) != 1L) {
+        return(NA_real_)
+    }
+    value <- trimws(value)
+    if (identical(value, "max")) {
+        return(Inf)
+    }
+    value <- suppressWarnings(as.numeric(value))
+    if (!is.na(value) && value > 0) value else NA_real_
+}
+
+
+#' @keywords internal
+#' @noRd
+.meminfoAvailableRamBytes <- function(path = "/proc/meminfo") {
+    if (!file.exists(path)) {
+        return(NA_real_)
+    }
+    meminfo <- tryCatch(readLines(path, warn = FALSE), error = function(e) character(0))
+    mem_available <- grep("^MemAvailable:", meminfo, value = TRUE)
+    if (length(mem_available) != 1L) {
+        return(NA_real_)
+    }
+    kb <- suppressWarnings(as.numeric(strsplit(mem_available, "\\s+")[[1]][2L]))
+    if (is.finite(kb) && !is.na(kb) && kb > 0) kb * 1024 else NA_real_
+}
+
+
+#' @keywords internal
+#' @noRd
+.cgroupAvailableRamBytes <- function(
+    limit_paths = c("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    current_paths = c("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes")
+) {
+    limits <- vapply(limit_paths, .readMemoryBytesFile, numeric(1))
+    currents <- vapply(current_paths, .readMemoryBytesFile, numeric(1))
+    limits <- limits[is.finite(limits) & limits > 0 & limits < 2^60]
+    currents <- currents[is.finite(currents) & currents >= 0]
+    if (length(limits) == 0L || length(currents) == 0L) {
+        return(NA_real_)
+    }
+    available <- min(limits) - max(currents)
+    if (is.finite(available) && !is.na(available) && available > 0) available else 1
+}
+
+
+#' @keywords internal
+#' @noRd
+.availableRamBytes <- function(
+    default_gb = 2,
+    meminfo_path = "/proc/meminfo",
+    cgroup_limit_paths = c("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    cgroup_current_paths = c("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes")
+) {
+    candidates <- c(
+        .cgroupAvailableRamBytes(cgroup_limit_paths, cgroup_current_paths),
+        .meminfoAvailableRamBytes(meminfo_path)
+    )
+    candidates <- candidates[is.finite(candidates) & !is.na(candidates) & candidates > 0]
+    if (length(candidates) > 0L) {
+        return(min(candidates))
     }
     as.numeric(default_gb) * 1024^3
 }
@@ -976,6 +1033,7 @@
     dgap = 0L,
     recheck = NULL,
     splits = NULL,
+    memory_njobs = njobs,
     verbose = 1
 ) {
     if (is.null(covariate_models)) {
@@ -1027,13 +1085,13 @@
     }
     chunk_size <- .connectivityChunkSize(
         n_samples = n_cols_for_chunk,
-        njobs = njobs,
+        njobs = memory_njobs,
         n_pairs = max(1L, n_sites - 1L)
     )
     .log_info(
         "Connectivity chunk size: ", chunk_size,
         " pair(s), derived from available RAM, ", n_cols_for_chunk,
-        " sample column(s), and ", max(1L, as.integer(njobs)), " job(s).",
+        " sample column(s), and ", max(1L, as.integer(memory_njobs)), " budgeted job(s).",
         level = 3
     )
 
@@ -1643,6 +1701,7 @@
     njobs = 1,
     expansion_windows = NULL,
     max_bridge_gaps = 0,
+    memory_njobs = njobs,
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
     if (is.null(covariate_models)) {
@@ -1681,6 +1740,7 @@
             expansion_windows = expansion_windows,
             connectivity_array = connectivity_array,
             splits = splits,
+            memory_njobs = memory_njobs,
             verbose = verbose
         )
         .buildCASinglePassWithGaps <- function(build_args, gap) {
@@ -2642,6 +2702,7 @@
     min_sites,
     aggfun,
     njobs,
+    memory_njobs,
     verbose,
     .load_debug,
     pheno,
@@ -2810,6 +2871,7 @@
                 ntries = ntries,
                 mid_p = mid_p,
                 njobs = njobs,
+                memory_njobs = memory_njobs,
                 expansion_windows = NULL,
                 max_bridge_gaps = max_bridge_seeds_gaps,
                 verbose = verbose
@@ -2969,7 +3031,7 @@
             window_pair_counts <- pmax(1L, window_site_counts - 1L)
             target_pairs_per_chunk <- .connectivityChunkSize(
                 n_samples = length(beta_col_names_detection),
-                njobs = njobs,
+                njobs = memory_njobs,
                 n_pairs = sum(window_pair_counts)
             )
             window_chunk_ranges <- vector("list", nrow(expansion_windows))
@@ -3063,6 +3125,7 @@
                     ntries = ntries,
                     mid_p = mid_p,
                     njobs = njobs,
+                    memory_njobs = memory_njobs,
                     expansion_windows = window,
                     max_bridge_gaps = max_bridge_extension_gaps,
                     verbose = verbose
@@ -3110,6 +3173,7 @@
                 ntries = ntries,
                 mid_p = mid_p,
                 njobs = njobs,
+                memory_njobs = memory_njobs,
                 expansion_windows = NULL,
                 max_bridge_gaps = max_bridge_extension_gaps,
                 verbose = verbose
@@ -3458,7 +3522,8 @@
             covariates = covariates,
             njobs = njobs,
             show_progress = verbose >=2,
-            .dmr_beta = all_selected_sites_beta
+            .dmr_beta = all_selected_sites_beta,
+            .memory_njobs = memory_njobs
         )
         .log_success("DMR scoring complete.", level = 2)
     }
@@ -3512,6 +3577,7 @@
     min_sites,
     aggfun,
     njobs,
+    memory_njobs,
     verbose,
     .load_debug,
     pheno,
@@ -3564,6 +3630,7 @@
             min_sites = min_sites,
             aggfun = aggfun,
             njobs = njobs,
+            memory_njobs = memory_njobs,
             verbose = verbose,
             .load_debug = .load_debug,
             pheno = pheno,
@@ -4189,8 +4256,13 @@ buildDMRs <- function(
     }
     gc(FALSE)
 
-    chr_parallel_jobs <- min(getOption("CMEnt.chr_njobs", 3L), length(chromosome_tasks), max(1L, njobs))
+    chr_parallel_jobs <- suppressWarnings(as.integer(getOption("CMEnt.chr_njobs", 3L)))
+    if (is.na(chr_parallel_jobs) || chr_parallel_jobs < 1L) {
+        chr_parallel_jobs <- 1L
+    }
+    chr_parallel_jobs <- min(chr_parallel_jobs, length(chromosome_tasks), max(1L, njobs))
     chr_njobs <- if (chr_parallel_jobs > 1L) max(1L, floor(njobs / chr_parallel_jobs)) else njobs
+    memory_njobs <- max(1L, chr_parallel_jobs * chr_njobs)
     if (chr_parallel_jobs > 1L) {
         .log_info(
             "Using ", chr_parallel_jobs, " chromosome job(s) with ", chr_njobs,
@@ -4224,6 +4296,7 @@ buildDMRs <- function(
             min_sites = min_sites,
             aggfun = aggfun,
             njobs = chr_njobs,
+            memory_njobs = memory_njobs,
             verbose = verbose,
             .load_debug = .load_debug,
             pheno = pheno,
@@ -4265,6 +4338,7 @@ buildDMRs <- function(
             min_sites = min_sites,
             aggfun = aggfun,
             njobs = chr_njobs,
+            memory_njobs = memory_njobs,
             verbose = verbose,
             .load_debug = .load_debug,
             pheno = pheno,
