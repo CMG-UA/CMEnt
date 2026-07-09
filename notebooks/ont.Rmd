@@ -21,9 +21,24 @@ knitr::opts_chunk$set(
     dpi = 300
 )
 
-# try(devtools::load_all(), silent = TRUE)
 suppressPackageStartupMessages({
-    try(library(CMEnt), silent = TRUE)
+    cment_source_dir <- if (file.exists("DESCRIPTION") && dir.exists("R")) {
+        "."
+    } else if (file.exists(file.path("..", "DESCRIPTION")) && dir.exists(file.path("..", "R"))) {
+        ".."
+    } else {
+        NA_character_
+    }
+    loaded_cment_source <- FALSE
+    if (!is.na(cment_source_dir) && requireNamespace("pkgload", quietly = TRUE)) {
+        loaded_cment_source <- isTRUE(tryCatch({
+            pkgload::load_all(cment_source_dir, quiet = TRUE)
+            TRUE
+        }, error = function(e) FALSE))
+    }
+    if (!loaded_cment_source) {
+        library(CMEnt)
+    }
     library(bsseq)
     library(curl)
     library(data.table)
@@ -230,6 +245,8 @@ if (need_bsseq) {
     pheno <- read.table(pheno_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE, check.names = FALSE, quote = "")
     input_summary <- read.table(input_summary_file, sep = "\t", header = TRUE, stringsAsFactors = FALSE, check.names = FALSE, quote = "")
 }
+rownames(pheno) <- pheno$Sample_ID
+
 genome <- input_summary$Value[input_summary$Metric == "Genome"]
 
 knitr::kable(input_summary, row.names = FALSE, caption = "PanNET ONT input summary")
