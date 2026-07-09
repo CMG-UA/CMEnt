@@ -163,13 +163,32 @@
     }
 
     # Extract DMR information
-    seeds <- base::strsplit(dmr_data$seeds, split = ",")[[1]]
-    sites <- base::strsplit(dmr_data$sites, split = ",")[[1]]
-    downstream_sup_sites <- base::strsplit(dmr_data$downstream_sites, split = ",")[[1]]
+    seeds <- .splitCsvValues(dmr_data$seeds)
+    if (length(seeds) == 0L) {
+        stop("plotDMR(): selected DMR has no seed site IDs.")
+    }
+    sites <- .splitCsvValues(dmr_data$sites)
+    beta_locs_rownames <- rownames(beta_locs)
+    downstream_sup_sites <- .splitCsvValues(dmr_data$downstream_sites)
     downstream_sup_sites <- setdiff(downstream_sup_sites, seeds)
-    downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
-    upstream_sup_sites <- base::strsplit(dmr_data$upstream_sites, split = ",")[[1]]
+    upstream_sup_sites <- .splitCsvValues(dmr_data$upstream_sites)
     upstream_sup_sites <- setdiff(upstream_sup_sites, seeds)
+
+    extension_sites <- unique(c(upstream_sup_sites, downstream_sup_sites))
+    missing_extension_sites <- extension_sites[!(extension_sites %in% beta_locs_rownames)]
+    if (length(missing_extension_sites) > 0L) {
+        warning(
+            "plotDMR(): dropping ", length(missing_extension_sites),
+            " extension site ID(s) not found in beta_locs: ",
+            paste(head(missing_extension_sites, 10L), collapse = ", "),
+            if (length(missing_extension_sites) > 10L) " ..." else "",
+            call. = FALSE
+        )
+        upstream_sup_sites <- upstream_sup_sites[upstream_sup_sites %in% beta_locs_rownames]
+        downstream_sup_sites <- downstream_sup_sites[downstream_sup_sites %in% beta_locs_rownames]
+    }
+
+    downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
     upstream_sup_sites_locs <- .locsToDf(beta_locs[upstream_sup_sites, , drop = FALSE])
     if (length(upstream_sup_sites) == 0) {
         start_site <- seeds[[1]]
@@ -181,9 +200,20 @@
     } else {
         end_site <- downstream_sup_sites[[length(downstream_sup_sites)]]
     }
-    beta_locs_rownames <- rownames(beta_locs)
+    start_site_ind <- match(start_site, beta_locs_rownames)
+    end_site_ind <- match(end_site, beta_locs_rownames)
+    if (is.na(start_site_ind) || is.na(end_site_ind)) {
+        missing_boundary_sites <- c(start_site, end_site)[is.na(c(start_site_ind, end_site_ind))]
+        stop(
+            "plotDMR(): DMR boundary site ID(s) not found in beta_locs: ",
+            paste(unique(missing_boundary_sites), collapse = ", ")
+        )
+    }
+    if (start_site_ind > end_site_ind) {
+        stop("plotDMR(): DMR start site occurs after end site in beta_locs.")
+    }
 
-    dmr_locs <- beta_locs[match(start_site, beta_locs_rownames):match(end_site, beta_locs_rownames), , drop = FALSE]
+    dmr_locs <- beta_locs[start_site_ind:end_site_ind, , drop = FALSE]
     dmr_locs <- .coercePlotLocs(dmr_locs)
 
     nsup_sites <- setdiff(rownames(dmr_locs), sites)

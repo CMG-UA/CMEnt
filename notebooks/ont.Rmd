@@ -747,9 +747,16 @@ if (!file.exists(dmr_vis_file) && length(dmrs_cment) > 0L) {
             ". Regenerate it locally with the reduced BSseq cache available before rendering without large data."
         )
     }
-    CMEnt::plotDMRs(
-        dmrs_cment, top_n = 1, score_by = "score",
-        beta = beta_handler, pheno = pheno, genome = genome,
+    top_dmr_index <- dmr_table |>
+        arrange(desc(cv_accuracy), desc(seeds_num), desc(abs_region_delta_beta)) |>
+        slice_head(n = 1) |>
+        pull(dmr_index)
+    CMEnt::plotDMR(
+        dmrs_cment,
+        top_dmr_index,
+        beta = beta_handler,
+        pheno = pheno,
+        genome = genome,
         sample_group_col = sample_group_col,
         max_samples_per_group = Inf,
         output_file = dmr_vis_file,
