@@ -437,7 +437,9 @@ run_one_simulation <- function(plan_row) {
             cached$value
         } else {
             value <- spec$run(spec$params)
-            save_cache(cache_file, value, spec$params)
+            if (length(value$dmrs) > 0L) {
+                save_cache(cache_file, value, spec$params)
+            }
             value
         }
         list(method = method, dmrs = out$dmrs, time = out$time)
