@@ -190,28 +190,24 @@
 
     downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
     upstream_sup_sites_locs <- .locsToDf(beta_locs[upstream_sup_sites, , drop = FALSE])
-    if (length(upstream_sup_sites) == 0) {
-        start_site <- seeds[[1]]
-    } else {
-        start_site <- upstream_sup_sites[[1]]
-    }
-    if (length(downstream_sup_sites) == 0) {
-        end_site <- seeds[[length(seeds)]]
-    } else {
-        end_site <- downstream_sup_sites[[length(downstream_sup_sites)]]
-    }
-    start_site_ind <- match(start_site, beta_locs_rownames)
-    end_site_ind <- match(end_site, beta_locs_rownames)
-    if (is.na(start_site_ind) || is.na(end_site_ind)) {
-        missing_boundary_sites <- c(start_site, end_site)[is.na(c(start_site_ind, end_site_ind))]
+
+    missing_seed_sites <- seeds[!(seeds %in% beta_locs_rownames)]
+    if (length(missing_seed_sites) > 0L) {
         stop(
-            "plotDMR(): DMR boundary site ID(s) not found in beta_locs: ",
-            paste(unique(missing_boundary_sites), collapse = ", ")
+            "plotDMR(): DMR seed site ID(s) not found in beta_locs: ",
+            paste(unique(missing_seed_sites), collapse = ", ")
         )
     }
+
+    plot_site_inds <- match(unique(c(seeds, upstream_sup_sites, downstream_sup_sites)), beta_locs_rownames)
+    plot_site_inds <- plot_site_inds[!is.na(plot_site_inds)]
+    start_site_ind <- min(plot_site_inds)
+    end_site_ind <- max(plot_site_inds)
     if (start_site_ind > end_site_ind) {
         stop("plotDMR(): DMR start site occurs after end site in beta_locs.")
     }
+    start_site <- beta_locs_rownames[[start_site_ind]]
+    end_site <- beta_locs_rownames[[end_site_ind]]
 
     dmr_locs <- beta_locs[start_site_ind:end_site_ind, , drop = FALSE]
     dmr_locs <- .coercePlotLocs(dmr_locs)
@@ -270,10 +266,14 @@
         stringsAsFactors = FALSE
     )
 
+    upstream_extension_locs <- upstream_sup_sites_locs[upstream_sup_sites_locs$start < start_seed_pos, , drop = FALSE]
+    downstream_extension_locs <- downstream_sup_sites_locs[downstream_sup_sites_locs$start > end_seed_pos, , drop = FALSE]
+
     # 3. Extended supporting sites (vertical lines at y=0.5)
-    if (start_site_pos != start_seed_pos) {
+    if (nrow(upstream_extension_locs) > 0) {
+        upstream_extension_start <- min(upstream_extension_locs$start)
         dmr_upstream_line <- data.frame(
-            x = start_site_pos,
+            x = upstream_extension_start,
             xend = start_seed_pos,
             y = 0.5,
             yend = 1,
@@ -290,10 +290,11 @@
             stringsAsFactors = FALSE
         )
     }
-    if (end_site_pos != end_seed_pos) {
+    if (nrow(downstream_extension_locs) > 0) {
+        downstream_extension_end <- max(downstream_extension_locs$start)
         dmr_downstream_line <- data.frame(
             x = end_seed_pos,
-            xend = end_site_pos,
+            xend = downstream_extension_end,
             y = 1,
             yend = 0.5,
             type = "DMR_Extension",
@@ -370,7 +371,7 @@
         fill = "#E41A1C"
     )
     # if upstream extended sites exist add shading in the form of a trapezoid
-    if (nrow(upstream_sup_sites_locs) > 0) {
+    if (nrow(upstream_extension_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_upstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -380,7 +381,7 @@
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_sites_locs$start), start_seed_pos, start_seed_pos, min(upstream_sup_sites_locs$start)),
+            x = c(min(upstream_extension_locs$start), start_seed_pos, start_seed_pos, min(upstream_extension_locs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -388,7 +389,7 @@
     }
 
     # if downstream extended sites exist add shading in the form of a trapezoid
-    if (nrow(downstream_sup_sites_locs) > 0) {
+    if (nrow(downstream_extension_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_downstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -398,7 +399,7 @@
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_seed_pos, max(downstream_sup_sites_locs$start), max(downstream_sup_sites_locs$start), end_seed_pos),
+            x = c(end_seed_pos, max(downstream_extension_locs$start), max(downstream_extension_locs$start), end_seed_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -474,7 +475,7 @@
 
     # Add labels for DMR extensions if they exist
     extension_df <- list()
-    if (nrow(upstream_sup_sites_locs) > 0) {
+    if (nrow(upstream_extension_locs) > 0) {
         upstream_mid_x <- (dmr_upstream_line$x + dmr_upstream_line$xend) / 2
         upstream_mid_y <- (dmr_upstream_line$y + dmr_upstream_line$yend) / 2
         upstream_label_df <- data.frame(
@@ -487,7 +488,7 @@
         )
         extension_df <- c(extension_df, list(upstream_label_df))
     }
-    if (nrow(downstream_sup_sites_locs) > 0) {
+    if (nrow(downstream_extension_locs) > 0) {
         downstream_mid_x <- (dmr_downstream_line$x + dmr_downstream_line$xend) / 2
         downstream_mid_y <- (dmr_downstream_line$y + dmr_downstream_line$yend) / 2
         downstream_label_df <- data.frame(

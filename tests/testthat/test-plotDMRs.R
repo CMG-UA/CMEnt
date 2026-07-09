@@ -241,6 +241,48 @@ test_that("plotDMR drops unresolved extension site IDs from total_locs", {
     expect_false(any(is.na(rownames(ret$total_locs))))
 })
 
+test_that("plotDMR derives plot span from all resolved merged metadata IDs", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs[1]
+    S4Vectors::mcols(dmrs)$seeds <- "cgA,cgC"
+    S4Vectors::mcols(dmrs)$sites <- "cgA,cgB,cgC"
+    S4Vectors::mcols(dmrs)$upstream_sites <- "cgC"
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cgA"
+
+    ret <- CMEnt:::.plotDMRStructure(
+        dmrs = dmrs,
+        dmr_index = 1,
+        beta_locs = plot_fixture$locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
+
+    expect_setequal(rownames(ret$total_locs), c("cgA", "cgC"))
+    expect_false(anyNA(ret$total_locs$start))
+    expect_true(all(c(100L, 300L) %in% ret$breaks))
+})
+
+test_that("plotDMR ignores inside-seed extension metadata for extension labels", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs[1]
+    S4Vectors::mcols(dmrs)$seeds <- "cgA,cgC"
+    S4Vectors::mcols(dmrs)$sites <- "cgA,cgB,cgC"
+    S4Vectors::mcols(dmrs)$upstream_sites <- ""
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cgB"
+
+    expect_no_error(
+        CMEnt:::.plotDMRStructure(
+            dmrs = dmrs,
+            dmr_index = 1,
+            beta_locs = plot_fixture$locs,
+            plot_title = FALSE,
+            .ret_details = TRUE
+        )
+    )
+})
+
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
