@@ -163,6 +163,7 @@ simulate_one <- function(plan_row) {
     ))
     cached <- read_cache(sim_file, params)
     if (!is.null(cached)) return(cached$value)
+    cat(sprintf("Simulating dataset %d with seed %d, delta_beta_max %.3f, expected_corr %.3f", plan_row$simulation_id, plan_row$seed, plan_row$delta_beta_max, plan_row$expected_corr))
 
     set.seed(plan_row$seed)
     sim <- CMEnt::simulateDMRs(
@@ -213,7 +214,7 @@ ram <- benchmark_specs$ram
 platform <- benchmark_specs$platform
 rversion <- benchmark_specs$rversion
 cat("CPU:", cpu$vendor, cpu$model, "(", cpu$no_of_cores, "cores )\n")
-cat("RAM:", ram, "GB\n")
+cat("RAM:", capture.output(print(ram)), "\n")
 cat("OS:", platform$OS.type, "\n")
 cat("R Version:", rversion, "\n")
 cat("Using", NJOBS, "parallel jobs\n")
@@ -454,6 +455,7 @@ run_one_simulation <- function(plan_row) {
         ) {
             cached$value
         } else {
+            cat(sprintf("Running method %s for simulation %d", method, plan_row$simulation_id))
             value <- spec$run(spec$params)
             if (length(value$dmrs) > 0L) {
                 save_cache(cache_file, value, spec$params)
