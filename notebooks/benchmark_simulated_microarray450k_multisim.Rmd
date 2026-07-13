@@ -153,11 +153,11 @@ fi
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 if ! conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-    conda create -y -n "$ENV_NAME" python=3.9
+    conda create -y -n "$ENV_NAME" --override-channels -c conda-forge python=3.9
 fi
 if ! conda run -n "$ENV_NAME" comb-p --help >/dev/null 2>&1 || \
         ! conda run -n "$ENV_NAME" bedtools --version >/dev/null 2>&1; then
-    conda install -y -n "$ENV_NAME" -c bioconda -c conda-forge combined-pvalues bedtools
+    conda install -y -n "$ENV_NAME" --override-channels -c bioconda -c conda-forge combined-pvalues bedtools
 fi
 conda run -n "$ENV_NAME" comb-p --help >/dev/null
 conda run -n "$ENV_NAME" bedtools --version >/dev/null
