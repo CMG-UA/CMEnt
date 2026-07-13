@@ -203,7 +203,8 @@ if (!file.exists(benchmark_specs_file)) {
         cpu = benchmarkme::get_cpu(),
         ram = benchmarkme::get_ram(),
         platform = benchmarkme::get_platform_info(),
-        rversion = R.version.string
+        rversion = R.version.string,
+        njobs = NJOBS
     )
     saveRDS(benchmark_specs, benchmark_specs_file)
 } else {
@@ -213,11 +214,12 @@ cpu <- benchmark_specs$cpu
 ram <- benchmark_specs$ram
 platform <- benchmark_specs$platform
 rversion <- benchmark_specs$rversion
+njobs <- benchmark_specs$njobs
 cat("CPU:", cpu$vendor, cpu$model, "(", cpu$no_of_cores, "cores )\n")
 cat("RAM:", capture.output(print(ram)), "\n")
 cat("OS:", platform$OS.type, "\n")
 cat("R Version:", rversion, "\n")
-cat("Using", NJOBS, "parallel jobs\n")
+cat("Using", njobs, "parallel jobs\n")
 ```
 
 ## Method Runners
