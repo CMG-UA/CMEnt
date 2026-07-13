@@ -136,7 +136,7 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 
 **Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
 
-```{bash, engine.opts='-l', eval=FALSE}
+```{bash, engine.opts='-l'}
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || {
     conda create -n cment_microarray_exp python=3.9
     conda activate cment_microarray_exp
