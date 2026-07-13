@@ -137,10 +137,48 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 **Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
 
 ```{bash, engine.opts='-l'}
-{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1; } || {
-    conda create -n cment_microarray_exp python=3.9
-    conda activate cment_microarray_exp
-    conda install -yc bioconda combined-pvalues bedtools
+set -euo pipefail
+CONDA_HOME="${CONDA_HOME:-$HOME/miniconda}"
+ENV_NAME="cment_microarray_exp"
+
+if ! command -v conda >/dev/null 2>&1; then
+    if [ ! -x "$CONDA_HOME/bin/conda" ]; then
+        echo "conda not found; installing Miniconda..."
+        curl -sS https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
+        bash miniconda.sh -b -p "$CONDA_HOME"
+        rm miniconda.sh
+    fi
+    export PATH="$CONDA_HOME/bin:$PATH"
+fi
+
+source "$(conda info --base)/etc/profile.d/conda.sh"
+if ! conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+    conda create -y -n "$ENV_NAME" python=3.9
+fi
+if ! conda run -n "$ENV_NAME" comb-p --help >/dev/null 2>&1 || \
+        ! conda run -n "$ENV_NAME" bedtools --version >/dev/null 2>&1; then
+    conda install -y -n "$ENV_NAME" -c bioconda -c conda-forge combined-pvalues bedtools
+fi
+conda run -n "$ENV_NAME" comb-p --help >/dev/null
+conda run -n "$ENV_NAME" bedtools --version >/dev/null
+```
+
+```{r expose_comb_p_env, message=FALSE, warning=FALSE}
+conda_bin <- Sys.which("conda")
+if (conda_bin == "") {
+    conda_candidates <- path.expand(c(
+        file.path(Sys.getenv("CONDA_HOME", unset = file.path("~", "miniconda")), "bin", "conda"),
+        file.path("~", "miniconda", "bin", "conda"),
+        "/opt/conda/bin/conda"
+    ))
+    conda_bin <- conda_candidates[file.exists(conda_candidates)][1]
+}
+if (!is.na(conda_bin) && conda_bin != "") {
+    conda_base <- system2(conda_bin, c("info", "--base"), stdout = TRUE)
+    combp_env_bin <- file.path(conda_base[1], "envs", "cment_microarray_exp", "bin")
+    if (dir.exists(combp_env_bin)) {
+        Sys.setenv(PATH = paste(combp_env_bin, Sys.getenv("PATH"), sep = .Platform$path.sep))
+    }
 }
 ```
 
