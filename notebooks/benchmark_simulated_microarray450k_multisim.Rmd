@@ -556,9 +556,11 @@ run_one_simulation <- function(plan_row) {
         spec <- method_specs[[method]]
         cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
         cached <- read_cache(cache_file, spec$params)
-        out <- if (!is.null(cached)) cached$value else {
+        out <- if (!is.null(cached) && length(cached$value$dmrs) > 0) cached$value else {
             value <- spec$run(spec$params)
-            save_cache(cache_file, value, spec$params)
+            if (!is.null(value) && length(value$dmrs) > 0) {
+                save_cache(cache_file, value, spec$params)
+            }
             value
         }
         out$dmrs <- force_genome(out$dmrs)
