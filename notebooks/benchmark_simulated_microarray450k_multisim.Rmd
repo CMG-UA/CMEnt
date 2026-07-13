@@ -116,6 +116,7 @@ if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
     options(repos = c(CRAN = "https://cloud.r-project.org"))
 }
 pkg_installed <- function(pkg) pkg %in% rownames(utils::installed.packages())
+if (!pkg_installed("benchmarkme")) install.packages("benchmarkme")
 if (!pkg_installed("BiocManager")) install.packages("BiocManager")
 if (!pkg_installed("DMRcate")) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
 if (!pkg_installed("bumphunter")) BiocManager::install("bumphunter", update = FALSE, ask = FALSE)
@@ -207,6 +208,28 @@ simulate_one <- function(plan_row) {
     save_cache(sim_file, sim, params)
     sim
 }
+
+benchmark_specs_file <- getBenchmarkFile("benchmark_specs.rds")
+if (!file.exists(benchmark_specs_file)) {
+    benchmark_specs <- list(
+        cpu = benchmarkme::get_cpu(),
+        ram = benchmarkme::get_ram(),
+        platform = benchmarkme::get_platform_info(),
+        rversion = R.version.string
+    )
+    saveRDS(benchmark_specs, benchmark_specs_file)
+} else {
+    benchmark_specs <- readRDS(benchmark_specs_file)
+}
+cpu <- benchmark_specs$cpu
+ram <- benchmark_specs$ram
+platform <- benchmark_specs$platform
+rversion <- benchmark_specs$rversion
+cat("CPU:", cpu$vendor, cpu$model, "(", cpu$no_of_cores, "cores )\n")
+cat("RAM:", ram, "GB\n")
+cat("OS:", platform$OS.type, "\n")
+cat("R Version:", rversion, "\n")
+cat("Using", NJOBS, "parallel jobs\n")
 ```
 
 ## Method Runners

@@ -115,6 +115,7 @@ knitr::kable(simulation_plan, caption = "Simulation parameters generated under m
 ### Install External Dependencies
 
 ```{r install_dependencies, warning=FALSE, message=FALSE, cache=FALSE}
+if (!requireNamespace("benchmarkme", quietly = TRUE)) install.packages("benchmarkme")
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 if (!requireNamespace("DMRcate", quietly = TRUE)) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
 if (!requireNamespace("dmrseq", quietly = TRUE)) BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
@@ -195,10 +196,27 @@ NJOBS <- as.integer(
 )
 doParallel::registerDoParallel(cores = NJOBS)
 
-system("lscpu | grep 'Model name:'")
-system("lsmem | grep 'Total online memory'")
+benchmark_specs_file <- getBenchmarkFile("benchmark_specs.rds")
+if (!file.exists(benchmark_specs_file)) {
+    benchmark_specs <- list(
+        cpu = benchmarkme::get_cpu(),
+        ram = benchmarkme::get_ram(),
+        platform = benchmarkme::get_platform_info(),
+        rversion = R.version.string
+    )
+    saveRDS(benchmark_specs, benchmark_specs_file)
+} else {
+    benchmark_specs <- readRDS(benchmark_specs_file)
+}
+cpu <- benchmark_specs$cpu
+ram <- benchmark_specs$ram
+platform <- benchmark_specs$platform
+rversion <- benchmark_specs$rversion
+cat("CPU:", cpu$vendor, cpu$model, "(", cpu$no_of_cores, "cores )\n")
+cat("RAM:", ram, "GB\n")
+cat("OS:", platform$OS.type, "\n")
+cat("R Version:", rversion, "\n")
 cat("Using", NJOBS, "parallel jobs\n")
-
 ```
 
 ## Method Runners
