@@ -11,7 +11,7 @@ output:
 ```{r, include=FALSE}
 knitr::opts_chunk$set(
     results = "asis",
-    cache = TRUE,
+    cache = FALSE,
     echo = TRUE,
     dev = "png",
     warning = FALSE,
@@ -102,7 +102,13 @@ simulation_plan <- data.frame(
     delta_beta_max = round(runif(nsim, 0.2, 0.5), 2),
     expected_corr = round(runif(nsim, 0.5, 0.8), 2)
 )
-
+NJOBS <- as.integer(
+    Sys.getenv(
+        "NJOBS",
+        unset = as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)))
+    )
+)
+doParallel::registerDoParallel(cores = NJOBS)
 plan_file <- getBenchmarkFile("simulation_parameters.tsv")
 data.table::fwrite(simulation_plan, plan_file, sep = "\t")
 knitr::kable(simulation_plan, caption = "Simulation parameters generated under master seed 42")
@@ -215,7 +221,8 @@ if (!file.exists(benchmark_specs_file)) {
         cpu = benchmarkme::get_cpu(),
         ram = benchmarkme::get_ram(),
         platform = benchmarkme::get_platform_info(),
-        rversion = R.version.string
+        rversion = R.version.string,
+        njobs = NJOBS
     )
     saveRDS(benchmark_specs, benchmark_specs_file)
 } else {
@@ -225,11 +232,12 @@ cpu <- benchmark_specs$cpu
 ram <- benchmark_specs$ram
 platform <- benchmark_specs$platform
 rversion <- benchmark_specs$rversion
+njobs <- benchmark_specs$njobs
 cat("CPU:", cpu$vendor, cpu$model, "(", cpu$no_of_cores, "cores )\n")
-cat("RAM:", ram, "GB\n")
+cat("RAM:", capture.output(print(ram)), "\n")
 cat("OS:", platform$OS.type, "\n")
 cat("R Version:", rversion, "\n")
-cat("Using", NJOBS, "parallel jobs\n")
+cat("Using", njobs, "parallel jobs\n")
 ```
 
 ## Method Runners
@@ -254,7 +262,7 @@ force_genome <- function(gr) {
 logit2 <- function(x) log2(pmax(pmin(x, 1 - 1e-6), 1e-6)) - log2(1 - pmax(pmin(x, 1 - 1e-6), 1e-6))
 
 prepare_array_data <- function(sim) {
-    beta_handler <- CMEnt::getBetaHandler(sim$simulated, sorted_locs = sim$beta_locs)
+    beta_handler <- CMEnt::getBetaHandler(sim$simulated, sorted_locs = sim$beta_locs, njobs = njobs)
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
     pheno <- sim$pheno[colnames(beta_mat), , drop = FALSE]
@@ -268,7 +276,8 @@ prepare_array_data <- function(sim) {
         id_col = "Sample_ID",
         array = array_type,
         sorted_locs = sim$beta_locs,
-        case_group = "case"
+        case_group = "case",
+        njobs = njobs
     )
     rownames(dmps) <- dmps$site_id
     dmps <- dmps[!is.na(dmps$pval), ]
@@ -403,8 +412,6 @@ run_bumphunter_array <- function(beta_mat, locs, pheno, params) {
     if (!requireNamespace("bumphunter", quietly = TRUE) || !requireNamespace("doParallel", quietly = TRUE)) return(GRanges())
     design <- model.matrix(~ Sample_Group, data = pheno)
     coef_col <- which(colnames(design) == "Sample_Groupcase")
-    bh_cores <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
-    doParallel::registerDoParallel(cores = bh_cores)
     on.exit({
         try(doParallel::stopImplicitCluster(), silent = TRUE)
         gc()
@@ -449,7 +456,7 @@ run_bumphunter_array <- function(beta_mat, locs, pheno, params) {
     cutoff <- cutoff / 1.2
     cat(sprintf(
         "Bumphunter: cutoff=%.4f, candidate_bumps=%d, minL=%d, maxGap=%d, cores=%d, B=%d\n",
-        cutoff, n_candidates, params$min_l, params$max_gap, bh_cores, params$B
+        cutoff, n_candidates, params$min_l, params$max_gap, njobs, params$B
     ))
 
     fit <- run_fit(cutoff = cutoff, B = params$B)
@@ -507,6 +514,7 @@ run_one_simulation <- function(plan_row) {
                 min_seeds = 2L, min_sites = 3L, ext_site_delta_beta = plan_row$delta_beta_max / 3,
                 max_lookup_dist = base_simulation$max_gap,
                 expansion_window = base_simulation$max_dmr_size,
+                njobs = njobs,
                 max_pval = 0.05, testing_mode = "parametric", entanglement = "weak",
                 genome = genome
             )),
