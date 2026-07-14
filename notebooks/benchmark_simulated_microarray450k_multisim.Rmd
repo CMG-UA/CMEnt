@@ -261,7 +261,7 @@ as_truth_gr <- function(sim) {
         start.field = "start",
         end.field = "end",
         keep.extra.columns = TRUE,
-        seqinfo = Seqinfo(genome = genome)
+        seqinfo = GenomeInfoDb::Seqinfo(genome = genome)
     ))
 }
 
@@ -351,7 +351,7 @@ run_combp <- function(dmps_gr, params) {
 }
 
 run_probelasso_champ <- function(beta_mat, pheno, params) {
-    if (!requireNamespace("callr", quietly = TRUE)) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    if (!requireNamespace("callr", quietly = TRUE)) return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome)))
     pl_dmr <- tryCatch({
         callr::r(
             function(beta_mat, sample_group, params) {
@@ -387,15 +387,18 @@ run_probelasso_champ <- function(beta_mat, pheno, params) {
         warning(sprintf("probeLasso failed: %s", e$message))
         data.frame()
     })
-    if (nrow(pl_dmr) == 0L) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    if (nrow(pl_dmr) == 0L) return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome)))
     if (!"seqnames" %in% names(pl_dmr) && "dmrChrom" %in% names(pl_dmr)) pl_dmr$seqnames <- pl_dmr$dmrChrom
     if (!"start" %in% names(pl_dmr) && "dmrStart" %in% names(pl_dmr)) pl_dmr$start <- pl_dmr$dmrStart
     if (!"end" %in% names(pl_dmr) && "dmrEnd" %in% names(pl_dmr)) pl_dmr$end <- pl_dmr$dmrEnd
-    makeGRangesFromDataFrame(pl_dmr, seqnames.field = "seqnames", start.field = "start", end.field = "end", seqinfo = Seqinfo(genome = params$genome), keep.extra.columns = TRUE)
+    makeGRangesFromDataFrame(
+        pl_dmr, seqnames.field = "seqnames", start.field = "start", end.field = "end",
+        seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome), keep.extra.columns = TRUE
+    )
 }
 
 run_dmrcate_array <- function(beta_mat, pheno, params) {
-    if (!requireNamespace("DMRcate", quietly = TRUE)) return(GRanges(seqinfo = Seqinfo(genome = params$genome)))
+    if (!requireNamespace("DMRcate", quietly = TRUE)) return(GRanges(seqinfo = GenomeInfoDb::Seqinfo(genome = params$genome)))
     design <- model.matrix(~ Sample_Group, data = pheno)
     coef_col <- which(colnames(design) == "Sample_Groupcase")
     colnames(design)[1] <- "(Intercept)"
@@ -529,21 +532,51 @@ run_one_simulation <- function(plan_row) {
                 max_pval = 0.05, testing_mode = "parametric", entanglement = "weak",
                 genome = genome
             )),
-            run = function(params) time_method(do.call(CMEnt::buildDMRs, c(list(
-                beta = dat$beta_handler, seeds = dat$seeds, pheno = dat$pheno,
-                verbose = 2, score_dmrs = FALSE, extract_motifs = FALSE, annotate_with_genes = FALSE
-            ), params[setdiff(names(params), c("delta_beta_max", "simulation_seed"))])))
+            run = function(params) {
+                time_method(
+                    do.call(
+                        CMEnt::buildDMRs, c(
+                            list(
+                                beta = dat$beta_handler, seeds = dat$seeds, pheno = dat$pheno,
+                                verbose = 2, score_dmrs = FALSE, extract_motifs = FALSE, annotate_with_genes = FALSE
+                            ),
+                            params[setdiff(names(params), c("delta_beta_max", "simulation_seed"))]
+                        )
+                    )
+                )
+            }
         ),
         `comb-p` = list(
-            params = c(common, list(seed = base_simulation$max_gap, dist = base_simulation$max_gap, region_filter_p = 0.01, region_filter_n = base_simulation$min_sites, region_sidak_p = 0.05)),
+            params = c(
+                common,
+                list(
+                    seed = base_simulation$max_gap, dist = base_simulation$max_gap, region_filter_p = 0.01,
+                    region_filter_n = base_simulation$min_sites, region_sidak_p = 0.05
+                )
+            ),
             run = function(params) time_method(run_combp(dat$dmps_gr, params))
         ),
         probeLasso = list(
-            params = c(common, list(runner = "callr_attach_champ", array_type = array_type, genome = genome, minProbes = base_simulation$min_sites, adjPvalDmr = 0.05, adjPvalProbe = 0.1, meanLassoRadius = base_simulation$max_gap, minDmrSep = base_simulation$max_gap, minDmrSize = base_simulation$min_dmr_size)),
+            params = c(
+                common,
+                list(
+                    runner = "callr_attach_champ", array_type = array_type, genome = genome,
+                    minProbes = base_simulation$min_sites, adjPvalDmr = 0.05, adjPvalProbe = 0.1,
+                    meanLassoRadius = base_simulation$max_gap,
+                    minDmrSep = base_simulation$max_gap, minDmrSize = base_simulation$min_dmr_size
+                )
+            ),
             run = function(params) time_method(run_probelasso_champ(dat$beta_mat, dat$pheno, params))
         ),
         DMRcate = list(
-            params = c(common, list(array_type = array_type, genome = genome, fdr = 0.05, C = 2, lambda = base_simulation$max_gap * 2, min.cpgs = base_simulation$min_sites, betacutoff = 0.05)),
+            params = c(
+                common,
+                list(
+                    array_type = array_type, genome = genome, fdr = 0.05,
+                    C = 2, lambda = base_simulation$max_gap * 2,
+                    min.cpgs = base_simulation$min_sites, betacutoff = 0.05
+                )
+            ),
             run = function(params) time_method(run_dmrcate_array(dat$beta_mat, dat$pheno, params))
         ),
         Bumphunter = list(
@@ -567,7 +600,9 @@ run_one_simulation <- function(plan_row) {
         spec <- method_specs[[method]]
         cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
         cached <- read_cache(cache_file, spec$params)
-        out <- if (!is.null(cached) && length(cached$value$dmrs) > 0) cached$value else {
+        out <- if (!is.null(cached) && length(cached$value$dmrs) > 0) {
+            cached$value
+        } else {
             value <- spec$run(spec$params)
             if (!is.null(value) && length(value$dmrs) > 0) {
                 save_cache(cache_file, value, spec$params)
@@ -767,7 +802,11 @@ knitr::kable(bp_truth_eval, caption = "Micro base-pair-level performance against
 metric_plot <- truth_eval_all |>
     dplyr::select(Method, simulation_id, F1_regions, F1_bp, IoU_bp) |>
     tidyr::pivot_longer(c(F1_regions, F1_bp, IoU_bp), names_to = "Metric", values_to = "Value")
-metric_plot$Metric <- factor(metric_plot$Metric, levels = c("F1_regions", "F1_bp", "IoU_bp"), labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)"))
+metric_plot$Metric <- factor(
+    metric_plot$Metric,
+    levels = c("F1_regions", "F1_bp", "IoU_bp"),
+    labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
+)
 
 ggplot(metric_plot, aes(Method, Value, colour = Method)) +
     geom_point(alpha = 0.5, position = position_jitter(width = 0.08, height = 0)) +
