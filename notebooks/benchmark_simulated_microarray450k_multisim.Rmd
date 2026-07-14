@@ -141,7 +141,7 @@ touch .combp.sh
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && command -v comb-p > .combp.sh; } || { 
     echo >&2 "comb-p or bedtools not found. Installing with conda...";
     apt-get update -y
-    apt install -y curl git
+    apt-get install -y curl git bedtools
     if ! command -v conda >/dev/null 2>&1; then
         curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
         rm -rf $HOME/miniconda
@@ -155,9 +155,9 @@ touch .combp.sh
     fi
     $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
     $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-    $MINICONDA_BIN create -n cment_microarray_exp -y python=3.7
-    $MINICONDA_BIN run -n cment_microarray_exp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
-    echo "$MINICONDA_BIN run -n cment_microarray_exp comb-p" > .combp.sh
+    $MINICONDA_BIN create -n combp -y python=3.7
+    $MINICONDA_BIN run -n combp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
+    echo "$MINICONDA_BIN run -n combp comb-p" > .combp.sh
 }
 chmod +x .combp.sh
 ```
