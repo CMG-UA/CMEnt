@@ -141,7 +141,7 @@ touch .combp.sh
 { command -v bedtools >/dev/null 2>&1; } || {
     apt-get update && apt-get install -y bedtools
 }
-{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && command -v comb-p > .combp.sh; } || { 
+{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && echo "$(command -v comb-p) \$@"> .combp.sh; } || { 
     echo >&2 "comb-p or bedtools not found. Installing with conda...";
     apt-get update && apt-get install -y curl git bedtools
     if ! command -v conda >/dev/null 2>&1; then
@@ -159,7 +159,7 @@ touch .combp.sh
     $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
     $MINICONDA_BIN create -n combp -y python=3.7
     $MINICONDA_BIN run -n combp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
-    echo "$MINICONDA_BIN run -n combp comb-p" > .combp.sh
+    echo "$MINICONDA_BIN run -n combp comb-p \$@" > .combp.sh
 }
 chmod +x .combp.sh
 ```
@@ -331,14 +331,10 @@ prepare_array_data <- function(sim) {
 }
 
 run_combp <- function(dmps_gr, params) {
-    if (Sys.which("bedtools") == "" || Sys.which("comb-p") == "") {
-        warning("comb-p or bedtools not found in PATH; returning empty set.")
-        return(GRanges())
-    }
     tmpdir <- tempdir()
     bed_file <- file.path(tmpdir, "dmps_for_combp.bed")
     bed_df <- data.frame(
-        chrom = as.character(seqnames(dmps_gr)),
+        chrom = as.character(Seqinfo::seqnames(dmps_gr)),
         start = start(dmps_gr) - 1L,
         end = end(dmps_gr),
         pval = mcols(dmps_gr)$pval
