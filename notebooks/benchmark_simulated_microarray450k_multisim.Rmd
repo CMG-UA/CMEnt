@@ -342,7 +342,7 @@ run_combp <- function(dmps_gr, params) {
     write.table(bed_df[order(bed_df$chrom, bed_df$start), ], bed_file, quote = FALSE, sep = "\t", row.names = FALSE)
     out_prefix <- file.path(tmpdir, "output.")
     cmd <- sprintf(
-        "./.combp.sh pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
+        "bash .combp.sh pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
         params$seed, params$dist, out_prefix, params$region_filter_p, params$region_filter_n, bed_file
     )
     ret <- system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE)
