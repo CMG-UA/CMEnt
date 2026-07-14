@@ -138,7 +138,7 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 
 ```{bash}
 touch .combp.sh
-{ command -v bedtools >/dev/null 2>&1' } || {
+{ command -v bedtools >/dev/null 2>&1; } || {
     apt-get update && apt-get install -y bedtools
 }
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && command -v comb-p > .combp.sh; } || { 
