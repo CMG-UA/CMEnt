@@ -138,19 +138,13 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 
 ```{bash}
 set -euo pipefail
-PYTHON_BIN="$(command -v python3 || command -v python)"
-PIP_BIN="$(command -v pip3 || command -v pip || true)"
-if [ -z "$PIP_BIN" ]; then
-    "$PYTHON_BIN" -m ensurepip --upgrade
-    PIP_BIN="$PYTHON_BIN -m pip"
-fi
-if ! command -v bedtools >/dev/null 2>&1; then
+if ! command -v python3 >/dev/null 2>&1 || ! command -v python >/dev/null 2>&1 || ! command -v bedtools >/dev/null 2>&1; then
     apt-get update
-    apt-get install -y bedtools
+    apt-get install -y python3 python3-pip bedtools
 fi
 export PATH="$HOME/.local/bin:$PATH"
 if ! command -v comb-p >/dev/null 2>&1; then
-    $PIP_BIN install --user --upgrade git+https://github.com/brentp/combined-pvalues.git
+    pip install --user --upgrade git+https://github.com/brentp/combined-pvalues.git
 fi
 comb-p --help >/dev/null
 bedtools --version >/dev/null
