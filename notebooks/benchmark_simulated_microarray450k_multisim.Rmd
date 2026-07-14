@@ -137,22 +137,29 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 **Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
 
 ```{bash}
-if ! command -v  ~/.local/bin/comb-p >/dev/null 2>&1; then
-    echo "Installing comb-p and bedtools..."
-    if ! command -v python3 >/dev/null 2>&1 || ! command -v python >/dev/null 2>&1 || ! command -v bedtools >/dev/null 2>&1; then
-        apt-get update
-        apt-get install -y python3 python3-dev python3-pip bedtools git
+touch .combp.sh
+{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && command -v comb-p > .combp.sh; } || { 
+    echo >&2 "comb-p or bedtools not found. Installing with conda...";
+    apt-get update -y
+    apt install -y curl git
+    if ! command -v conda >/dev/null 2>&1; then
+        curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
+        rm -rf $HOME/miniconda
+        bash miniconda.sh -b -p $HOME/miniconda
+        rm miniconda.sh
+        MINICONDA_BIN="$HOME/miniconda/bin/conda"
+        $MINICONDA_BIN init bash
+        export PATH="$HOME/miniconda/bin:$PATH"
+    else 
+        MINICONDA_BIN=$(command -v conda)
     fi
-    python3 -m pip install --user --break-system-packages --upgrade git+https://github.com/brentp/combined-pvalues.git
-    command -v ~/.local/bin/comb-p >/dev/null 2>&1
-fi
-```
-
-```{r expose_comb_p_env, message=FALSE, warning=FALSE}
-user_bin <- path.expand(file.path("~", ".local", "bin"))
-if (dir.exists(user_bin)) {
-    Sys.setenv(PATH = paste(user_bin, Sys.getenv("PATH"), sep = .Platform$path.sep))
+    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    $MINICONDA_BIN create -n cment_microarray_exp -y python=3.7
+    $MINICONDA_BIN run -n cment_microarray_exp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
+    echo "$MINICONDA_BIN run -n cment_microarray_exp comb-p" > .combp.sh
 }
+chmod +x .combp.sh
 ```
 
 ## Load Input Data and Simulate
@@ -337,7 +344,7 @@ run_combp <- function(dmps_gr, params) {
     write.table(bed_df[order(bed_df$chrom, bed_df$start), ], bed_file, quote = FALSE, sep = "\t", row.names = FALSE)
     out_prefix <- file.path(tmpdir, "output.")
     cmd <- sprintf(
-        "comb-p pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
+        "./.combp.sh pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
         params$seed, params$dist, out_prefix, params$region_filter_p, params$region_filter_n, bed_file
     )
     if (system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE) != 0L) return(GRanges())
