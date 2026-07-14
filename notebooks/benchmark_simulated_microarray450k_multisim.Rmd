@@ -345,13 +345,14 @@ run_combp <- function(dmps_gr, params) {
         "./.combp.sh pipeline -c 4 --seed %d --dist %d -p %s --region-filter-p %s --region-filter-n %d %s",
         params$seed, params$dist, out_prefix, params$region_filter_p, params$region_filter_n, bed_file
     )
-    if (system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE) != 0L) return(GRanges())
+    ret <- system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE)
+    if (ret != 0L) stop(sprintf("comb-p failed with exit code %d", ret))
     regions_file <- paste0(out_prefix, "regions-p.bed.gz")
-    if (!file.exists(regions_file)) return(GRanges())
+    if (!file.exists(regions_file)) stop(sprintf("comb-p output file not found: %s", regions_file))
     regions <- data.table::fread(cmd = sprintf("zcat %s", shQuote(regions_file)))
     colnames(regions) <- c("chr", "start", "end", "min_p", "n_probes", "z_p", "z_sidak_p")
     regions <- regions[regions$z_sidak_p < params$region_sidak_p & regions$n_probes >= params$region_filter_n, ]
-    if (nrow(regions) == 0L) return(GRanges())
+    if (nrow(regions) == 0L)  stop("comb-p returned no regions passing filters")
     makeGRangesFromDataFrame(regions, seqnames.field = "chr", start.field = "start", end.field = "end", keep.extra.columns = TRUE)
 }
 
