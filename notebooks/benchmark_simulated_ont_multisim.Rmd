@@ -237,7 +237,7 @@ as_truth_gr <- function(sim) {
         start.field = "start",
         end.field = "end",
         keep.extra.columns = TRUE,
-        seqinfo = GenomeInfoDB::Seqinfo(genome = base_simulation$genome)
+        seqinfo = GenomeInfoDb::Seqinfo(genome = base_simulation$genome)
     )
 }
 
