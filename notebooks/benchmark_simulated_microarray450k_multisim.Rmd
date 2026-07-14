@@ -138,10 +138,12 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 
 ```{bash}
 touch .combp.sh
+{ command -v bedtools >/dev/null 2>&1' } || {
+    apt-get update && apt-get install -y bedtools
+}
 { command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && command -v comb-p > .combp.sh; } || { 
     echo >&2 "comb-p or bedtools not found. Installing with conda...";
-    apt-get update -y
-    apt-get install -y curl git bedtools
+    apt-get update && apt-get install -y curl git bedtools
     if ! command -v conda >/dev/null 2>&1; then
         curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
         rm -rf $HOME/miniconda
