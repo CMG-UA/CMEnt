@@ -163,7 +163,12 @@ simulate_one <- function(plan_row) {
     ))
     cached <- read_cache(sim_file, params)
     if (!is.null(cached)) return(cached$value)
-    cat(sprintf("Simulating dataset %d with seed %d, delta_beta_max %.3f, expected_corr %.3f", plan_row$simulation_id, plan_row$seed, plan_row$delta_beta_max, plan_row$expected_corr))
+    cat(
+        sprintf(
+            "Simulating dataset %d with seed %d, delta_beta_max %.3f, expected_corr %.3f",
+            plan_row$simulation_id, plan_row$seed, plan_row$delta_beta_max, plan_row$expected_corr
+        )
+    )
 
     set.seed(plan_row$seed)
     sim <- CMEnt::simulateDMRs(
@@ -232,7 +237,7 @@ as_truth_gr <- function(sim) {
         start.field = "start",
         end.field = "end",
         keep.extra.columns = TRUE,
-        seqinfo = Seqinfo(genome = base_simulation$genome)
+        seqinfo = GenomeInfoDB::Seqinfo(genome = base_simulation$genome)
     )
 }
 
@@ -264,7 +269,7 @@ prepare_bsseq_data <- function(sim, plan_row) {
     list(bs = bs, pheno = pheno, seeds = seeds)
 }
 
-run_dmrcate_bsseq <- function(bs_obj, design, max_sites_per_chunk = 500000L, chunk_overlap_sites = 2000L) {
+run_dmrcate_bsseq <- function(bs_obj, design, params) {
     if (!requireNamespace("DMRcate", quietly = TRUE)) return(GRanges())
     dmrcate_design <- as.matrix(design)
     colnames(dmrcate_design) <- gsub("Sample_Group", "", colnames(dmrcate_design))
@@ -275,50 +280,37 @@ run_dmrcate_bsseq <- function(bs_obj, design, max_sites_per_chunk = 500000L, chu
     contrast_candidates <- coef_names[!(sample_cols | coef_names %in% c("Intercept", "(Intercept)"))]
     if (length(contrast_candidates) == 0L) return(GRanges())
     selected_coef <- match(ifelse("case" %in% contrast_candidates, "case", tail(contrast_candidates, 1L)), coef_names)
-    ann <- DMRcate::sequencing.annotate(bs_obj, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = max_pval)
+    ann <- DMRcate::sequencing.annotate(bs_obj, all.cov = TRUE, methdesign = dmrcate_design, coef = selected_coef, fdr = params$max_pval)
     out <- DMRcate::extractRanges(
-        DMRcate::dmrcate(ann, lambda = 1000, C = 2, min.cpgs = min_sites),
+        DMRcate::dmrcate(ann, lambda = params$lambda, C = params$C, min.cpgs = params$min_sites),
         genome = base_simulation$genome
     )
     out
-
-
 }
 
-run_dmrseq_bsseq <- function(bs_obj, max_sites_per_chunk = 500000L, chunk_overlap_sites = 2000L) {
+run_dmrseq_bsseq <- function(bs_obj, params) {
     if (!requireNamespace("dmrseq", quietly = TRUE)) return(GRanges())
-    materialize <- function(x) bsseq::BSseq(
-        M = as.matrix(bsseq::getCoverage(x, type = "M")),
-        Cov = as.matrix(bsseq::getCoverage(x, type = "Cov")),
-        gr = bsseq::granges(x),
-        pData = as.data.frame(SummarizedExperiment::colData(x)),
-        sampleNames = colnames(x)
-    )
-    bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
-    run_chunk <- function(chunk_bs, core_start_pos = NA_integer_, core_end_pos = NA_integer_) {
-        tryCatch({
-            fit <- dmrseq::dmrseq(
-                bs = chunk_bs,
-                testCovariate = "Sample_Group",
-                cutoff = 0.1,
-                minNumRegion = min_sites,
-                verbose = FALSE,
-                BPPARAM = bpparam # parallelization is handled at the chunks level, not within dmrseq
-            )
-            if (is.null(fit) || length(fit) == 0L) return(GRanges())
-            qvals <- mcols(fit)$qval
-            if (any(is.finite(qvals))) fit <- fit[is.finite(qvals) & qvals < 0.05]
-            if (length(fit) > 0L && !is.na(core_start_pos) && !is.na(core_end_pos)) {
-                mids <- floor((start(fit) + end(fit)) / 2)
-                fit <- fit[mids >= core_start_pos & mids <= core_end_pos]
-            }
-            fit
-        }, error = function(e) {
-            warning(sprintf("dmrseq failed: %s", e$message))
-            GRanges()
-        })
+    materialize <- function(x) {
+        bsseq::BSseq(
+            M = as.matrix(bsseq::getCoverage(x, type = "M")),
+            Cov = as.matrix(bsseq::getCoverage(x, type = "Cov")),
+            gr = bsseq::granges(x),
+            pData = as.data.frame(SummarizedExperiment::colData(x)),
+            sampleNames = colnames(x)
+        )
     }
-    dmrs_by_chr <- run_chunk(materialize(bs_obj))
+    bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
+    dmrs_by_chr <- dmrseq::dmrseq(
+        bs = materialize(bs_obj),
+        testCovariate = "Sample_Group",
+        cutoff = params$cutoff,
+        minNumRegion = params$min_sites,
+        verbose = FALSE,
+        BPPARAM = bpparam # parallelization is handled at the chunks level, not within dmrseq
+    )
+    if (is.null(dmrs_by_chr) || length(dmrs_by_chr) == 0L) stop("dmrseq returned no DMRs")
+    qvals <- mcols(dmrs_by_chr)$qval
+    if (any(is.finite(qvals))) dmrs_by_chr <- dmrs_by_chr[is.finite(qvals) & qvals < params$qval]
     sort(dmrs_by_chr)
 }
 
@@ -351,7 +343,10 @@ run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_l
         )
         case_se <- SummarizedExperiment::SummarizedExperiment(
             rowRanges = row_gr[chr_idx],
-            assays = list(abnormM = to_count_matrix(meth_mat[, case_idx, drop = FALSE]), abnormUM = to_count_matrix(unmeth_mat[, case_idx, drop = FALSE]))
+            assays = list(
+                abnormM = to_count_matrix(meth_mat[, case_idx, drop = FALSE]),
+                abnormUM = to_count_matrix(unmeth_mat[, case_idx, drop = FALSE])
+            )
         )
         tryCatch({
             fit <- hummingbird::hummingbirdEM(experimentInfoControl = control_se, experimentInfoCase = case_se, binSize = 40)
@@ -406,43 +401,49 @@ run_one_simulation <- function(plan_row) {
                 max_bridge_extension_gaps = max_bridge_extension_gaps,
                 max_lookup_dist = max_lookup_dist
             )),
-            run = function(params) time_method({
-                beta_handler <- CMEnt::getBetaHandler(dat$bs)
-                CMEnt::buildDMRs(
-                    beta = beta_handler,
-                    seeds = dat$seeds,
-                    pheno = dat$pheno,
-                    seeds_id_col = "site_id",
-                    sample_group_col = "Sample_Group",
-                    casecontrol_col = "casecontrol",
-                    genome = base_simulation$genome,
-                    array = "NULL",
-                    entanglement = "weak",
-                    testing_mode = testing_mode,
-                    max_bridge_seeds_gaps = max_bridge_seeds_gaps,
-                    max_bridge_extension_gaps = max_bridge_extension_gaps,
-                    min_seeds = min_seeds,
-                    min_sites = min_sites / 2,
-                    max_pval = max_pval,
-                    ext_site_delta_beta = ext_site_delta_beta,
-                    max_lookup_dist = max_lookup_dist,
-                    annotate_with_genes = FALSE,
-                    extract_motifs = FALSE,
-                    njobs = NJOBS
-                )
-            })
+            run = function(params) {
+                time_method({
+                    beta_handler <- CMEnt::getBetaHandler(dat$bs)
+                    CMEnt::buildDMRs(
+                        beta = beta_handler,
+                        seeds = dat$seeds,
+                        pheno = dat$pheno,
+                        seeds_id_col = "site_id",
+                        sample_group_col = "Sample_Group",
+                        casecontrol_col = "casecontrol",
+                        genome = base_simulation$genome,
+                        array = "NULL",
+                        entanglement = "weak",
+                        testing_mode = params$testing_mode,
+                        max_bridge_seeds_gaps = params$max_bridge_seeds_gaps,
+                        max_bridge_extension_gaps = params$max_bridge_extension_gaps,
+                        min_seeds = params$min_seeds,
+                        min_sites = params$min_sites,
+                        max_pval = params$max_pval,
+                        ext_site_delta_beta = params$ext_site_delta_beta,
+                        max_lookup_dist = params$max_lookup_dist,
+                        annotate_with_genes = FALSE,
+                        extract_motifs = FALSE,
+                        njobs = NJOBS
+                    )
+                })
+            }
         ),
         DMRcate = list(
-            params = c(common, list(min_sites = min_sites, max_pval = max_pval)),
-            run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno)))
+            params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),
+            run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
         ),
         DMRseq = list(
-            params = c(common, list(min_sites = min_sites, qval = 0.05)),
-            run = function(params) time_method(run_dmrseq_bsseq(dat$bs))
+            params = c(common, list(min_sites = min_sites, cutoff = 0.1, qval = max_pval)),
+            run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
         ),
         hummingbird = list(
             params = c(common, list(max_gap = 300L, min_sites = min_sites, min_length = 50L)),
-            run = function(params) time_method(run_hummingbird_bsseq(dat$bs, max_gap = 300L, min_sites = min_sites, min_length = 50L))
+            run = function(params) {
+                time_method(
+                    run_hummingbird_bsseq(dat$bs, max_gap = params$max_gap, min_sites = params$min_sites, min_length = params$min_length)
+                )
+            }
         )
     )
 
@@ -655,7 +656,11 @@ knitr::kable(bp_truth_eval, caption = "Micro base-pair-level performance against
 metric_plot <- truth_eval_all |>
     dplyr::select(Method, simulation_id, F1_regions, F1_bp, IoU_bp) |>
     tidyr::pivot_longer(c(F1_regions, F1_bp, IoU_bp), names_to = "Metric", values_to = "Value")
-metric_plot$Metric <- factor(metric_plot$Metric, levels = c("F1_regions", "F1_bp", "IoU_bp"), labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)"))
+metric_plot$Metric <- factor(
+    metric_plot$Metric,
+    levels = c("F1_regions", "F1_bp", "IoU_bp"),
+    labels = c("F1 (Region)", "F1 (Base-pair)", "IoU (Base-pair)")
+)
 
 ggplot(metric_plot, aes(Method, Value, colour = Method)) +
     geom_point(alpha = 0.5, position = position_jitter(width = 0.08, height = 0)) +
