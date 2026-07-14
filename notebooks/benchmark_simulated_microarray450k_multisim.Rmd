@@ -136,51 +136,30 @@ if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, upd
 
 **Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
 
-```{bash, engine.opts='-l'}
+```{bash}
 set -euo pipefail
-CONDA_HOME="${CONDA_HOME:-$HOME/miniforge3}"
-ENV_NAME="cment_microarray_exp"
-unset PYTHONPATH
-
-if ! command -v conda >/dev/null 2>&1; then
-    if [ ! -x "$CONDA_HOME/bin/conda" ]; then
-        echo "conda not found; installing Miniforge..."
-        curl -sSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o miniforge.sh
-        bash miniforge.sh -b -p "$CONDA_HOME"
-        rm miniforge.sh
-    fi
-    export PATH="$CONDA_HOME/bin:$PATH"
+PYTHON_BIN="$(command -v python3 || command -v python)"
+PIP_BIN="$(command -v pip3 || command -v pip || true)"
+if [ -z "$PIP_BIN" ]; then
+    "$PYTHON_BIN" -m ensurepip --upgrade
+    PIP_BIN="$PYTHON_BIN -m pip"
 fi
-
-source "$(conda info --base)/etc/profile.d/conda.sh"
-if ! conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-    conda create -y -n "$ENV_NAME" --override-channels -c conda-forge python=3.9
+if ! command -v bedtools >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y bedtools
 fi
-if ! conda run -n "$ENV_NAME" comb-p --help >/dev/null 2>&1 || \
-        ! conda run -n "$ENV_NAME" bedtools --version >/dev/null 2>&1; then
-    conda install -y -n "$ENV_NAME" --override-channels -c bioconda -c conda-forge combined-pvalues bedtools
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v comb-p >/dev/null 2>&1; then
+    $PIP_BIN install --user --upgrade git+https://github.com/brentp/combined-pvalues.git
 fi
-conda run -n "$ENV_NAME" comb-p --help >/dev/null
-conda run -n "$ENV_NAME" bedtools --version >/dev/null
+comb-p --help >/dev/null
+bedtools --version >/dev/null
 ```
 
 ```{r expose_comb_p_env, message=FALSE, warning=FALSE}
-conda_bin <- Sys.which("conda")
-if (conda_bin == "") {
-    conda_candidates <- path.expand(c(
-        file.path(Sys.getenv("CONDA_HOME", unset = file.path("~", "miniforge3")), "bin", "conda"),
-        file.path("~", "miniforge3", "bin", "conda"),
-        file.path("~", "miniconda", "bin", "conda"),
-        "/opt/conda/bin/conda"
-    ))
-    conda_bin <- conda_candidates[file.exists(conda_candidates)][1]
-}
-if (!is.na(conda_bin) && conda_bin != "") {
-    conda_base <- system2(conda_bin, c("info", "--base"), stdout = TRUE, env = "PYTHONPATH=")
-    combp_env_bin <- file.path(conda_base[1], "envs", "cment_microarray_exp", "bin")
-    if (dir.exists(combp_env_bin)) {
-        Sys.setenv(PATH = paste(combp_env_bin, Sys.getenv("PATH"), sep = .Platform$path.sep))
-    }
+user_bin <- path.expand(file.path("~", ".local", "bin"))
+if (dir.exists(user_bin)) {
+    Sys.setenv(PATH = paste(user_bin, Sys.getenv("PATH"), sep = .Platform$path.sep))
 }
 ```
 
