@@ -459,9 +459,13 @@ run_hummingbird_bsseq <- function(bs_obj, max_gap = 300L, min_sites = 50L, min_l
 }
 
 time_method <- function(expr) {
+    invisible(gc(reset = TRUE, verbose = FALSE))
     start <- Sys.time()
     value <- force(expr)
-    list(dmrs = value, time = Sys.time() - start)
+    elapsed <- Sys.time() - start
+    gc_stats <- gc(verbose = FALSE)
+    max_heap_mb <- if (ncol(gc_stats) >= 6L) sum(gc_stats[, 6L], na.rm = TRUE) else sum(gc_stats[, 2L], na.rm = TRUE)
+    list(dmrs = value, time = elapsed, max_r_heap_mb = max_heap_mb)
 }
 ```
 
@@ -512,33 +516,33 @@ run_one_simulation <- function(plan_row) {
                     )
                 })
             }
-        ),
-        DMRcate = list(
-            params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),
-            run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
-        ),
-        DMRseq = list(
-            params = c(common, list(
-                min_sites = min_sites,
-                cutoff = 0.05,
-                calibration_cutoffs = c(0.05, 0.025, 0.01),
-                calibration_window_sites = 50000L,
-                calibration_windows_per_chr = 2L,
-                calibration_max_perms = 1L,
-                calibration_seed = 1L,
-                max_perms = 10L,
-                qval = max_pval
-            )),
-            run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
-        ),
-        hummingbird = list(
-            params = c(common, list(max_gap = 300L, min_sites = min_sites, min_length = 50L)),
-            run = function(params) {
-                time_method(
-                    run_hummingbird_bsseq(dat$bs, max_gap = params$max_gap, min_sites = params$min_sites, min_length = params$min_length)
-                )
-            }
-        )
+        )#,
+        # DMRcate = list(
+        #     params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),
+        #     run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
+        # ),
+        # DMRseq = list(
+        #     params = c(common, list(
+        #         min_sites = min_sites,
+        #         cutoff = 0.05,
+        #         calibration_cutoffs = c(0.05, 0.025, 0.01),
+        #         calibration_window_sites = 50000L,
+        #         calibration_windows_per_chr = 2L,
+        #         calibration_max_perms = 1L,
+        #         calibration_seed = 1L,
+        #         max_perms = 10L,
+        #         qval = max_pval
+        #     )),
+        #     run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
+        # ),
+        # hummingbird = list(
+        #     params = c(common, list(max_gap = 300L, min_sites = min_sites, min_length = 50L)),
+        #     run = function(params) {
+        #         time_method(
+        #             run_hummingbird_bsseq(dat$bs, max_gap = params$max_gap, min_sites = params$min_sites, min_length = params$min_length)
+        #         )
+        #     }
+        # )
     )
 
     method_outputs <- lapply(names(method_specs), function(method) {
@@ -548,7 +552,8 @@ run_one_simulation <- function(plan_row) {
         out <- if (
             !is.null(cached) &&
                 inherits(cached$value$dmrs, "GenomicRanges") &&
-                length(cached$value$dmrs) > 0L
+                length(cached$value$dmrs) > 0L &&
+                !is.null(cached$value$max_r_heap_mb)
         ) {
             cached$value
         } else {
@@ -559,7 +564,7 @@ run_one_simulation <- function(plan_row) {
             }
             value
         }
-        list(method = method, dmrs = out$dmrs, time = out$time)
+        list(method = method, dmrs = out$dmrs, time = out$time, max_r_heap_mb = out$max_r_heap_mb)
     })
     names(method_outputs) <- names(method_specs)
 
@@ -663,7 +668,7 @@ summarise_benchmark_table <- function(stats_all, runtime_all) {
         dplyr::select(-Total_Coverage_bp) |>
         dplyr::left_join(
             runtime_all |>
-                dplyr::rename(runtime_sec = Seconds),
+                dplyr::rename(runtime_sec = Seconds, max_r_heap_mb = Max_R_Heap_MB),
             by = c("simulation_id", "Method")
         ) |>
         dplyr::rename(method = Method) |>
@@ -675,6 +680,7 @@ summarise_benchmark_table <- function(stats_all, runtime_all) {
             max_width_bp = format_mean_pm(max_width_bp, digits = 0L),
             total_coverage_kb = format_mean_pm(total_coverage_kb, digits = 1L),
             runtime_sec = format_mean_pm(runtime_sec, digits = 1L),
+            max_r_heap_mb = format_mean_pm(max_r_heap_mb, digits = 1L),
             .groups = "drop"
         )
 }
@@ -697,7 +703,12 @@ truth_eval_all <- do.call(rbind, lapply(benchmark_results, function(res) {
 
 runtime_all <- do.call(rbind, lapply(benchmark_results, function(res) {
     do.call(rbind, lapply(res$methods, function(x) {
-        data.frame(simulation_id = res$simulation_id, Method = x$method, Seconds = as.numeric(x$time, units = "secs"))
+        data.frame(
+            simulation_id = res$simulation_id,
+            Method = x$method,
+            Seconds = as.numeric(x$time, units = "secs"),
+            Max_R_Heap_MB = x$max_r_heap_mb
+        )
     }))
 }))
 ```
@@ -784,22 +795,26 @@ ggplot(seed_summary, aes(simulation_id, Seeds)) +
     labs(title = "CMEnt seed counts by simulation", x = "Simulation", y = "Seeds passing FDR threshold")
 ```
 
-### Runtime
+### Runtime and Memory
 
 ```{r}
-runtime_summary <- summarise_mean_pm(runtime_all, "Method", "Seconds", digits = 2)
-knitr::kable(runtime_summary, caption = "Runtime across simulations, mean (+/- SD)")
+runtime_summary <- summarise_mean_pm(runtime_all, "Method", c("Seconds", "Max_R_Heap_MB"), digits = 2)
+knitr::kable(runtime_summary, caption = "Runtime and maximum R heap across simulations, mean (+/- SD)")
 ```
 
 ```{r, fig.width=8, fig.height=4}
-ggplot(runtime_all, aes(Method, Seconds, colour = Method)) +
+runtime_plot <- runtime_all |>
+    tidyr::pivot_longer(c(Seconds, Max_R_Heap_MB), names_to = "Metric", values_to = "Value")
+
+ggplot(runtime_plot, aes(Method, Value, colour = Method)) +
     geom_point(alpha = 0.45, position = position_jitter(width = 0.08, height = 0)) +
     stat_summary(fun = median, geom = "point", size = 2.6, colour = "black") +
     stat_summary(fun.min = min, fun.max = max, geom = "errorbar", width = 0.25, colour = "black") +
+    facet_wrap(~ Metric, scales = "free_y") +
     scale_y_continuous(labels = scales::comma) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
-    labs(title = "Runtime across simulations", x = "", y = "Seconds")
+    labs(title = "Runtime and maximum R heap across simulations", x = "", y = "Value")
 ```
 
 ### Width Distributions
