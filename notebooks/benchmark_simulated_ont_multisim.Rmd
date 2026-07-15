@@ -516,33 +516,33 @@ run_one_simulation <- function(plan_row) {
                     )
                 })
             }
-        )#,
-        # DMRcate = list(
-        #     params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),
-        #     run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
-        # ),
-        # DMRseq = list(
-        #     params = c(common, list(
-        #         min_sites = min_sites,
-        #         cutoff = 0.05,
-        #         calibration_cutoffs = c(0.05, 0.025, 0.01),
-        #         calibration_window_sites = 50000L,
-        #         calibration_windows_per_chr = 2L,
-        #         calibration_max_perms = 1L,
-        #         calibration_seed = 1L,
-        #         max_perms = 10L,
-        #         qval = max_pval
-        #     )),
-        #     run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
-        # ),
-        # hummingbird = list(
-        #     params = c(common, list(max_gap = 300L, min_sites = min_sites, min_length = 50L)),
-        #     run = function(params) {
-        #         time_method(
-        #             run_hummingbird_bsseq(dat$bs, max_gap = params$max_gap, min_sites = params$min_sites, min_length = params$min_length)
-        #         )
-        #     }
-        # )
+        ),
+        DMRcate = list(
+            params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),
+            run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
+        ),
+        DMRseq = list(
+            params = c(common, list(
+                min_sites = min_sites,
+                cutoff = 0.05,
+                calibration_cutoffs = c(0.05, 0.025, 0.01),
+                calibration_window_sites = 50000L,
+                calibration_windows_per_chr = 2L,
+                calibration_max_perms = 1L,
+                calibration_seed = 1L,
+                max_perms = 10L,
+                qval = max_pval
+            )),
+            run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
+        ),
+        hummingbird = list(
+            params = c(common, list(max_gap = 300L, min_sites = min_sites, min_length = 50L)),
+            run = function(params) {
+                time_method(
+                    run_hummingbird_bsseq(dat$bs, max_gap = params$max_gap, min_sites = params$min_sites, min_length = params$min_length)
+                )
+            }
+        )
     )
 
     method_outputs <- lapply(names(method_specs), function(method) {
