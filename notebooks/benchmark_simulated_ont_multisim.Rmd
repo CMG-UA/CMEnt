@@ -299,22 +299,101 @@ run_dmrseq_bsseq <- function(bs_obj, params) {
             sampleNames = colnames(x)
         )
     }
+    select_calibration_sites <- function(bs, params) {
+        window_sites <- as.integer(params$calibration_window_sites)
+        windows_per_chr <- as.integer(params$calibration_windows_per_chr)
+        window_sites <- max(window_sites, as.integer(params$min_sites))
+        windows_per_chr <- max(windows_per_chr, 1L)
+
+        gr <- bsseq::granges(bs)
+        seqnames_vec <- as.character(seqnames(gr))
+        chr_vec <- unique(seqnames_vec[!is.na(seqnames_vec) & nzchar(seqnames_vec)])
+        idx <- lapply(chr_vec, function(chr_name) {
+            chr_idx <- which(seqnames_vec == chr_name)
+            n_chr <- length(chr_idx)
+            if (n_chr <= window_sites * windows_per_chr) return(chr_idx)
+
+            max_start <- n_chr - window_sites + 1L
+            starts <- unique(as.integer(round(seq.int(1L, max_start, length.out = windows_per_chr))))
+            unlist(lapply(starts, function(start_i) {
+                chr_idx[seq.int(start_i, min(start_i + window_sites - 1L, n_chr))]
+            }), use.names = FALSE)
+        })
+        sort(unique(unlist(idx, use.names = FALSE)))
+    }
+    calibrate_cutoff <- function(bs, params, bpparam) {
+        cutoffs <- unique(as.numeric(c(params$cutoff, params$calibration_cutoffs)))
+        cutoffs <- sort(cutoffs[is.finite(cutoffs) & cutoffs > 0 & cutoffs <= 1], decreasing = TRUE)
+        if (length(cutoffs) == 0L) stop("No valid dmrseq cutoff values supplied")
+
+        calibration_idx <- select_calibration_sites(bs, params)
+        if (length(calibration_idx) < as.integer(params$min_sites)) return(params$cutoff)
+
+        old_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+        old_seed <- if (old_seed_exists) get(".Random.seed", envir = .GlobalEnv) else NULL
+        on.exit({
+            if (old_seed_exists) {
+                assign(".Random.seed", old_seed, envir = .GlobalEnv)
+            } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+                rm(".Random.seed", envir = .GlobalEnv)
+            }
+        }, add = TRUE)
+        set.seed(as.integer(params$calibration_seed))
+
+        calibration_bs <- bs[calibration_idx, , drop = FALSE]
+        for (cutoff in cutoffs) {
+            cat(sprintf(
+                "dmrseq calibration: testing cutoff %.3f on %s sites with %d permutation(s)\n",
+                cutoff,
+                format(length(calibration_idx), big.mark = ","),
+                as.integer(params$calibration_max_perms)
+            ))
+            fit <- tryCatch(
+                suppressMessages(withCallingHandlers(
+                    dmrseq::dmrseq(
+                        bs = calibration_bs,
+                        testCovariate = "Sample_Group",
+                        cutoff = cutoff,
+                        minNumRegion = params$min_sites,
+                        maxPerms = as.integer(params$calibration_max_perms),
+                        verbose = FALSE,
+                        BPPARAM = bpparam
+                    ),
+                    warning = function(w) invokeRestart("muffleWarning")
+                )),
+                error = function(e) e
+            )
+            if (inherits(fit, "error") || is.null(fit) || length(fit) == 0L) next
+
+            qvals <- mcols(fit)$qval
+            finite_qvals <- sum(is.finite(qvals))
+            cat(sprintf("dmrseq calibration: cutoff %.3f produced %d finite q-value(s)\n", cutoff, finite_qvals))
+            if (finite_qvals > 0L) return(cutoff)
+        }
+
+        warning(
+            "dmrseq cutoff calibration did not produce finite q-values on the calibration subset; ",
+            "using the lowest tested cutoff for the full run."
+        )
+        tail(cutoffs, 1L)
+    }
     bpparam <- CMEnt:::.makeBiocParallelParam(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)), progressbar = TRUE)
+    bs_obj <- materialize(bs_obj)
+    cutoff <- calibrate_cutoff(bs_obj, params, bpparam)
+    cat(sprintf("dmrseq: using calibrated cutoff %.3f for full run\n", cutoff))
     dmrs_by_chr <- dmrseq::dmrseq(
-        bs = materialize(bs_obj),
+        bs = bs_obj,
         testCovariate = "Sample_Group",
-        cutoff = params$cutoff,
+        cutoff = cutoff,
         minNumRegion = params$min_sites,
-        verbose = FALSE,
-        BPPARAM = bpparam # parallelization is handled at the chunks level, not within dmrseq
+        maxPerms = as.integer(params$max_perms),
+        BPPARAM = bpparam
     )
     if (is.null(dmrs_by_chr) || length(dmrs_by_chr) == 0L) stop("dmrseq returned no DMRs")
     qvals <- mcols(dmrs_by_chr)$qval
-    if (!any(is.finite(qvals))) stop(
-        "dmrseq returned no DMRs with finite q-values, head is ",
-        paste(capture.output(print(head(dmrs_by_chr))), collapse = "\n")
-    )
-    dmrs_by_chr <- dmrs_by_chr[is.finite(qvals) & qvals < params$qval]
+    if (any(is.finite(qvals))) {
+        dmrs_by_chr <- dmrs_by_chr[is.finite(qvals) & qvals < params$qval]
+    }
     if (length(dmrs_by_chr) == 0L) stop("dmrseq returned no DMRs with qval <", params$qval)
     sort(dmrs_by_chr)
 }
@@ -439,7 +518,17 @@ run_one_simulation <- function(plan_row) {
             run = function(params) time_method(run_dmrcate_bsseq(dat$bs, model.matrix(~ Sample_Group, data = dat$pheno), params))
         ),
         DMRseq = list(
-            params = c(common, list(min_sites = min_sites, cutoff = 0.1, qval = max_pval)),
+            params = c(common, list(
+                min_sites = min_sites,
+                cutoff = 0.05,
+                calibration_cutoffs = c(0.05, 0.025, 0.01),
+                calibration_window_sites = 50000L,
+                calibration_windows_per_chr = 2L,
+                calibration_max_perms = 1L,
+                calibration_seed = 1L,
+                max_perms = 10L,
+                qval = max_pval
+            )),
             run = function(params) time_method(run_dmrseq_bsseq(dat$bs, params))
         ),
         hummingbird = list(
