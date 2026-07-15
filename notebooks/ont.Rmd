@@ -482,7 +482,7 @@ cat("BSseq object loci after reduction to seeds regions: ", reduced_bsseq_summar
 This leaves an input BSseq
 matrix with `r format(reduced_bsseq_summary$Value[reduced_bsseq_summary$Metric == "Reduced BSseq loci"], big.mark = ",")` loci.
 
-## Method 1: CMEnt
+## Running CMEnt
 
 ```{r cment}
 if (need_beta_handler) {
@@ -547,7 +547,6 @@ if (!"qval" %in% colnames(mcols(dmrs_cment))) {
 dmr_delta_col <- if ("sites_delta_beta" %in% colnames(mcols(dmrs_cment))) "sites_delta_beta" else "delta_beta"
 dmr_delta <- as.numeric(mcols(dmrs_cment)[[dmr_delta_col]])
 dmr_summary <- data.frame(
-    Contrast = paste(case_label, "minus", control_label),
     DMRs = length(dmrs_cment),
     Median_width_bp = median(width(dmrs_cment)),
     Mean_width_bp = round(mean(width(dmrs_cment)), 1),
@@ -795,16 +794,6 @@ if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
 }
 ```
 
-## CMEnt DMR Interaction Circos Visualization
-
-```{r circos, fig.width=10, fig.height=10}
-if (length(dmrs_cment) > 0L) {
-    CMEnt::plotDMRsCircos(
-        dmrs_cment,
-        genome = genome
-    )
-}
-```
 
 ## Session Info
 
