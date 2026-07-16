@@ -391,10 +391,9 @@ run_dmrseq_bsseq <- function(bs_obj, params) {
     )
     if (is.null(dmrs_by_chr) || length(dmrs_by_chr) == 0L) stop("dmrseq returned no DMRs")
     qvals <- mcols(dmrs_by_chr)$qval
-    if (any(is.finite(qvals))) {
+    if (any(is.finite(qvals) & qvals < params$qval)) {
         dmrs_by_chr <- dmrs_by_chr[is.finite(qvals) & qvals < params$qval]
     }
-    if (length(dmrs_by_chr) == 0L) stop("dmrseq returned no DMRs with qval <", params$qval)
     sort(dmrs_by_chr)
 }
 

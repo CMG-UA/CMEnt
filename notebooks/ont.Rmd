@@ -658,42 +658,64 @@ top_dmrs <- dmr_table |>
 knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overlapping CMEnt DMRs ranked by score")
 ```
 
-```{r top_dmr_genes_plot, fig.width=4, fig.height=6}
-gene_dmr_df <- if (nrow(dmr_table) > 0L) {
+```{r top_dmr_genes_plot, fig.width=9, fig.height=6}
+build_gene_delta_df <- function(context, gene_col, delta_col) {
+    if (nrow(dmr_table) == 0L) return(NULL)
     do.call(rbind, lapply(seq_len(nrow(dmr_table)), function(i) {
-        genes <- split_ids(c(dmr_table$in_promoter_of[i], dmr_table$in_gene_body_of[i]))
-        if (length(genes) == 0L) return(NULL)
+        delta_beta <- as.numeric(dmr_table[[delta_col]][i])
+        genes <- split_ids(dmr_table[[gene_col]][i])
+        if (length(genes) == 0L || !is.finite(delta_beta)) return(NULL)
         data.frame(
+            Context = context,
             Gene = genes,
-            Delta_beta = dmr_table$region_delta_beta[i],
+            Delta_beta = delta_beta,
             Score = dmr_table$score_for_ranking[i],
             stringsAsFactors = FALSE
         )
     }))
-} else {
-    NULL
 }
 
-if (!is.null(gene_dmr_df) && nrow(gene_dmr_df) > 0L) {
+gene_dmr_df <- bind_rows(
+    build_gene_delta_df("Promoter", "in_promoter_of", "delta_beta_promoter"),
+    build_gene_delta_df("Gene body", "in_gene_body_of", "delta_beta_gene_body")
+) |>
+    mutate(Context = factor(Context, levels = c("Promoter", "Gene body"))) |>
+    filter(!grepl("^(LOC|LINC)", Gene))
+
+if (nrow(gene_dmr_df) > 0L) {
     top_gene_df <- gene_dmr_df |>
-        group_by(Gene) |>
+        group_by(Context, Gene) |>
         summarise(
             DMRs = n(),
             median_delta_beta = median(Delta_beta, na.rm = TRUE),
-            score = max(Score, na.rm = TRUE),
+            score = if (all(is.na(Score))) NA_real_ else max(Score, na.rm = TRUE),
             .groups = "drop"
         ) |>
-        arrange(desc(DMRs), desc(score)) |>
-        slice_head(n = 20)
+        group_by(Context) |>
+        arrange(desc(score), desc(abs(median_delta_beta)), .by_group = TRUE) |>
+        slice_head(n = 20) |>
+        ungroup() |>
+        arrange(Context, desc(score), desc(abs(median_delta_beta))) |>
+        mutate(Gene_label = paste(Context, Gene, sep = ": "))
+    top_gene_df$Gene_label <- factor(top_gene_df$Gene_label, levels = rev(top_gene_df$Gene_label))
 
-    ggplot(top_gene_df, aes(x = reorder(Gene, score), y = median_delta_beta, fill = score)) +
+    ggplot(top_gene_df, aes(x = median_delta_beta, y = Gene_label, fill = score)) +
+        geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
         geom_col(width = 0.7) +
-        coord_flip() +
-        scale_fill_continuous(type = "viridis", option = "C") +
-        guides(fill = guide_colorbar(barwidth = 0.5, barheight = 10, title = "Score", position = "right")) +
+        facet_wrap(~Context, scales = "free_y", nrow = 1) +
+        scale_y_discrete(labels = function(x) sub("^[^:]+: ", "", x)) +
+        scale_fill_continuous(type = "viridis", option = "C", na.value = "grey70") +
+        guides(fill = guide_colorbar(barwidth = 8, barheight = 0.5, title = "Score", position = "bottom")) +
         theme_minimal(base_size = 12) +
-        theme(legend.position = "bottom") +
-        labs(title = "Genes Overlapped by Top-Scoring CMEnt DMRs", x = "", y = "Median delta beta", fill = "")
+        theme(
+            legend.position = "bottom",
+            panel.grid.major.y = element_blank()
+        ) +
+        labs(
+            x = "Median delta beta",
+            y = "",
+            fill = ""
+        )
 }
 ```
 
