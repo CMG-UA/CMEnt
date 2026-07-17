@@ -11,7 +11,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
     results = "asis",
-    cache = FALSE,
+    cache = TRUE,
     echo = TRUE,
     dev = "png",
     warning = FALSE,
@@ -560,8 +560,9 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for PanNET versus neuroendocrine islets")
 ```
 
-```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect. Positive values indicate higher methylation in PanNET samples."}
+```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect for the top 1,000 CMEnt-scoring DMRs. Positive values indicate higher methylation in PanNET samples; point size shows within-plot CMEnt score percentile."}
 if (length(dmrs_cment) > 0L) {
+    max_effect_plot_dmrs <- 1000L
     dmr_effect_df <- data.frame(
         Width = width(dmrs_cment),
         Delta_beta = dmr_delta,
@@ -570,11 +571,58 @@ if (length(dmrs_cment) > 0L) {
         filter(is.finite(Delta_beta), is.finite(Width), Width > 0) |>
         mutate(Direction = factor(ifelse(Delta_beta > 0, "Hyper in PNET", "Hypo in PNET")))
 
-    ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction, size = Score)) +
+    finite_score <- is.finite(dmr_effect_df$Score)
+    if (any(finite_score)) {
+        dmr_effect_df <- dmr_effect_df |>
+            filter(is.finite(Score)) |>
+            arrange(desc(Score)) |>
+            slice_head(n = max_effect_plot_dmrs)
+        finite_score <- is.finite(dmr_effect_df$Score)
+    }
+    dmr_effect_df$Score_percentile <- NA_real_
+    if (sum(finite_score) > 1L) {
+        dmr_effect_df$Score_percentile[finite_score] <- (
+            rank(dmr_effect_df$Score[finite_score], ties.method = "average") - 1
+        ) / (sum(finite_score) - 1)
+        dmr_effect_df <- dmr_effect_df |> arrange(Score_percentile)
+    } else if (sum(finite_score) == 1L) {
+        dmr_effect_df$Score_percentile[finite_score] <- 1
+    }
+    effect_stats <- dmr_effect_df |>
+        group_by(Direction) |>
+        summarise(
+            n = n(),
+            rho = if (n() > 2L) {
+                suppressWarnings(stats::cor(Delta_beta, log10(Width), method = "spearman"))
+            } else {
+                NA_real_
+            },
+            .groups = "drop"
+        ) |>
+        arrange(Direction) |>
+        mutate(
+            label = paste0(
+                Direction,
+                ": n=", comma(n),
+                ", rho=", ifelse(is.finite(rho), sprintf("%.2f", rho), "NA")
+            )
+        )
+    effect_stats_label <- paste(
+        c("Spearman rho(delta beta, log10 width)", effect_stats$label),
+        collapse = "\n"
+    )
+
+    p <- ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
         geom_vline(xintercept = 0, linewidth = 0.2, color = "grey70") +
-        geom_point(alpha = 0.65) +
+        stat_density_2d(
+            aes(group = Direction),
+            contour_var = "ndensity",
+            bins = 5,
+            linewidth = 0.35,
+            alpha = 0.45,
+            show.legend = FALSE
+        ) +
         scale_y_log10(labels = comma) +
-        scale_size_continuous(range = c(0.8, 3)) +
         scale_color_manual(values = c("Hyper in PNET" = "#B8405E", "Hypo in PNET" = "#247BA0")) +
         theme_minimal() +
         theme(legend.position = "bottom") +
@@ -582,9 +630,196 @@ if (length(dmrs_cment) > 0L) {
             title = "DMR Effect Size and Width",
             x = paste0("Delta beta (", case_label, " - ", control_label, ")"),
             y = "DMR width (bp, log scale)",
-            color = "",
-            size = "Score"
+            color = ""
+        ) +
+        annotate(
+            "label",
+            x = -Inf,
+            y = Inf,
+            label = effect_stats_label,
+            hjust = -0.02,
+            vjust = 1.05,
+            size = 3,
+            label.r = grid::unit(0.08, "lines"),
+            fill = "white",
+            alpha = 0.9
         )
+    if (any(finite_score)) {
+        p +
+            geom_point(aes(size = Score_percentile), alpha = 0.6) +
+            scale_size_continuous(
+                range = c(0.5, 4),
+                limits = c(0, 1),
+                breaks = c(0, 0.5, 1),
+                labels = percent_format(accuracy = 1),
+                name = "Score percentile"
+            )
+    } else {
+        p + geom_point(alpha = 0.65, size = 1.5)
+    }
+}
+```
+
+```{r chromosome_arm_delta_plot, fig.width=4, fig.height=8, out.width="35%", fig.align="center", fig.cap="Chromosome-arm presence of hypermethylated and hypomethylated DMRs. Upper triangles show hypermethylated DMR counts per arm; lower triangles show hypomethylated DMR counts per arm."}
+if (length(dmrs_cment) > 0L && requireNamespace("ggnewscale", quietly = TRUE)) {
+    get_chromosome_arms <- function(genome) {
+        if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+            return(NULL)
+        }
+        for (table_name in c("cytoBandIdeo", "cytoBand")) {
+            cytoband <- suppressWarnings(tryCatch({
+                session <- rtracklayer::browserSession("UCSC")
+                genome(session) <- genome
+                query <- rtracklayer::ucscTableQuery(
+                    session,
+                    track = table_name,
+                    table = table_name
+                )
+                rtracklayer::getTable(query)
+            }, error = function(e) NULL))
+            if (!is.null(cytoband) && all(c("chrom", "chromStart", "chromEnd", "name") %in% colnames(cytoband))) {
+                return(cytoband |>
+                    transmute(
+                        Chr = sub("^chr", "", chrom),
+                        Arm = substr(name, 1L, 1L),
+                        Start = chromStart + 1L,
+                        End = chromEnd
+                    ) |>
+                    filter(Arm %in% c("p", "q")))
+            }
+        }
+        NULL
+    }
+
+    arm_ranges <- get_chromosome_arms(genome[1])
+    if (!is.null(arm_ranges) && nrow(arm_ranges) > 0L) {
+        chr_levels <- as.character(1:22)
+        dmr_position_df <- data.frame(
+            Chr = sub("^chr", "", as.character(seqnames(dmrs_cment))),
+            Midpoint = (start(dmrs_cment) + end(dmrs_cment)) / 2,
+            Delta_beta = dmr_delta
+        ) |>
+            filter(Chr %in% chr_levels, is.finite(Midpoint), is.finite(Delta_beta))
+        dmr_arm_df <- merge(dmr_position_df, arm_ranges, by = "Chr") |>
+            filter(Midpoint >= Start, Midpoint <= End) |>
+            select(Chr, Arm, Delta_beta)
+
+        arm_summary <- expand.grid(
+            Chr = chr_levels,
+            Arm = c("p", "q"),
+            stringsAsFactors = FALSE
+        ) |>
+            left_join(
+                dmr_arm_df |>
+                    group_by(Chr, Arm) |>
+                    summarise(
+                        Hyper = sum(Delta_beta > 0, na.rm = TRUE),
+                        Hypo = sum(Delta_beta < 0, na.rm = TRUE),
+                        .groups = "drop"
+                    ),
+                by = c("Chr", "Arm")
+            ) |>
+            mutate(
+                Hyper = ifelse(is.na(Hyper), 0L, Hyper),
+                Hypo = ifelse(is.na(Hypo), 0L, Hypo),
+                x = match(Arm, c("p", "q")),
+                y = match(Chr, rev(chr_levels)),
+                Tile = paste(Chr, Arm, sep = "_")
+            )
+
+        make_arm_triangles <- function(df, value_col, triangle) {
+            do.call(rbind, lapply(seq_len(nrow(df)), function(i) {
+                x <- df$x[i]
+                y <- df$y[i]
+                coords <- if (identical(triangle, "upper")) {
+                    data.frame(
+                        x = c(x - 0.5, x - 0.5, x + 0.5),
+                        y = c(y - 0.5, y + 0.5, y + 0.5)
+                    )
+                } else {
+                    data.frame(
+                        x = c(x - 0.5, x + 0.5, x + 0.5),
+                        y = c(y - 0.5, y - 0.5, y + 0.5)
+                    )
+                }
+                coords$Tile <- df$Tile[i]
+                coords$Value <- df[[value_col]][i]
+                coords
+            }))
+        }
+
+        hyper_triangles <- make_arm_triangles(arm_summary, "Hyper", "upper")
+        hypo_triangles <- make_arm_triangles(arm_summary, "Hypo", "lower")
+        max_hyper <- max(arm_summary$Hyper, na.rm = TRUE)
+        max_hypo <- max(arm_summary$Hypo, na.rm = TRUE)
+        if (!is.finite(max_hyper) || max_hyper <= 0) max_hyper <- 1
+        if (!is.finite(max_hypo) || max_hypo <= 0) max_hypo <- 1
+
+        ggplot() +
+            geom_polygon(
+                data = hyper_triangles,
+                aes(x = x, y = y, group = Tile, fill = Value),
+                color = "grey85",
+                linewidth = 0.2
+            ) +
+            scale_fill_gradient(
+                low = "white",
+                high = "#8B0000",
+                limits = c(0, max_hyper),
+                name = "Hyper",
+                guide = guide_colorbar(
+                    label = FALSE,
+                    ticks = FALSE,
+                    barwidth = 1,
+                    barheight = 3,
+                    position = "right",
+                    direction = "vertical"
+                )
+            ) +
+            ggnewscale::new_scale_fill() +
+            geom_polygon(
+                data = hypo_triangles,
+                aes(x = x, y = y, group = Tile, fill = Value),
+                color = "grey85",
+                linewidth = 0.2
+            ) +
+            scale_fill_gradient(
+                low = "white",
+                high = "#08306B",
+                limits = c(0, max_hypo),
+                name = "Hypo",
+                guide = guide_colorbar(
+                    label = FALSE,
+                    ticks = FALSE,
+                    barwidth = 1,
+                    barheight = 3,
+                    position = "right",
+                    direction = "vertical"
+                )
+            ) +
+            scale_x_continuous(
+                breaks = c(1, 2),
+                labels = c("p", "q"),
+                expand = expansion(add = 0.02)
+            ) +
+            scale_y_continuous(
+                breaks = seq_along(rev(chr_levels)),
+                labels = rev(chr_levels),
+                expand = expansion(add = 0.02)
+            ) +
+            coord_fixed(clip = "off") +
+            theme_minimal(base_size = 11) +
+            theme(
+                panel.grid = element_blank(),
+                axis.ticks = element_blank(),
+                legend.position = "bottom",
+                legend.box = "vertical"
+            ) +
+            labs(
+                x = "Chromosome arm",
+                y = "Chromosome"
+            )
+    }
 }
 ```
 
