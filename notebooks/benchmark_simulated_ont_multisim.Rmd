@@ -629,11 +629,13 @@ evaluate_against_truth <- function(pred, truth) {
     )
 }
 
-format_mean_pm <- function(x, digits = 2L) {
+format_mean_pm <- function(x, digits = 2L, suffix = "") {
     x <- x[is.finite(x)]
     if (length(x) == 0L) return(NA_character_)
     sd_x <- if (length(x) > 1L) stats::sd(x) else 0
-    sprintf(paste0("%.", digits, "f (+/- %.", digits, "f)"), mean(x), sd_x)
+    fmt <- paste0("%.", digits, "f")
+    values <- sprintf(fmt, c(mean(x), sd_x))
+    paste0(values[1L], suffix, " (+/- ", values[2L], suffix, ")")
 }
 
 summarise_mean_pm <- function(df, group_cols, value_cols, digits = 2L) {
@@ -671,6 +673,16 @@ summarise_benchmark_table <- function(stats_all, runtime_all) {
             by = c("simulation_id", "Method")
         ) |>
         dplyr::rename(method = Method) |>
+        dplyr::mutate(
+            relative_runtime_pct = {
+                cment_mean_runtime <- mean(runtime_sec[method == "CMEnt" & is.finite(runtime_sec)])
+                if (is.finite(cment_mean_runtime) && cment_mean_runtime > 0) {
+                    runtime_sec / cment_mean_runtime * 100
+                } else {
+                    NA_real_
+                }
+            }
+        ) |>
         dplyr::group_by(method) |>
         dplyr::summarise(
             dmrs_number = format_mean_pm(dmrs_number, digits = 0L),
@@ -679,6 +691,7 @@ summarise_benchmark_table <- function(stats_all, runtime_all) {
             max_width_bp = format_mean_pm(max_width_bp, digits = 0L),
             total_coverage_kb = format_mean_pm(total_coverage_kb, digits = 1L),
             runtime_sec = format_mean_pm(runtime_sec, digits = 1L),
+            relative_runtime_pct = format_mean_pm(relative_runtime_pct, digits = 1L, suffix = "%"),
             max_r_heap_mb = format_mean_pm(max_r_heap_mb, digits = 1L),
             .groups = "drop"
         )

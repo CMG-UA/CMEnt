@@ -83,3 +83,4 @@ notebooks/cached_results/simulated_ont_multisim/ont_bsseq_augmented.rds
 notebooks/cached_results/simulated_ont_multisim/sim*/simulation.rds
 notebooks/cached_results/simulated_ont_multisim/sim*/seeds*.tsv.gz
 notebooks/cached_results/simulated_ont/seeds*.tsv.gz
+notebooks/.combp.sh
