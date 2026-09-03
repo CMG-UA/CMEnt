@@ -139,7 +139,7 @@
             seqnames = region_df$chr,
             ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
         )
-        region_gr <- intersect(region_gr, cytoband_gr, ignore.strand = TRUE)
+        region_gr <- GenomicRanges::intersect(region_gr, cytoband_gr, ignore.strand = TRUE)
         if (length(region_gr) == 0) {
             return(NULL)
         }
@@ -479,7 +479,7 @@
         nrow(components) > 0 &&
         is.data.frame(interactions) &&
         nrow(interactions) > 0
-    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(mcols(dmrs))) {
+    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs <- extractDMRMotifs(
             dmrs,
@@ -573,7 +573,7 @@
             warning("The following sample groups are missing from group_colors and will be assigned default colors: ", paste(missing_groups, collapse = ", "))
             new_colors <- colorspace::qualitative_hcl(length(missing_groups), palette = "Pastel 1")
             names(new_colors) <- missing_groups
-            group_colors <<- c(group_colors, new_colors)
+            group_colors <- c(group_colors, new_colors)
         }
     }
     group_colors[groups]
@@ -1713,7 +1713,7 @@ plotDMRsCircos <- function(
         nrow(components) > 0 &&
         is.data.frame(interactions) &&
         nrow(interactions) > 0
-    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(mcols(dmrs_for_motif_prep))) {
+    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(S4Vectors::mcols(dmrs_for_motif_prep))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs_for_motif_prep <- extractDMRMotifs(
             dmrs_for_motif_prep,
@@ -2463,7 +2463,7 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    dmrs_sites <- as.character(mcols(dmrs)$sites)
+    dmrs_sites <- as.character(S4Vectors::mcols(dmrs)$sites)
     dmrs_sites <- dmrs_sites[!is.na(dmrs_sites)]
     dmrs_sites_list <- base::strsplit(dmrs_sites, split = ",", fixed = TRUE)
     dmrs_sites_inds <- trimws(unique(unlist(dmrs_sites_list, use.names = FALSE)))

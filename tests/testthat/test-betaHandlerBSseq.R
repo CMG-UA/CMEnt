@@ -36,7 +36,7 @@ test_that("BetaHandler can extract row names from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -79,7 +79,7 @@ test_that("BetaHandler can extract beta values from BSseq object", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
@@ -104,7 +104,7 @@ test_that("BetaHandler returns NA for zero-coverage BSseq beta values", {
         seqnames = rep("chr1", 2),
         ranges = IRanges(start = c(1000L, 1100L), width = 1)
     )
-    names(gr) <- paste(seqnames(gr), start(gr), sep = ":")
+    names(gr) <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     bsseq_obj <- BSseq(
         M = met,
         Cov = cov,
@@ -128,7 +128,7 @@ test_that("BetaHandler can subset beta values from BSseq object by row names", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     bsseq_obj <- bsseq::BSseq(
         M = met, Cov = cov, gr = gr,
@@ -306,7 +306,7 @@ test_that("BetaHandler allows missing sites from BSseq when allow_missing=TRUE",
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 100, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -331,7 +331,7 @@ test_that("BetaHandler subset materializes compact in-memory BSseq handler", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
@@ -373,7 +373,7 @@ test_that("BetaHandler subset preserves compact HDF5-backed BSseq views", {
         seqnames = rep("chr1", n_loci),
         ranges = IRanges(start = seq(1000, by = 50, length.out = n_loci), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(
@@ -520,7 +520,7 @@ test_that("HDF5-backed BSseq chromosome tasks carry compact local state", {
         seqnames = rep(c("chr1", "chr2"), each = n_loci / 2L),
         ranges = IRanges(start = rep(seq(1000, by = 50, length.out = n_loci / 2L), 2L), width = 1)
     )
-    site_names <- paste(seqnames(gr), start(gr), sep = ":")
+    site_names <- paste(GenomeInfoDb::seqnames(gr), IRanges::start(gr), sep = ":")
     names(gr) <- site_names
     sample_names <- paste0("Sample", seq_len(n_samples))
     bsseq_obj <- BSseq(

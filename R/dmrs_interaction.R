@@ -147,7 +147,9 @@ comparePWMToJaspar <- function(pwm_queries) {
         ntries <- 3
         db <- NULL
         for (i in seq_len(ntries)) {
-            db <- try(getExportedValue(jaspar_pkg, jaspar_pkg)()@db, silent = TRUE)
+            constructor <- getExportedValue(jaspar_pkg, jaspar_pkg)
+            db_accessor <- getExportedValue(jaspar_pkg, "db")
+            db <- try(db_accessor(constructor()), silent = TRUE)
             if (!inherits(db, "try-error")) {
                 break
             }
@@ -166,7 +168,7 @@ comparePWMToJaspar <- function(pwm_queries) {
         .saveBiocFileCacheRDS(vertebrate_pwms, bfc, cache_key)
         jaspar_pwms <- vertebrate_pwms
     }
-    jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
+    jaspar_pwm_mats <- lapply(jaspar_pwms, TFBSTools::Matrix)
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
     revcomp_queries <- lapply(pwm_queries, function(pwm) {
         pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(ncol(pwm))), drop = FALSE]
@@ -181,7 +183,7 @@ comparePWMToJaspar <- function(pwm_queries) {
         .motifCorr(jaspar_pwm_mats, query)
     }, numeric(n_subject))
     similarities <- pmax(similarities, revcomp_similarities)
-    jaspar_names <- vapply(jaspar_pwms, function(x) x@name, character(1))
+    jaspar_names <- vapply(jaspar_pwms, TFBSTools::name, character(1))
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
     if (length(found) == 0) {
@@ -409,7 +411,7 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = motif_site_flank_size, dflank_size = motif_site_flank_size + 1
     )
-    dmrs_seeds <- base::strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
+    dmrs_seeds <- base::strsplit(as.character(S4Vectors::mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
     dmrs_seeds <- lapply(dmrs_seeds, function(x) x[nzchar(x)])
     dmr_seed_indices <- .matchListToReference(
         dmrs_seeds,
@@ -477,8 +479,8 @@ extractDMRMotifs <- function(
         pwms[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
         consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
-    mcols(dmrs)$pwm <- pwms
-    mcols(dmrs)$consensus_seq <- consensus_seq
+    S4Vectors::mcols(dmrs)$pwm <- pwms
+    S4Vectors::mcols(dmrs)$consensus_seq <- consensus_seq
     if (input_is_df) {
         dmrs <- .convertToDataFrame(dmrs)
     }
@@ -488,7 +490,7 @@ extractDMRMotifs <- function(
 
 .extractMotifsSimilarity <- function(dmrs, motif_site_flank_size = 5) {
     if (inherits(dmrs, "GRanges")) {
-        pwms <- mcols(dmrs)$pwm
+        pwms <- S4Vectors::mcols(dmrs)$pwm
     } else {
         pwms <- dmrs[, "pwm"]
     }
@@ -601,7 +603,7 @@ computeDMRsInteraction <- function(
             context = "computeDMRsInteraction()"
         )
     }
-    mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
+    S4Vectors::mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
     if (length(dmrs) == 0) {
         .log_info("No DMRs provided for interaction analysis.", level = 2)
         return(list(
@@ -610,7 +612,7 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
-    if (!"pwm" %in% colnames(mcols(dmrs))) {
+    if (!"pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         .assertDependencyRequirements(
             requirements = .motifDependencyRequirements(
@@ -663,11 +665,11 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
-    has_score <- inherits(dmrs, "GRanges") && "score" %in% colnames(mcols(dmrs))
+    has_score <- methods::is(dmrs, "GRanges") && "score" %in% colnames(S4Vectors::mcols(dmrs))
     if (any(mask)) {
         if (has_score) {
             rowcol_df <- which(mask, arr.ind = TRUE)
-            scores <- mcols(dmrs)$score
+            scores <- S4Vectors::mcols(dmrs)$score
             keep <- scores[rowcol_df[, 1]] >= scores[rowcol_df[, 2]]
             rowcol_df <- rowcol_df[keep, , drop = FALSE]
             oriented_mask <- matrix(FALSE, nrow = nrow(mask), ncol = ncol(mask))
@@ -717,7 +719,7 @@ computeDMRsInteraction <- function(
             })
             # Find the average PWM for each component
             components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
-                pwms <- mcols(dmrs)[idxs, "pwm"]
+                pwms <- S4Vectors::mcols(dmrs)[idxs, "pwm"]
                 mat <- Reduce("+", pwms) / length(pwms)
                 mat / colSums(mat)
             })
@@ -755,7 +757,7 @@ computeDMRsInteraction <- function(
                 component_ids_by_dmr[[idx]] <- c(component_ids_by_dmr[[idx]], component_id)
             }
         }
-        mcols(dmrs)$component_ids <- vapply(component_ids_by_dmr, function(ids) {
+        S4Vectors::mcols(dmrs)$component_ids <- vapply(component_ids_by_dmr, function(ids) {
             ids <- unique(ids)
             if (length(ids) == 0) {
                 NA_character_

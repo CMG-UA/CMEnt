@@ -96,7 +96,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     on.exit(unlink(normalized_bed_file), add = TRUE)
     fallback_beta_file <- NULL
     if (!tabix_available) {
-        .log_warn("tabix/bgzip not found in PATH. Using normalized beta TSV fallback for custom BED input.")
+        .log_warn("tabix/bgzip/sort tools not found in PATH. Using normalized beta TSV fallback for custom BED input.")
         fallback_beta_file <- .getDerivedOutputPath(output_prefix, ".input_beta.tsv")
         if (is.null(fallback_beta_file)) {
             fallback_beta_file <- file.path(cache_dir, paste0("bed_beta_", hash, ".tsv"))

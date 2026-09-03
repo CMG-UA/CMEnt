@@ -180,10 +180,11 @@
     current_dmrs <- integer(0)
     current_rows <- integer(0)
 
-    flush_current <- function() {
+    flush_current <- function(chunks, current_dmrs) {
         if (length(current_dmrs) > 0L) {
-            chunks[[length(chunks) + 1L]] <<- current_dmrs
+            chunks[[length(chunks) + 1L]] <- current_dmrs
         }
+        chunks
     }
 
     for (i in seq_len(n_dmrs)) {
@@ -197,7 +198,7 @@
 
         new_rows <- rows_i[!(rows_i %in% current_rows)]
         if (length(current_rows) + length(new_rows) > max_unique_rows) {
-            flush_current()
+            chunks <- flush_current(chunks, current_dmrs)
             current_dmrs <- i
             current_rows <- rows_i
         } else {
@@ -207,7 +208,7 @@
             }
         }
     }
-    flush_current()
+    chunks <- flush_current(chunks, current_dmrs)
     chunks
 }
 
@@ -1000,7 +1001,7 @@ scoreDMRs <- function(
     nfold <- getOption("CMEnt.scoring_nfold", 5)
     folds <- .buildStratifiedFolds(groups, nfold = nfold)
     fold_plan <- .prepareCrossPredictionFolds(groups, folds = folds, nfold = nfold)
-    if (! "sites" %in% colnames(mcols(dmrs))) {
+    if (! "sites" %in% colnames(S4Vectors::mcols(dmrs))) {
         .log_step("Inferring DMR sites from genomic overlaps", level = 3)
         beta_locs <- .convertSitesToGPos(beta_handler$getBetaLocs(), genome = genome)
         beta_site_ids <- names(beta_locs)
@@ -1014,10 +1015,10 @@ scoreDMRs <- function(
                 character(1)
             )
         }
-        mcols(dmrs)$sites <- sites
+        S4Vectors::mcols(dmrs)$sites <- sites
         .log_success("DMR sites inferred from genomic overlaps", level = 3)
     }
-    dmr_sites <- base::strsplit(as.character(mcols(dmrs)$sites), split = ",", fixed = TRUE)
+    dmr_sites <- base::strsplit(as.character(S4Vectors::mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
     required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
     if (is.null(.dmr_beta)) {
@@ -1146,8 +1147,8 @@ scoreDMRs <- function(
     cv_metrics <- do.call(rbind, cv_metrics_chunks)
 
     .log_success("Cross-validated classification scores computed", level = 3)
-    mcols(dmrs)$score <- as.numeric(cv_metrics[, "score"])
-    mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics[, "cv_accuracy"])
+    S4Vectors::mcols(dmrs)$score <- as.numeric(cv_metrics[, "score"])
+    S4Vectors::mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics[, "cv_accuracy"])
     .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 3)
 
     dmrs <- .assignDMRBlocksFromScores(
@@ -1163,7 +1164,7 @@ scoreDMRs <- function(
     )
     .log_success("DMRs assigned to blocks", level = 3)
 
-    dmrs <- dmrs[order(mcols(dmrs)$score, decreasing = TRUE)]
+    dmrs <- dmrs[order(S4Vectors::mcols(dmrs)$score, decreasing = TRUE)]
     if (df_provided) {
         dmrs <- .convertToDataFrame(dmrs)
     }

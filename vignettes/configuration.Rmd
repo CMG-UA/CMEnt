@@ -20,11 +20,22 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Overview
+## Introduction
 
-This vignette provides a comprehensive guide to the configuration available in CMEnt. Understanding these parameters will help you optimize the package for your specific analysis needs.
+This vignette describes the main configuration parameters available in CMEnt.
+These parameters control input handling, region expansion, statistical testing,
+annotation, scoring, and performance.
 
-# Function Parameters
+## Installation
+
+```{r install, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CMEnt")
+```
+
+## Function Parameters
 
 ## Core Input Parameters
 
@@ -464,7 +475,7 @@ options("CMEnt.make_debug_dir" = TRUE)
 options("CMEnt.scoring_nfold" = 3)
 ```
 
-# Configuration Examples
+## Configuration Examples
 
 ## Example 1: High-Confidence DMRs with Strict Filtering
 
@@ -521,7 +532,7 @@ dmrs <- buildDMRs(
 )
 ```
 
-# Best Practices
+## Best Practices
 
 1. **Start with default parameters** and adjust based on your specific needs.
 
@@ -533,13 +544,13 @@ dmrs <- buildDMRs(
 
 5. **Use empirical p-values** for small sample sizes (<10 per group) or when normality assumptions are questionable.
 
-8. **Use parallel processing** (`njobs > 1`) for faster computation, but be mindful of memory requirements.
+6. **Use parallel processing** (`njobs > 1`) for faster computation, but be mindful of memory requirements.
 
-9. **Save intermediate results** using `output_prefix` for large analyses.
+7. **Save intermediate results** using `output_prefix` for large analyses.
 
-10. **Document your configuration** by saving parameter settings for reproducibility.
+8. **Document your configuration** by saving parameter settings for reproducibility.
 
-# Troubleshooting
+## Troubleshooting
 
 ## Issue: Out of Memory Errors
 
@@ -575,7 +586,7 @@ dmrs <- buildDMRs(
 - Enable caching options
 - Consider using tabix-indexed files
 
-# Session Info
+## Session Info
 
 ```{r sessionInfo}
 sessionInfo()

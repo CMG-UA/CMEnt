@@ -45,9 +45,6 @@
 #' @keywords internal
 "_PACKAGE"
 
-#' @import GenomicRanges
-#' @import IRanges
-#' @import methods
 #' @importFrom stats aggregate as.formula ave p.adjust na.omit plogis predict pt qlogis setNames
 #' @importFrom utils capture.output getFromNamespace head read.csv read.table tail write.table
 #' @importFrom data.table fread
@@ -60,7 +57,7 @@ if (getRversion() >= "2.15.1") {
             "SampleIndex", "Strand", "cases_beta", "cases_beta_sd", "chr", "controls_beta",
             "controls_beta_sd", "dmr_id", "end_bp", "end_score",
             "hover_text", "id", "label", "label_x", "label_y",
-            "line_ymax", "line_ymin", "midpoint", "position",
+            "line_ymax", "line_ymin", "midpoint", "position", "score",
             "rchr", "rend", "right_bp", "rstart", "score_raw",
             "score_smoothed", "start_bp", "start_score", "target_x",
             "target_y", "x", "xend", "xmax", "xmin", "y", "yend",

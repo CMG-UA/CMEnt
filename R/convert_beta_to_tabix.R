@@ -1,5 +1,9 @@
 .tabixToolsAvailable <- function() {
-    all(nzchar(Sys.which(c("tabix", "bgzip"))))
+    required_tools <- c("tabix", "bgzip")
+    if (!identical(.Platform$OS.type, "windows")) {
+        required_tools <- c(required_tools, "sort")
+    }
+    all(nzchar(Sys.which(required_tools)))
 }
 
 #' Convert Beta File to Tabix-Indexed Format
@@ -27,7 +31,7 @@
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
-#'   \item Checks if tabix and bgzip tools are available in the system PATH
+#'   \item Checks if tabix, bgzip, and required sorting tools are available in the system PATH
 #'   \item Processes the beta file in chunks (getOption("CMEnt.chunk_size", 1000000) rows at a time) to minimize memory usage
 #'   \item Converts beta values to BED format with genomic coordinates
 #'   \item Sorts, compresses (bgzip), and indexes (tabix) the file
@@ -53,7 +57,7 @@ convertBetaToTabix <- function(beta_file,
                                .bed_file = NULL,
                                output_prefix = NULL) {
     if (!.tabixToolsAvailable()) {
-        .log_warn("tabix/bgzip not found in PATH. Skipping tabix conversion.")
+        .log_warn("tabix/bgzip/sort tools not found in PATH. Skipping tabix conversion.")
         return(NULL)
     }
 

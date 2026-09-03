@@ -43,9 +43,9 @@ is_bsseq <- function(obj) {
     if (length(gr) < 2L) {
         return(seq_along(gr))
     }
-    chr <- as.character(seqnames(gr))
+    chr <- as.character(GenomeInfoDb::seqnames(gr))
     chr_rank <- match(chr, GenomeInfoDb::seqlevels(gr))
-    order(chr_rank, start(gr), seq_along(gr), na.last = TRUE)
+    order(chr_rank, GenomicRanges::start(gr), seq_along(gr), na.last = TRUE)
 }
 
 .bsseqIsInMemory <- function(obj) {
@@ -69,7 +69,7 @@ is_bsseq <- function(obj) {
         return(obj)
     }
     if (all(GenomicRanges::width(rr) == 1L)) {
-        SummarizedExperiment::rowRanges(obj) <- as(rr, "GPos")
+        SummarizedExperiment::rowRanges(obj) <- methods::as(rr, "GPos")
     }
     obj
 }

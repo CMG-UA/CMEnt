@@ -1162,8 +1162,8 @@ minmaxscale <- function(x) {
             beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size
         )
     }
-    pwm <- mcols(dmr)$pwm[[1]]
-    consensus_seq <- mcols(dmr)$consensus_seq[[1]]
+    pwm <- S4Vectors::mcols(dmr)$pwm[[1]]
+    consensus_seq <- S4Vectors::mcols(dmr)$consensus_seq[[1]]
 
     if (is.null(pwm) || !is.matrix(pwm)) {
         return(NULL)
@@ -1311,7 +1311,7 @@ plotDMRs <- function(dmrs,
     dmrs <- .convertToGRanges(dmrs, genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(mcols(dmrs)[[strex::match_arg(score_by)]]))
+        score <- minmaxscale(abs(S4Vectors::mcols(dmrs)[[strex::match_arg(score_by)]]))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -1449,7 +1449,7 @@ plotDMR <- function(dmrs,
                 sorted_locs = beta_locs,
                 genome = genome
             )
-        } else if (!"BetaHandler" %in% class(beta)) {
+        } else if (!methods::is(beta, "BetaHandler")) {
             stop("beta_handler must be either a file path (character) or a BetaHandler object")
         } else {
             beta_handler <- beta
@@ -2240,6 +2240,8 @@ plotDMRBlockFormation <- function(dmrs,
 #' @param block_alpha Numeric. Alpha for block rectangles in `[0, 1]` (default: `0.12`).
 #' @param block_linewidth Numeric. Line width for block rectangle borders (default: `0.25`).
 #' @param output_file Character or NULL. If non-NULL, path to save the plot as a PDF (default: `NULL`).
+#' @param add_hover_text Logical. Whether to add plotly-compatible hover text
+#'   to points and block rectangles (default: `FALSE`).
 #' @param width Numeric. Width of the output PDF in inches (default: `12`).
 #' @param height Numeric. Height of the output PDF in inches (default: `6`).
 #' 

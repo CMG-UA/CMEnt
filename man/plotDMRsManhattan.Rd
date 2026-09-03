@@ -49,6 +49,9 @@ a GRanges, a string in the form \code{"chr:start-end"}, or a data.frame/list wit
 
 \item{output_file}{Character or NULL. If non-NULL, path to save the plot as a PDF (default: \code{NULL}).}
 
+\item{add_hover_text}{Logical. Whether to add plotly-compatible hover text
+to points and block rectangles (default: \code{FALSE}).}
+
 \item{width}{Numeric. Width of the output PDF in inches (default: \code{12}).}
 
 \item{height}{Numeric. Height of the output PDF in inches (default: \code{6}).}

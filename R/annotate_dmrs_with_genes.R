@@ -108,7 +108,7 @@
             transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
             promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
-            promoters <- stack(promoters)
+            promoters <- S4Vectors::stack(promoters)
             if (annotation_source_genome != target_genome) {
                 promoters <- .liftOverFromGenomeToGenome(promoters, annotation_source_genome, target_genome)
                 target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))

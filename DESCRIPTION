@@ -24,6 +24,7 @@ Description: CMEnt implements a correlation-based method for identifying
 URL: https://cmg-ua.github.io/CMEnt/, https://github.com/CMG-UA/CMEnt
 BugReports: https://github.com/CMG-UA/CMEnt/issues
 License: GPL (>= 2)
+SystemRequirements: tabix, bgzip, GNU sort
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr

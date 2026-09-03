@@ -17,10 +17,11 @@ test_that("buildDMRs accepts covariates without changing synthetic DMR calls", {
 test_that("buildDMRs reuses prepared covariate models across connectivity passes", {
     fixture <- makeSyntheticBuildDMRsFixture()
     original_prepare <- CMEnt:::.prepareGroupCovariateModels
-    prepare_calls <- 0L
+    prepare_calls <- new.env(parent = emptyenv())
+    prepare_calls$n <- 0L
     local_mocked_bindings(
         .prepareGroupCovariateModels = function(...) {
-            prepare_calls <<- prepare_calls + 1L
+            prepare_calls$n <- prepare_calls$n + 1L
             original_prepare(...)
         },
         .package = "CMEnt"
@@ -35,7 +36,7 @@ test_that("buildDMRs reuses prepared covariate models across connectivity passes
     )
 
     expect_s4_class(dmrs, "GRanges")
-    expect_identical(prepare_calls, 1L)
+    expect_identical(prepare_calls$n, 1L)
 })
 
 test_that("buildDMRs normalizes scalar list columns in pheno", {

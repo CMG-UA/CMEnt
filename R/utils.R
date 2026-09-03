@@ -1055,7 +1055,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     # If bsseq is memory backed, we extract the genomic locations directly from the bsseq object into memory.
     if (inherits(input_bsseq, "BSseq") && inherits(assays(input_bsseq)$M, "matrix")) {
         .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
-        gr <- granges(input_bsseq)
+        gr <- GenomicRanges::granges(input_bsseq)
         df <- as.data.frame(gr)[, c("seqnames", "start")]
         colnames(df) <- c("chr", "start")
         df$index <- paste0(df$chr, ":", df$start)
@@ -1801,16 +1801,13 @@ supportedOrganisms <- function() {
 #' }
 #'
 #' @examples
-#' \donttest{
-#' # Get sorted locations for 450K array on hg19
-#' locs_450k <- getSortedGenomicLocs(array = "450K", genome = "hg19")
+#' locs <- data.frame(chr = c("chr1", "chr1"), start = c(100L, 200L))
+#' rownames(locs) <- c("cg1", "cg2")
+#' locations_file <- tempfile(fileext = ".rds")
+#' saveRDS(locs, locations_file)
 #'
-#' # Get sorted locations for EPIC array with hg38
-#' locs_epic <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
-#'
-#' # Get sorted locations for EPICv2 array
-#' locs_epicv2 <- getSortedGenomicLocs(array = "EPICv2", genome = "hg38")
-#' }
+#' sorted_locs <- getSortedGenomicLocs(locations_file = locations_file)
+#' head(sorted_locs)
 #'
 #' @export
 getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = NULL) {
@@ -1908,15 +1905,12 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
 #' @return Integer vector of ordered indices
 #'
 #' @examples
-#' \donttest{
-#' # Order site indices by genomic location
-#' site_ids <- c("cg00000029", "cg00000108", "cg00000109")
-#' ordered_indices <- orderByLoc(site_ids, array = "450K", genome = "hg19")
+#' locs <- data.frame(chr = c("chr1", "chr1", "chr2"), start = c(100L, 200L, 50L))
+#' rownames(locs) <- c("cg1", "cg2", "cg3")
+#' site_ids <- c("cg2", "cg3", "cg1")
 #'
-#' # Order using pre-computed genomic locations
-#' locs <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
 #' ordered_indices <- orderByLoc(site_ids, genomic_locs = locs)
-#' }
+#' site_ids[ordered_indices]
 #'
 #' @export
 orderByLoc <- function(x,
@@ -2248,7 +2242,7 @@ orderByLoc <- function(x,
         if (canonical_chr) {
             chrs <- chrs[grepl("^chr[0-9XYM]+$", chrs)]
         }
-        cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
+        cgs <- lapply(chrs, function(x) BiocGenerics::start(Biostrings::matchPattern("CG", seq_db[[x]])))
         names(cgs) <- chrs
         suppressWarnings(
             sites <- do.call(
@@ -2488,7 +2482,7 @@ orderByLoc <- function(x,
             na.rm = TRUE
         )
     } else {
-        if (!is(obj, "GRanges")) {
+        if (!methods::is(obj, "GRanges")) {
             stop("dmrs must be a data.frame or GRanges object")
         }
         if (is.null(genome)) {
@@ -2526,7 +2520,7 @@ orderByLoc <- function(x,
     }
     obj <- .convertToGRanges(obj, genome)
     if (!inherits(obj, "GPos")) {
-        obj <- as(GenomicRanges::resize(obj, width = 1, fix = "start"), "GPos")
+        obj <- methods::as(GenomicRanges::resize(obj, width = 1, fix = "start"), "GPos")
     }
     if (
         !is.null(site_names) && length(site_names) == length(obj) &&
@@ -2608,8 +2602,8 @@ orderByLoc <- function(x,
     if (!is.data.frame(df)) {
         stop(
             "Input must be a data.frame or coercible to a data.frame. ",
-            "Unable to coerce input of class: ",
-            paste(class(df), collapse = ", "),
+            "Unable to coerce input of type: ",
+            typeof(df),
             call. = FALSE
         )
     }
@@ -2795,10 +2789,10 @@ orderByLoc <- function(x,
         excess_kurtosis[2L * k] <- my["excess_kurtosis"]
     }
 
-    median_abs_delta_spearman <- median(delta_spearman, na.rm = TRUE)
-    median_abs_delta_winsorized <- median(delta_winsorized, na.rm = TRUE)
-    median_abs_skew <- median(abs_skew, na.rm = TRUE)
-    median_excess_kurtosis <- median(excess_kurtosis, na.rm = TRUE)
+    median_abs_delta_spearman <- stats::median(delta_spearman, na.rm = TRUE)
+    median_abs_delta_winsorized <- stats::median(delta_winsorized, na.rm = TRUE)
+    median_abs_skew <- stats::median(abs_skew, na.rm = TRUE)
+    median_excess_kurtosis <- stats::median(excess_kurtosis, na.rm = TRUE)
     if (!is.finite(median_abs_delta_spearman)) {
         median_abs_delta_spearman <- Inf
     }
@@ -2837,13 +2831,14 @@ orderByLoc <- function(x,
 .loadExampleInputDataSubset <- function(..., subset, envir) {
     resources <- .normExInputResources(list(...))
     values <- .fetchExampleInputData(resources)
-    subset_locs <- NULL
+    subset_cache <- new.env(parent = emptyenv())
+    subset_cache$locs <- NULL
     get_subset_locs <- function() {
-        if (is.null(subset_locs)) {
+        if (is.null(subset_cache$locs)) {
             locs <- getSortedGenomicLocs(array = "450k", genome = "hg19")
-            subset_locs <<- locs[locs$chr %in% subset, , drop = FALSE]
+            subset_cache$locs <- locs[locs$chr %in% subset, , drop = FALSE]
         }
-        subset_locs
+        subset_cache$locs
     }
 
     if ("beta" %in% resources) {

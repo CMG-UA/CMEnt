@@ -37,7 +37,7 @@ reduceBSseqAroundSeeds <- function(bsseq_obj, seeds, expansion_window) {
     if (!all(c("chr", "start") %in% colnames(seeds))) {
         stop("Seeds data frame must contain 'chr' and 'start' columns.")
     }
-    if (!is(bsseq_obj, "BSseq")) {
+    if (!methods::is(bsseq_obj, "BSseq")) {
         stop("bsseq_obj must be a BSseq object.")
     }
     if (!is.numeric(expansion_window) || length(expansion_window) != 1 || expansion_window <= 0) {

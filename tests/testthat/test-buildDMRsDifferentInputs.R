@@ -86,11 +86,12 @@ test_that("buildDMRs works with small beta file (in-memory loading)", {
     # Assertions
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs))))
     }
 })
 
 test_that("buildDMRs works with large beta file (tabix indexing)", {
+    skip_if_not_integration_tests()
     skip_if_not(nzchar(Sys.which("tabix")))
     skip_if_not(nzchar(Sys.which("bgzip")))
 
@@ -136,7 +137,7 @@ test_that("buildDMRs works with large beta file (tabix indexing)", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs))))
     }
 })
 
@@ -335,7 +336,7 @@ test_that("buildDMRs works with BSseq input", {
     )
     rownames(pheno) <- sample_names
     seeds <- data.frame(
-        site_id = paste0(seqnames(gr), ":", start(gr))[dmr_region_idx],
+        site_id = paste0(GenomeInfoDb::seqnames(gr), ":", IRanges::start(gr))[dmr_region_idx],
         pval = rep(0.001, length(dmr_region_idx))
     )
     expect_no_warning(
@@ -355,6 +356,7 @@ test_that("buildDMRs works with BSseq input", {
 })
 
 test_that("buildDMRs works with HDF5-backed BSseq input and parallel chromosome tasks", {
+    skip_if_not_integration_tests()
     skip_if_not_installed("HDF5Array")
 
     set.seed(777)
@@ -373,7 +375,7 @@ test_that("buildDMRs works with HDF5-backed BSseq input and parallel chromosome 
         seqnames = rep(c("chr1", "chr2"), each = n_per_chr),
         ranges = IRanges(start = rep(seq(10000, by = 50, length.out = n_per_chr), 2L), width = 1)
     )
-    site_ids <- paste0(seqnames(gr), ":", start(gr))
+    site_ids <- paste0(GenomeInfoDb::seqnames(gr), ":", IRanges::start(gr))
     names(gr) <- site_ids
     bsseq_obj <- BSseq(
         M = met, Cov = cov, gr = gr,
@@ -451,13 +453,13 @@ test_that("buildDMRs works when tabix is not available", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs))))
     }
 })
 
 
 test_that("buildDMRs works with minimal bed file", {
-    skip_on_ci()
+    skip_if_not_integration_tests()
     beta_handler <- getBetaHandler(beta, array = array_type, genome = "hg19")
     beta_mat <- as.matrix(beta_handler$getBeta())
     locs <- beta_handler$getBetaLocs()
@@ -499,6 +501,6 @@ test_that("buildDMRs works with minimal bed file", {
 
     expect_true(is.null(dmrs) || inherits(dmrs, "GRanges"))
     if (!is.null(dmrs) && length(dmrs) > 0) {
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs))))
     }
 })

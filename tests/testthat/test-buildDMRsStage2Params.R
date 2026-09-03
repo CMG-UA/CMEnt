@@ -3,6 +3,7 @@ options("CMEnt.verbose" = 0)
 loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 
 test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters", {
+    skip_if_not_integration_tests()
 
     # Test with expansion_window and max_bridge_seeds_gaps
     dmrs_expanded <- buildDMRs(
@@ -25,7 +26,7 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
         expect_gt(length(dmrs_expanded), 0L)
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs_expanded))))
         dmr_df <- as.data.frame(dmrs_expanded)
         # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
         win_df <- CMEnt:::.buildWindowsFromDMRs(
@@ -52,6 +53,7 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
 })
 
 test_that("buildDMRs handles ext_site_delta_beta filtering", {
+    skip_if_not_integration_tests()
 
     # Test with no delta beta filtering
     dmrs_no_filter <- buildDMRs(
@@ -158,6 +160,7 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
 })
 
 test_that("buildDMRs handles adjusted seeds filtering for array data", {
+    skip_if_not_integration_tests()
     skip_if_missing_bsgenome(genome = "hg19")
 
 
@@ -316,6 +319,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed with expans
 })
 
 test_that("buildDMRs Stage 2 expansion matches between sequential and chunked parallel execution", {
+    skip_if_not_integration_tests()
 
     args <- list(
         score_dmrs = FALSE,

@@ -141,12 +141,12 @@ test_that("buildDMRs aggregates optional dependencies before running", {
 test_that("dependency assertions can auto-install missing packages", {
     installed <- new.env(parent = emptyenv())
     installed$pkgs <- "AlreadyPkg"
-    installed_called <- character()
+    installed$called <- character()
 
     local_mocked_bindings(
         .isPackageInstalled = function(pkg_name) pkg_name %in% installed$pkgs,
         .installDependencyPackages = function(pkg_names) {
-            installed_called <<- pkg_names
+            installed$called <- pkg_names
             installed$pkgs <- union(installed$pkgs, pkg_names)
             invisible(pkg_names)
         },
@@ -157,7 +157,7 @@ test_that("dependency assertions can auto-install missing packages", {
     reqs <- CMEnt:::.makeDependencyRequirements(c("MissingPkg", "AlreadyPkg"), "reason")
     pkgs <- CMEnt:::.assertDependencyRequirements(reqs, "test context")
 
-    expect_equal(installed_called, "MissingPkg")
+    expect_equal(installed$called, "MissingPkg")
     expect_equal(pkgs, reqs$pkg_name)
 })
 

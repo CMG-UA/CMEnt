@@ -79,9 +79,9 @@ findDMPsBSSeq <- function(
     } else {
         stop("bsseq argument must be a file path or a BSseq object.")
     }
-    seqn <- as.character(seqnames(bsseq_obj))
+    seqn <- as.character(GenomeInfoDb::seqnames(bsseq_obj))
     bsseq_obj <- bsseq_obj[seqn %in% chr, ]
-    seqn <- as.character(seqnames(bsseq_obj))
+    seqn <- as.character(GenomeInfoDb::seqnames(bsseq_obj))
     if (length(seqn) == 0L) {
         stop("No loci remain after chromosome filtering.")
     }
@@ -157,7 +157,7 @@ findDMPsBSSeq <- function(
     names(bsseq_by_chr) <- chr_in_bsseq
 
     run_dss_for_chr <- function(bsseq_chr) {
-        chr_name <- unique(as.character(seqnames(bsseq_chr)))[1L]
+        chr_name <- unique(as.character(GenomeInfoDb::seqnames(bsseq_chr)))[1L]
         if (nrow(bsseq_chr) == 0L) {
             return(NULL)
         }

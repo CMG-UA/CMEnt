@@ -29,15 +29,12 @@ methylation array platform and genome version. Performs liftOver if necessary.
 The function caches the results.
 }
 \examples{
-\donttest{
-# Get sorted locations for 450K array on hg19
-locs_450k <- getSortedGenomicLocs(array = "450K", genome = "hg19")
+locs <- data.frame(chr = c("chr1", "chr1"), start = c(100L, 200L))
+rownames(locs) <- c("cg1", "cg2")
+locations_file <- tempfile(fileext = ".rds")
+saveRDS(locs, locations_file)
 
-# Get sorted locations for EPIC array with hg38
-locs_epic <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
-
-# Get sorted locations for EPICv2 array
-locs_epicv2 <- getSortedGenomicLocs(array = "EPICv2", genome = "hg38")
-}
+sorted_locs <- getSortedGenomicLocs(locations_file = locations_file)
+head(sorted_locs)
 
 }

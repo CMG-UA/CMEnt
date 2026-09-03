@@ -915,7 +915,7 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     checked_pairs = NULL,
@@ -1023,7 +1023,7 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     njobs = 1,
@@ -1496,22 +1496,24 @@
         )
     }
     # Work with local vectors to avoid repeated data.frame copy-on-modify in the hot loop.
-    connected_vec <- connectivity_array$connected
-    pval_vec <- connectivity_array$pval
-    reason_vec <- connectivity_array$reason
+    connectivity_state <- new.env(parent = emptyenv())
+    connectivity_state$connected_vec <- connectivity_array$connected
+    connectivity_state$pval_vec <- connectivity_array$pval
+    connectivity_state$reason_vec <- connectivity_array$reason
     fail_col <- if ("first_failing_group" %in% names(connectivity_array))
         "first_failing_group" else if ("failing_groups" %in% names(connectivity_array))
         "failing_groups" else NULL
-    fail_vec <- if (!is.null(fail_col)) connectivity_array[[fail_col]] else NULL
-    delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
+    connectivity_state$fail_vec <- if (!is.null(fail_col)) connectivity_array[[fail_col]] else NULL
+    connectivity_state$delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
 
-    bridge_mask <- rep(FALSE, n_sites)
-    recheck <- integer(0)
+    connectivity_state$bridge_mask <- rep(FALSE, n_sites)
+    connectivity_state$recheck <- integer(0)
 
     .updatePvalMin <- function(idx, values) {
         if (length(idx) == 0L || length(values) == 0L) {
             return(invisible(NULL))
         }
+        pval_vec <- connectivity_state$pval_vec
         keep <- !is.na(idx) & idx >= 1L & idx <= length(pval_vec) & !is.na(values)
         idx <- as.integer(idx[keep])
         values <- as.numeric(values[keep])
@@ -1521,8 +1523,9 @@
         for (i in unique(idx)) {
             new_pval <- min(values[idx == i], na.rm = TRUE)
             old_pval <- pval_vec[i]
-            pval_vec[i] <<- if (is.na(old_pval)) new_pval else min(old_pval, new_pval)
+            pval_vec[i] <- if (is.na(old_pval)) new_pval else min(old_pval, new_pval)
         }
+        connectivity_state$pval_vec <- pval_vec
         invisible(NULL)
     }
 
@@ -1534,14 +1537,18 @@
         if (is.null(checked_pairs)) {
             # First pass: full overwrite
             idx <- item$pair_start:item$pair_end
-            connected_vec[idx] <<- x$connected
-            pval_vec[idx] <<- x$pval
-            reason_vec[idx] <<- x$reason
+            connectivity_state$connected_vec[idx] <- x$connected
+            connectivity_state$pval_vec[idx] <- x$pval
+            connectivity_state$reason_vec[idx] <- x$reason
             if (!is.null(fail_col) && fail_col %in% names(x)) {
-                fail_vec[idx] <<- x[[fail_col]]
+                fail_vec <- connectivity_state$fail_vec
+                fail_vec[idx] <- x[[fail_col]]
+                connectivity_state$fail_vec <- fail_vec
             }
-            if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
-                delta_vec[idx] <<- x$delta_beta
+            if (!is.null(connectivity_state$delta_vec) && "delta_beta" %in% names(x)) {
+                delta_vec <- connectivity_state$delta_vec
+                delta_vec[idx] <- x$delta_beta
+                connectivity_state$delta_vec <- delta_vec
             }
         } else {
             # Map result rows to the exact global pair indices returned by the worker.
@@ -1555,17 +1562,21 @@
             if (any(update_m) && length(masked_idx) >= 1L) {
                 update_idx <- masked_idx[update_m]
                 update_pval <- x$pval[update_m]
-                update_was_connected <- connected_vec[update_idx]
+                update_was_connected <- connectivity_state$connected_vec[update_idx]
                 newly_updated_mask <- !update_was_connected
                 if (any(newly_updated_mask)) {
                     newly_updated_idx <- update_idx[newly_updated_mask]
-                    connected_vec[newly_updated_idx] <<- x$connected[update_m][newly_updated_mask]
-                    reason_vec[newly_updated_idx] <<- x$reason[update_m][newly_updated_mask]
+                    connectivity_state$connected_vec[newly_updated_idx] <- x$connected[update_m][newly_updated_mask]
+                    connectivity_state$reason_vec[newly_updated_idx] <- x$reason[update_m][newly_updated_mask]
                     if (!is.null(fail_col) && fail_col %in% names(x)) {
-                        fail_vec[newly_updated_idx] <<- x[[fail_col]][update_m][newly_updated_mask]
+                        fail_vec <- connectivity_state$fail_vec
+                        fail_vec[newly_updated_idx] <- x[[fail_col]][update_m][newly_updated_mask]
+                        connectivity_state$fail_vec <- fail_vec
                     }
-                    if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
-                        delta_vec[newly_updated_idx] <<- x$delta_beta[update_m][newly_updated_mask]
+                    if (!is.null(connectivity_state$delta_vec) && "delta_beta" %in% names(x)) {
+                        delta_vec <- connectivity_state$delta_vec
+                        delta_vec[newly_updated_idx] <- x$delta_beta[update_m][newly_updated_mask]
+                        connectivity_state$delta_vec <- delta_vec
                     }
                 }
                 gap <- if (ugap > 0L) ugap else dgap
@@ -1575,7 +1586,7 @@
                 bridge_idx <- bridge_idx[bridge_keep]
                 bridge_pval <- bridge_pval[bridge_keep]
                 if (length(bridge_idx) > 0L) {
-                    bridge_was_connected <- connected_vec[bridge_idx]
+                    bridge_was_connected <- connectivity_state$connected_vec[bridge_idx]
                     update_bridge_match <- match(bridge_idx, update_idx)
                     matched_update_bridge <- !is.na(update_bridge_match)
                     bridge_was_connected[matched_update_bridge] <- update_was_connected[update_bridge_match[matched_update_bridge]]
@@ -1583,8 +1594,8 @@
                     newly_connected_idx <- bridge_idx[newly_connected_mask]
                     if (length(newly_connected_idx) > 0L) {
                         .updatePvalMin(newly_connected_idx, bridge_pval[newly_connected_mask])
-                        bridge_mask <<- replace(bridge_mask, newly_connected_idx, TRUE)
-                        recheck <<- c(recheck, newly_connected_idx)
+                        connectivity_state$bridge_mask <- replace(connectivity_state$bridge_mask, newly_connected_idx, TRUE)
+                        connectivity_state$recheck <- c(connectivity_state$recheck, newly_connected_idx)
                     }
                 }
             }
@@ -1647,9 +1658,16 @@
         rm(ret, batch_splits)
     }
 
+    connected_vec <- connectivity_state$connected_vec
+    pval_vec <- connectivity_state$pval_vec
+    reason_vec <- connectivity_state$reason_vec
+    fail_vec <- connectivity_state$fail_vec
+    delta_vec <- connectivity_state$delta_vec
+    bridge_mask <- connectivity_state$bridge_mask
+    recheck <- sort(unique(connectivity_state$recheck))
+
     connected_vec[bridge_mask] <- TRUE
     reason_vec[bridge_mask] <- "bridged"
-    recheck <- sort(unique(recheck))
 
     # Preserve hard window boundaries even when chunk pooling evaluates ranges spanning multiple windows.
     if (is.null(checked_pairs) && window_mode && exists("pair_ranges", inherits = FALSE) && nrow(pair_ranges) > 0L) {
@@ -1695,7 +1713,7 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     njobs = 1,
@@ -2731,7 +2749,8 @@
     .log_step("Building DMRs for ", chromosome, "..", level = 1)
 
     chromosome_progress <- NULL
-    chromosome_progress_step <- 0L
+    chromosome_progress_state <- new.env(parent = emptyenv())
+    chromosome_progress_state$step <- 0L
     chromosome_progress_total <- 6L +
         as.integer(isTRUE(annotate_with_genes)) +
         as.integer(isTRUE(score_dmrs)) +
@@ -2757,10 +2776,10 @@
         if (is.null(chromosome_progress)) {
             return(invisible(NULL))
         }
-        chromosome_progress_step <<- chromosome_progress_step + 1L
+        chromosome_progress_state$step <- chromosome_progress_state$step + 1L
         utils::setTxtProgressBar(
             chromosome_progress,
-            min(chromosome_progress_step, chromosome_progress_total)
+            min(chromosome_progress_state$step, chromosome_progress_total)
         )
         invisible(NULL)
     }
@@ -3331,7 +3350,7 @@
     start_site_pos <- sub("^[^:]+:", "", agg_df$start_site)
     end_site_pos <- sub("^[^:]+:", "", agg_df$end_site)
     agg_df[, "id"] <- paste0(
-        as.character(seqnames(merged_dmrs_ranges)), ":",
+        as.character(GenomeInfoDb::seqnames(merged_dmrs_ranges)), ":",
         start_site_pos,
         "-",
         end_site_pos

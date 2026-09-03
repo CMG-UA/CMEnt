@@ -59,7 +59,16 @@ changes.
 
 ## Installation
 
-You can install the development version of CMEnt from GitHub.
+Install CMEnt from Bioconductor with:
+
+``` r
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CMEnt")
+```
+
+You can install the development version of CMEnt from GitHub with:
 
 ``` r
 # install.packages("devtools") # nolint
@@ -200,31 +209,23 @@ regions based on the seed locations, which can significantly reduce
 memory usage and improve performance for large datasets.
 
 There are two helper functions that can be used to find DMPs and create
-seeds from microarray or bsseq data, which can be used in the
-`buildDMRs` function:
+seeds for `buildDMRs()`:
 
-- `findDMPsFromMicroarray()`: This function takes a beta matrix and
-  phenotype data as input and identifies DMPs using linear modeling
-  (limma, please cite
+- `findDMPsArray()` takes a beta matrix and phenotype data as input and
+  identifies DMPs using linear modeling with limma. Please cite limma
   [![DOI](https://img.shields.io/badge/DOI-10.109%2Fnar%2Fgkv007-blue?style=flat-square)](https://doi.org/10.1093/nar/gkv007)
-  if used). It returns a data frame of DMPs with their associated
-  p-values, which can be used as seeds for DMR identification.
-- `findDMPsFromBSseq()`: This function takes a `BSseq` object and
-  phenotype data as input and identifies DMPs using a beta-binomial
-  regression model (DSS, please cite
+  if used.
+- `findDMPsBSSeq()` takes a `BSseq` object and phenotype data as input
+  and identifies DMPs using a beta-binomial regression model with DSS.
+  Please cite DSS
   [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fnar%2Fgku150-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/nar/gku150)
-  if used). It returns a data frame of DMPs with their associated
-  p-values, which can be used as seeds for DMR identification.
+  if used.
 
-For an automated “cleaning” of the seeds, when a more stringent set of
-seeds is desired, we also incorporate the comb-p algorithm (please cite
+For automated seed cleaning, CMEnt also exposes `combinePvalues()`,
+which implements comb-p-style spatial autocorrelation adjustment. Please
+cite comb-p
 [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fbioinformatics%2Fbts545-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/bioinformatics/bts545)
-if used) for auto-correlation adjustment. It can be used with
-combinePvalues() function, which takes a data frame of seeds with their
-associated p-values and genomic locations as input and applies the
-comb-p algorithm to adjust the p-values for spatial correlation. The
-function returns a data frame of seeds with adjusted p-values, which can
-be used as input for DMR identification.
+if used.
 
 ## Citation
 
@@ -259,3 +260,6 @@ This project is licensed under the GPL-2 License - see the
 - Center of Medical Genetics, University of Antwerp
 - [Genetics of Cancer and Hearing Loss Research
   Group](https://www.linkedin.com/company/genetics-of-cancer-and-hearing-loss)
+- Bioconductor review-response updates were assisted by OpenAI Codex.
+  The maintainer reviewed the changes and remains responsible for
+  package reliability and maintenance.

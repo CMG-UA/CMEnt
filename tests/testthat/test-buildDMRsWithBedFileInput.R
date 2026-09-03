@@ -1,7 +1,7 @@
 options("CMEnt.verbose" = 0)
 
 test_that("buildDMRs matches in-memory results for a full synthetic BED input", {
-    skip_on_ci()
+    skip_if_not_integration_tests()
     fixture <- makeSyntheticBuildDMRsFixture()
     baseline <- runSyntheticBuildDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
@@ -29,11 +29,11 @@ test_that("buildDMRs matches in-memory results for a full synthetic BED input", 
     expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
     expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
     expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
-    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^chr1:chr1:100-chr1:300$")
+    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^chr1:100-300$")
 })
 
 test_that("buildDMRs detects BED files by extension", {
-    skip_on_ci()
+    skip_if_not_integration_tests()
     fixture <- makeSyntheticBuildDMRsFixture()
     baseline <- runSyntheticBuildDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
@@ -131,7 +131,7 @@ test_that("custom BED preprocessing falls back when tabix tools are unavailable"
 })
 
 test_that("buildDMRs handles BED files without a chr prefix", {
-    skip_on_ci()
+    skip_if_not_integration_tests()
     fixture <- makeSyntheticBuildDMRsFixture()
     baseline <- runSyntheticBuildDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")
@@ -151,11 +151,11 @@ test_that("buildDMRs handles BED files without a chr prefix", {
     expect_equal(GenomicRanges::start(bed_dmrs), GenomicRanges::start(baseline))
     expect_equal(GenomicRanges::end(bed_dmrs), GenomicRanges::end(baseline))
     expect_equal(as.integer(S4Vectors::mcols(bed_dmrs)$seeds_num), as.integer(S4Vectors::mcols(baseline)$seeds_num))
-    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^1:1:100-1:300$")
+    expect_match(S4Vectors::mcols(bed_dmrs)$id, "^1:100-300$")
 })
 
 test_that("buildDMRs respects custom BED coordinate column names", {
-    skip_on_ci()
+    skip_if_not_integration_tests()
     fixture <- makeSyntheticBuildDMRsFixture()
     baseline <- runSyntheticBuildDMRs(fixture)
     bed_file <- tempfile(fileext = ".bed")

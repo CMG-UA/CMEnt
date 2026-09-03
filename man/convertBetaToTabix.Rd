@@ -50,7 +50,7 @@ next to analysis outputs when \code{output_prefix} is supplied.
 \details{
 The function performs the following steps:
 \enumerate{
-\item Checks if tabix and bgzip tools are available in the system PATH
+\item Checks if tabix, bgzip, and required sorting tools are available in the system PATH
 \item Processes the beta file in chunks (getOption("CMEnt.chunk_size", 1000000) rows at a time) to minimize memory usage
 \item Converts beta values to BED format with genomic coordinates
 \item Sorts, compresses (bgzip), and indexes (tabix) the file

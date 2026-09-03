@@ -171,9 +171,7 @@ local background correlation, capped at 0.99.
 Finally, touched methylated counts are regenerated from the shifted
 probabilities and original coverage. With \code{resample_counts = TRUE}, counts
 are drawn as \code{Binomial(C, p)}; otherwise they are deterministically rounded
-as \code{round(C * p)}. Reported truth intervals are based on the intended
-beta-scale perturbation, with a fallback to at
-least \code{min_sites} strongest sites per DMR.
+as \code{round(C * p)}.
 }
 \examples{
 beta <- matrix(seq(0.1, 0.9, length.out = 48), nrow = 12)

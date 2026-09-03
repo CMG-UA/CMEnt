@@ -34,6 +34,38 @@
 #' @return A data frame with columns `chr`, `start`, `end`, `site_id`, `pval`,
 #'   `qval`, `delta_beta`, and `score`.
 #'
+#' @examples
+#' beta <- matrix(
+#'     c(
+#'         0.10, 0.12, 0.11, 0.82, 0.80, 0.81,
+#'         0.74, 0.72, 0.73, 0.20, 0.22, 0.21,
+#'         0.40, 0.42, 0.41, 0.43, 0.44, 0.45
+#'     ),
+#'     nrow = 3,
+#'     byrow = TRUE,
+#'     dimnames = list(paste0("cg", 1:3), paste0("s", 1:6))
+#' )
+#' samplesheet <- data.frame(
+#'     Sample_ID = colnames(beta),
+#'     Sample_Group = rep(c("control", "case"), each = 3)
+#' )
+#' sorted_locs <- data.frame(
+#'     chr = "chr1",
+#'     start = c(100L, 200L, 300L),
+#'     row.names = rownames(beta)
+#' )
+#' dmps <- findDMPsArray(
+#'     beta = beta,
+#'     samplesheet = samplesheet,
+#'     sample_group_col = "Sample_Group",
+#'     array = "450K",
+#'     genome = "hg19",
+#'     sorted_locs = sorted_locs,
+#'     case_group = "case",
+#'     chr = "all"
+#' )
+#' head(dmps)
+#'
 #' @importFrom stats as.formula p.adjust
 #' @export
 findDMPsArray <- function(

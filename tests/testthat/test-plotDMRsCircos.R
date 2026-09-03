@@ -25,6 +25,7 @@ test_that("plotDMRsCircos creates a circos plot", {
 })
 
 test_that("plotDMRsCircos works with interactions", {
+    skip_if_not_integration_tests()
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -260,12 +261,13 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
     pheno <- data.frame(Sample_Group = "case", row.names = "S1")
 
-    extracted_n <- NA_integer_
+    extracted <- new.env(parent = emptyenv())
+    extracted$n <- NA_integer_
     stub(
         plotDMRsCircos,
         "extractDMRMotifs",
         function(dmrs, ...) {
-            extracted_n <<- length(dmrs)
+            extracted$n <- length(dmrs)
             S4Vectors::mcols(dmrs)$pwm <- replicate(
                 length(dmrs),
                 matrix(0.25, nrow = 4, ncol = 10),
@@ -299,7 +301,7 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
             region = "chr1:50-250"
         )
     )
-    expect_equal(extracted_n, 1L)
+    expect_equal(extracted$n, 1L)
 })
 
 test_that("plotDMRsCircos skips non-drawable gneg-only ideograms without warning", {
@@ -391,12 +393,13 @@ test_that("plotDMRsCircos reuses precomputed interactions without extracting mot
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
     pheno <- data.frame(Sample_Group = "case", row.names = "S1")
 
-    extracted_motifs <- FALSE
+    extracted <- new.env(parent = emptyenv())
+    extracted$motifs <- FALSE
     stub(
         plotDMRsCircos,
         "extractDMRMotifs",
         function(...) {
-            extracted_motifs <<- TRUE
+            extracted$motifs <- TRUE
             stop("extractDMRMotifs should not run when precomputed interactions are supplied")
         }
     )
@@ -446,7 +449,7 @@ test_that("plotDMRsCircos reuses precomputed interactions without extracting mot
             query_components_with_jaspar = FALSE
         )
     )
-    expect_false(extracted_motifs)
+    expect_false(extracted$motifs)
 })
 
 test_that(".selectCircosRegions respects region caps and block priority", {
@@ -629,6 +632,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
 })
 
 test_that("plotAutoDMRsCircos supports components and hybrid selection", {
+    skip_if_not_integration_tests()
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {
