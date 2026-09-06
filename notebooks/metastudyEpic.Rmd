@@ -329,7 +329,7 @@ if (length(dmrs_cment) > 0L && !"in_promoter_of" %in% colnames(mcols(dmrs_cment)
     dmrs_cment <- CMEnt::annotateDMRsWithGenes(dmrs_cment, genome = genome)
 }
 published_bumphunter <- CMEnt::annotateDMRsWithGenes(published_bumphunter, genome = genome)
-methods_list <- list(CMEnt = dmrs_cment, `Published Bumphunter` = published_bumphunter)
+methods_list <- list(CMEnt = dmrs_cment, `BH` = published_bumphunter)
 ```
 
 
@@ -971,7 +971,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
 
     if (nrow(kegg_candidates) > 0L && nrow(promoter_gene_delta) > 0L) {
         gene_map <- suppressMessages(AnnotationDbi::select(
-            org.Hs.eg.db,
+            org.Hs.eg.db::org.Hs.eg.db,
             keys = promoter_gene_delta$Gene,
             keytype = "SYMBOL",
             columns = c("SYMBOL", "ENTREZID")
