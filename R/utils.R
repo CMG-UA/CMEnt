@@ -1833,7 +1833,7 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
     genome <- tolower(genome)
     cache_key <- paste0(
         array, "_", genome,
-        "_locations"
+        "_locations_v2"
     )
     locs <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
         .readBiocFileCacheRDS(cache_dir, cache_key)
@@ -1865,7 +1865,11 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
+    location_names <- names(locs)
     locs <- .convertToDataFrame(locs)
+    if (!is.null(location_names) && length(location_names) == nrow(locs)) {
+        rownames(locs) <- location_names
+    }
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
