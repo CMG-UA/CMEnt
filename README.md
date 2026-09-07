@@ -1,4 +1,3 @@
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # CMEnt <img src="man/figures/logo.png" align="right" height="139"/>
@@ -46,6 +45,8 @@ changes.
 - CMEnt is designed to work with pre-computed seeds (DMPs) and does not
   perform DMP identification itself. Users should first identify DMPs
   using their preferred method before using CMEnt for region expansion.
+  Helper functions for this are provided for convenience and mentioned
+  in the [Usage](#usage) section.
 - CMEnt is not preprocessing input methylation files (e.g. no
   normalization, no filtering, no probe removal), apart from conversion
   to different formats for efficiency, and optional confounders
@@ -61,46 +62,36 @@ changes.
 
 Install CMEnt from Bioconductor with:
 
-``` r
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-}
-BiocManager::install("CMEnt")
-```
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+    }
+    BiocManager::install("CMEnt")
 
 You can install the development version of CMEnt from GitHub with:
 
-``` r
-# install.packages("devtools") # nolint
-devtools::install_github("CMG-UA/CMEnt")
-```
+    # install.packages("devtools") # nolint
+    devtools::install_github("CMG-UA/CMEnt")
 
 Another option is to use the Docker image available on DockerHub, which
 contains a pre-installed version of CMEnt along with all dependencies.
 You can pull the image using the following command:
 
-``` bash
-docker pull ghcr.io/cmg-ua/cment/cment:latest
-```
+    docker pull ghcr.io/cmg-ua/cment/cment:latest
 
 and run it using:
 
-``` bash
-docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
-```
+    docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
 
 To launch the packaged example output in `CMEntViewer`, publish the
 Shiny port from the container and bind the app to `0.0.0.0`:
 
-``` bash
-docker run --rm -p 3838:3838 \
-  ghcr.io/cmg-ua/cment/cment:latest \
-  launchCMEntViewer \
-  --output_prefix /CMEnt/inst/extdata/example_output \
-  --launch_browser FALSE \
-  --host 0.0.0.0 \
-  --port 3838
-```
+    docker run --rm -p 3838:3838 \
+      ghcr.io/cmg-ua/cment/cment:latest \
+      launchCMEntViewer \
+      --output_prefix /CMEnt/inst/extdata/example_output \
+      --launch_browser FALSE \
+      --host 0.0.0.0 \
+      --port 3838
 
 Then open `http://localhost:3838` in your browser.
 
@@ -108,50 +99,46 @@ If you want to view outputs created on your machine, mount them into the
 container. Keeping the R library and cache on Docker volumes avoids
 re-installing on-demand packages and cached annotations on every run:
 
-``` bash
-docker volume create cment-r-lib
-docker volume create cment-r-cache
+    docker volume create cment-r-lib
+    docker volume create cment-r-cache
 
-docker run --rm -p 3838:3838 \
-  -v "$PWD:/work" -w /work \
-  -v cment-r-lib:/usr/local/lib/R/site-library \
-  -v cment-r-cache:/home/root/.cache/R \
-  ghcr.io/cmg-ua/cment/cment:latest \
-  launchCMEntViewer \
-  --output_prefix /work/path/to/output_prefix \
-  --launch_browser FALSE \
-  --host 0.0.0.0 \
-  --port 3838
-```
+    docker run --rm -p 3838:3838 \
+      -v "$PWD:/work" -w /work \
+      -v cment-r-lib:/usr/local/lib/R/site-library \
+      -v cment-r-cache:/home/root/.cache/R \
+      ghcr.io/cmg-ua/cment/cment:latest \
+      launchCMEntViewer \
+      --output_prefix /work/path/to/output_prefix \
+      --launch_browser FALSE \
+      --host 0.0.0.0 \
+      --port 3838
 
 ## Usage
 
 Here’s a basic example of how to use CMEnt in a 450K Microarray setting:
 
-``` r
-suppressPackageStartupMessages(library(CMEnt))
-loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
-cat("\nBeta matrix:")
-cat(head(beta), "\n")
-cat("\nSeeds:")
-cat(head(dmps), "\n")
-cat("\nPhenotype data:")
-cat(head(pheno), "\n")
-# Build DMRs using parallel processing
-dmrs <- buildDMRs(
-    beta = beta,
-    seeds = dmps,
-    pheno = pheno,
-    sample_group_col = "Sample_Group",
-    array = array_type,  # Specify array platform
-    min_sites = 3,
-    min_seeds = 2,
-    njobs = 2  # Use parallel processing
-)
+    suppressPackageStartupMessages(library(CMEnt))
+    loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
+    cat("\nBeta matrix:")
+    cat(head(beta), "\n")
+    cat("\nSeeds:")
+    cat(head(dmps), "\n")
+    cat("\nPhenotype data:")
+    cat(head(pheno), "\n")
+    # Build DMRs using parallel processing
+    dmrs <- buildDMRs(
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        array = array_type,  # Specify array platform
+        min_sites = 3,
+        min_seeds = 2,
+        njobs = 2  # Use parallel processing
+    )
 
-# View summary of DMR statistics
-summary(dmrs)
-```
+    # View summary of DMR statistics
+    summary(dmrs)
 
 Here’s the same workflow with a custom BED-like methylation file instead
 of array probe IDs. The BED file must have a header, chromosome and
@@ -163,43 +150,39 @@ coordinates.
 
 Expected BED format:
 
-``` text
-chrom   start   Sample1 Sample2 Sample3
-chr1    100000  0.21    0.76    0.73
-chr1    100120  0.25    0.79    0.75
-chr2    250010  0.64    0.31    0.29
-```
+    chrom   start   Sample1 Sample2 Sample3
+    chr1    100000  0.21    0.76    0.73
+    chr1    100120  0.25    0.79    0.75
+    chr2    250010  0.64    0.31    0.29
 
-``` r
-suppressPackageStartupMessages(library(CMEnt))
+    suppressPackageStartupMessages(library(CMEnt))
 
-pheno <- data.frame(
-    Sample_Group = c("control", "case", "case"),
-    row.names = c("Sample1", "Sample2", "Sample3")
-)
+    pheno <- data.frame(
+        Sample_Group = c("control", "case", "case"),
+        row.names = c("Sample1", "Sample2", "Sample3")
+    )
 
-seeds <- data.frame(
-    site_id = c("chr1:100000", "chr1:100120", "chr2:250010"),
-    pval = c(1e-5, 2e-4, 8e-4)
-)
+    seeds <- data.frame(
+        site_id = c("chr1:100000", "chr1:100120", "chr2:250010"),
+        pval = c(1e-5, 2e-4, 8e-4)
+    )
 
-dmrs <- buildDMRs(
-    beta = "methylation_values.bed",
-    seeds = seeds,
-    seeds_id_col = "site_id",
-    pheno = pheno,
-    sample_group_col = "Sample_Group",
-    array = NULL,
-    genome = "hg38",
-    bed_chrom_col = "chrom",
-    bed_start_col = "start",
-    min_sites = 2,
-    min_seeds = 2,
-    njobs = 2
-)
+    dmrs <- buildDMRs(
+        beta = "methylation_values.bed",
+        seeds = seeds,
+        seeds_id_col = "site_id",
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        array = NULL,
+        genome = "hg38",
+        bed_chrom_col = "chrom",
+        bed_start_col = "start",
+        min_sites = 2,
+        min_seeds = 2,
+        njobs = 2
+    )
 
-summary(dmrs)
-```
+    summary(dmrs)
 
 The tool supports also bsseq and tabix-indexed BED files as input, which
 can be specified by setting `beta` to a `BSseq` object or a path to a
