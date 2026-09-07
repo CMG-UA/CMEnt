@@ -590,7 +590,7 @@
                                              neg_delta_color = "#055709",
                                              zero_delta_color = "#f7f7f7",
                                              pos_delta_color = "#801414",
-                                             legend_width_ratio = 0.34,
+                                             legend_width_ratio = 0.50,
                                              degenerate_resolution = 1e6,
                                              output_file = NULL,
                                              verbose = NULL) {
@@ -876,8 +876,10 @@
                 title = "DMR delta beta",
                 at = signif(q, 2),
                 col_fun = col_fun,
+                direction = "horizontal",
                 title_position = "topleft",
-                legend_height = grid::unit(4, "cm"),
+                legend_width = .circosLegendWidthForChars(40L, fontsize = 8),
+                grid_height = grid::unit(4, "mm"),
                 labels_gp = grid::gpar(fontsize = 8),
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold")
             )
@@ -942,30 +944,13 @@
             legend_components <- legend_components[order(-score_vec, legend_components$component_id), , drop = FALSE]
             link_legend_colors <- component_colors[as.character(legend_components$component_id)]
             link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
-                score_prefix <- if (is.finite(legend_components$component_best_score[i])) {
-                    paste0("[score=", round(legend_components$component_best_score[i], 2), "] ")
-                } else {
-                    ""
-                }
-                label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
-                if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
-                    jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
-                    } else {
-                        rep("", length(jas_names))
-                    }
-                    n_show <- min(3L, length(jas_names))
-                    for (j in seq_len(n_show)) {
-                        corr_val <- suppressWarnings(as.numeric(jas_corr[j]))
-                        corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
-                        label <- paste0(label, " | ", jas_names[j], corr_txt)
-                    }
-                    if (length(jas_names) > n_show) {
-                        label <- paste0(label, " ...")
-                    }
-                }
-                .wrapCircosLegendLabel(label)
+                .formatCircosInteractionLegendLabel(
+                    score = legend_components$component_best_score[i],
+                    size = legend_components$size[i],
+                    sequence = legend_components$consensus_seq[i],
+                    jaspar_names = legend_components$jaspar_names[i],
+                    jaspar_corr = legend_components$jaspar_corr[i]
+                )
             }, character(1))
         }
 
@@ -1125,8 +1110,42 @@
     ret
 }
 
-.wrapCircosLegendLabel <- function(label, width = 88L) {
-    paste(strwrap(label, width = width), collapse = "\n")
+.formatCircosInteractionLegendLabel <- function(score, size, sequence, jaspar_names, jaspar_corr) {
+    score_prefix <- if (is.finite(score)) {
+        paste0("[score=", round(score, 2), "] ")
+    } else {
+        ""
+    }
+    first_line <- paste0(score_prefix, "[n=", size, "] ", sequence)
+    second_line <- "JASPAR matches: none"
+
+    if (.hasNonEmptyString(jaspar_names)) {
+        names <- trimws(base::strsplit(jaspar_names, ",", fixed = TRUE)[[1]])
+        correlations <- if (.hasNonEmptyString(jaspar_corr)) {
+            trimws(base::strsplit(jaspar_corr, ",", fixed = TRUE)[[1]])
+        } else {
+            rep("", length(names))
+        }
+        n_show <- min(3L, length(names))
+        matches <- vapply(seq_len(n_show), function(i) {
+            corr_val <- suppressWarnings(as.numeric(correlations[i]))
+            corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
+            paste0(names[i], corr_txt)
+        }, character(1))
+        if (length(names) > n_show) {
+            matches <- c(matches, "...")
+        }
+        second_line <- paste0("JASPAR matches: ", paste(matches, collapse = " | "))
+    }
+
+    paste(first_line, second_line, sep = "\n")
+}
+
+.circosLegendWidthForChars <- function(n_chars, fontsize) {
+    grid::convertWidth(
+        grid::grobWidth(grid::textGrob(strrep("M", n_chars), gp = grid::gpar(fontsize = fontsize))),
+        "mm"
+    )
 }
 
 .emptyCircosCandidateFrame <- function() {
@@ -1579,7 +1598,7 @@
 #' @param neg_delta_color Character. Color for negative delta beta values in the DMR arcs (default: "#055709").
 #' @param zero_delta_color Character. Color for zero delta beta values in the DMR arcs (default: "#f7f7f7").
 #' @param pos_delta_color Character. Color for positive delta beta values in the DMR arcs (default: "#801414").
-#' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
+#' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.50).
 #' @param degenerate_resolution Integer. Resolution in base pairs for simplifying narrow glyphs:
 #'   link ribbons are drawn as lines when both anchors are below this span, and DMR arcs
 #'   are drawn as lines instead of rectangles below this span (default: 1e6).
@@ -1630,7 +1649,7 @@ plotDMRsCircos <- function(
     neg_delta_color = "#055709",
     zero_delta_color = "#f0ec10",
     pos_delta_color = "#801414",
-    legend_width_ratio = 0.34,
+    legend_width_ratio = 0.50,
     degenerate_resolution = 1e6,
     output_file = NULL,
     verbose = NULL
@@ -2049,8 +2068,10 @@ plotDMRsCircos <- function(
                 title = "DMR delta beta",
                 at = signif(q, 2),
                 col_fun = col_fun,
+                direction = "horizontal",
                 title_position = "topleft",
-                legend_height = grid::unit(4, "cm"),
+                legend_width = .circosLegendWidthForChars(40L, fontsize = 8),
+                grid_height = grid::unit(4, "mm"),
                 labels_gp = grid::gpar(fontsize = 8),
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold")
             )
@@ -2115,30 +2136,13 @@ plotDMRsCircos <- function(
             legend_components <- legend_components[order(-score_vec, legend_components$component_id), , drop = FALSE]
             link_legend_colors <- component_colors[as.character(legend_components$component_id)]
             link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
-                score_prefix <- if (is.finite(legend_components$component_best_score[i])) {
-                    paste0("[score=", round(legend_components$component_best_score[i], 2), "] ")
-                } else {
-                    ""
-                }
-                label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
-                if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
-                    jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
-                    } else {
-                        rep("", length(jas_names))
-                    }
-                    n_show <- min(3L, length(jas_names))
-                    for (j in seq_len(n_show)) {
-                        corr_val <- suppressWarnings(as.numeric(jas_corr[j]))
-                        corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
-                        label <- paste0(label, " | ", jas_names[j], corr_txt)
-                    }
-                    if (length(jas_names) > n_show) {
-                        label <- paste0(label, " ...")
-                    }
-                }
-                .wrapCircosLegendLabel(label)
+                .formatCircosInteractionLegendLabel(
+                    score = legend_components$component_best_score[i],
+                    size = legend_components$size[i],
+                    sequence = legend_components$consensus_seq[i],
+                    jaspar_names = legend_components$jaspar_names[i],
+                    jaspar_corr = legend_components$jaspar_corr[i]
+                )
             }, character(1))
         }
 

@@ -2,6 +2,21 @@ options("CMEnt.verbose" = 0)
 
 loadExampleInputDataChr5And11()
 
+test_that("Circos interaction legend labels keep sequences and JASPAR matches on separate lines", {
+    label <- CMEnt:::.formatCircosInteractionLegendLabel(
+        score = 0.91,
+        size = 2,
+        sequence = "CCGG",
+        jaspar_names = "KLF7,ELF1,SP1,CEBPB",
+        jaspar_corr = "0.95,0.9,0.88,0.84"
+    )
+    lines <- strsplit(label, "\n", fixed = TRUE)[[1]]
+
+    expect_length(lines, 2L)
+    expect_equal(lines[1], "[score=0.91] [n=2] CCGG")
+    expect_equal(lines[2], "JASPAR matches: KLF7 (0.95) | ELF1 (0.9) | SP1 (0.88) | ...")
+})
+
 test_that("plotDMRsCircos creates a circos plot", {
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
