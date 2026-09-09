@@ -48,7 +48,7 @@ CMEnt is an R package for identifying Differentially Methylated Regions (DMRs) f
 
 
 ## Installation
-
+ 
 Install CMEnt from Bioconductor with:
 ```{r bioc_install, eval=FALSE}
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
