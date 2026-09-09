@@ -37,9 +37,32 @@ cat("
 ")
 ```
 
-## Goal
+## Introduction
 
-This notebook showcases all CMEnt capabilities, including DMR scoring, motif extraction, motif-based DMR interactions, and visualizations. 
+CMEnt identifies differentially methylated regions (DMRs) from genomic seeds,
+typically differentially methylated positions (DMPs), by expanding seed regions
+with correlation-based local connectivity. The package is intended to sit after
+established methylation preprocessing and DMP-calling workflows.
+
+CMEnt belongs in Bioconductor because it uses common Bioconductor data
+structures such as `GRanges` and `BSseq`, integrates with Bioconductor genome
+annotation packages, and provides reproducible examples through packaged data.
+It complements packages such as minfi, DSS, DMRcate, and bumphunter: those tools
+can preprocess data or identify DMPs/DMRs, while CMEnt focuses on seed-driven
+region expansion, optional discriminative DMR scoring, motif extraction,
+motif-based DMR interaction summaries, and visualization.
+
+This vignette showcases the core CMEnt workflow, including DMR scoring, motif
+extraction, motif-based DMR interactions, and visualizations.
+
+## Installation
+
+```{r install, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("CMEnt")
+```
 
 ## Setup
 
@@ -72,25 +95,41 @@ print(head(pheno))
 cat(sprintf("Head of DMPs:\n"))
 print(head(dmps))
 
-# The beta handler is used to retrieve beta values for the DMRs and their seeds, and to perform optional SVM-based scoring of the DMRs.
-# It is better to initialize it once and reuse it, as it performs some pre-processing steps that are common across the DMRs.
-# The beta handler can be supplied as the `beta` argument for the DMR calling and scoring functions, to avoid redundant initialization.
+# The beta handler retrieves beta values for DMRs and their seeds.
+# Reusing it avoids redundant preprocessing across DMR calling and scoring.
 beta_handler <- getBetaHandler(beta, array = array_type, genome = genome)
 
 ```
 
 ## DMR Assembly from Seeds
-The `buildDMRs` function is used to build DMRs from the provided seeds, which in this case are the DMPs. The function performs a correlation-based expansion of the regions around the seeds, considering both statistical significance and biological relevance of methylation changes. To keep the vignette fast and reproducible during package checks, we load a bundled example result generated with this workflow. The resulting DMRs are stored in a GRanges object, which includes metadata columns for the number of seeds and sites in each DMR, delta-beta between sample groups, and DMR-level `pval`/`qval` when seed p-values were supplied. The number of DMRs found is reported.
+The `buildDMRs()` function builds DMRs from the provided seeds, which in this
+case are DMPs. It performs correlation-based expansion around the seeds while
+tracking statistical support and methylation effect size.
+
+To keep the vignette fast and reproducible during package checks, we load a
+bundled example result generated with this workflow. The resulting DMRs are
+stored in a `GRanges` object with metadata columns for the number of seeds and
+sites in each DMR, delta beta between sample groups, and DMR-level `pval`/`qval`
+when seed p-values were supplied.
 ```{r build_dmrs}
 pheno[, "case_control"] <- pheno$Sample_Group == "cancer"
 dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))
 cat(sprintf("DMRs found: %d\n", length(dmrs)))
 cat(sprintf("DMRs metadata columns: %s\n", paste(colnames(mcols(dmrs)), collapse = ", ")))
-cat(sprintf("DMRs genomic range example: %s\n", paste0(seqnames(dmrs)[1], ":", start(dmrs)[1], "-", end(dmrs)[1])))
+cat(sprintf(
+    "DMRs genomic range example: %s\n",
+    paste0(seqnames(dmrs)[1], ":", start(dmrs)[1], "-", end(dmrs)[1])
+))
 ```
 
 ## DMR Summary
-DMRs are primarily summarized by genomic support, DMR-level `pval`/`qval` when available, and methylation effect size. The optional SVM-derived `score` and `cv_accuracy` columns are complementary measures of how well the DMR methylation pattern discriminates sample groups. In addition, score trajectories are smoothed per chromosome and segmented, enabling assignment of localized block IDs that capture saddle-like peaks in Manhattan plots.
+DMRs are primarily summarized by genomic support, DMR-level `pval`/`qval` when
+available, and methylation effect size. The optional SVM-derived `score` and
+`cv_accuracy` columns are complementary measures of how well the DMR methylation
+pattern discriminates sample groups.
+
+Score trajectories are also smoothed per chromosome and segmented, enabling
+assignment of localized block IDs that capture local peaks in Manhattan plots.
 ```{r dmr_summary}
 dmr_meta <- as.data.frame(mcols(dmrs))
 summary_tbl <- data.frame(
@@ -112,11 +151,20 @@ if (any(is.finite(summary_tbl$qval))) {
 } else {
     summary_tbl <- summary_tbl[order(-abs(summary_tbl$delta_beta), -summary_tbl$score, na.last = TRUE), ]
 }
-knitr::kable(head(summary_tbl, 5), caption = "Top 5 DMRs by statistical evidence/effect size, with SVM score as a complementary measure")
+knitr::kable(
+    head(summary_tbl, 5),
+    caption = paste(
+        "Top 5 DMRs by statistical evidence and effect size,",
+        "with SVM score as a complementary measure"
+    )
+)
 ```
 
 ## Motif Discovery
-Based on the seeds of the DMRs, motifs are extracted using the `extractDMRMotifs` function (called by default when `buildDMRs` is used). The function retrieves the sequences around the seeds, applies a flank size of 5 bp, and identifies consensus sequences. The number of DMRs with extracted motifs and the number of unique motif consensus sequences are reported.
+Motifs are extracted from DMR seed neighborhoods with `extractDMRMotifs()`,
+which is called by default from `buildDMRs()`. The function retrieves sequences
+around the seeds, applies a flank size of 5 bp, and identifies consensus
+sequences.
 ```{r motif_discovery}
 n_motif_consensus <- sum(!is.na(mcols(dmrs)$consensus_seq))
 n_unique_motif_consensus <- length(unique(stats::na.omit(mcols(dmrs)$consensus_seq)))
@@ -125,13 +173,15 @@ cat(sprintf("Unique motif consensus sequences: %d\n", n_unique_motif_consensus))
 ```
 
 ## Motif-Based DMR Interactions
-Once motifs are extracted, the `computeDMRsInteraction` function can be used to identify "interactions" between DMRs based on motif similarity. 
-The rationale is that DMRs with similar motifs may be co-regulated or functionally related, even if they are not in close genomic proximity.
+Once motifs are extracted, `computeDMRsInteraction()` can identify motif-similar
+DMR pairs.
+
+The rationale is that DMRs with similar motifs may be co-regulated or
+functionally related, even if they are not in close genomic proximity.
 The function computes pairwise similarities between the PWMs of the extracted motifs,
 excluding the center site positions, corrects for microarray design biases,
 applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
 The resulting components are annotated with JASPAR motifs if available.
-The number of interactions, components, and the size of the largest component are reported. Additionally, the number of components with JASPAR annotation is provided.
 ```{r motif_interactions}
 query_with_jaspar <- requireNamespace("JASPAR2024", quietly = TRUE)
 interaction_results <- computeDMRsInteraction(
@@ -146,7 +196,7 @@ interaction_results <- computeDMRsInteraction(
 
 interaction_tbl <- interaction_results$interactions
 component_tbl <- interaction_results$components
-dmrs <- interaction_results$dmrs # The input DMRs are returned with additional metadata columns for the interactions and components.
+dmrs <- interaction_results$dmrs
 
 cat(sprintf("Interactions found: %d\n", nrow(interaction_tbl)))
 cat(sprintf("Components found: %d\n", nrow(component_tbl)))
@@ -197,9 +247,12 @@ plotDMRsManhattan(
 ```
 
 ### Single DMR Plot
-Each DMR can be plotted with the `plotDMR` function, which shows the beta values of the sites in the DMR, the seeds, and the motif-based interactions with other DMRs, 
-along with JASPAR annotations if existing.
-Here we select a DMR that has more than one merged DMR and has an extension beyond the seed region, in both sides.
+Each DMR can be plotted with `plotDMR()`, which shows DMR site beta values,
+seeds, motif-based interactions with other DMRs, and available JASPAR
+annotations.
+
+Here we select a DMR that has more than one merged DMR and extension beyond both
+ends of the seed region.
 
 ```{r single_dmr_plot, fig.height=10}
 merged_counts <- suppressWarnings(as.numeric(as.character(mcols(dmrs)$merged_dmrs_num)))
@@ -239,7 +292,8 @@ plotDMR(
 ```
 
 ### Summary Circos Plot
-A circos plot consisting of the extracted information from CMEnt is drawn along the genome or a specified region. 
+A circos plot consisting of extracted CMEnt information is drawn along the
+genome or a specified region.
 The information includes:
 
 - The DMRs and their complementary SVM scores (at most 40 DMRs per chromosome are shown)
@@ -281,7 +335,9 @@ if (!circos_summary_plotted) {
     text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
 }
 ```
-It is also possible to plot the circos for one or multiple regions to assess connectivity, e.g, for chr17:2Mb-5Mb, chr17:72Mb-83Mb and chr19:1Mb-12Mb, which are regions that in the earlier plot were shown to interact. (The reported score in the legend is computed based on the visible DMRs of each component):
+It is also possible to plot circos output for one or more regions to assess
+connectivity. The reported score in the legend is computed from the visible
+DMRs of each component.
 ```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
 circos_region_plotted <- FALSE
 
@@ -301,7 +357,7 @@ tryCatch(
             max_sites_per_dmr = 5,
             max_components = 120,
             region = "chr17:2Mb-5Mb, chr17:72Mb-83Mb, chr19:1Mb-12Mb",
-            degenerate_resolution = 10e2, # If the width of the DMR is larger than that, the DMRs is shown as rectangles and ribbons are used instead of links to connect the DMRs.
+            degenerate_resolution = 10e2,
             verbose = 1
         )
         circos_region_plotted <- TRUE

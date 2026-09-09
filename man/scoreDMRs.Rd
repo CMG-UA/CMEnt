@@ -20,7 +20,10 @@ scoreDMRs(
   block_gap_min_bp = 250000,
   block_gap_max_bp = 5e+06,
   njobs = getOption("CMEnt.njobs", .defaultNJobs()),
-  verbose = getOption("CMEnt.verbose", 1L)
+  show_progress = TRUE,
+  verbose = getOption("CMEnt.verbose", 1L),
+  .dmr_beta = NULL,
+  .memory_njobs = njobs
 )
 }
 \arguments{
@@ -60,7 +63,16 @@ gap threshold (bp). Default is \code{5000000}.}
 
 \item{njobs}{Integer. Number of parallel jobs used for cross-validated scoring. Default comes from \code{getOption("CMEnt.njobs")}.}
 
+\item{show_progress}{Logical. Whether to display a progress bar during scoring. Default is \code{TRUE}.}
+
 \item{verbose}{Numeric. Logging verbosity level. Default comes from \code{getOption("CMEnt.verbose")}.}
+
+\item{.dmr_beta}{Internal optional matrix-like object of preloaded beta values
+for all DMR sites. When provided, it must contain all sites referenced by
+\code{mcols(dmrs)$sites} and all beta sample columns.}
+
+\item{.memory_njobs}{Internal number of concurrently active jobs to use for
+RAM-derived materialization chunk sizing. Defaults to \code{njobs}.}
 }
 \value{
 GRanges object with DMRs ordered by complementary classification score

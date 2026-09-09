@@ -9,7 +9,7 @@ test_that("getSortedGenomicLocs supports hs1 for 450K arrays", {
 
     expect_true(is.data.frame(locs))
     expect_true(nrow(locs) > 0)
-    expect_true(all(c("chr", "start", "end") %in% colnames(locs)))
+    expect_true(all(c("chr", "start") %in% colnames(locs)))
 })
 
 test_that("annotateDMRsWithGenes supports hs1 via lifted hg38 gene models", {

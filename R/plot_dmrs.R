@@ -92,7 +92,7 @@
     if (is.na(start_chr) || is.na(end_chr)) {
         return(chr)
     }
-    paste0(chr, ":", start_chr, "-", end_chr)
+    paste0(chr, ":", gsub(chr, "", start_chr), "-", gsub(chr, "", end_chr))
 }
 
 #' Plot DMR Structure with seeds and Extended sites
@@ -125,8 +125,16 @@
                               min_extension_bp = 50,
                               plot_title = TRUE,
                               .ret_details = FALSE) {
+    .coercePlotLocs <- function(df) {
+        df <- as.data.frame(df)
+        for (col in intersect(c("start", "end"), colnames(df))) {
+            df[[col]] <- suppressWarnings(as.integer(as.character(df[[col]])))
+        }
+        df
+    }
+
     .locsToDf <- function(gr_subset) {
-        df <- as.data.frame(gr_subset)
+        df <- .coercePlotLocs(gr_subset)
         if (nrow(df) > 0) {
             df$site_id <- rownames(gr_subset)
         } else {
@@ -155,27 +163,54 @@
     }
 
     # Extract DMR information
-    seeds <- base::strsplit(dmr_data$seeds, split = ",")[[1]]
-    sites <- base::strsplit(dmr_data$sites, split = ",")[[1]]
-    downstream_sup_sites <- base::strsplit(dmr_data$downstream_sites, split = ",")[[1]]
-    downstream_sup_sites <- setdiff(downstream_sup_sites, seeds)
-    downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
-    upstream_sup_sites <- base::strsplit(dmr_data$upstream_sites, split = ",")[[1]]
-    upstream_sup_sites <- setdiff(upstream_sup_sites, seeds)
-    upstream_sup_sites_locs <- .locsToDf(beta_locs[upstream_sup_sites, , drop = FALSE])
-    if (length(upstream_sup_sites) == 0) {
-        start_site <- seeds[[1]]
-    } else {
-        start_site <- upstream_sup_sites[[1]]
+    seeds <- .splitCsvValues(dmr_data$seeds)
+    if (length(seeds) == 0L) {
+        stop("plotDMR(): selected DMR has no seed site IDs.")
     }
-    if (length(downstream_sup_sites) == 0) {
-        end_site <- seeds[[length(seeds)]]
-    } else {
-        end_site <- downstream_sup_sites[[length(downstream_sup_sites)]]
-    }
+    sites <- .splitCsvValues(dmr_data$sites)
     beta_locs_rownames <- rownames(beta_locs)
+    downstream_sup_sites <- .splitCsvValues(dmr_data$downstream_sites)
+    downstream_sup_sites <- setdiff(downstream_sup_sites, seeds)
+    upstream_sup_sites <- .splitCsvValues(dmr_data$upstream_sites)
+    upstream_sup_sites <- setdiff(upstream_sup_sites, seeds)
 
-    dmr_locs <- beta_locs[match(start_site, beta_locs_rownames):match(end_site, beta_locs_rownames), , drop = FALSE]
+    extension_sites <- unique(c(upstream_sup_sites, downstream_sup_sites))
+    missing_extension_sites <- extension_sites[!(extension_sites %in% beta_locs_rownames)]
+    if (length(missing_extension_sites) > 0L) {
+        warning(
+            "plotDMR(): dropping ", length(missing_extension_sites),
+            " extension site ID(s) not found in beta_locs: ",
+            paste(head(missing_extension_sites, 10L), collapse = ", "),
+            if (length(missing_extension_sites) > 10L) " ..." else "",
+            call. = FALSE
+        )
+        upstream_sup_sites <- upstream_sup_sites[upstream_sup_sites %in% beta_locs_rownames]
+        downstream_sup_sites <- downstream_sup_sites[downstream_sup_sites %in% beta_locs_rownames]
+    }
+
+    downstream_sup_sites_locs <- .locsToDf(beta_locs[downstream_sup_sites, , drop = FALSE])
+    upstream_sup_sites_locs <- .locsToDf(beta_locs[upstream_sup_sites, , drop = FALSE])
+
+    missing_seed_sites <- seeds[!(seeds %in% beta_locs_rownames)]
+    if (length(missing_seed_sites) > 0L) {
+        stop(
+            "plotDMR(): DMR seed site ID(s) not found in beta_locs: ",
+            paste(unique(missing_seed_sites), collapse = ", ")
+        )
+    }
+
+    plot_site_inds <- match(unique(c(seeds, upstream_sup_sites, downstream_sup_sites)), beta_locs_rownames)
+    plot_site_inds <- plot_site_inds[!is.na(plot_site_inds)]
+    start_site_ind <- min(plot_site_inds)
+    end_site_ind <- max(plot_site_inds)
+    if (start_site_ind > end_site_ind) {
+        stop("plotDMR(): DMR start site occurs after end site in beta_locs.")
+    }
+    start_site <- beta_locs_rownames[[start_site_ind]]
+    end_site <- beta_locs_rownames[[end_site_ind]]
+
+    dmr_locs <- beta_locs[start_site_ind:end_site_ind, , drop = FALSE]
+    dmr_locs <- .coercePlotLocs(dmr_locs)
 
     nsup_sites <- setdiff(rownames(dmr_locs), sites)
     nsup_sites_locs <- .locsToDf(dmr_locs[nsup_sites, , drop = FALSE])
@@ -190,8 +225,8 @@
     start_site_pos <- as.integer(dmr_locs[start_site, "start"])
     end_site_pos <- as.integer(dmr_locs[end_site, "start"])
     seed_positions <- as.integer(dmr_locs[seeds, "start"])
-    start_seed_pos <- dmr_data$start_seed_pos
-    end_seed_pos <- dmr_data$end_seed_pos
+    start_seed_pos <- suppressWarnings(as.integer(as.character(dmr_data$start_seed_pos)))
+    end_seed_pos <- suppressWarnings(as.integer(as.character(dmr_data$end_seed_pos)))
 
     if (extend_by_dmr_size_ratio > 0) {
         dmr_size <- dmr_end - dmr_start
@@ -231,10 +266,14 @@
         stringsAsFactors = FALSE
     )
 
+    upstream_extension_locs <- upstream_sup_sites_locs[upstream_sup_sites_locs$start < start_seed_pos, , drop = FALSE]
+    downstream_extension_locs <- downstream_sup_sites_locs[downstream_sup_sites_locs$start > end_seed_pos, , drop = FALSE]
+
     # 3. Extended supporting sites (vertical lines at y=0.5)
-    if (start_site_pos != start_seed_pos) {
+    if (nrow(upstream_extension_locs) > 0) {
+        upstream_extension_start <- min(upstream_extension_locs$start)
         dmr_upstream_line <- data.frame(
-            x = start_site_pos,
+            x = upstream_extension_start,
             xend = start_seed_pos,
             y = 0.5,
             yend = 1,
@@ -251,10 +290,11 @@
             stringsAsFactors = FALSE
         )
     }
-    if (end_site_pos != end_seed_pos) {
+    if (nrow(downstream_extension_locs) > 0) {
+        downstream_extension_end <- max(downstream_extension_locs$start)
         dmr_downstream_line <- data.frame(
             x = end_seed_pos,
-            xend = end_site_pos,
+            xend = downstream_extension_end,
             y = 1,
             yend = 0.5,
             type = "DMR_Extension",
@@ -331,7 +371,7 @@
         fill = "#E41A1C"
     )
     # if upstream extended sites exist add shading in the form of a trapezoid
-    if (nrow(upstream_sup_sites_locs) > 0) {
+    if (nrow(upstream_extension_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_upstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -341,7 +381,7 @@
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(min(upstream_sup_sites_locs$start), start_seed_pos, start_seed_pos, min(upstream_sup_sites_locs$start)),
+            x = c(min(upstream_extension_locs$start), start_seed_pos, start_seed_pos, min(upstream_extension_locs$start)),
             y = c(0, 0, 1, 0.5),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -349,7 +389,7 @@
     }
 
     # if downstream extended sites exist add shading in the form of a trapezoid
-    if (nrow(downstream_sup_sites_locs) > 0) {
+    if (nrow(downstream_extension_locs) > 0) {
         p <- p + ggplot2::geom_segment(
             data = dmr_downstream_line,
             ggplot2::aes(x = x, xend = xend, y = y, yend = yend),
@@ -359,7 +399,7 @@
         )
         p <- p + ggplot2::annotate(
             "polygon",
-            x = c(end_seed_pos, max(downstream_sup_sites_locs$start), max(downstream_sup_sites_locs$start), end_seed_pos),
+            x = c(end_seed_pos, max(downstream_extension_locs$start), max(downstream_extension_locs$start), end_seed_pos),
             y = c(0, 0, 0.5, 1),
             alpha = 0.1,
             fill = "#E41A1C"
@@ -435,7 +475,7 @@
 
     # Add labels for DMR extensions if they exist
     extension_df <- list()
-    if (nrow(upstream_sup_sites_locs) > 0) {
+    if (nrow(upstream_extension_locs) > 0) {
         upstream_mid_x <- (dmr_upstream_line$x + dmr_upstream_line$xend) / 2
         upstream_mid_y <- (dmr_upstream_line$y + dmr_upstream_line$yend) / 2
         upstream_label_df <- data.frame(
@@ -448,7 +488,7 @@
         )
         extension_df <- c(extension_df, list(upstream_label_df))
     }
-    if (nrow(downstream_sup_sites_locs) > 0) {
+    if (nrow(downstream_extension_locs) > 0) {
         downstream_mid_x <- (dmr_downstream_line$x + dmr_downstream_line$xend) / 2
         downstream_mid_y <- (dmr_downstream_line$y + dmr_downstream_line$yend) / 2
         downstream_label_df <- data.frame(
@@ -536,6 +576,7 @@
             plot.title = ggplot2::element_text(face = "bold", size = 9),
             axis.text.y = ggplot2::element_text(hjust = 0.5),
             panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         )
 
@@ -545,9 +586,11 @@
     breaks <- c(plot_start, as.integer(beta_locs[start_site_ind:end_site_ind, "start"]), plot_end)
     site_positions <- as.integer(beta_locs[start_site_ind:end_site_ind, "start"])
     site_ids <- rownames(beta_locs[start_site_ind:end_site_ind, , drop = FALSE])
+    # if site_id is like chr:pos, do not include it in the label, just show the position
+    sites_ids_labs <- ifelse(grepl(":", site_ids), "", paste0("(", site_ids, ")"))
     sites_labs <- paste0(
         format(site_positions, big.mark = ",", scientific = FALSE),
-        " (", site_ids, ")"
+        sites_ids_labs
     )
     breaks_labels <- c(
         format(plot_start, big.mark = ",", scientific = FALSE), sites_labs,
@@ -555,9 +598,10 @@
     )
     p <- p + ggplot2::scale_x_continuous(
         breaks = breaks,
-        labels = breaks_labels
+        labels = breaks_labels,
+        guide = ggplot2::guide_axis(check.overlap = TRUE)
     )
-    p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]))
+    p <- p + ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)]), clip = "off")
 
     if (!plot_title) {
         .log_info("Title of the generated plot:\n", title)
@@ -603,6 +647,18 @@
     label
 }
 
+.padPlotGrob <- function(grob, padding = grid::unit(8, "pt")) {
+    gridExtra::arrangeGrob(
+        grobs = list(grob),
+        ncol = 1,
+        top = grid::nullGrob(),
+        bottom = grid::nullGrob(),
+        left = grid::nullGrob(),
+        right = grid::nullGrob(),
+        padding = padding
+    )
+}
+
 .siteTileBounds <- function(positions, plot_start, plot_end) {
     positions <- as.numeric(positions)
     if (length(positions) == 1L) {
@@ -626,10 +682,9 @@
     }
 
     site_ids <- rownames(total_shown_positions)
-    site_end <- if ("end" %in% colnames(total_shown_positions)) total_shown_positions$end else total_shown_positions$start
-    site_gr <- GenomicRanges::GRanges(
+    site_gr <- GenomicRanges::GPos(
         seqnames = total_shown_positions$chr,
-        ranges = IRanges::IRanges(start = total_shown_positions$start, end = site_end),
+        pos = total_shown_positions$start,
         seqinfo = GenomeInfoDb::seqinfo(dmr)
     )
     names(site_gr) <- site_ids
@@ -773,6 +828,45 @@
     # Prepare data
     beta_data <- as.data.frame(beta_data)
     beta_data[, "site"] <- rownames(beta_data)
+    select_samples <- function(group_samples) {
+        if (length(group_samples) <= max_samples_per_group) {
+            return(group_samples)
+        }
+        sample_beta <- beta_data[, group_samples, drop = FALSE]
+        finite_beta <- is.finite(as.matrix(sample_beta))
+        priority_rows <- match(seed_ids, beta_data$site)
+        priority_rows <- priority_rows[!is.na(priority_rows)]
+        if (length(priority_rows) == 0L) {
+            priority_rows <- seq_len(nrow(finite_beta))
+        }
+        selected <- character()
+        target_coverage <- min(2L, max_samples_per_group)
+        coverage <- rep(0L, length(priority_rows))
+        while (length(selected) < max_samples_per_group && any(coverage < target_coverage)) {
+            remaining <- setdiff(group_samples, selected)
+            if (length(remaining) == 0L) {
+                break
+            }
+            remaining_idx <- match(remaining, group_samples)
+            deficit <- coverage < target_coverage
+            contribution <- colSums(finite_beta[priority_rows[deficit], remaining_idx, drop = FALSE])
+            total_observed <- colSums(finite_beta[, remaining_idx, drop = FALSE])
+            best <- order(contribution, total_observed, decreasing = TRUE)[1]
+            if (contribution[best] <= 0) {
+                break
+            }
+            pick <- remaining[best]
+            selected <- c(selected, pick)
+            coverage <- coverage + as.integer(finite_beta[priority_rows, match(pick, group_samples)])
+        }
+        remaining <- setdiff(group_samples, selected)
+        if (length(selected) < max_samples_per_group && length(remaining) > 0L) {
+            remaining_idx <- match(remaining, group_samples)
+            total_observed <- colSums(finite_beta[, remaining_idx, drop = FALSE])
+            selected <- c(selected, head(remaining[order(total_observed, decreasing = TRUE)], max_samples_per_group - length(selected)))
+        }
+        selected
+    }
 
     # if there are more than max_samples_per_group samples in any group, limit to max_samples_per_group samples per group for plotting
     selected_samples <- NULL
@@ -786,11 +880,7 @@
                     names(group_counts),
                     function(g) {
                         group_samples <- rownames(pheno)[pheno[[sample_group_col]] == g]
-                        if (length(group_samples) > max_samples_per_group) {
-                            sample(group_samples, max_samples_per_group)
-                        } else {
-                            group_samples
-                        }
+                        select_samples(group_samples)
                     }
                 )
             )
@@ -801,7 +891,7 @@
         if (ncol(beta_data) - 1 > max_samples_per_group) {
             .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
             sample_cols <- setdiff(colnames(beta_data), "site")
-            selected_samples <- sample(sample_cols, max_samples_per_group)
+            selected_samples <- select_samples(sample_cols)
         }
     }
     if (!is.null(selected_samples)) {
@@ -841,34 +931,48 @@
     sample_index <- seq_along(sample_order)
     names(sample_index) <- sample_order
     beta_melted$SampleIndex <- unname(sample_index[as.character(beta_melted$Sample)])
+    beta_melted <- beta_melted[is.finite(beta_melted$Beta), , drop = FALSE]
 
     valid_beta <- beta_melted$Beta[is.finite(beta_melted$Beta)]
-    beta_limits <- range(valid_beta, na.rm = TRUE)
-    q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
-    if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
-        q <- sort(c(q[1], 0.5, q[2]))
-        coloring <- ggplot2::scale_fill_gradientn(
-            colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
-        )
-    } else if (beta_limits[2] <= 0.5) {
+    if (length(valid_beta) == 0L) {
         coloring <- ggplot2::scale_fill_gradient(
             low = "#2b83ba",
-            high = "#f7f7f7",
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
+            high = "#d7191c",
+            limits = c(0, 1),
+            name = "Beta values",
+            na.value = "transparent"
         )
     } else {
-        coloring <- ggplot2::scale_fill_gradient(
-            low = "#f7f7f7",
-            high = "#d7191c",
-            breaks = signif(q, digits = 2),
-            limits = beta_limits,
-            name = "Beta values"
-        )
+        beta_limits <- range(valid_beta, na.rm = TRUE)
+        q <- stats::quantile(valid_beta, probs = c(0.05, 0.95), na.rm = TRUE, names = FALSE, type = 8)
+        if (beta_limits[1] < 0.5 && beta_limits[2] > 0.5) {
+            q <- sort(c(q[1], 0.5, q[2]))
+            coloring <- ggplot2::scale_fill_gradientn(
+                colours = c("#2b83ba", "#f7f7f7", "#d7191c"),
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        } else if (beta_limits[2] <= 0.5) {
+            coloring <- ggplot2::scale_fill_gradient(
+                low = "#2b83ba",
+                high = "#f7f7f7",
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        } else {
+            coloring <- ggplot2::scale_fill_gradient(
+                low = "#f7f7f7",
+                high = "#d7191c",
+                breaks = signif(q, digits = 2),
+                limits = beta_limits,
+                name = "Beta values",
+                na.value = "transparent"
+            )
+        }
     }
     heatmap_plot <- ggplot2::ggplot(beta_melted) +
         ggplot2::geom_tile(ggplot2::aes(x = Position, y = SampleIndex, fill = Beta)) +
@@ -887,6 +991,7 @@
             axis.text.y = ggplot2::element_text(size = 8, face = "bold", color = "#222222"),
             axis.ticks.y = ggplot2::element_blank(),
             panel.grid.minor = ggplot2::element_blank(),
+            panel.grid.major.x = ggplot2::element_blank(),
             panel.grid.major.y = ggplot2::element_blank()
         ) +
         ggplot2::theme(
@@ -1041,10 +1146,10 @@ minmaxscale <- function(x) {
             family = "mono",
             lineheight = 0.95
         ) +
-        ggplot2::xlim(0, 1) +
+        ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0.25, length(lines) + 0.75), clip = "off") +
         ggplot2::theme_void() +
         ggplot2::theme(
-            plot.margin = ggplot2::margin(4, 4, 4, 4),
+            plot.margin = ggplot2::margin(4, 8, 4, 4),
             panel.background = ggplot2::element_rect(fill = "white", colour = NA)
         )
 }
@@ -1057,8 +1162,8 @@ minmaxscale <- function(x) {
             beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size
         )
     }
-    pwm <- mcols(dmr)$pwm[[1]]
-    consensus_seq <- mcols(dmr)$consensus_seq[[1]]
+    pwm <- S4Vectors::mcols(dmr)$pwm[[1]]
+    consensus_seq <- S4Vectors::mcols(dmr)$consensus_seq[[1]]
 
     if (is.null(pwm) || !is.matrix(pwm)) {
         return(NULL)
@@ -1206,7 +1311,7 @@ plotDMRs <- function(dmrs,
     dmrs <- .convertToGRanges(dmrs, genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (is.null(dmr_indices)) {
-        score <- minmaxscale(abs(mcols(dmrs)[[strex::match_arg(score_by)]]))
+        score <- minmaxscale(abs(S4Vectors::mcols(dmrs)[[strex::match_arg(score_by)]]))
         ord <- order(score, decreasing = TRUE)
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
@@ -1344,7 +1449,7 @@ plotDMR <- function(dmrs,
                 sorted_locs = beta_locs,
                 genome = genome
             )
-        } else if (!"BetaHandler" %in% class(beta)) {
+        } else if (!methods::is(beta, "BetaHandler")) {
             stop("beta_handler must be either a file path (character) or a BetaHandler object")
         } else {
             beta_handler <- beta
@@ -1447,7 +1552,8 @@ plotDMR <- function(dmrs,
         heatmap_plot <- heatmap_plot +
             ggplot2::scale_x_continuous(
                 breaks = breaks,
-                labels = breaks_labels
+                labels = breaks_labels,
+                guide = ggplot2::guide_axis(check.overlap = TRUE)
             ) +
             ggplot2::coord_cartesian(xlim = c(breaks[1], breaks[length(breaks)])) +
             ggplot2::labs(
@@ -1500,7 +1606,8 @@ plotDMR <- function(dmrs,
                 widths = c(0.58, 0.42)
             )
             grobs <- c(grobs, list(motif_panel))
-            heights <- c(heights, if (!is.null(beta)) 0.55 else 0.6)
+            motif_height <- max(if (!is.null(beta)) 0.55 else 0.6, length(motif_lines) * 0.055)
+            heights <- c(heights, motif_height)
         }
     }
 
@@ -1522,6 +1629,7 @@ plotDMR <- function(dmrs,
     } else {
         combined <- grobs[[1]]
     }
+    combined <- .padPlotGrob(combined)
     grid::grid.draw(combined)
     if (!is.null(output_file)) {
         grDevices::dev.off()
@@ -2132,6 +2240,8 @@ plotDMRBlockFormation <- function(dmrs,
 #' @param block_alpha Numeric. Alpha for block rectangles in `[0, 1]` (default: `0.12`).
 #' @param block_linewidth Numeric. Line width for block rectangle borders (default: `0.25`).
 #' @param output_file Character or NULL. If non-NULL, path to save the plot as a PDF (default: `NULL`).
+#' @param add_hover_text Logical. Whether to add plotly-compatible hover text
+#'   to points and block rectangles (default: `FALSE`).
 #' @param width Numeric. Width of the output PDF in inches (default: `12`).
 #' @param height Numeric. Height of the output PDF in inches (default: `6`).
 #' 
@@ -2158,6 +2268,7 @@ plotDMRsManhattan <- function(dmrs,
                               block_alpha = 0.12,
                               block_linewidth = 0.25,
                               output_file = NULL,
+                              add_hover_text = FALSE,
                               width = 12,
                               height = 6) {
     dmrs <- .convertToGRanges(dmrs, genome = genome)
@@ -2274,20 +2385,22 @@ plotDMRsManhattan <- function(dmrs,
     dmr_df$position <- (midpoint_clipped - dmr_df$plot_start + 1) + dmr_df$offset
     chr_levels <- .orderChromosomesNaturally(unique(plot_spans$chr))
     dmr_df$chr <- factor(dmr_df$chr, levels = chr_levels)
-    dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
-        .buildHoverText(
-            .hoverLine("DMR", dmr_df$dmr_id[i]),
-            .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
-            .hoverLine("Score", dmr_df$score[i], digits = 3),
-            .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
-            .hoverLine("Primary region", dmr_df$dmr_class[i]),
-            .hoverLine("sites", dmr_df$sites_num[i]),
-            .hoverLine("Seeds", dmr_df$seeds_num[i]),
-            .hoverLine("Block", dmr_df$block_id[i]),
-            .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),
-            .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
-        )
-    }, character(1))
+    if (add_hover_text) {
+        dmr_df$hover_text <- vapply(seq_len(nrow(dmr_df)), function(i) {
+            .buildHoverText(
+                .hoverLine("DMR", dmr_df$dmr_id[i]),
+                .hoverLine("Region", .formatGenomicInterval(dmr_df$chr[i], dmr_df$start[i], dmr_df$end[i])),
+                .hoverLine("Score", dmr_df$score[i], digits = 3),
+                .hoverLine("Delta beta", dmr_df$delta_beta[i], digits = 3),
+                .hoverLine("Primary region", dmr_df$dmr_class[i]),
+                .hoverLine("sites", dmr_df$sites_num[i]),
+                .hoverLine("Seeds", dmr_df$seeds_num[i]),
+                .hoverLine("Block", dmr_df$block_id[i]),
+                .hoverLine("Promoter genes", dmr_df$promoter_genes[i]),
+                .hoverLine("Gene body genes", dmr_df$gene_body_genes[i])
+            )
+        }, character(1))
+    }
     axis_df <- plot_spans[, c("axis_position", "label"), drop = FALSE]
     axis_df <- axis_df[is.finite(axis_df$axis_position), , drop = FALSE]
     total_span_width <- sum(plot_spans$span_width, na.rm = TRUE)
@@ -2321,25 +2434,31 @@ plotDMRsManhattan <- function(dmrs,
             } else {
                 dmr_df$block_id
             })
-            block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
-                members <- block_members[[block_rects$group_id[i]]]
-                .buildHoverText(
-                    .hoverLine("Block", block_rects$block_id[i]),
-                    .hoverLine("DMRs", nrow(members)),
-                    .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
-                    .hoverLine("Scope", paste(unique(members$span_id), collapse = ", ")),
-                    .hoverLine("Score range", paste(
-                        .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
-                        .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
-                        sep = " to "
-                    )),
-                    .hoverLine("DMR IDs", paste(utils::head(members$dmr_id, 5), collapse = ", ")),
-                    if (nrow(members) > 5) "More DMRs available in this block." else NULL
-                )
-            }, character(1))
+            if (add_hover_text) {
+                block_rects$hover_text <- vapply(seq_len(nrow(block_rects)), function(i) {
+                    members <- block_members[[block_rects$group_id[i]]]
+                    .buildHoverText(
+                        .hoverLine("Block", block_rects$block_id[i]),
+                        .hoverLine("DMRs", nrow(members)),
+                        .hoverLine("Chromosomes", paste(unique(as.character(members$chr)), collapse = ", ")),
+                        .hoverLine("Scope", paste(unique(members$span_id), collapse = ", ")),
+                        .hoverLine("Score range", paste(
+                            .formatHoverValue(min(members$score, na.rm = TRUE), digits = 3),
+                            .formatHoverValue(max(members$score, na.rm = TRUE), digits = 3),
+                            sep = " to "
+                        )),
+                        .hoverLine("DMR IDs", paste(utils::head(members$dmr_id, 5), collapse = ", ")),
+                        if (nrow(members) > 5) "More DMRs available in this block." else NULL
+                    )
+                }, character(1))
+            }
+            if (add_hover_text)
+                rect_aes <- ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, text = hover_text)
+            else
+                rect_aes <- ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax)
             p <- p + suppressWarnings(ggplot2::geom_rect(
                 data = block_rects,
-                ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, text = hover_text),
+                mapping = rect_aes,
                 inherit.aes = FALSE,
                 fill = block_rects$fill,
                 color = block_rects$fill,
@@ -2360,8 +2479,13 @@ plotDMRsManhattan <- function(dmrs,
         subtitle_parts <- c(subtitle_parts, paste0("Scope: ", nrow(plot_spans), " selected region", if (nrow(plot_spans) == 1) "" else "s"))
     }
     subtitle <- if (length(subtitle_parts) > 0) paste(subtitle_parts, collapse = " | ") else NULL
+    if (add_hover_text) {
+        point_aes <- ggplot2::aes(text = hover_text)
+    } else {
+        point_aes <- NULL
+    }
     p <- p +
-        suppressWarnings(ggplot2::geom_point(ggplot2::aes(text = hover_text), size = point_size, alpha = point_alpha, stroke = 0)) +
+        suppressWarnings(ggplot2::geom_point(mapping = point_aes, size = point_size, alpha = point_alpha, stroke = 0)) +
         ggplot2::scale_color_manual(values = region_colors, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_shape_manual(values = region_shapes, drop = TRUE, name = "Primary Region") +
         ggplot2::scale_x_continuous(

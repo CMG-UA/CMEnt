@@ -76,9 +76,9 @@ test_that("BetaHandler extracts sample names from minimal tabix headers", {
     con <- gzfile(tabix_file, "w")
     writeLines(
         c(
-            "#chrom\tstart\tSample1\tSample2",
-            "chr1\t100\t0.1\t0.2",
-            "chr1\t200\t0.3\t0.4"
+            "#chrom\tstart\tend\tSample1\tSample2",
+            "chr1\t100\t101\t0.1\t0.2",
+            "chr1\t200\t201\t0.3\t0.4"
         ),
         con
     )

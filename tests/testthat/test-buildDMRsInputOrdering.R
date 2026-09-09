@@ -43,7 +43,7 @@ test_that("buildDMRs validates start ordering within chromosome", {
 
     expect_error(
         buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE,
             beta = input$beta_handler,
@@ -75,7 +75,7 @@ test_that("buildDMRs validates chromosome block contiguity", {
 
     expect_error(
         buildDMRs(
-            .score_dmrs = FALSE,
+            score_dmrs = FALSE,
             extract_motifs = FALSE,
             annotate_with_genes = FALSE,
             beta = input$beta_handler,

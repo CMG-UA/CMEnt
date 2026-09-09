@@ -3,6 +3,14 @@ is_installed_for_tests <- function(pkg_name) {
 }
 
 
+skip_if_not_integration_tests <- function() {
+    enabled <- tolower(Sys.getenv("CMENT_RUN_INTEGRATION_TESTS", unset = "false"))
+    if (!enabled %in% c("true", "1", "yes", "y")) {
+        skip("Set CMENT_RUN_INTEGRATION_TESTS=true to run CMEnt integration tests.")
+    }
+}
+
+
 skip_if_missing_array_annotation <- function(array = "450K", genome = "hg19") {
     pkg_name <- CMEnt:::.getArrayAnnotationPackage(array = array, genome = genome)
     if (!is_installed_for_tests(pkg_name)) {

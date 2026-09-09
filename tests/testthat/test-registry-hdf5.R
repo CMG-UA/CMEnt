@@ -16,7 +16,7 @@ test_that("getRegistry creates an empty HDF5-backed registry for header-only inp
 
     registry <- CMEnt:::getRegistry(
         input_file,
-        select = c("#chrom", "start"),
+        select_columns = c("#chrom", "start"),
         output_h5file = output_h5file
     )
 

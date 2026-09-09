@@ -71,9 +71,14 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
     \describe{
       \item{\code{beta}}{Path to beta values file, or a tabix, or a beta matrix, or a BSseq object}
       \item{\code{array}}{Array platform type. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
-      \item{\code{genome}}{Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
-      \item{\code{beta_row_names_file}}{Path to row names file. If NULL, row names will be read from input \code{beta}.}
-      \item{\code{sorted_locs}}{Sorted genomic locations data frame. If given, the input data will be assumed already sorted. If NULL, will be retrieved automatically}
+      \item{\code{genome}}{Reference genome version, eg. hg38 or hs1.
+Only human and mouse genomes are supported.
+Ignored if sorted_locs, a tabix file, or a BSseq object have been provided.}
+      \item{\code{beta_row_names_file}}{Path to row names file.
+If NULL, row names will be read from input \code{beta}.}
+      \item{\code{sorted_locs}}{Sorted genomic locations data frame.
+If given, the input data will be assumed already sorted.
+If NULL, will be inferred from the input.}
       \item{\code{chrom_col}}{Chromosome column name in tabix file}
       \item{\code{start_col}}{Start position column name in tabix file}
       \item{\code{output_prefix}}{Prefix used for saving derived beta artifacts}
@@ -256,7 +261,7 @@ with support for in-memory loading, tabix indexing, BSseq objects, and various f
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    Matrix of beta values
+    Matrix-like object of beta values
   }
 }
 

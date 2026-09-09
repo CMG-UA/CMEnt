@@ -32,7 +32,7 @@ for (case in names(files_to_make)) {
         testing_mode = "parametric",
         entanglement = "weak",
         output_prefix = paste0("inst/extdata/", case),
-        .score_dmrs = TRUE
+        score_dmrs = TRUE
     )
     saveRDS(dmrs_cment, cment_file)
 }

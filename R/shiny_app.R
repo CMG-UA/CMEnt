@@ -454,7 +454,7 @@ launchCMEntViewer <- function(
 
         if (
             file.exists(file.path(path, "R", "shiny_app.R")) &&
-            file.exists(file.path(path, "R", "shiny_modules.R"))
+                file.exists(file.path(path, "R", "shiny_modules.R"))
         ) {
             return(path)
         }
@@ -472,7 +472,7 @@ launchCMEntViewer <- function(
     grDevices::recordPlot()
 }
 
-.viewerRunBackgroundTaskFromData <- function(task_type, data, params) {
+.viewerRunBgTaskFromData <- function(task_type, data, params) {
     switch(task_type,
         single_dmr_plot = list(
             task_type = task_type,
@@ -499,7 +499,8 @@ launchCMEntViewer <- function(
                     region = params$region,
                     genome = data$genome,
                     point_size = params$point_size,
-                    point_alpha = params$point_alpha
+                    point_alpha = params$point_alpha,
+                    add_hover_text = TRUE
                 )
             })
         ),
@@ -517,9 +518,10 @@ launchCMEntViewer <- function(
             })
         ),
         circos_plot = {
-            prepared_plot_state <- NULL
+            plot_state <- new.env(parent = emptyenv())
+            plot_state$prepared_plot_state <- NULL
             plot <- .captureViewerRecordedPlot(function() {
-                prepared_plot_state <<- .runViewerCircosPlot(
+                plot_state$prepared_plot_state <- .runViewerCircosPlot(
                     params,
                     data,
                     prepared_plot_state = params$prepared_plot_state
@@ -528,7 +530,7 @@ launchCMEntViewer <- function(
             list(
                 task_type = task_type,
                 plot = plot,
-                prepared_plot_state = prepared_plot_state
+                prepared_plot_state = plot_state$prepared_plot_state
             )
         },
         circos_cache_compute = {
@@ -545,7 +547,7 @@ launchCMEntViewer <- function(
                 cache$interactions <- result$interactions
             }
             if (is.null(cache$components)) {
-                cache$components <- .serializeDMRInteractionComponentsForStorage(result$components)
+                cache$components <- .serializeDMRIntComps(result$components)
             }
 
             list(
@@ -559,7 +561,7 @@ launchCMEntViewer <- function(
 
 .viewerRunBackgroundTask <- function(task_type, output_prefix, params) {
     data <- .loadCMEntData(output_prefix)
-    .viewerRunBackgroundTaskFromData(
+    .viewerRunBgTaskFromData(
         task_type = task_type,
         data = data,
         params = params
@@ -571,9 +573,9 @@ launchCMEntViewer <- function(
         func = function(task_type, output_prefix, params, dev_pkg_path) {
             if (
                 !is.null(dev_pkg_path) &&
-                nzchar(dev_pkg_path) &&
-                file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
-                requireNamespace("pkgload", quietly = TRUE)
+                    nzchar(dev_pkg_path) &&
+                    file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                    requireNamespace("pkgload", quietly = TRUE)
             ) {
                 pkgload::load_all(
                     dev_pkg_path,
@@ -611,9 +613,9 @@ launchCMEntViewer <- function(
                 func = function(output_prefix, dev_pkg_path) {
                     if (
                         !is.null(dev_pkg_path) &&
-                        nzchar(dev_pkg_path) &&
-                        file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
-                        requireNamespace("pkgload", quietly = TRUE)
+                            nzchar(dev_pkg_path) &&
+                            file.exists(file.path(dev_pkg_path, "DESCRIPTION")) &&
+                            requireNamespace("pkgload", quietly = TRUE)
                     ) {
                         pkgload::load_all(
                             dev_pkg_path,
@@ -737,9 +739,10 @@ launchCMEntViewer <- function(
         detail = NULL,
         cancelable = FALSE
     ))
-    worker_session <- NULL
+    worker_state_env <- new.env(parent = emptyenv())
+    worker_state_env$session <- NULL
     worker_dev_pkg_path <- .viewerDevPackagePath()
-    task_counter <- 0L
+    worker_state_env$task_counter <- 0L
 
     set_task_state <- function(
         active = FALSE,
@@ -762,30 +765,30 @@ launchCMEntViewer <- function(
     }
 
     close_worker <- function() {
-        if (!is.null(worker_session)) {
-            try(worker_session$close(), silent = TRUE)
-            worker_session <<- NULL
+        if (!is.null(worker_state_env$session)) {
+            try(worker_state_env$session$close(), silent = TRUE)
+            worker_state_env$session <- NULL
         }
         invisible(TRUE)
     }
 
     ensure_worker <- function() {
-        if (!is.null(worker_session)) {
-            worker_state <- tryCatch(worker_session$get_state(), error = function(e) "finished")
+        if (!is.null(worker_state_env$session)) {
+            worker_state <- tryCatch(worker_state_env$session$get_state(), error = function(e) "finished")
             if (
                 identical(worker_state, "idle") &&
-                isTRUE(tryCatch(worker_session$is_alive(), error = function(e) FALSE))
+                    isTRUE(tryCatch(worker_state_env$session$is_alive(), error = function(e) FALSE))
             ) {
-                return(worker_session)
+                return(worker_state_env$session)
             }
             close_worker()
         }
 
-        worker_session <<- .createViewerWorkerSession(
+        worker_state_env$session <- .createViewerWorkerSession(
             output_prefix = data$output_prefix,
             dev_pkg_path = worker_dev_pkg_path
         )
-        worker_session
+        worker_state_env$session
     }
 
     cancel <- function() {
@@ -836,8 +839,8 @@ launchCMEntViewer <- function(
         }
 
         descriptor <- .viewerTaskMessage(task_type)
-        task_counter <<- task_counter + 1L
-        task_id <- task_counter
+        worker_state_env$task_counter <- worker_state_env$task_counter + 1L
+        task_id <- worker_state_env$task_counter
         pending_detail <- "Starting background worker..."
 
         active_task(list(
@@ -896,7 +899,7 @@ launchCMEntViewer <- function(
                                 }
 
                                 data <- get(".cment_viewer_worker_data", envir = .viewer_worker_env, inherits = FALSE)
-                                result <- .viewerRunBackgroundTaskFromData(
+                                result <- .viewerRunBgTaskFromData(
                                     task_type = task_type,
                                     data = data,
                                     params = params
@@ -1099,7 +1102,7 @@ launchCMEntViewer <- function(
 
             if (
                 isTRUE(state$active) &&
-                (!spinner_visible || !identical(spinner_state_key, page_spinner_state_key()))
+                    (!spinner_visible || !identical(spinner_state_key, page_spinner_state_key()))
             ) {
                 .viewerShowPageSpinner(
                     message = if (is.null(state$message)) "Processing..." else state$message,

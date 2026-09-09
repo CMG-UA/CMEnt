@@ -17,10 +17,11 @@ test_that("buildDMRs accepts covariates without changing synthetic DMR calls", {
 test_that("buildDMRs reuses prepared covariate models across connectivity passes", {
     fixture <- makeSyntheticBuildDMRsFixture()
     original_prepare <- CMEnt:::.prepareGroupCovariateModels
-    prepare_calls <- 0L
+    prepare_calls <- new.env(parent = emptyenv())
+    prepare_calls$n <- 0L
     local_mocked_bindings(
         .prepareGroupCovariateModels = function(...) {
-            prepare_calls <<- prepare_calls + 1L
+            prepare_calls$n <- prepare_calls$n + 1L
             original_prepare(...)
         },
         .package = "CMEnt"
@@ -35,7 +36,7 @@ test_that("buildDMRs reuses prepared covariate models across connectivity passes
     )
 
     expect_s4_class(dmrs, "GRanges")
-    expect_identical(prepare_calls, 1L)
+    expect_identical(prepare_calls$n, 1L)
 })
 
 test_that("buildDMRs normalizes scalar list columns in pheno", {
@@ -125,6 +126,27 @@ test_that("DMR beta aggregation changes with aggfun while preserving effect dire
     expect_gt(agg_mean$controls_beta[agg_mean$dmr_id == 1L], agg_median$controls_beta[agg_median$dmr_id == 1L])
     expect_true(all(sign(agg_mean$cases_beta) == sign(agg_median$cases_beta)))
     expect_true(all(sign(agg_mean$controls_beta) == sign(agg_median$controls_beta)))
+})
+
+test_that("DMR beta aggregation ignores missing per-site beta statistics", {
+    beta_stats <- data.frame(
+        dmr_id = c(1L, 1L, 1L, 2L, 2L),
+        cases_beta = c(0.8, NA_real_, 0.6, NA_real_, NA_real_),
+        controls_beta = c(0.2, 0.3, NA_real_, 0.4, NA_real_),
+        cases_beta_sd = c(0.02, NA_real_, 0.03, NA_real_, NA_real_),
+        controls_beta_sd = c(0.01, 0.04, NA_real_, 0.05, NA_real_)
+    )
+
+    agg <- CMEnt:::.aggregateDMRBetaStats(beta_stats, aggfun = mean)
+
+    expect_equal(agg$cases_beta[agg$dmr_id == 1L], 0.7)
+    expect_equal(agg$controls_beta[agg$dmr_id == 1L], 0.25)
+    expect_equal(agg$cases_beta_min[agg$dmr_id == 1L], 0.6)
+    expect_equal(agg$cases_beta_max[agg$dmr_id == 1L], 0.8)
+    expect_true(is.na(agg$cases_beta[agg$dmr_id == 2L]))
+    expect_equal(agg$controls_beta[agg$dmr_id == 2L], 0.4)
+    expect_true(is.na(agg$cases_beta_min[agg$dmr_id == 2L]))
+    expect_true(is.na(agg$cases_beta_max[agg$dmr_id == 2L]))
 })
 
 test_that("buildDMRs preserves non-tabular columns in TSV outputs", {

@@ -32,7 +32,7 @@ plotDMRsCircos(
   neg_delta_color = "#055709",
   zero_delta_color = "#f0ec10",
   pos_delta_color = "#801414",
-  legend_width_ratio = 0.34,
+  legend_width_ratio = 0.50,
   degenerate_resolution = 1e+06,
   output_file = NULL,
   verbose = NULL
@@ -97,7 +97,7 @@ These links are shown but omitted from the interaction legend (default: \code{"#
 
 \item{pos_delta_color}{Character. Color for positive delta beta values in the DMR arcs (default: "#801414").}
 
-\item{legend_width_ratio}{Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).}
+\item{legend_width_ratio}{Numeric. Fraction of horizontal canvas reserved for legends (default: 0.50).}
 
 \item{degenerate_resolution}{Integer. Resolution in base pairs for simplifying narrow glyphs:
 link ribbons are drawn as lines when both anchors are below this span, and DMR arcs

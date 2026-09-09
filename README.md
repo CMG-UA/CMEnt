@@ -1,4 +1,3 @@
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # CMEnt <img src="man/figures/logo.png" align="right" height="139"/>
@@ -46,6 +45,8 @@ changes.
 - CMEnt is designed to work with pre-computed seeds (DMPs) and does not
   perform DMP identification itself. Users should first identify DMPs
   using their preferred method before using CMEnt for region expansion.
+  Helper functions for this are provided for convenience and mentioned
+  in the [Usage](#usage) section.
 - CMEnt is not preprocessing input methylation files (e.g. no
   normalization, no filtering, no probe removal), apart from conversion
   to different formats for efficiency, and optional confounders
@@ -59,39 +60,38 @@ changes.
 
 ## Installation
 
-You can install the development version of CMEnt from GitHub.
+Install CMEnt from Bioconductor with:
 
-``` r
-# install.packages("devtools") # nolint
-devtools::install_github("CMG-UA/CMEnt")
-```
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        install.packages("BiocManager")
+    }
+    BiocManager::install("CMEnt")
+
+You can install the development version of CMEnt from GitHub with:
+
+    # install.packages("devtools") # nolint
+    devtools::install_github("CMG-UA/CMEnt")
 
 Another option is to use the Docker image available on DockerHub, which
 contains a pre-installed version of CMEnt along with all dependencies.
 You can pull the image using the following command:
 
-``` bash
-docker pull ghcr.io/cmg-ua/cment/cment:latest
-```
+    docker pull ghcr.io/cmg-ua/cment/cment:latest
 
 and run it using:
 
-``` bash
-docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
-```
+    docker run --rm ghcr.io/cmg-ua/cment/cment:latest --help
 
 To launch the packaged example output in `CMEntViewer`, publish the
 Shiny port from the container and bind the app to `0.0.0.0`:
 
-``` bash
-docker run --rm -p 3838:3838 \
-  ghcr.io/cmg-ua/cment/cment:latest \
-  launchCMEntViewer \
-  --output_prefix /CMEnt/inst/extdata/example_output \
-  --launch_browser FALSE \
-  --host 0.0.0.0 \
-  --port 3838
-```
+    docker run --rm -p 3838:3838 \
+      ghcr.io/cmg-ua/cment/cment:latest \
+      launchCMEntViewer \
+      --output_prefix /CMEnt/inst/extdata/example_output \
+      --launch_browser FALSE \
+      --host 0.0.0.0 \
+      --port 3838
 
 Then open `http://localhost:3838` in your browser.
 
@@ -99,50 +99,46 @@ If you want to view outputs created on your machine, mount them into the
 container. Keeping the R library and cache on Docker volumes avoids
 re-installing on-demand packages and cached annotations on every run:
 
-``` bash
-docker volume create cment-r-lib
-docker volume create cment-r-cache
+    docker volume create cment-r-lib
+    docker volume create cment-r-cache
 
-docker run --rm -p 3838:3838 \
-  -v "$PWD:/work" -w /work \
-  -v cment-r-lib:/usr/local/lib/R/site-library \
-  -v cment-r-cache:/home/root/.cache/R \
-  ghcr.io/cmg-ua/cment/cment:latest \
-  launchCMEntViewer \
-  --output_prefix /work/path/to/output_prefix \
-  --launch_browser FALSE \
-  --host 0.0.0.0 \
-  --port 3838
-```
+    docker run --rm -p 3838:3838 \
+      -v "$PWD:/work" -w /work \
+      -v cment-r-lib:/usr/local/lib/R/site-library \
+      -v cment-r-cache:/home/root/.cache/R \
+      ghcr.io/cmg-ua/cment/cment:latest \
+      launchCMEntViewer \
+      --output_prefix /work/path/to/output_prefix \
+      --launch_browser FALSE \
+      --host 0.0.0.0 \
+      --port 3838
 
 ## Usage
 
 Here’s a basic example of how to use CMEnt in a 450K Microarray setting:
 
-``` r
-suppressPackageStartupMessages(library(CMEnt))
-loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
-cat("\nBeta matrix:")
-cat(head(beta), "\n")
-cat("\nSeeds:")
-cat(head(dmps), "\n")
-cat("\nPhenotype data:")
-cat(head(pheno), "\n")
-# Build DMRs using parallel processing
-dmrs <- buildDMRs(
-    beta = beta,
-    seeds = dmps,
-    pheno = pheno,
-    sample_group_col = "Sample_Group",
-    array = array_type,  # Specify array platform
-    min_sites = 3,
-    min_seeds = 2,
-    njobs = 2  # Use parallel processing
-)
+    suppressPackageStartupMessages(library(CMEnt))
+    loadExampleInputDataChr5And11("beta", "dmps", "pheno", "array_type")
+    cat("\nBeta matrix:")
+    cat(head(beta), "\n")
+    cat("\nSeeds:")
+    cat(head(dmps), "\n")
+    cat("\nPhenotype data:")
+    cat(head(pheno), "\n")
+    # Build DMRs using parallel processing
+    dmrs <- buildDMRs(
+        beta = beta,
+        seeds = dmps,
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        array = array_type,  # Specify array platform
+        min_sites = 3,
+        min_seeds = 2,
+        njobs = 2  # Use parallel processing
+    )
 
-# View summary of DMR statistics
-summary(dmrs)
-```
+    # View summary of DMR statistics
+    summary(dmrs)
 
 Here’s the same workflow with a custom BED-like methylation file instead
 of array probe IDs. The BED file must have a header, chromosome and
@@ -154,43 +150,39 @@ coordinates.
 
 Expected BED format:
 
-``` text
-chrom   start   Sample1 Sample2 Sample3
-chr1    100000  0.21    0.76    0.73
-chr1    100120  0.25    0.79    0.75
-chr2    250010  0.64    0.31    0.29
-```
+    chrom   start   Sample1 Sample2 Sample3
+    chr1    100000  0.21    0.76    0.73
+    chr1    100120  0.25    0.79    0.75
+    chr2    250010  0.64    0.31    0.29
 
-``` r
-suppressPackageStartupMessages(library(CMEnt))
+    suppressPackageStartupMessages(library(CMEnt))
 
-pheno <- data.frame(
-    Sample_Group = c("control", "case", "case"),
-    row.names = c("Sample1", "Sample2", "Sample3")
-)
+    pheno <- data.frame(
+        Sample_Group = c("control", "case", "case"),
+        row.names = c("Sample1", "Sample2", "Sample3")
+    )
 
-seeds <- data.frame(
-    site_id = c("chr1:100000", "chr1:100120", "chr2:250010"),
-    pval = c(1e-5, 2e-4, 8e-4)
-)
+    seeds <- data.frame(
+        site_id = c("chr1:100000", "chr1:100120", "chr2:250010"),
+        pval = c(1e-5, 2e-4, 8e-4)
+    )
 
-dmrs <- buildDMRs(
-    beta = "methylation_values.bed",
-    seeds = seeds,
-    seeds_id_col = "site_id",
-    pheno = pheno,
-    sample_group_col = "Sample_Group",
-    array = NULL,
-    genome = "hg38",
-    bed_chrom_col = "chrom",
-    bed_start_col = "start",
-    min_sites = 2,
-    min_seeds = 2,
-    njobs = 2
-)
+    dmrs <- buildDMRs(
+        beta = "methylation_values.bed",
+        seeds = seeds,
+        seeds_id_col = "site_id",
+        pheno = pheno,
+        sample_group_col = "Sample_Group",
+        array = NULL,
+        genome = "hg38",
+        bed_chrom_col = "chrom",
+        bed_start_col = "start",
+        min_sites = 2,
+        min_seeds = 2,
+        njobs = 2
+    )
 
-summary(dmrs)
-```
+    summary(dmrs)
 
 The tool supports also bsseq and tabix-indexed BED files as input, which
 can be specified by setting `beta` to a `BSseq` object or a path to a
@@ -200,31 +192,23 @@ regions based on the seed locations, which can significantly reduce
 memory usage and improve performance for large datasets.
 
 There are two helper functions that can be used to find DMPs and create
-seeds from microarray or bsseq data, which can be used in the
-`buildDMRs` function:
+seeds for `buildDMRs()`:
 
-- `findDMPsFromMicroarray()`: This function takes a beta matrix and
-  phenotype data as input and identifies DMPs using linear modeling
-  (limma, please cite
+- `findDMPsArray()` takes a beta matrix and phenotype data as input and
+  identifies DMPs using linear modeling with limma. Please cite limma
   [![DOI](https://img.shields.io/badge/DOI-10.109%2Fnar%2Fgkv007-blue?style=flat-square)](https://doi.org/10.1093/nar/gkv007)
-  if used). It returns a data frame of DMPs with their associated
-  p-values, which can be used as seeds for DMR identification.
-- `findDMPsFromBSseq()`: This function takes a `BSseq` object and
-  phenotype data as input and identifies DMPs using a beta-binomial
-  regression model (DSS, please cite
+  if used.
+- `findDMPsBSSeq()` takes a `BSseq` object and phenotype data as input
+  and identifies DMPs using a beta-binomial regression model with DSS.
+  Please cite DSS
   [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fnar%2Fgku150-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/nar/gku150)
-  if used). It returns a data frame of DMPs with their associated
-  p-values, which can be used as seeds for DMR identification.
+  if used.
 
-For an automated “cleaning” of the seeds, when a more stringent set of
-seeds is desired, we also incorporate the comb-p algorithm (please cite
+For automated seed cleaning, CMEnt also exposes `combinePvalues()`,
+which implements comb-p-style spatial autocorrelation adjustment. Please
+cite comb-p
 [![DOI](https://img.shields.io/badge/DOI-10.1093%2Fbioinformatics%2Fbts545-blue?style=flat-square&label=DOI)](https://doi.org/10.1093/bioinformatics/bts545)
-if used) for auto-correlation adjustment. It can be used with
-combinePvalues() function, which takes a data frame of seeds with their
-associated p-values and genomic locations as input and applies the
-comb-p algorithm to adjust the p-values for spatial correlation. The
-function returns a data frame of seeds with adjusted p-values, which can
-be used as input for DMR identification.
+if used.
 
 ## Citation
 
@@ -259,3 +243,6 @@ This project is licensed under the GPL-2 License - see the
 - Center of Medical Genetics, University of Antwerp
 - [Genetics of Cancer and Hearing Loss Research
   Group](https://www.linkedin.com/company/genetics-of-cancer-and-hearing-loss)
+- Bioconductor review-response updates were assisted by OpenAI Codex.
+  The maintainer reviewed the changes and remains responsible for
+  package reliability and maintenance.

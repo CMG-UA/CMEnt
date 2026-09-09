@@ -3,10 +3,11 @@ options("CMEnt.verbose" = 0)
 loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 
 test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters", {
+    skip_if_not_integration_tests()
 
     # Test with expansion_window and max_bridge_seeds_gaps
     dmrs_expanded <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -25,10 +26,10 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
     expect_s4_class(dmrs_expanded, "GRanges")
     if (!is.null(dmrs_expanded)) {
         expect_gt(length(dmrs_expanded), 0L)
-        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(mcols(dmrs_expanded))))
+        expect_true(all(c("sites_num", "seeds_num", "delta_beta") %in% names(S4Vectors::mcols(dmrs_expanded))))
         dmr_df <- as.data.frame(dmrs_expanded)
         # Expansion windows are hard thresholds: each final DMR stays inside its seed-derived window.
-        win_df <- CMEnt:::.buildConnectivityWindowsFromDMRs(
+        win_df <- CMEnt:::.buildWindowsFromDMRs(
             dmrs = data.frame(
                 chr = as.character(dmr_df$seqnames),
                 start_seed_pos = dmr_df$start_seed_pos,
@@ -52,10 +53,11 @@ test_that("buildDMRs with expansion_window and max_bridge_seeds_gaps parameters"
 })
 
 test_that("buildDMRs handles ext_site_delta_beta filtering", {
+    skip_if_not_integration_tests()
 
     # Test with no delta beta filtering
     dmrs_no_filter <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -72,7 +74,7 @@ test_that("buildDMRs handles ext_site_delta_beta filtering", {
 
     # Test with delta beta extension
     dmrs_with_db_ext <- buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -158,12 +160,13 @@ test_that("ext_site_delta_beta uses NA as the off switch and 0 as an active thre
 })
 
 test_that("buildDMRs handles adjusted seeds filtering for array data", {
+    skip_if_not_integration_tests()
     skip_if_missing_bsgenome(genome = "hg19")
 
 
 
     dmrs_adj <- expect_no_error(suppressWarnings(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,
@@ -223,8 +226,9 @@ test_that("buildDMRs does not bridge across chromosome boundaries", {
     )
     seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
+    withr::local_options(list(CMEnt.max_stage1_seeds_per_chunk = 2L))
     dmrs <- expect_no_error(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta_handler,
@@ -251,7 +255,7 @@ test_that("buildDMRs does not bridge across chromosome boundaries", {
     expect_true(all(site_chr[dmr_df$start_seed] == site_chr[dmr_df$end_seed]))
 })
 
-test_that("buildDMRs stores all seed IDs including the terminal seed", {
+test_that("buildDMRs stores all seed IDs including the terminal seed with expansion windows", {
     site_ids <- c("cgA", "cgB", "cgC")
     beta <- matrix(
         c(
@@ -283,7 +287,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
     seeds <- data.frame(pval = rep(1e-6, length(site_ids)), row.names = site_ids)
 
     dmrs <- expect_no_error(buildDMRs(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta_handler,
@@ -297,6 +301,7 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
         max_lookup_dist = 1000,
         max_pval = 0.05,
         testing_mode = "parametric",
+        expansion_window = 1,
         max_bridge_seeds_gaps = 1,
         max_bridge_extension_gaps = 0,
         njobs = 1
@@ -314,9 +319,10 @@ test_that("buildDMRs stores all seed IDs including the terminal seed", {
 })
 
 test_that("buildDMRs Stage 2 expansion matches between sequential and chunked parallel execution", {
+    skip_if_not_integration_tests()
 
     args <- list(
-        .score_dmrs = FALSE,
+        score_dmrs = FALSE,
         extract_motifs = FALSE,
         annotate_with_genes = FALSE,
         beta = beta,

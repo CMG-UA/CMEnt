@@ -21,11 +21,13 @@ getBetaHandler(
 
 \item{array}{Array platform type, \strong{ignored} if sorted_locs or a BSseq object have been provided}
 
-\item{genome}{Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported. \strong{Ignored} if sorted_locs or a BSseq object have been provided.}
+\item{genome}{Reference genome version, eg. hg38 or hs1. Only human and mouse genomes are supported.
+\strong{Ignored} if sorted_locs or a BSseq object have been provided.}
 
 \item{beta_row_names_file}{Path to row names file}
 
-\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns, sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.}
+\item{sorted_locs}{Data frame with genomic locations containing 'chr' and 'start' and 'end' columns,
+sorted by genomic position. If NULL, will be retrieved automatically using genome and array information, or extracted from BSseq object.}
 
 \item{chrom_col}{Chromosome column name in tabix file}
 
@@ -33,7 +35,8 @@ getBetaHandler(
 
 \item{output_prefix}{Prefix used for saving derived beta artifacts.}
 
-\item{njobs}{Number of parallel jobs to use when reading beta file or tabix file. Default is number of available cores minus one, up to a maximum of 8.}
+\item{njobs}{Number of parallel jobs to use when reading beta file or tabix file.
+Default is number of available cores minus one, up to a maximum of 8.}
 }
 \value{
 A new BetaHandler object

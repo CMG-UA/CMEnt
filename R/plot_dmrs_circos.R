@@ -139,7 +139,7 @@
             seqnames = region_df$chr,
             ranges = IRanges::IRanges(start = region_df$start, end = region_df$end)
         )
-        region_gr <- intersect(region_gr, cytoband_gr, ignore.strand = TRUE)
+        region_gr <- GenomicRanges::intersect(region_gr, cytoband_gr, ignore.strand = TRUE)
         if (length(region_gr) == 0) {
             return(NULL)
         }
@@ -209,18 +209,6 @@
     ret
 }
 
-.orderChromosomesNaturally <- function(chromosomes) {
-    chromosomes <- unique(as.character(chromosomes))
-    if (length(chromosomes) == 0) {
-        return(chromosomes)
-    }
-    chr_clean <- gsub("^chr", "", chromosomes, ignore.case = TRUE)
-    chr_num <- suppressWarnings(as.numeric(chr_clean))
-    chr_special <- match(toupper(chr_clean), c("X", "Y", "M", "MT"))
-    chr_special[is.na(chr_special)] <- Inf
-    ord <- order(is.na(chr_num), chr_num, chr_special, chr_clean)
-    chromosomes[ord]
-}
 
 .subsetCytobandForCircos <- function(cytoband, unique_chrs = NULL, region_df = NULL) {
     if (is.null(cytoband) || nrow(cytoband) == 0) {
@@ -491,7 +479,7 @@
         nrow(components) > 0 &&
         is.data.frame(interactions) &&
         nrow(interactions) > 0
-    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(mcols(dmrs))) {
+    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs <- extractDMRMotifs(
             dmrs,
@@ -585,7 +573,7 @@
             warning("The following sample groups are missing from group_colors and will be assigned default colors: ", paste(missing_groups, collapse = ", "))
             new_colors <- colorspace::qualitative_hcl(length(missing_groups), palette = "Pastel 1")
             names(new_colors) <- missing_groups
-            group_colors <<- c(group_colors, new_colors)
+            group_colors <- c(group_colors, new_colors)
         }
     }
     group_colors[groups]
@@ -602,7 +590,7 @@
                                              neg_delta_color = "#055709",
                                              zero_delta_color = "#f7f7f7",
                                              pos_delta_color = "#801414",
-                                             legend_width_ratio = 0.34,
+                                             legend_width_ratio = 0.50,
                                              degenerate_resolution = 1e6,
                                              output_file = NULL,
                                              verbose = NULL) {
@@ -888,8 +876,10 @@
                 title = "DMR delta beta",
                 at = signif(q, 2),
                 col_fun = col_fun,
+                direction = "horizontal",
                 title_position = "topleft",
-                legend_height = grid::unit(4, "cm"),
+                legend_width = .circosLegendWidthForChars(40L, fontsize = 8),
+                grid_height = grid::unit(4, "mm"),
                 labels_gp = grid::gpar(fontsize = 8),
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold")
             )
@@ -954,30 +944,13 @@
             legend_components <- legend_components[order(-score_vec, legend_components$component_id), , drop = FALSE]
             link_legend_colors <- component_colors[as.character(legend_components$component_id)]
             link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
-                score_prefix <- if (is.finite(legend_components$component_best_score[i])) {
-                    paste0("[score=", round(legend_components$component_best_score[i], 2), "] ")
-                } else {
-                    ""
-                }
-                label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
-                if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
-                    jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
-                    } else {
-                        rep("", length(jas_names))
-                    }
-                    n_show <- min(3L, length(jas_names))
-                    for (j in seq_len(n_show)) {
-                        corr_val <- suppressWarnings(as.numeric(jas_corr[j]))
-                        corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
-                        label <- paste0(label, " | ", jas_names[j], corr_txt)
-                    }
-                    if (length(jas_names) > n_show) {
-                        label <- paste0(label, " ...")
-                    }
-                }
-                .wrapCircosLegendLabel(label)
+                .formatCircosInteractionLegendLabel(
+                    score = legend_components$component_best_score[i],
+                    size = legend_components$size[i],
+                    sequence = legend_components$consensus_seq[i],
+                    jaspar_names = legend_components$jaspar_names[i],
+                    jaspar_corr = legend_components$jaspar_corr[i]
+                )
             }, character(1))
         }
 
@@ -1137,8 +1110,42 @@
     ret
 }
 
-.wrapCircosLegendLabel <- function(label, width = 88L) {
-    paste(strwrap(label, width = width), collapse = "\n")
+.formatCircosInteractionLegendLabel <- function(score, size, sequence, jaspar_names, jaspar_corr) {
+    score_prefix <- if (is.finite(score)) {
+        paste0("[score=", round(score, 2), "] ")
+    } else {
+        ""
+    }
+    first_line <- paste0(score_prefix, "[n=", size, "] ", sequence)
+    second_line <- "JASPAR matches: none"
+
+    if (.hasNonEmptyString(jaspar_names)) {
+        names <- trimws(base::strsplit(jaspar_names, ",", fixed = TRUE)[[1]])
+        correlations <- if (.hasNonEmptyString(jaspar_corr)) {
+            trimws(base::strsplit(jaspar_corr, ",", fixed = TRUE)[[1]])
+        } else {
+            rep("", length(names))
+        }
+        n_show <- min(3L, length(names))
+        matches <- vapply(seq_len(n_show), function(i) {
+            corr_val <- suppressWarnings(as.numeric(correlations[i]))
+            corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
+            paste0(names[i], corr_txt)
+        }, character(1))
+        if (length(names) > n_show) {
+            matches <- c(matches, "...")
+        }
+        second_line <- paste0("JASPAR matches: ", paste(matches, collapse = " | "))
+    }
+
+    paste(first_line, second_line, sep = "\n")
+}
+
+.circosLegendWidthForChars <- function(n_chars, fontsize) {
+    grid::convertWidth(
+        grid::grobWidth(grid::textGrob(strrep("M", n_chars), gp = grid::gpar(fontsize = fontsize))),
+        "mm"
+    )
 }
 
 .emptyCircosCandidateFrame <- function() {
@@ -1591,7 +1598,7 @@
 #' @param neg_delta_color Character. Color for negative delta beta values in the DMR arcs (default: "#055709").
 #' @param zero_delta_color Character. Color for zero delta beta values in the DMR arcs (default: "#f7f7f7").
 #' @param pos_delta_color Character. Color for positive delta beta values in the DMR arcs (default: "#801414").
-#' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.34).
+#' @param legend_width_ratio Numeric. Fraction of horizontal canvas reserved for legends (default: 0.50).
 #' @param degenerate_resolution Integer. Resolution in base pairs for simplifying narrow glyphs:
 #'   link ribbons are drawn as lines when both anchors are below this span, and DMR arcs
 #'   are drawn as lines instead of rectangles below this span (default: 1e6).
@@ -1642,7 +1649,7 @@ plotDMRsCircos <- function(
     neg_delta_color = "#055709",
     zero_delta_color = "#f0ec10",
     pos_delta_color = "#801414",
-    legend_width_ratio = 0.34,
+    legend_width_ratio = 0.50,
     degenerate_resolution = 1e6,
     output_file = NULL,
     verbose = NULL
@@ -1725,7 +1732,7 @@ plotDMRsCircos <- function(
         nrow(components) > 0 &&
         is.data.frame(interactions) &&
         nrow(interactions) > 0
-    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(mcols(dmrs_for_motif_prep))) {
+    if (!has_precomputed_interaction_state && !"pwm" %in% colnames(S4Vectors::mcols(dmrs_for_motif_prep))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         dmrs_for_motif_prep <- extractDMRMotifs(
             dmrs_for_motif_prep,
@@ -2061,8 +2068,10 @@ plotDMRsCircos <- function(
                 title = "DMR delta beta",
                 at = signif(q, 2),
                 col_fun = col_fun,
+                direction = "horizontal",
                 title_position = "topleft",
-                legend_height = grid::unit(4, "cm"),
+                legend_width = .circosLegendWidthForChars(40L, fontsize = 8),
+                grid_height = grid::unit(4, "mm"),
                 labels_gp = grid::gpar(fontsize = 8),
                 title_gp = grid::gpar(fontsize = 10, fontface = "bold")
             )
@@ -2127,30 +2136,13 @@ plotDMRsCircos <- function(
             legend_components <- legend_components[order(-score_vec, legend_components$component_id), , drop = FALSE]
             link_legend_colors <- component_colors[as.character(legend_components$component_id)]
             link_legend_labels <- vapply(seq_len(nrow(legend_components)), function(i) {
-                score_prefix <- if (is.finite(legend_components$component_best_score[i])) {
-                    paste0("[score=", round(legend_components$component_best_score[i], 2), "] ")
-                } else {
-                    ""
-                }
-                label <- paste0(score_prefix, "[n=", legend_components$size[i], "] ", legend_components$consensus_seq[i])
-                if (.hasNonEmptyString(legend_components$jaspar_names[i])) {
-                    jas_names <- trimws(base::strsplit(legend_components$jaspar_names[i], ",", fixed = TRUE)[[1]])
-                    jas_corr <- if (.hasNonEmptyString(legend_components$jaspar_corr[i])) {
-                        trimws(base::strsplit(legend_components$jaspar_corr[i], ",", fixed = TRUE)[[1]])
-                    } else {
-                        rep("", length(jas_names))
-                    }
-                    n_show <- min(3L, length(jas_names))
-                    for (j in seq_len(n_show)) {
-                        corr_val <- suppressWarnings(as.numeric(jas_corr[j]))
-                        corr_txt <- if (is.finite(corr_val)) paste0(" (", signif(corr_val, 3), ")") else ""
-                        label <- paste0(label, " | ", jas_names[j], corr_txt)
-                    }
-                    if (length(jas_names) > n_show) {
-                        label <- paste0(label, " ...")
-                    }
-                }
-                .wrapCircosLegendLabel(label)
+                .formatCircosInteractionLegendLabel(
+                    score = legend_components$component_best_score[i],
+                    size = legend_components$size[i],
+                    sequence = legend_components$consensus_seq[i],
+                    jaspar_names = legend_components$jaspar_names[i],
+                    jaspar_corr = legend_components$jaspar_corr[i]
+                )
             }, character(1))
         }
 
@@ -2392,15 +2384,11 @@ plotAutoDMRsCircos <- function(dmrs,
 
 .getCytobandData <- function(genome) {
     cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "cytoband_cache"))
-    bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(
-        bfc,
-        rname = paste0("cytoband_", genome),
-        ext = ".rds"
-    )
-    if (file.exists(cache_file)) {
+    cache_key <- paste0("cytoband_", genome)
+    cytoband <- .readBiocFileCacheRDS(cache_dir, cache_key)
+    if (!is.null(cytoband)) {
         .log_info("Loading cached cytoband data for ", genome, level = 3)
-        return(readRDS(cache_file))
+        return(cytoband)
     }
 
     .log_step("Downloading cytoband data from UCSC for ", genome, "...", level = 3)
@@ -2438,11 +2426,24 @@ plotAutoDMRsCircos <- function(dmrs,
             } else {
                 stop("Unexpected cytoband format")
             }
-            saveRDS(cytoband, cache_file)
+            .saveBiocFileCacheRDS(cytoband, cache_dir, cache_key)
             .log_success("Cytoband data downloaded and cached", level = 3)
             cytoband
         },
         error = function(e) {
+            if (identical(genome, "hg19")) {
+                bundled_cytoband <- tryCatch(
+                    circlize::read.cytoband()$df,
+                    error = function(e) NULL
+                )
+                if (!is.null(bundled_cytoband)) {
+                    .log_warn(
+                        "Failed to download cytoband data: ", e$message,
+                        ". Using bundled hg19 cytoband data."
+                    )
+                    return(bundled_cytoband)
+                }
+            }
             .log_warn("Failed to download cytoband data: ", e$message, ". Using default ideogram.")
             NULL
         }
@@ -2479,7 +2480,7 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
-    dmrs_sites <- as.character(mcols(dmrs)$sites)
+    dmrs_sites <- as.character(S4Vectors::mcols(dmrs)$sites)
     dmrs_sites <- dmrs_sites[!is.na(dmrs_sites)]
     dmrs_sites_list <- base::strsplit(dmrs_sites, split = ",", fixed = TRUE)
     dmrs_sites_inds <- trimws(unique(unlist(dmrs_sites_list, use.names = FALSE)))
@@ -2505,17 +2506,16 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
 
-    shown_locs <- beta_handler$getBetaLocs()[dmrs_sites_inds, c("chr", "start", "end"), drop = FALSE]
+    shown_locs <- beta_handler$getBetaLocs()[dmrs_sites_inds, c("chr", "start"), drop = FALSE]
     shown_locs <- as.data.frame(shown_locs)
     shown_locs$chr <- as.character(shown_locs$chr)
     shown_locs$start <- as.numeric(shown_locs$start)
-    shown_locs$end <- as.numeric(shown_locs$end)
+    shown_locs$end <- shown_locs$start
     if (nrow(shown_locs) > 1) {
         chr_levels <- .orderChromosomesNaturally(shown_locs$chr)
         ord <- order(
             factor(shown_locs$chr, levels = chr_levels),
             shown_locs$start,
-            shown_locs$end,
             rownames(shown_locs)
         )
         shown_locs <- shown_locs[ord, , drop = FALSE]

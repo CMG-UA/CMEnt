@@ -117,23 +117,44 @@ test_that("processSamplesheet infers csv and tsv separators", {
 })
 
 test_that("logging and parallel helpers handle quiet and fallback branches", {
-    withr::local_options(list(CMEnt.verbose = 0, CMEnt.biocparallel_backend = "unknown"))
+    withr::local_options(list(
+        CMEnt.verbose = 0,
+        CMEnt.biocparallel_backend = "auto"
+    ))
 
     expect_equal(CMEnt:::.fmt_dur(NULL), "")
-    expect_match(CMEnt:::.format_log_output("hello world", lead = ">", level = 2), ">")
-    expect_warning(CMEnt:::.log_warn("careful"), "careful")
-    expect_error(CMEnt:::.log_error("boom"), "boom")
+    expect_match(CMEnt:::.formatLogOutput("hello world", lead = ">", level = 2), ">")
+    warn_log <- capture.output(CMEnt:::.log_warn("careful"), type = "message")
+    expect_match(warn_log, "careful")
+    expect_false(any(grepl("^WARN \\[", warn_log)))
+    expect_equal(capture.output(CMEnt:::.log_info("quiet", level = 1), type = "message"), character(0))
+    info_log <- withr::with_options(
+        list(CMEnt.verbose = 1),
+        capture.output(CMEnt:::.log_info("hello", level = 1), type = "message")
+    )
+    expect_match(info_log, "hello")
+    expect_false(any(grepl("^INFO \\[", info_log)))
+    expect_error(capture.output(CMEnt:::.log_error("boom"), type = "message"), "boom")
     expect_equal(CMEnt:::.node_size(), if (8L * .Machine$sizeof.pointer == 32L) 28L else 56L)
-    expect_match(CMEnt:::.format_mem_used(), "B|kB|MB|GB|TB")
 
-    expect_s4_class(CMEnt:::.makeBiocParallelParam(1), "SerialParam")
+    serial_param <- CMEnt:::.makeBiocParallelParam(1)
+    expect_s4_class(serial_param, "SerialParam")
+    expect_true(BiocParallel::bplog(serial_param))
+    expect_equal(BiocParallel::bpthreshold(serial_param), "INFO")
     expect_s4_class(CMEnt:::.makeBiocParallelParam(2, n_tasks = 1), "SerialParam")
     expect_error(CMEnt:::.makeBiocParallelParam(0), "positive integer")
-    expect_warning(
+    backend_warning <- capture.output(
         param <- CMEnt:::.makeBiocParallelParam(2, parallel_backend = "unknown"),
+        type = "message"
+    )
+    expect_match(
+        paste(backend_warning, collapse = "\n"),
         "Unsupported CMEnt BiocParallel backend"
     )
+    expect_false(any(grepl("^WARN \\[", backend_warning)))
     expect_true(inherits(param, "BiocParallelParam"))
+    expect_true(BiocParallel::bplog(param))
+    expect_equal(BiocParallel::bpthreshold(param), "INFO")
 
     withr::local_envvar(`_R_CHECK_LIMIT_CORES_` = "TRUE")
     expect_lte(CMEnt:::.defaultNJobs(), 2L)
@@ -150,7 +171,7 @@ test_that("registry post-processing selects, renames, derives, and indexes colum
 
     processed <- CMEnt:::.postProcessRegistry(
         registry,
-        select = c("chrom", "pos"),
+        select_columns = c("chrom", "pos"),
         rename = c(chrom = "chr", pos = "start"),
         derive = list(
             locus = list(cols = c("chr", "start"), fun = function(chr, start) paste0(chr, ":", start))
@@ -197,6 +218,10 @@ test_that("covariate transformation residualizes nonsingular covariates", {
     transformed <- CMEnt:::.transformBeta(beta, pheno, covariate_model = model)
     expect_equal(dim(transformed), dim(beta))
     expect_false(anyNA(transformed))
+    expect_equal(
+        CMEnt:::.transformBeta(beta, pheno, cols = c(1, 3)),
+        CMEnt:::.transformBeta(beta[, c(1, 3), drop = FALSE], pheno[c(1, 3), , drop = FALSE])
+    )
 
     constant <- CMEnt:::.prepareCovariateModel(
         data.frame(batch = c("A", "A", "A")),
@@ -224,6 +249,43 @@ test_that("small pure utility helpers handle edge cases", {
     expect_equal(CMEnt:::.splitCsvValues(" a, ,b,NA "), c("a", "b", "NA"))
     expect_equal(CMEnt:::.splitCsvValues(NA_character_), character(0))
     expect_equal(CMEnt:::.splitCsvIndices("1, two, 3"), c(1L, 3L))
+    expect_identical(
+        CMEnt:::.matchListToReference(
+            list(c("b", "a"), character(0), c("c", "b", "b")),
+            c("a", "b", "c"),
+            missing_context = "missing: "
+        ),
+        list(c(2L, 1L), integer(0), c(3L, 2L, 2L))
+    )
+    expect_identical(
+        CMEnt:::.matchListToReference(
+            list(c("b", "z", "b"), c("a")),
+            c("a", "b"),
+            unique_matches = TRUE
+        ),
+        list(2L, 1L)
+    )
+    expect_error(
+        CMEnt:::.matchListToReference(
+            list(c("z")),
+            c("a"),
+            missing_context = "missing: "
+        ),
+        "missing: z",
+        fixed = TRUE
+    )
+    matched_with_missing <- CMEnt:::.matchListToReference(
+        list(c("b", "z", "b"), c("x", "a")),
+        c("a", "b"),
+        return_missing = TRUE
+    )
+    matched_without_attrs <- matched_with_missing
+    attr(matched_without_attrs, "missing_values") <- NULL
+    expect_identical(matched_without_attrs, list(c(2L, 2L), 1L))
+    expect_identical(
+        attr(matched_with_missing, "missing_values"),
+        list("z", "x")
+    )
     expect_equal(CMEnt:::.downsampleFlankIndices(1:10, 3), c(1L, 5L, 9L))
     expect_equal(CMEnt:::.downsampleFlankIndices(1:3, 10), 1:3)
     expect_null(CMEnt:::.getDerivedOutputPath(NULL, ".txt"))
@@ -239,10 +301,12 @@ test_that("convertToGRanges fills missing GRanges genome without replacing seqle
     )
     old_seqlevels <- GenomeInfoDb::seqlevels(dmrs)
 
-    expect_warning(
+    genome_log <- capture.output(
         converted <- CMEnt:::.convertToGRanges(dmrs, genome = "hg19"),
-        "no genome information"
+        type = "message"
     )
+    expect_match(paste(genome_log, collapse = "\n"), "no genome information")
+    expect_false(any(grepl("^WARN \\[", genome_log)))
 
     expect_equal(GenomeInfoDb::seqlevels(converted), old_seqlevels)
     expect_true(all(GenomeInfoDb::genome(converted) == "hg19"))

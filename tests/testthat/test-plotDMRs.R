@@ -105,6 +105,28 @@ test_that(".plotDMRStructure retains only seed sites when no extension sites are
     expect_setequal(rownames(ret$total_locs), c("cgA", "cgB", "cgC"))
 })
 
+test_that(".plotDMRStructure accepts character-encoded genomic positions", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs
+    S4Vectors::mcols(dmrs)$start_seed_pos <- as.character(S4Vectors::mcols(dmrs)$start_seed_pos)
+    S4Vectors::mcols(dmrs)$end_seed_pos <- as.character(S4Vectors::mcols(dmrs)$end_seed_pos)
+    locs <- plot_fixture$locs
+    locs$start <- as.character(locs$start)
+    locs$end <- as.character(locs$end)
+
+    ret <- CMEnt:::.plotDMRStructure(
+        dmrs = dmrs,
+        dmr_index = 1,
+        beta_locs = locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
+
+    expect_no_error(ggplot2::ggplot_build(ret$structure_plot))
+    expect_type(ret$total_locs$start, "integer")
+})
+
 test_that("plotDMR accepts data.frame DMR input", {
     skip_if_not_installed("ggplot2")
 
@@ -195,6 +217,72 @@ test_that("plotDMR preserves overlapping extension site IDs without rowname mang
     )
 })
 
+test_that("plotDMR drops unresolved extension site IDs from total_locs", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs[1]
+    S4Vectors::mcols(dmrs)$upstream_sites <- "cgA,cgMissingUpstream"
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cgMissingDownstream,cgC"
+
+    ret <- NULL
+    expect_warning(
+        ret <- CMEnt:::.plotDMRStructure(
+            dmrs = dmrs,
+            dmr_index = 1,
+            beta_locs = plot_fixture$locs,
+            plot_title = FALSE,
+            .ret_details = TRUE
+        ),
+        "dropping 2 extension site ID"
+    )
+
+    expect_setequal(rownames(ret$total_locs), c("cgA", "cgB", "cgC"))
+    expect_false(anyNA(ret$total_locs$start))
+    expect_false(any(is.na(rownames(ret$total_locs))))
+})
+
+test_that("plotDMR derives plot span from all resolved merged metadata IDs", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs[1]
+    S4Vectors::mcols(dmrs)$seeds <- "cgA,cgC"
+    S4Vectors::mcols(dmrs)$sites <- "cgA,cgB,cgC"
+    S4Vectors::mcols(dmrs)$upstream_sites <- "cgC"
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cgA"
+
+    ret <- CMEnt:::.plotDMRStructure(
+        dmrs = dmrs,
+        dmr_index = 1,
+        beta_locs = plot_fixture$locs,
+        plot_title = FALSE,
+        .ret_details = TRUE
+    )
+
+    expect_setequal(rownames(ret$total_locs), c("cgA", "cgC"))
+    expect_false(anyNA(ret$total_locs$start))
+    expect_true(all(c(100L, 300L) %in% ret$breaks))
+})
+
+test_that("plotDMR ignores inside-seed extension metadata for extension labels", {
+    skip_if_not_installed("ggplot2")
+
+    dmrs <- plot_fixture$dmrs[1]
+    S4Vectors::mcols(dmrs)$seeds <- "cgA,cgC"
+    S4Vectors::mcols(dmrs)$sites <- "cgA,cgB,cgC"
+    S4Vectors::mcols(dmrs)$upstream_sites <- ""
+    S4Vectors::mcols(dmrs)$downstream_sites <- "cgB"
+
+    expect_no_error(
+        CMEnt:::.plotDMRStructure(
+            dmrs = dmrs,
+            dmr_index = 1,
+            beta_locs = plot_fixture$locs,
+            plot_title = FALSE,
+            .ret_details = TRUE
+        )
+    )
+})
+
 test_that("plotDMR plot structure contains expected components", {
     skip_if_not_installed("ggplot2")
 
@@ -277,4 +365,43 @@ test_that("plotDMR with beta and pheno accepts precomputed PWM metadata", {
     ))
 
     expect_s3_class(p, "gtable")
+})
+
+test_that(".plotBetaHeatmap omits missing tiles and prioritizes covered seed samples", {
+    skip_if_not_installed("ggplot2")
+
+    site_ids <- c("cgA", "cgB", "cgC")
+    samples <- paste0(rep(c("A", "B"), each = 4), seq_len(4))
+    beta <- matrix(
+        NA_real_,
+        nrow = length(site_ids),
+        ncol = length(samples),
+        dimnames = list(site_ids, samples)
+    )
+    beta[c("cgA", "cgB"), c("A1", "A2", "B1", "B2")] <- c(0.1, 0.2, 0.8, 0.9)
+    beta["cgC", ] <- seq(0.2, 0.9, length.out = length(samples))
+    pheno <- data.frame(
+        group = rep(c("A", "B"), each = 4),
+        row.names = samples,
+        stringsAsFactors = FALSE
+    )
+    total_locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = c(100L, 200L, 300L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+
+    p <- CMEnt:::.plotBetaHeatmap(
+        dmr_data = data.frame(seeds = "cgA,cgB"),
+        beta_data = beta,
+        total_shown_positions = total_locs,
+        pheno = pheno,
+        max_samples_per_group = 2,
+        sample_group_col = "group"
+    )
+
+    expect_false(any(!is.finite(p$data$Beta)))
+    expect_setequal(as.character(unique(p$data$Sample)), c("A1", "A2", "B1", "B2"))
+    expect_s3_class(p$theme$panel.grid.major.x, "element_blank")
 })

@@ -1,0 +1,17 @@
+CMEnt example data attribution
+==============================
+
+The bundled example files are provided for package examples, vignettes, and
+tests:
+
+  o example_pheno.rds
+  o example_outputChr5And11.rds
+  o example_outputChr5And11.meta.rds
+  o example_outputChr5And11.dmrs.tsv.gz
+
+These files are derived from DMRsegaldata, archived at Zenodo DOI
+10.5281/zenodo.17475298. The Zenodo record lists Vasileios Lemonidis as creator
+and the data license as CC-BY-4.0.
+
+The supportedOrganisms.csv file is package-maintained metadata describing
+organism and genome-build support used by CMEnt.

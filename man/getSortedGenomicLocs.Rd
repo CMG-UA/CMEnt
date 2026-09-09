@@ -11,7 +11,8 @@ getSortedGenomicLocs(array = NULL, genome = NULL, locations_file = NULL)
 
 \item{genome}{Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided}
 
-\item{locations_file}{Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)}
+\item{locations_file}{Character. Optional path to a precomputed locations file (RDS format).
+If provided, this file will be used directly (default: NULL)}
 }
 \value{
 A data frame containing sorted genomic locations with rownames as site IDs and columns:
@@ -28,15 +29,12 @@ methylation array platform and genome version. Performs liftOver if necessary.
 The function caches the results.
 }
 \examples{
-\donttest{
-# Get sorted locations for 450K array on hg19
-locs_450k <- getSortedGenomicLocs(array = "450K", genome = "hg19")
+locs <- data.frame(chr = c("chr1", "chr1"), start = c(100L, 200L))
+rownames(locs) <- c("cg1", "cg2")
+locations_file <- tempfile(fileext = ".rds")
+saveRDS(locs, locations_file)
 
-# Get sorted locations for EPIC array with hg38
-locs_epic <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
-
-# Get sorted locations for EPICv2 array
-locs_epicv2 <- getSortedGenomicLocs(array = "EPICv2", genome = "hg38")
-}
+sorted_locs <- getSortedGenomicLocs(locations_file = locations_file)
+head(sorted_locs)
 
 }

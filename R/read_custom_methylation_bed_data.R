@@ -19,7 +19,8 @@
 #' @param output_dir Character. Directory for caching processed files. If NULL, uses
 #'   a temporary working directory unless `output_prefix` is provided (default: NULL)
 #' @param chunk_size Integer. Number of rows to process in each chunk for memory
-#'   efficiency (default: 50000)
+#'   efficiency (default: getOption("CMEnt.chunk_size", 1000000)).
+#'   This allows processing of large BED files without loading the entire dataset into memory.
 #' @param output_prefix Character. Optional prefix used to persist derived BED/tabix
 #'   artifacts next to analysis outputs.
 #' @param njobs Integer. Number of jobs to use after normalization. On Unix-like
@@ -78,7 +79,7 @@
 #'
 #' @export
 readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#chrom",
-                                         start_col = "start", output_dir = NULL, chunk_size = 50000,
+                                         start_col = "start", output_dir = NULL, chunk_size = getOption("CMEnt.chunk_size", 1000000),
                                          output_prefix = NULL, njobs = 1L) {
     njobs <- suppressWarnings(as.integer(njobs)[1L])
     if (is.na(njobs) || njobs < 1L) {
@@ -86,7 +87,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     }
     tabix_available <- .tabixToolsAvailable()
 
-    cache_dir <- .getTabixCacheDir(output_dir)
+    cache_dir <- .getCacheDir(output_dir)
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
@@ -95,7 +96,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     on.exit(unlink(normalized_bed_file), add = TRUE)
     fallback_beta_file <- NULL
     if (!tabix_available) {
-        .log_warn("tabix/bgzip not found in PATH. Using normalized beta TSV fallback for custom BED input.")
+        .log_warn("tabix/bgzip/sort tools not found in PATH. Using normalized beta TSV fallback for custom BED input.")
         fallback_beta_file <- .getDerivedOutputPath(output_prefix, ".input_beta.tsv")
         if (is.null(fallback_beta_file)) {
             fallback_beta_file <- file.path(cache_dir, paste0("bed_beta_", hash, ".tsv"))
@@ -108,7 +109,10 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     required_cols <- c(chrom_col, start_col)
     missing_cols <- setdiff(required_cols, bed_header)
     if (length(missing_cols) > 0) {
-        stop("Missing required columns in BED file: ", paste(missing_cols, collapse = ", "), ". Available columns: ", paste(bed_header, collapse = ", "))
+        stop(
+            "Missing required columns in BED file: ", paste(missing_cols, collapse = ", "),
+            ". Available columns: ", paste(bed_header, collapse = ", ")
+        )
     }
     sample_ids <- rownames(pheno)
     existing_ids <- intersect(sample_ids, bed_header)
@@ -121,7 +125,11 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     }
     if (length(id_mapping) < length(sample_ids)) {
         missing_ids <- setdiff(sample_ids, bed_header)
-        .log_warn(length(missing_ids), " out of ", length(sample_ids), " sample IDs were not found in the BED file header and will be ignored. The IDs are: ", paste(missing_ids, collapse = ", "))
+        .log_warn(
+            length(missing_ids), " out of ", length(sample_ids),
+            " sample IDs were not found in the BED file header and will be ignored. The IDs are: ",
+            paste(missing_ids, collapse = ", ")
+        )
     }
 
     # Quickly read number of rows in BED file
@@ -193,7 +201,7 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     build_locations <- function() {
         getRegistry(
             normalized_bed_file,
-            select = c("#chrom", "start"),
+            select_columns = c("#chrom", "start"),
             rename = c("#chrom" = "chr", start = "start"),
             derive = list(
                 index = list(

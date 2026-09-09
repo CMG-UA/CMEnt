@@ -1,0 +1,451 @@
+---
+title: "CMEnt Conditional Null Validation on GSE244696"
+subtitle: "Regional assembly of published DMPs against chromosome-stratified methylation-profile permutations"
+author: "CMEnt Package"
+date: "`r Sys.Date()`"
+output:
+    BiocStyle::html_document:
+        code_folding: hide
+---
+
+```{r setup}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    message = FALSE,
+    fig.width = 8,
+    fig.height = 5,
+    dpi = 300
+)
+
+required_packages <- c(
+    "CMEnt", "data.table", "GenomicRanges", "ggplot2", "readxl"
+)
+missing_packages <- required_packages[
+    !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
+]
+if (length(missing_packages) > 0L) {
+    stop("Install required packages before rendering: ", paste(missing_packages, collapse = ", "))
+}
+
+if (file.exists("DESCRIPTION") && requireNamespace("devtools", quietly = TRUE)) {
+    devtools::load_all(quiet = TRUE)
+} else if (file.exists("../DESCRIPTION") && requireNamespace("devtools", quietly = TRUE)) {
+    devtools::load_all("..", quiet = TRUE)
+}
+
+suppressPackageStartupMessages({
+    library(CMEnt)
+    library(GenomicRanges)
+    library(ggplot2)
+})
+
+get_project_file <- function(...) {
+    parts <- c(...)
+    if (file.exists("DESCRIPTION")) {
+        do.call(file.path, as.list(parts))
+    } else if (file.exists("../DESCRIPTION")) {
+        do.call(file.path, as.list(c("..", parts)))
+    } else {
+        stop("Render this notebook from the CMEnt repository root or its notebooks directory.")
+    }
+}
+
+input_dir <- get_project_file("notebooks", "cached_results", "metastudyEpic")
+result_dir <- Sys.getenv(
+    "CMENT_NULL_RESULT_DIR",
+    get_project_file("notebooks", "cached_results", "null_model")
+)
+dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
+
+genome <- "hg19"
+array_type <- "EPIC"
+n_permutations <- suppressWarnings(as.integer(Sys.getenv("CMENT_NULL_NPERM", "999")))
+if (length(n_permutations) != 1L || is.na(n_permutations) || n_permutations < 1L) {
+    stop("CMENT_NULL_NPERM must be a positive integer.")
+}
+master_seed <- 20260907L
+njobs <- suppressWarnings(as.integer(Sys.getenv(
+    "NJOBS",
+    as.character(max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L)))
+)))
+if (length(njobs) != 1L || is.na(njobs) || njobs < 1L) {
+    stop("NJOBS must be a positive integer.")
+}
+
+cment_parameters <- list(
+    sample_group_col = "tissue.ch1",
+    casecontrol_col = "casecontrol",
+    testing_mode = "parametric",
+    max_bridge_seeds_gaps = 1L,
+    max_bridge_extension_gaps = 3L,
+    min_seeds = 2L,
+    min_sites = 3L,
+    ext_site_delta_beta = 0.2,
+    max_lookup_dist = 1000,
+    expansion_window = -1,
+    max_pval = 0.05,
+    entanglement = "weak",
+    aggfun = "median",
+    score_dmrs = FALSE,
+    annotate_with_genes = FALSE,
+    extract_motifs = FALSE,
+    njobs = njobs,
+    verbose = 0
+)
+```
+
+## Objective
+
+This analysis tests whether CMEnt organizes an externally supplied seed set into
+regional methylation structures more strongly than expected when methylation
+profiles have no privileged genomic placement. The published GSE244696 DMPs are
+held fixed as the seeds. No CMEnt seed-discovery helper is called.
+
+The null transformation independently permutes intact locus-level methylation
+profiles among measured loci within each chromosome. It therefore preserves the
+phenotype, sample structure, locus-profile distribution, seed count, and exact
+seed geometry while disrupting the alignment between genomic proximity and
+methylation-profile similarity.
+
+## Inputs and fixed seeds
+
+```{r inputs}
+beta_file <- file.path(input_dir, "GSE244696_beta_values.tsv.gz")
+samplesheet_file <- file.path(input_dir, "GSE244696_samplesheet.tsv")
+published_dmp_file <- file.path(input_dir, "GSE244696_DMPs.xlsx")
+
+zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
+for (path in c(beta_file, samplesheet_file, published_dmp_file)) {
+    if (!file.exists(path)) {
+        curl::curl_download(
+            paste0(zenodo_base_url, basename(path), "?download=1"),
+            path
+        )
+    }
+}
+
+pheno <- utils::read.table(
+    samplesheet_file,
+    header = TRUE,
+    stringsAsFactors = FALSE,
+    sep = "\t",
+    check.names = FALSE
+)
+if (all(rownames(pheno) == as.character(seq_len(nrow(pheno))))) {
+    rownames(pheno) <- pheno[[1L]]
+}
+pheno$casecontrol <- pheno$tissue.ch1 == "Tumor"
+
+beta_handler <- CMEnt::getBetaHandler(
+    beta_file,
+    array = array_type,
+    genome = genome,
+    njobs = njobs
+)
+beta_mat <- as.matrix(beta_handler$getBeta())
+locs <- as.data.frame(beta_handler$getBetaLocs())
+
+common_samples <- intersect(colnames(beta_mat), rownames(pheno))
+if (length(common_samples) < 6L) {
+    stop("Fewer than six beta samples match the phenotype row names.")
+}
+beta_mat <- beta_mat[, common_samples, drop = FALSE]
+pheno <- pheno[common_samples, , drop = FALSE]
+
+common_sites <- intersect(rownames(locs), rownames(beta_mat))
+locs <- locs[common_sites, , drop = FALSE]
+beta_mat <- beta_mat[common_sites, , drop = FALSE]
+
+published_dmps_raw <- suppressWarnings(suppressMessages(readxl::read_xlsx(
+    published_dmp_file,
+    sheet = "Suppl_Table 1",
+    range = readxl::cell_cols(1:21),
+    .name_repair = "unique"
+)))
+published_seed_ids <- unique(as.character(published_dmps_raw[[1L]]))
+published_seed_ids <- published_seed_ids[
+    !is.na(published_seed_ids) & nzchar(published_seed_ids) & published_seed_ids %in% common_sites
+]
+if (length(published_seed_ids) < 2L) {
+    stop("Fewer than two published DMPs are present in the beta matrix.")
+}
+
+# Deliberately exclude published p-values: this validation conditions only on
+# the externally supplied seed identities and tests CMEnt regional assembly.
+seeds <- data.frame(site_id = published_seed_ids, stringsAsFactors = FALSE)
+
+input_summary <- data.frame(
+    Metric = c("Samples", "Measured loci", "Fixed published seeds", "Null permutations"),
+    Value = c(ncol(beta_mat), nrow(beta_mat), nrow(seeds), n_permutations)
+)
+knitr::kable(input_summary, row.names = FALSE, caption = "Null-validation inputs")
+```
+
+## Analysis functions
+
+```{r functions}
+cache_signature <- list(
+    analysis_version = 1L,
+    master_seed = master_seed,
+    seed_ids = published_seed_ids,
+    beta_md5 = unname(tools::md5sum(beta_file)),
+    samplesheet_md5 = unname(tools::md5sum(samplesheet_file)),
+    dmp_md5 = unname(tools::md5sum(published_dmp_file)),
+    cment_parameters = cment_parameters
+)
+
+read_cache <- function(path, signature) {
+    if (!file.exists(path)) {
+        return(NULL)
+    }
+    value <- readRDS(path)
+    # remove njobs from signature comparison because it does not affect the result
+    signature$cment_parameters$njobs <- NULL
+    value$signature$cment_parameters$njobs <- NULL
+    if (!is.list(value) || !identical(value$signature, signature)) {
+        return(NULL)
+    }
+    value$result
+}
+
+write_cache <- function(path, result, signature) {
+    saveRDS(list(result = result, signature = signature), path)
+}
+
+permute_profiles_within_chromosome <- function(beta, locations, seed) {
+    set.seed(seed)
+    source_index <- seq_len(nrow(beta))
+    chromosome_rows <- split(seq_len(nrow(locations)), as.character(locations$chr))
+    for (idx in chromosome_rows) {
+        if (length(idx) > 1L) {
+            source_index[idx] <- sample(idx, length(idx), replace = FALSE)
+        }
+    }
+    permuted <- beta[source_index, , drop = FALSE]
+    rownames(permuted) <- rownames(beta)
+    permuted
+}
+
+run_cment <- function(beta) {
+    handler <- CMEnt::getBetaHandler(
+        beta = beta,
+        genome = genome,
+        sorted_locs = locs,
+        njobs = njobs
+    )
+    do.call(
+        CMEnt::buildDMRs,
+        c(
+            list(
+                beta = handler,
+                seeds = seeds,
+                seeds_id_col = "site_id",
+                pheno = pheno
+            ),
+            cment_parameters
+        )
+    )
+}
+
+split_ids <- function(x) {
+    ids <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+    unique(ids[!is.na(ids) & nzchar(ids)])
+}
+
+summarise_dmrs <- function(dmrs, replicate_id, is_observed) {
+    if (is.null(dmrs) || length(dmrs) == 0L) {
+        return(data.frame(
+            replicate_id = replicate_id,
+            observed = is_observed,
+            incorporated_seeds = 0L,
+            dmrs = 0L,
+            supporting_sites = 0L,
+            total_coverage_bp = 0,
+            median_connection_pval = NA_real_
+        ))
+    }
+
+    metadata <- S4Vectors::mcols(dmrs)
+    incorporated_seeds <- if ("seeds" %in% colnames(metadata)) {
+        length(split_ids(metadata$seeds))
+    } else {
+        0L
+    }
+    supporting_sites <- if ("sites" %in% colnames(metadata)) {
+        length(split_ids(metadata$sites))
+    } else {
+        0L
+    }
+    connection_pvals <- if ("connection_corr_pval" %in% colnames(metadata)) {
+        suppressWarnings(as.numeric(metadata$connection_corr_pval))
+    } else {
+        numeric(0)
+    }
+    connection_pvals <- connection_pvals[is.finite(connection_pvals)]
+
+    data.frame(
+        replicate_id = replicate_id,
+        observed = is_observed,
+        incorporated_seeds = incorporated_seeds,
+        dmrs = length(dmrs),
+        supporting_sites = supporting_sites,
+        total_coverage_bp = sum(GenomicRanges::width(GenomicRanges::reduce(dmrs))),
+        median_connection_pval = if (length(connection_pvals) == 0L) {
+            NA_real_
+        } else {
+            stats::median(connection_pvals)
+        }
+    )
+}
+```
+
+## Observed regional assembly
+
+```{r observed}
+observed_cache <- file.path(result_dir, "observed.rds")
+observed_summary <- read_cache(observed_cache, cache_signature)
+if (is.null(observed_summary)) {
+    observed_dmrs <- run_cment(beta_mat)
+    observed_summary <- summarise_dmrs(observed_dmrs, 0L, TRUE)
+    write_cache(observed_cache, observed_summary, cache_signature)
+}
+knitr::kable(observed_summary, row.names = FALSE, caption = "Observed CMEnt regional assembly")
+```
+
+## Chromosome-stratified null permutations
+
+```{r null-permutations}
+null_rows <- vector("list", n_permutations)
+for (permutation_id in seq_len(n_permutations)) {
+    permutation_cache <- file.path(result_dir, sprintf("permutation_%04d.rds", permutation_id))
+    permutation_signature <- c(cache_signature, list(permutation_id = permutation_id))
+    cached_result <- read_cache(permutation_cache, permutation_signature)
+    if (is.null(cached_result)) {
+        null_beta <- permute_profiles_within_chromosome(
+            beta_mat,
+            locs,
+            seed = master_seed + permutation_id
+        )
+        null_dmrs <- run_cment(null_beta)
+        null_rows[[permutation_id]] <- summarise_dmrs(
+            null_dmrs,
+            permutation_id,
+            FALSE
+        )
+        write_cache(permutation_cache, null_rows[[permutation_id]], permutation_signature)
+        rm(null_beta, null_dmrs)
+        invisible(gc(verbose = FALSE))
+    } else {
+        null_rows[[permutation_id]] <- cached_result
+    }
+}
+null_summary <- do.call(rbind, null_rows)
+all_results <- rbind(observed_summary, null_summary)
+data.table::fwrite(
+    all_results,
+    file.path(result_dir, "null_validation_summary.tsv"),
+    sep = "\t"
+)
+```
+
+## Global conditional-null test
+
+The primary statistic is the number of unique supplied seeds incorporated into
+the final multi-seed DMRs. The Monte Carlo p-value includes the observed result
+in the numerator and denominator.
+
+```{r inference}
+observed_statistic <- observed_summary$incorporated_seeds[[1L]]
+null_statistics <- null_summary$incorporated_seeds
+exceedances <- sum(null_statistics >= observed_statistic)
+empirical_p <- (exceedances + 1) / (n_permutations + 1)
+exceedance_interval <- stats::binom.test(exceedances, n_permutations)$conf.int
+
+inference_summary <- data.frame(
+    Statistic = c(
+        "Observed incorporated seeds",
+        "Null median incorporated seeds",
+        "Null 95th percentile",
+        "Null exceedances",
+        "Monte Carlo p-value",
+        "Exceedance probability 95% CI lower",
+        "Exceedance probability 95% CI upper"
+    ),
+    Value = c(
+        observed_statistic,
+        stats::median(null_statistics),
+        unname(stats::quantile(null_statistics, 0.95)),
+        exceedances,
+        empirical_p,
+        exceedance_interval[[1L]],
+        exceedance_interval[[2L]]
+    )
+)
+knitr::kable(inference_summary, digits = 4, row.names = FALSE, caption = "Primary conditional-null test")
+
+cat(sprintf(
+    paste0(
+        "Across %d chromosome-stratified methylation-profile permutations, ",
+        "CMEnt incorporated %s published seeds into multi-seed DMRs in the observed data, ",
+        "compared with a null median of %s (95th percentile %s; Monte Carlo p = %.4g)."
+    ),
+    n_permutations,
+    format(observed_statistic, big.mark = ","),
+    format(stats::median(null_statistics), big.mark = ","),
+    format(unname(stats::quantile(null_statistics, 0.95)), big.mark = ","),
+    empirical_p
+))
+```
+
+```{r primary-plot}
+ggplot(null_summary, aes(x = incorporated_seeds)) +
+    geom_histogram(bins = 40, fill = "#0072B2", color = "white") +
+    geom_vline(xintercept = observed_statistic, color = "#D55E00", linewidth = 1) +
+    theme_minimal(base_size = 11) +
+    labs(
+        title = "CMEnt regional assembly under the conditional null",
+        subtitle = sprintf("Observed value shown in orange; %d chromosome-stratified permutations", n_permutations),
+        x = "Unique supplied seeds incorporated into DMRs",
+        y = "Null permutations"
+    )
+```
+
+Secondary summaries describe the resulting regional structures but are not
+treated as additional confirmatory tests.
+
+```{r secondary}
+secondary_summary <- data.frame(
+    Measure = c("DMRs", "Supporting sites", "Total coverage (bp)"),
+    Observed = c(
+        observed_summary$dmrs,
+        observed_summary$supporting_sites,
+        observed_summary$total_coverage_bp
+    ),
+    Null_median = c(
+        stats::median(null_summary$dmrs),
+        stats::median(null_summary$supporting_sites),
+        stats::median(null_summary$total_coverage_bp)
+    ),
+    Null_95th_percentile = c(
+        stats::quantile(null_summary$dmrs, 0.95),
+        stats::quantile(null_summary$supporting_sites, 0.95),
+        stats::quantile(null_summary$total_coverage_bp, 0.95)
+    )
+)
+knitr::kable(secondary_summary, digits = 1, row.names = FALSE, caption = "Descriptive regional-assembly summaries")
+```
+
+## Interpretation
+
+This is a conditional global test of CMEnt regional assembly given the published
+seed coordinates. It does not evaluate how the seeds were selected, does not use
+CMEnt's optional seed-discovery helpers, and does not claim per-DMR false-discovery
+rate control. A small empirical p-value indicates that the fixed published seeds
+are incorporated into coherent multi-seed regions more extensively than expected
+when intact methylation profiles are randomly reassigned among loci on the same
+chromosome.
+
+```{r session-info}
+sessionInfo()
+```

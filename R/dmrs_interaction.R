@@ -55,7 +55,7 @@
     idxs[!is.na(idxs)]
 }
 
-.serializeDMRInteractionComponentsForStorage <- function(components_df) {
+.serializeDMRIntComps <- function(components_df) {
     if (!is.data.frame(components_df) || nrow(components_df) == 0) {
         return(components_df)
     }
@@ -147,7 +147,9 @@ comparePWMToJaspar <- function(pwm_queries) {
         ntries <- 3
         db <- NULL
         for (i in seq_len(ntries)) {
-            db <- try(getExportedValue(jaspar_pkg, jaspar_pkg)()@db, silent = TRUE)
+            constructor <- getExportedValue(jaspar_pkg, jaspar_pkg)
+            db_accessor <- getExportedValue(jaspar_pkg, "db")
+            db <- try(db_accessor(constructor()), silent = TRUE)
             if (!inherits(db, "try-error")) {
                 break
             }
@@ -166,7 +168,7 @@ comparePWMToJaspar <- function(pwm_queries) {
         .saveBiocFileCacheRDS(vertebrate_pwms, bfc, cache_key)
         jaspar_pwms <- vertebrate_pwms
     }
-    jaspar_pwm_mats <- lapply(jaspar_pwms, function(pwm) pwm@profileMatrix)
+    jaspar_pwm_mats <- lapply(jaspar_pwms, TFBSTools::Matrix)
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
     revcomp_queries <- lapply(pwm_queries, function(pwm) {
         pwm_revcomp <- pwm[complimentary_bases[rownames(pwm)], rev(seq_len(ncol(pwm))), drop = FALSE]
@@ -181,7 +183,7 @@ comparePWMToJaspar <- function(pwm_queries) {
         .motifCorr(jaspar_pwm_mats, query)
     }, numeric(n_subject))
     similarities <- pmax(similarities, revcomp_similarities)
-    jaspar_names <- vapply(jaspar_pwms, function(x) x@name, character(1))
+    jaspar_names <- vapply(jaspar_pwms, TFBSTools::name, character(1))
 
     found <- which(similarities >= corr_threshold, arr.ind = TRUE)
     if (length(found) == 0) {
@@ -304,6 +306,40 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 }
 
 
+.extractMotifSiteSequences <- function(sequence, seq_site_inds, motif_site_flank_size) {
+    expected_len <- 2L * motif_site_flank_size + 2L
+    center_idx <- motif_site_flank_size + 1L
+    next_idx <- center_idx + 1L
+    extract_at <- function(center_inds) {
+        substring(sequence, center_inds - motif_site_flank_size, center_inds + motif_site_flank_size + 1L)
+    }
+
+    site_seqs <- extract_at(seq_site_inds)
+    center_base <- toupper(substr(site_seqs, center_idx, center_idx))
+    needs_rescue <- !is.na(site_seqs) & nchar(site_seqs) == expected_len & center_base != "C"
+    if (!any(needs_rescue)) {
+        return(site_seqs)
+    }
+
+    rescue_idx <- which(needs_rescue)
+    for (offset in c(1L, -1L)) {
+        candidates <- extract_at(seq_site_inds[rescue_idx] + offset)
+        valid <- !is.na(candidates) &
+            nchar(candidates) == expected_len &
+            toupper(substr(candidates, center_idx, center_idx)) == "C" &
+            toupper(substr(candidates, next_idx, next_idx)) == "G"
+        if (any(valid)) {
+            site_seqs[rescue_idx[valid]] <- candidates[valid]
+            rescue_idx <- rescue_idx[!valid]
+            if (length(rescue_idx) == 0L) {
+                break
+            }
+        }
+    }
+    site_seqs
+}
+
+
 #' Extract DMR Motif Frequencies
 #'
 #' @description Extracts motif frequencies around site sites within DMRs.
@@ -312,7 +348,8 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
 #' the DMR metadata.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and site indices
 #' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC").
+#'  Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
 #' @param motif_site_flank_size Integer. Number of base pairs to include as flanking regions around each site site (default: 5)
@@ -374,27 +411,28 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = motif_site_flank_size, dflank_size = motif_site_flank_size + 1
     )
-    dmrs_seeds <- base::strsplit(as.character(mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
-    all_seeds <- unique(unlist(dmrs_seeds, use.names = FALSE))
-    all_seeds <- all_seeds[nzchar(all_seeds)]
-    beta_locs_start <- as.integer(beta_locs[all_seeds, "start", drop = TRUE])
-    names(beta_locs_start) <- all_seeds
+    dmrs_seeds <- base::strsplit(as.character(S4Vectors::mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
+    dmrs_seeds <- lapply(dmrs_seeds, function(x) x[nzchar(x)])
+    dmr_seed_indices <- .matchListToReference(
+        dmrs_seeds,
+        rownames(beta_locs),
+        return_missing = TRUE
+    )
+    missing_seed_ids <- attr(dmr_seed_indices, "missing_values")
     expected_len <- 2 * motif_site_flank_size + 2
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
-        dmr_seeds <- dmrs_seeds[[i]]
-        dmr_seeds <- dmr_seeds[nzchar(dmr_seeds)]
-        if (length(dmr_seeds) == 0) {
-            next
+        seed_idx <- dmr_seed_indices[[i]]
+        missing_seeds <- missing_seed_ids[[i]]
+        if (length(missing_seeds) > 0L) {
+            .log_warn(
+                length(missing_seeds), " seed(s) were missing genomic locations",
+                " and were ignored in DMR motif extraction. (Genome used: ",
+                genome, "; array: ", array, ")"
+            )
         }
-
-        start_locs <- beta_locs_start[dmr_seeds]
-        valid_start_locs <- !is.na(start_locs)
-        if (!all(valid_start_locs)) {
-            .log_warn(sum(!valid_start_locs), " seed(s) were missing genomic locations and were ignored in DMR motif extraction.")
-            start_locs <- start_locs[valid_start_locs]
-        }
+        start_locs <- as.integer(beta_locs[seed_idx, "start", drop = TRUE])
         if (length(start_locs) == 0) {
             next
         }
@@ -405,17 +443,25 @@ extractDMRMotifs <- function(
         # first seed. DMRs can extend upstream of their first seed.
         start_loc_base <- GenomicRanges::start(dmrs)[[i]]
         seq_site_inds <- start_locs - start_loc_base + 1 + motif_site_flank_size
-        site_seqs <- substring(sequence, seq_site_inds - motif_site_flank_size, seq_site_inds + motif_site_flank_size + 1)
+        site_seqs <- .extractMotifSiteSequences(sequence, seq_site_inds, motif_site_flank_size)
         valid_site_seqs <- !is.na(site_seqs) & nchar(site_seqs) == expected_len
         if (!all(valid_site_seqs)) {
-            .log_warn(sum(!valid_site_seqs), " motif windows had unexpected length and were ignored for one DMR.")
+            .log_warn(
+                sum(!valid_site_seqs),
+                " motif windows had unexpected length and were ignored ",
+                "for one DMR. (Genome used: ", genome, "; array: ", array, ")"
+            )
             site_seqs <- site_seqs[valid_site_seqs]
         }
         site_seqs <- .normalizeMotifSiteSequences(site_seqs, motif_site_flank_size)
         site_center_base <- toupper(substr(site_seqs, motif_site_flank_size + 1L, motif_site_flank_size + 1L))
         valid_site_center <- site_center_base == "C"
         if (!all(valid_site_center)) {
-            .log_warn(sum(!valid_site_center), " motif window(s) were not centered on C and were ignored for one DMR.")
+            .log_warn(
+                sum(!valid_site_center),
+                " motif window(s) were not centered on C and were ignored",
+                " for one DMR. (Genome used: ", genome, "; array: ", array, ")"
+            )
             site_seqs <- site_seqs[valid_site_center]
         }
         if (length(site_seqs) == 0) {
@@ -423,15 +469,18 @@ extractDMRMotifs <- function(
         }
         # Apply transpose to get each sequence as a column, and then calculate base frequencies per row
         site_seqs <- matrix(unlist(base::strsplit(site_seqs, split = "")), nrow = 2 * motif_site_flank_size + 2, byrow = FALSE)
-        frequencies <- as.matrix(apply(site_seqs, 1, function(x) table(factor(toupper(x), levels = Biostrings::DNA_BASES)))) # nolint
+        frequencies <- as.matrix(table(
+            factor(toupper(site_seqs), levels = Biostrings::DNA_BASES),
+            row(site_seqs)
+        ))
         if (array_based) {
             frequencies <- frequencies * (1 / max(bg_pwm, 1e-7))
         }
         pwms[[i]] <- frequencies / colSums(frequencies) # row: position, column: base
         consensus_seq[[i]] <- paste(Biostrings::DNA_BASES[apply(frequencies, 2, which.max)], collapse = "")
     }
-    mcols(dmrs)$pwm <- pwms
-    mcols(dmrs)$consensus_seq <- consensus_seq
+    S4Vectors::mcols(dmrs)$pwm <- pwms
+    S4Vectors::mcols(dmrs)$consensus_seq <- consensus_seq
     if (input_is_df) {
         dmrs <- .convertToDataFrame(dmrs)
     }
@@ -441,7 +490,7 @@ extractDMRMotifs <- function(
 
 .extractMotifsSimilarity <- function(dmrs, motif_site_flank_size = 5) {
     if (inherits(dmrs, "GRanges")) {
-        pwms <- mcols(dmrs)$pwm
+        pwms <- S4Vectors::mcols(dmrs)$pwm
     } else {
         pwms <- dmrs[, "pwm"]
     }
@@ -489,7 +538,8 @@ extractDMRMotifs <- function(
 #' and returns a data frame of interactions. Assigns directionality based on score, if available.
 #' @param dmrs Dataframe or GRanges object containing DMR coordinates and motif information
 #' @param genome Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.
-#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only when `beta_locs` is not provided and DMR site IDs are array probe IDs.
+#' @param array Character. Array platform type (e.g., "450K", "EPIC"). Required only
+#'  when `beta_locs` is not provided and DMR site IDs are array probe IDs.
 #' @param min_similarity Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)
 #' @param beta_locs Data frame. Optional pre-computed genomic locations. If NULL,
 #' locations will be retrieved using getSortedGenomicLocs (default: NULL)
@@ -497,7 +547,8 @@ extractDMRMotifs <- function(
 #' @param find_components Logical. Whether to identify connected components of interacting DMRs (default: TRUE)
 #' @param min_component_size Integer. Minimum size of connected components to consider (default: 2)
 #' @param query_components_with_jaspar Logical. Whether to query connected components average PWMs against JASPAR database (default: TRUE)
-#' @param output_prefix Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)
+#' @param output_prefix Character. Prefix for output files to save interactions
+#'  and components (optional). If NULL, results are not saved to file (default: NULL)
 #' @param plot_dir Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)
 #' @return A list with:
 #' \itemize{
@@ -552,7 +603,7 @@ computeDMRsInteraction <- function(
             context = "computeDMRsInteraction()"
         )
     }
-    mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
+    S4Vectors::mcols(dmrs)$component_ids <- rep(NA_character_, length(dmrs))
     if (length(dmrs) == 0) {
         .log_info("No DMRs provided for interaction analysis.", level = 2)
         return(list(
@@ -561,7 +612,7 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
-    if (!"pwm" %in% colnames(mcols(dmrs))) {
+    if (!"pwm" %in% colnames(S4Vectors::mcols(dmrs))) {
         .log_info("DMR motifs not precomputed. Extracting motifs...", level = 2)
         .assertDependencyRequirements(
             requirements = .motifDependencyRequirements(
@@ -614,11 +665,11 @@ computeDMRsInteraction <- function(
             dmrs = if (input_is_df) .convertToDataFrame(dmrs) else dmrs
         ))
     }
-    has_score <- inherits(dmrs, "GRanges") && "score" %in% colnames(mcols(dmrs))
+    has_score <- methods::is(dmrs, "GRanges") && "score" %in% colnames(S4Vectors::mcols(dmrs))
     if (any(mask)) {
         if (has_score) {
             rowcol_df <- which(mask, arr.ind = TRUE)
-            scores <- mcols(dmrs)$score
+            scores <- S4Vectors::mcols(dmrs)$score
             keep <- scores[rowcol_df[, 1]] >= scores[rowcol_df[, 2]]
             rowcol_df <- rowcol_df[keep, , drop = FALSE]
             oriented_mask <- matrix(FALSE, nrow = nrow(mask), ncol = ncol(mask))
@@ -668,7 +719,7 @@ computeDMRsInteraction <- function(
             })
             # Find the average PWM for each component
             components_df$avg_pwm <- lapply(components_df$indices, function(idxs) {
-                pwms <- mcols(dmrs)[idxs, "pwm"]
+                pwms <- S4Vectors::mcols(dmrs)[idxs, "pwm"]
                 mat <- Reduce("+", pwms) / length(pwms)
                 mat / colSums(mat)
             })
@@ -706,7 +757,7 @@ computeDMRsInteraction <- function(
                 component_ids_by_dmr[[idx]] <- c(component_ids_by_dmr[[idx]], component_id)
             }
         }
-        mcols(dmrs)$component_ids <- vapply(component_ids_by_dmr, function(ids) {
+        S4Vectors::mcols(dmrs)$component_ids <- vapply(component_ids_by_dmr, function(ids) {
             ids <- unique(ids)
             if (length(ids) == 0) {
                 NA_character_
@@ -724,7 +775,7 @@ computeDMRsInteraction <- function(
             paste0(output_prefix, ".dmr_interactions.tsv")
         )
         .writeTabularOutputAtomic(
-            .serializeDMRInteractionComponentsForStorage(components_df),
+            .serializeDMRIntComps(components_df),
             paste0(output_prefix, ".dmr_components.tsv")
         )
     }

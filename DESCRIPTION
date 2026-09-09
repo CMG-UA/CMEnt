@@ -24,6 +24,7 @@ Description: CMEnt implements a correlation-based method for identifying
 URL: https://cmg-ua.github.io/CMEnt/, https://github.com/CMG-UA/CMEnt
 BugReports: https://github.com/CMG-UA/CMEnt/issues
 License: GPL (>= 2)
+SystemRequirements: tabix, bgzip, GNU sort
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
@@ -51,7 +52,9 @@ Imports:
     DelayedDataFrame,
     DT,
     e1071,
+    filelock,
     FNN,
+    futile.logger,
     GenomeInfoDb,
     GenomicFeatures,
     GenomicRanges,
@@ -91,6 +94,7 @@ Suggests:
     bsseqData,
     DMRsegaldata,
     ExperimentHub,
+    ggnewscale,
     IlluminaHumanMethylation27kanno.ilmn12.hg19,
     IlluminaHumanMethylation450kanno.ilmn12.hg19,
     IlluminaHumanMethylationEPICanno.ilm10b4.hg19,
@@ -142,10 +146,12 @@ Collate:
     'plot_dmrs.R'
     'plot_dmrs_circos.R'
     'read_custom_methylation_bed_data.R'
+    'reduce_bsseq_around_seeds.R'
     'shiny_app.R'
     'shiny_modules.R'
     'score_dmrs.R'
     'simulate_dmrs.R'
+    'sparsify_seeds.R'
     'sort_beta_file_by_coordinates.R'
     'utils.R'
     'zzz.R'

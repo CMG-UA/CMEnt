@@ -20,7 +20,8 @@ findDMPsBSSeq(
 \arguments{
 \item{bsseq}{A BSseq object or a file path to a saved BSseq object (RDS format).}
 
-\item{samplesheet}{A data frame or a file path to a tab-delimited text file containing sample metadata. Must include columns for sample IDs and group labels.}
+\item{samplesheet}{A data frame or a file path to a tab-delimited text file containing sample
+metadata. Must include columns for sample IDs and group labels.}
 
 \item{samplesheet_sep}{The separator used in the samplesheet file if a file path is provided. Default is tab ("\\t").}
 
@@ -28,13 +29,19 @@ findDMPsBSSeq(
 
 \item{id_col}{The name of the column in the samplesheet that contains the sample IDs. Default is "Sample_ID".}
 
-\item{chr}{A character vector of chromosome names to include in the analysis, or "auto" to automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".}
+\item{chr}{A character vector of chromosome names to include in the analysis, or "auto" to
+automatically include chr1-chr22, or "all" to include chr1-chr22 plus chrX and chrY. Default is "auto".}
 
-\item{case_group}{The specific group label in the sample_group_col to treat as the "case" group for comparison. If NULL, the first unique group in sample_group_col will be used as the case group. Default is NULL.}
+\item{case_group}{The specific group label in the sample_group_col to treat as the "case" group
+for comparison. If NULL, the first unique group in sample_group_col will be used as the case group.
+Default is NULL.}
 
-\item{covariates}{A character vector of additional covariate column names from the samplesheet to include in the DSS model, or a comma-separated string of covariate names. Default is NULL (no additional covariates).}
+\item{covariates}{A character vector of additional covariate column names from the samplesheet to
+include in the DSS model, or a comma-separated string of covariate names.
+Default is NULL (no additional covariates).}
 
-\item{output_file}{An optional file path to save the DMP results as a tab-delimited text file. If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).}
+\item{output_file}{An optional file path to save the DMP results as a tab-delimited text file.
+If the file name ends with ".gz", the output will be gzipped. Default is NULL (no file output).}
 
 \item{njobs}{The number of parallel jobs to use for chromosome-level analysis. Default is 1.}
 }
@@ -42,7 +49,9 @@ findDMPsBSSeq(
 A data frame of identified DMPs with columns for chromosome, position, site ID, p-value, q-value, delta beta, and DMP score.
 }
 \description{
-This helper function identifies differentially methylated positions (DMPs) from a BSseq object using the DSS package. It allows for flexible specification of sample groups, covariates, and chromosome filtering.
+This helper function identifies differentially methylated positions (DMPs)
+from a BSseq object using the DSS package. It allows for flexible specification of sample groups,
+covariates, and chromosome filtering.
 }
 \examples{
 if (requireNamespace("bsseqData", quietly = TRUE) &&

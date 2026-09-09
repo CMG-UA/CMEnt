@@ -2,7 +2,7 @@
 
 #' @keywords internal
 #' @noRd
-.mergeGenomicWindows <- function(windows) {
+.mergeGenomicWindows <- function(windows, return_granges = FALSE) {
     if (is.null(windows) || nrow(windows) == 0L) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
@@ -25,6 +25,9 @@
         ranges = IRanges::IRanges(start = windows$start, end = windows$end)
     )
     gr <- GenomicRanges::reduce(gr, ignore.strand = TRUE)
+    if (return_granges) {
+        return(gr)
+    }
     data.frame(
         chr = as.character(GenomicRanges::seqnames(gr)),
         start = GenomicRanges::start(gr),
@@ -34,7 +37,7 @@
 
 #' @keywords internal
 #' @noRd
-.buildConnectivityWindowsFromDMRs <- function(dmrs, expansion_window) {
+.buildWindowsFromDMRs <- function(dmrs, expansion_window) {
     if (is.null(dmrs) || nrow(dmrs) == 0L || !is.finite(expansion_window) || expansion_window <= 0) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
@@ -157,8 +160,6 @@
 }
 
 
-
-
 #' @keywords internal
 #' @noRd
 .forceConnectDeltaBetaEnabled <- function(ext_site_delta_beta) {
@@ -182,7 +183,174 @@
 
 #' @keywords internal
 #' @noRd
-.matchSequencingIdsToBeta <- function(ids, beta_chr, beta_start) {
+.usesBSseqBackend <- function(beta_handler) {
+    if (!inherits(beta_handler, "BetaHandler")) {
+        return(FALSE)
+    }
+    bsseq_object <- tryCatch(
+        beta_handler$.__enclos_env__$private$.bsseq_object,
+        error = function(e) NULL
+    )
+    !is.null(bsseq_object)
+}
+
+
+#' @keywords internal
+#' @noRd
+.bsseqBackendGRanges <- function(beta_handler) {
+    bsseq_object <- tryCatch(
+        beta_handler$.__enclos_env__$private$.bsseq_object,
+        error = function(e) NULL
+    )
+    if (is.null(bsseq_object)) {
+        return(NULL)
+    }
+    GenomicRanges::granges(bsseq_object)
+}
+
+
+#' @keywords internal
+#' @noRd
+.seedCoordinatesFromSeeds <- function(seeds_df, seeds_id_col) {
+    if (all(c("chr", "start") %in% colnames(seeds_df))) {
+        return(list(
+            chr = as.character(seeds_df$chr),
+            start = suppressWarnings(as.integer(as.numeric(seeds_df$start)))
+        ))
+    }
+    ids <- as.character(seeds_df[, seeds_id_col])
+    parsed <- regexec("^([^:]+):([0-9]+)$", ids)
+    pieces <- regmatches(ids, parsed)
+    ok <- lengths(pieces) == 3L
+    seed_chr <- rep(NA_character_, length(ids))
+    seed_start <- rep(NA_integer_, length(ids))
+    if (any(ok)) {
+        seed_chr[ok] <- vapply(pieces[ok], `[[`, character(1), 2L)
+        seed_start[ok] <- suppressWarnings(as.integer(vapply(pieces[ok], `[[`, character(1), 3L)))
+    }
+    list(chr = seed_chr, start = seed_start)
+}
+
+
+#' @keywords internal
+#' @noRd
+.chromosomeRunIndex <- function(beta_chr, require_unique = FALSE) {
+    if (inherits(beta_chr, "Rle")) {
+        chr_values <- as.character(S4Vectors::runValue(beta_chr))
+        chr_lengths <- as.integer(S4Vectors::runLength(beta_chr))
+    } else {
+        beta_chr <- as.character(beta_chr)
+        if (length(beta_chr) == 0L) {
+            return(data.frame(chr = character(0), start = integer(0), end = integer(0)))
+        }
+        chr_runs <- rle(beta_chr)
+        chr_values <- as.character(chr_runs$values)
+        chr_lengths <- as.integer(chr_runs$lengths)
+    }
+
+    if (length(chr_values) == 0L) {
+        return(data.frame(chr = character(0), start = integer(0), end = integer(0)))
+    }
+    if (isTRUE(require_unique) && anyDuplicated(chr_values)) {
+        dup_chr <- chr_values[duplicated(chr_values)][1L]
+        stop(
+            "Beta locations are not grouped by chromosome: ", dup_chr,
+            " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
+            call. = FALSE
+        )
+    }
+    chr_end <- cumsum(chr_lengths)
+    data.frame(
+        chr = chr_values,
+        start = as.integer(chr_end - chr_lengths + 1L),
+        end = as.integer(chr_end),
+        stringsAsFactors = FALSE
+    )
+}
+
+
+#' @keywords internal
+#' @noRd
+.chromosomeRunFor <- function(chr, chromosome_runs) {
+    chr <- as.character(chr)[1L]
+    if (is.na(chr) || !nzchar(chr)) {
+        return(NULL)
+    }
+    candidates <- chr
+    if (startsWith(chr, "chr")) {
+        candidates <- c(candidates, sub("^chr", "", chr))
+    } else {
+        candidates <- c(candidates, paste0("chr", chr))
+    }
+    run_idx <- match(candidates, chromosome_runs$chr)
+    run_idx <- run_idx[!is.na(run_idx)]
+    if (length(run_idx) == 0L) {
+        return(NULL)
+    }
+    chromosome_runs[run_idx, , drop = FALSE]
+}
+
+
+#' @keywords internal
+#' @noRd
+.buildDMRsChromosomeTasks <- function(beta_handler,
+                                      beta_chr,
+                                      beta_locs_rownames,
+                                      chromosomes,
+                                      seed_ids,
+                                      seed_beta_index,
+                                      seed_chr,
+                                      beta_col_names,
+                                      use_numeric_sequencing_rows,
+                                      chromosome_runs = .chromosomeRunIndex(beta_chr, require_unique = TRUE)) {
+    tasks <- vector("list", length(chromosomes))
+    names(tasks) <- chromosomes
+
+    for (i in seq_along(chromosomes)) {
+        chr <- chromosomes[[i]]
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
+            stop("No beta rows found for chromosome ", chr, call. = FALSE)
+        }
+        if (nrow(chr_run) != 1L) {
+            stop("Beta rows for chromosome ", chr, " are not contiguous.", call. = FALSE)
+        }
+        chr_row_start <- chr_run$start[[1L]]
+        chr_row_end <- chr_run$end[[1L]]
+
+        chr_row_ids <- if (isTRUE(use_numeric_sequencing_rows) || is.null(beta_locs_rownames)) {
+            NULL
+        } else {
+            beta_locs_rownames[seq.int(chr_row_start, chr_row_end)]
+        }
+        chr_seed_mask <- seed_chr == chr
+        chr_seed_ids <- seed_ids[chr_seed_mask]
+        chr_seed_beta_index <- if (isTRUE(use_numeric_sequencing_rows)) {
+            as.integer(seed_beta_index[chr_seed_mask] - chr_row_start + 1L)
+        } else {
+            chr_seed_ids
+        }
+
+        tasks[[i]] <- list(
+            chr = chr,
+            row_start = chr_row_start,
+            row_end = chr_row_end,
+            seed_ids = chr_seed_ids,
+            seed_beta_index = chr_seed_beta_index
+        )
+        if (!is.null(chr_row_ids)) {
+            tasks[[i]]$row_ids <- chr_row_ids
+        }
+    }
+
+    tasks
+}
+
+
+#' @keywords internal
+#' @noRd
+.matchSequencingIdsToBeta <- function(ids, beta_chr, beta_start,
+                                      chromosome_runs = .chromosomeRunIndex(beta_chr)) {
     ids <- as.character(ids)
     parsed <- regexec("^([^:]+):([0-9]+)$", ids)
     pieces <- regmatches(ids, parsed)
@@ -196,17 +364,44 @@
     ok_pos <- which(ok)
     for (chr in unique(id_chr[!is.na(id_start)])) {
         query_pos <- which(id_chr == chr & !is.na(id_start))
-        beta_pos <- which(beta_chr == chr)
-        if (length(beta_pos) == 0L && startsWith(chr, "chr")) {
-            beta_pos <- which(beta_chr == sub("^chr", "", chr))
-        } else if (length(beta_pos) == 0L) {
-            beta_pos <- which(beta_chr == paste0("chr", chr))
-        }
-        if (length(beta_pos) == 0L) {
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
             next
         }
+        beta_pos <- unlist(
+            Map(seq.int, chr_run$start, chr_run$end),
+            use.names = FALSE
+        )
         hit <- match(id_start[query_pos], beta_start[beta_pos])
-        idx[ok_pos[query_pos]] <- beta_pos[hit]
+        idx[ok_pos[query_pos]] <- as.integer(beta_pos[hit])
+    }
+    idx
+}
+
+
+#' @keywords internal
+#' @noRd
+.matchSequencingCoordinatesToBeta <- function(seed_chr, seed_start, beta_chr, beta_start,
+                                             chromosome_runs = .chromosomeRunIndex(beta_chr)) {
+    seed_chr <- as.character(seed_chr)
+    seed_start <- suppressWarnings(as.integer(seed_start))
+    idx <- rep(NA_integer_, length(seed_chr))
+    ok <- !is.na(seed_chr) & nzchar(seed_chr) & !is.na(seed_start)
+    if (!any(ok)) {
+        return(idx)
+    }
+    for (chr in unique(seed_chr[ok])) {
+        query_pos <- which(ok & seed_chr == chr)
+        chr_run <- .chromosomeRunFor(chr, chromosome_runs)
+        if (is.null(chr_run)) {
+            next
+        }
+        beta_pos <- unlist(
+            Map(seq.int, chr_run$start, chr_run$end),
+            use.names = FALSE
+        )
+        hit <- match(seed_start[query_pos], beta_start[beta_pos])
+        idx[query_pos] <- as.integer(beta_pos[hit])
     }
     idx
 }
@@ -225,15 +420,72 @@
 
 #' @keywords internal
 #' @noRd
-.availableRamBytes <- function(default_gb = 2) {
-    if (file.exists("/proc/meminfo")) {
-        mem_available <- grep("^MemAvailable:", readLines("/proc/meminfo"), value = TRUE)
-        if (length(mem_available) == 1L) {
-            kb <- suppressWarnings(as.numeric(strsplit(mem_available, "\\s+")[[1]][2L]))
-            if (is.finite(kb) && !is.na(kb) && kb > 0) {
-                return(kb * 1024)
-            }
-        }
+.readMemoryBytesFile <- function(path) {
+    if (!file.exists(path)) {
+        return(NA_real_)
+    }
+    value <- tryCatch(readLines(path, n = 1L, warn = FALSE), error = function(e) character(0))
+    if (length(value) != 1L) {
+        return(NA_real_)
+    }
+    value <- trimws(value)
+    if (identical(value, "max")) {
+        return(Inf)
+    }
+    value <- suppressWarnings(as.numeric(value))
+    if (!is.na(value) && value > 0) value else NA_real_
+}
+
+
+#' @keywords internal
+#' @noRd
+.meminfoAvailableRamBytes <- function(path = "/proc/meminfo") {
+    if (!file.exists(path)) {
+        return(NA_real_)
+    }
+    meminfo <- tryCatch(readLines(path, warn = FALSE), error = function(e) character(0))
+    mem_available <- grep("^MemAvailable:", meminfo, value = TRUE)
+    if (length(mem_available) != 1L) {
+        return(NA_real_)
+    }
+    kb <- suppressWarnings(as.numeric(strsplit(mem_available, "\\s+")[[1]][2L]))
+    if (is.finite(kb) && !is.na(kb) && kb > 0) kb * 1024 else NA_real_
+}
+
+
+#' @keywords internal
+#' @noRd
+.cgroupAvailableRamBytes <- function(
+    limit_paths = c("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    current_paths = c("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes")
+) {
+    limits <- vapply(limit_paths, .readMemoryBytesFile, numeric(1))
+    currents <- vapply(current_paths, .readMemoryBytesFile, numeric(1))
+    limits <- limits[is.finite(limits) & limits > 0 & limits < 2^60]
+    currents <- currents[is.finite(currents) & currents >= 0]
+    if (length(limits) == 0L || length(currents) == 0L) {
+        return(NA_real_)
+    }
+    available <- min(limits) - max(currents)
+    if (is.finite(available) && !is.na(available) && available > 0) available else 1
+}
+
+
+#' @keywords internal
+#' @noRd
+.availableRamBytes <- function(
+    default_gb = 2,
+    meminfo_path = "/proc/meminfo",
+    cgroup_limit_paths = c("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    cgroup_current_paths = c("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes")
+) {
+    candidates <- c(
+        .cgroupAvailableRamBytes(cgroup_limit_paths, cgroup_current_paths),
+        .meminfoAvailableRamBytes(meminfo_path)
+    )
+    candidates <- candidates[is.finite(candidates) & !is.na(candidates) & candidates > 0]
+    if (length(candidates) > 0L) {
+        return(min(candidates))
     }
     as.numeric(default_gb) * 1024^3
 }
@@ -405,8 +657,7 @@
 #' @keywords internal
 #' @noRd
 .subsetStage2BetaToWindows <- function(beta_handler, beta_locs, col_names, expansion_windows, njobs = 1L) {
-    active_wins <- .mergeGenomicWindows(expansion_windows)
-    if (nrow(active_wins) == 0L) {
+    if (nrow(expansion_windows) == 0L) {
         return(NULL)
     }
     n_sites <- nrow(beta_locs)
@@ -415,10 +666,10 @@
     }
     beta_start <- as.integer(beta_locs[, "start"])
     keep <- rep(FALSE, n_sites)
-    if (nrow(active_wins) > 0L) {
+    if (nrow(expansion_windows) > 0L) {
         win_ir <- IRanges::IRanges(
-            start = as.integer(active_wins$start),
-            end = as.integer(active_wins$end)
+            start = as.integer(expansion_windows$start),
+            end = as.integer(expansion_windows$end)
         )
         site_ir <- IRanges::IRanges(
             start = beta_start,
@@ -447,7 +698,7 @@
             rownames(beta_locs)
         }
     }
-    if (is.null(beta_locs_rownames)) {
+    if (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler)) {
         subset_ids <- subset_idx
         subset_names <- paste0(as.character(subset_locs[, "chr"]), ":", as.integer(subset_locs[, "start"]))
     } else {
@@ -465,8 +716,7 @@
     )
     list(
         beta_handler = subset_beta_handler,
-        beta_locs = subset_locs,
-        expansion_windows = active_wins
+        beta_locs = subset_locs
     )
 }
 
@@ -481,7 +731,7 @@
     n_valid <- rowSums(valid_pairs)
 
     if (testing_mode == "auto") {
-        auto_diag <- .summarizeCorrelationAssumptions(
+        auto_diag <- .summarizeCorrAssumptions(
             x_mat = x_mat,
             y_mat = y_mat,
             n_valid = n_valid
@@ -502,13 +752,17 @@
     if (testing_mode == "empirical" && empirical_strategy == "auto") {
         if (ncol(x_mat) >= 6) {
             .log_info(
-                "Group '", group, "' has ", ncol(x_mat), " samples. Using 'montecarlo' empirical strategy for faster computation with sufficient sample size.",
+                "Group '", group, "' has ", ncol(x_mat),
+                " samples. Using 'montecarlo' empirical ",
+                "strategy for faster computation with sufficient sample size.",
                 level = 2
             )
             empirical_strategy <- "montecarlo"
         } else {
             .log_info(
-                "Group '", group, "' has only ", ncol(x_mat), " samples. Using 'permutations' empirical strategy for more accurate p-value estimation with small sample size.",
+                "Group '", group, "' has only ", ncol(x_mat),
+                " samples. Using 'permutations' empirical strategy for more",
+                " accurate p-value estimation with small sample size.",
                 level = 2
             )
             empirical_strategy <- "permutations"
@@ -516,6 +770,99 @@
     }
     list(testing_mode = testing_mode, empirical_strategy = empirical_strategy)
 }
+
+#' @keywords internal
+#' @noRd
+.rowPairCorrelationStats <- function(mat, start_inds, end_inds) {
+    n_pairs <- length(start_inds)
+    if (n_pairs == 0L) {
+        return(list(
+            x_means = numeric(0),
+            y_means = numeric(0),
+            sum_xy = numeric(0),
+            sum_x2 = numeric(0),
+            sum_y2 = numeric(0),
+            n_valid = integer(0)
+        ))
+    }
+
+    x_sum <- numeric(n_pairs)
+    y_sum <- numeric(n_pairs)
+    x_count <- integer(n_pairs)
+    y_count <- integer(n_pairs)
+    n_valid <- integer(n_pairs)
+
+    for (j in seq_len(ncol(mat))) {
+        x <- mat[start_inds, j]
+        y <- mat[end_inds, j]
+        x_has_na <- anyNA(x)
+        y_has_na <- anyNA(y)
+
+        if (x_has_na) {
+            x_ok <- !is.na(x)
+            x_sum[x_ok] <- x_sum[x_ok] + x[x_ok]
+            x_count <- x_count + as.integer(x_ok)
+        } else {
+            x_sum <- x_sum + x
+            x_count <- x_count + 1L
+        }
+
+        if (y_has_na) {
+            y_ok <- !is.na(y)
+            y_sum[y_ok] <- y_sum[y_ok] + y[y_ok]
+            y_count <- y_count + as.integer(y_ok)
+        } else {
+            y_sum <- y_sum + y
+            y_count <- y_count + 1L
+        }
+
+        if (x_has_na || y_has_na) {
+            if (!x_has_na) {
+                x_ok <- rep(TRUE, n_pairs)
+            }
+            if (!y_has_na) {
+                y_ok <- rep(TRUE, n_pairs)
+            }
+            n_valid <- n_valid + as.integer(x_ok & y_ok)
+        } else {
+            n_valid <- n_valid + 1L
+        }
+    }
+
+    x_means <- x_sum / x_count
+    y_means <- y_sum / y_count
+    sum_xy <- numeric(n_pairs)
+    sum_x2 <- numeric(n_pairs)
+    sum_y2 <- numeric(n_pairs)
+
+    for (j in seq_len(ncol(mat))) {
+        x <- mat[start_inds, j]
+        y <- mat[end_inds, j]
+        x_centered <- x - x_means
+        y_centered <- y - y_means
+
+        if (anyNA(x)) {
+            x_centered[is.na(x)] <- 0
+        }
+        if (anyNA(y)) {
+            y_centered[is.na(y)] <- 0
+        }
+
+        sum_xy <- sum_xy + x_centered * y_centered
+        sum_x2 <- sum_x2 + x_centered * x_centered
+        sum_y2 <- sum_y2 + y_centered * y_centered
+    }
+
+    list(
+        x_means = x_means,
+        y_means = y_means,
+        sum_xy = sum_xy,
+        sum_x2 = sum_x2,
+        sum_y2 = sum_y2,
+        n_valid = n_valid
+    )
+}
+
 
 .permutationIndexMatrix <- local({
     cache <- new.env(parent = emptyenv())
@@ -568,7 +915,7 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     checked_pairs = NULL,
@@ -612,7 +959,8 @@
     .log_step(
         "Testing connectivity for pairs ", pair_start, "-", pair_end,
         if (!is.null(checked_pairs)) paste0(" (", sum(pair_mask), " checked pair(s))") else "",
-        " within beta rows [", min(inds), ", ", max(inds), "].", level = 3
+        " within beta rows [", min(inds), ", ", max(inds), "].",
+        level = 3
     )
     x <- .testConnectivityBatch(
         sites_beta = as.matrix(chunk_beta),
@@ -624,6 +972,7 @@
         ext_site_delta_beta = ext_site_delta_beta,
         max_lookup_dist = max_lookup_dist,
         site_starts = site_starts,
+        n_sites = length(inds),
         entanglement = entanglement,
         aggfun = aggfun,
         testing_mode_per_group = testing_mode_per_group,
@@ -633,13 +982,13 @@
         check_non_overlapping = !is.null(checked_pairs)
     )
     rm(chunk_beta)
+    .log_success("Connectivity tested.", level = 3)
     if (!is.null(checked_pairs) && length(inds) > 0L) {
         # attach to result so outer loop can map back exactly
         # keep only mod 2 = 1
         inds <- inds[seq_along(inds) %% 2 == 1]
         attr(x, "recomputed_pairs") <- inds
     }
-    .log_success("", level = 3)
     list(pair_start = pair_start, pair_end = pair_end, result = x)
 }
 
@@ -660,7 +1009,7 @@
 
 #' @keywords internal
 #' @noRd
-.buildConnectivityArraySinglePass <- function(
+.buildCASinglePass <- function(
     beta_handler,
     beta_locs = NULL,
     pheno,
@@ -674,7 +1023,7 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     njobs = 1,
@@ -684,6 +1033,7 @@
     dgap = 0L,
     recheck = NULL,
     splits = NULL,
+    memory_njobs = njobs,
     verbose = 1
 ) {
     if (is.null(covariate_models)) {
@@ -716,7 +1066,13 @@
         if (.forceConnectDeltaBetaEnabled(ext_site_delta_beta)) {
             ret$delta_beta <- rep(NA_real_, n_sites)
         }
-        return(list(connectivity_array = ret, splits = NULL, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group))
+        return(
+            list(
+                connectivity_array = ret, splits = NULL,
+                testing_mode_per_group = testing_mode_per_group,
+                empirical_strategy_per_group = empirical_strategy_per_group
+            )
+        )
     }
     chr_ends <- as.integer(n_sites)
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
@@ -729,13 +1085,13 @@
     }
     chunk_size <- .connectivityChunkSize(
         n_samples = n_cols_for_chunk,
-        njobs = njobs,
+        njobs = memory_njobs,
         n_pairs = max(1L, n_sites - 1L)
     )
     .log_info(
         "Connectivity chunk size: ", chunk_size,
         " pair(s), derived from available RAM, ", n_cols_for_chunk,
-        " sample column(s), and ", max(1L, as.integer(njobs)), " job(s).",
+        " sample column(s), and ", max(1L, as.integer(memory_njobs)), " budgeted job(s).",
         level = 3
     )
 
@@ -823,17 +1179,16 @@
     }
 
     .build_window_pair_ranges <- function() {
-        active_wins <- .mergeGenomicWindows(expansion_windows)
-        if (nrow(active_wins) == 0L) {
+        if (nrow(expansion_windows) == 0L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
         beta_start <- as.integer(beta_locs[, "start"])
-        if (nrow(active_wins) == 0L || n_sites < 2L) {
+        if (nrow(expansion_windows) == 0L || n_sites < 2L) {
             return(data.frame(start_pair = integer(0), end_pair = integer(0)))
         }
         win_ir <- IRanges::IRanges(
-            start = as.integer(round(as.numeric(active_wins$start))),
-            end = as.integer(round(as.numeric(active_wins$end)))
+            start = as.integer(round(as.numeric(expansion_windows$start))),
+            end = as.integer(round(as.numeric(expansion_windows$end)))
         )
         site_ir <- IRanges::IRanges(
             start = beta_start,
@@ -937,7 +1292,15 @@
         }
         if (!any(run_mask)) {
             # No runs to bridge, return the existing connectivity array and splits
-            return(list(connectivity_array = connectivity_array, splits = splits, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group, recheck = integer(0)))
+            return(
+                list(
+                    connectivity_array = connectivity_array,
+                    splits = splits,
+                    testing_mode_per_group = testing_mode_per_group,
+                    empirical_strategy_per_group = empirical_strategy_per_group,
+                    recheck = integer(0)
+                )
+            )
         }
         run_ends <- run_ends[run_mask]
         run_starts <- run_starts[run_mask]
@@ -945,7 +1308,10 @@
             # The following indices will be re-checked
             checked_pairs <- data.frame(before = run_starts - ugap, after = run_starts)
             .log_info(
-                "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the upstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ",
+                nrow(checked_pairs),
+                " site pairs at the upstream edges of existing connected",
+                " regions to see if we can bridge small gaps.",
                 level = 3
             )
         } else if (dgap > 0L) {
@@ -981,7 +1347,8 @@
                             checked_pairs$after[valid_shift] <- shifted_after[valid_shift]
                             .log_info(
                                 "Back-shifted ", sum(valid_shift),
-                                " downstream bridge assessment(s) after the forward bridged candidate exceeded max_lookup_dist.",
+                                " downstream bridge assessment(s) after the forward bridged",
+                                " candidate exceeded max_lookup_dist.",
                                 level = 3
                             )
                         }
@@ -989,7 +1356,9 @@
                 }
             }
             .log_info(
-                "Re-assessing connectivity for ", nrow(checked_pairs), " site pairs at the downstream edges of existing connected regions to see if we can bridge small gaps.",
+                "Re-assessing connectivity for ", nrow(checked_pairs),
+                " site pairs at the downstream edges of existing connected regions",
+                " to see if we can bridge small gaps.",
                 level = 3
             )
         }
@@ -1026,8 +1395,14 @@
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
     # all backends query the same sites during connectivity estimation.
-    handler_row_names_for_numeric <- tryCatch(beta_handler$getBetaRowNames(), error = function(e) NULL)
-    numeric_row_index_matches_locs <- is.null(handler_row_names_for_numeric) ||
+    use_bsseq_numeric_index <- .usesBSseqBackend(beta_handler)
+    handler_row_names_for_numeric <- if (use_bsseq_numeric_index) {
+        NULL
+    } else {
+        tryCatch(beta_handler$getBetaRowNames(), error = function(e) NULL)
+    }
+    numeric_row_index_matches_locs <- use_bsseq_numeric_index ||
+        is.null(handler_row_names_for_numeric) ||
         (
             length(handler_row_names_for_numeric) >= n_sites &&
                 identical(handler_row_names_for_numeric[seq_len(n_sites)], beta_row_ids_full)
@@ -1041,7 +1416,8 @@
     beta_row_ids <- if (use_numeric_row_index) NULL else beta_row_ids_full
     if (any(testing_mode_per_group == "auto") || any(empirical_strategy_per_group[testing_mode_per_group == "empirical"] == "auto")) {
         .log_info(
-            "Selecting p-value computation mode for each group using the first chunk as a pilot.",
+            "Selecting p-value computation mode for each group using the first",
+            " chunk as a pilot.",
             level = 2
         )
         first_chunk_rows <- splits[1, 1]:(splits[1, 2] + 1L)
@@ -1067,10 +1443,11 @@
             function(x) {
                 idx <- group_inds[[x]]
                 chunk_m <- .transformBeta(
-                    first_chunk[, idx, drop = FALSE],
-                    pheno = pheno[idx, , drop = FALSE],
+                    first_chunk,
+                    pheno = pheno,
                     covariates = covariates,
-                    covariate_model = covariate_models[[x]]
+                    covariate_model = covariate_models[[x]],
+                    cols = idx
                 )
                 .chooseTestingOptions(
                     group = x,
@@ -1086,17 +1463,14 @@
         testing_mode_per_group <- vapply(groups_options, function(opt) opt$testing_mode, character(1))
         names(testing_mode_per_group) <- names(group_inds)
         rm(first_chunk, site_starts, exceeded_dist, nexdist_mask, groups_options)
-        gc()
     }
     beta_start_vec <- as.integer(beta_locs[, "start"])
-    .runConnectivityChunk <- function(
-        split,
-        checked_pairs_local = checked_pairs,
-        worker_beta_handler = beta_handler,
-        worker_use_numeric_row_index = use_numeric_row_index,
-        worker_beta_row_ids = beta_row_ids,
-        worker_beta_row_ids_offset = 0L
-    ) {
+    .runConnectivityChunk <- function(split,
+                                      checked_pairs_local = checked_pairs,
+                                      worker_beta_handler = beta_handler,
+                                      worker_use_numeric_row_index = use_numeric_row_index,
+                                      worker_beta_row_ids = beta_row_ids,
+                                      worker_beta_row_ids_offset = 0L) {
         .connectivityChunkWorker(
             split = split,
             beta_handler = worker_beta_handler,
@@ -1122,20 +1496,24 @@
         )
     }
     # Work with local vectors to avoid repeated data.frame copy-on-modify in the hot loop.
-    connected_vec <- connectivity_array$connected
-    pval_vec <- connectivity_array$pval
-    reason_vec <- connectivity_array$reason
-    fail_col <- if ("first_failing_group" %in% names(connectivity_array)) "first_failing_group" else if ("failing_groups" %in% names(connectivity_array)) "failing_groups" else NULL
-    fail_vec <- if (!is.null(fail_col)) connectivity_array[[fail_col]] else NULL
-    delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
+    connectivity_state <- new.env(parent = emptyenv())
+    connectivity_state$connected_vec <- connectivity_array$connected
+    connectivity_state$pval_vec <- connectivity_array$pval
+    connectivity_state$reason_vec <- connectivity_array$reason
+    fail_col <- if ("first_failing_group" %in% names(connectivity_array))
+        "first_failing_group" else if ("failing_groups" %in% names(connectivity_array))
+        "failing_groups" else NULL
+    connectivity_state$fail_vec <- if (!is.null(fail_col)) connectivity_array[[fail_col]] else NULL
+    connectivity_state$delta_vec <- if ("delta_beta" %in% names(connectivity_array)) connectivity_array$delta_beta else NULL
 
-    bridge_mask <- rep(FALSE, n_sites)
-    recheck <- integer(0)
+    connectivity_state$bridge_mask <- rep(FALSE, n_sites)
+    connectivity_state$recheck <- integer(0)
 
     .updatePvalMin <- function(idx, values) {
         if (length(idx) == 0L || length(values) == 0L) {
             return(invisible(NULL))
         }
+        pval_vec <- connectivity_state$pval_vec
         keep <- !is.na(idx) & idx >= 1L & idx <= length(pval_vec) & !is.na(values)
         idx <- as.integer(idx[keep])
         values <- as.numeric(values[keep])
@@ -1145,8 +1523,9 @@
         for (i in unique(idx)) {
             new_pval <- min(values[idx == i], na.rm = TRUE)
             old_pval <- pval_vec[i]
-            pval_vec[i] <<- if (is.na(old_pval)) new_pval else min(old_pval, new_pval)
+            pval_vec[i] <- if (is.na(old_pval)) new_pval else min(old_pval, new_pval)
         }
+        connectivity_state$pval_vec <- pval_vec
         invisible(NULL)
     }
 
@@ -1158,14 +1537,18 @@
         if (is.null(checked_pairs)) {
             # First pass: full overwrite
             idx <- item$pair_start:item$pair_end
-            connected_vec[idx] <<- x$connected
-            pval_vec[idx] <<- x$pval
-            reason_vec[idx] <<- x$reason
+            connectivity_state$connected_vec[idx] <- x$connected
+            connectivity_state$pval_vec[idx] <- x$pval
+            connectivity_state$reason_vec[idx] <- x$reason
             if (!is.null(fail_col) && fail_col %in% names(x)) {
-                fail_vec[idx] <<- x[[fail_col]]
+                fail_vec <- connectivity_state$fail_vec
+                fail_vec[idx] <- x[[fail_col]]
+                connectivity_state$fail_vec <- fail_vec
             }
-            if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
-                delta_vec[idx] <<- x$delta_beta
+            if (!is.null(connectivity_state$delta_vec) && "delta_beta" %in% names(x)) {
+                delta_vec <- connectivity_state$delta_vec
+                delta_vec[idx] <- x$delta_beta
+                connectivity_state$delta_vec <- delta_vec
             }
         } else {
             # Map result rows to the exact global pair indices returned by the worker.
@@ -1179,17 +1562,21 @@
             if (any(update_m) && length(masked_idx) >= 1L) {
                 update_idx <- masked_idx[update_m]
                 update_pval <- x$pval[update_m]
-                update_was_connected <- connected_vec[update_idx]
+                update_was_connected <- connectivity_state$connected_vec[update_idx]
                 newly_updated_mask <- !update_was_connected
                 if (any(newly_updated_mask)) {
                     newly_updated_idx <- update_idx[newly_updated_mask]
-                    connected_vec[newly_updated_idx] <<- x$connected[update_m][newly_updated_mask]
-                    reason_vec[newly_updated_idx] <<- x$reason[update_m][newly_updated_mask]
+                    connectivity_state$connected_vec[newly_updated_idx] <- x$connected[update_m][newly_updated_mask]
+                    connectivity_state$reason_vec[newly_updated_idx] <- x$reason[update_m][newly_updated_mask]
                     if (!is.null(fail_col) && fail_col %in% names(x)) {
-                        fail_vec[newly_updated_idx] <<- x[[fail_col]][update_m][newly_updated_mask]
+                        fail_vec <- connectivity_state$fail_vec
+                        fail_vec[newly_updated_idx] <- x[[fail_col]][update_m][newly_updated_mask]
+                        connectivity_state$fail_vec <- fail_vec
                     }
-                    if (!is.null(delta_vec) && "delta_beta" %in% names(x)) {
-                        delta_vec[newly_updated_idx] <<- x$delta_beta[update_m][newly_updated_mask]
+                    if (!is.null(connectivity_state$delta_vec) && "delta_beta" %in% names(x)) {
+                        delta_vec <- connectivity_state$delta_vec
+                        delta_vec[newly_updated_idx] <- x$delta_beta[update_m][newly_updated_mask]
+                        connectivity_state$delta_vec <- delta_vec
                     }
                 }
                 gap <- if (ugap > 0L) ugap else dgap
@@ -1199,7 +1586,7 @@
                 bridge_idx <- bridge_idx[bridge_keep]
                 bridge_pval <- bridge_pval[bridge_keep]
                 if (length(bridge_idx) > 0L) {
-                    bridge_was_connected <- connected_vec[bridge_idx]
+                    bridge_was_connected <- connectivity_state$connected_vec[bridge_idx]
                     update_bridge_match <- match(bridge_idx, update_idx)
                     matched_update_bridge <- !is.na(update_bridge_match)
                     bridge_was_connected[matched_update_bridge] <- update_was_connected[update_bridge_match[matched_update_bridge]]
@@ -1207,8 +1594,8 @@
                     newly_connected_idx <- bridge_idx[newly_connected_mask]
                     if (length(newly_connected_idx) > 0L) {
                         .updatePvalMin(newly_connected_idx, bridge_pval[newly_connected_mask])
-                        bridge_mask <<- replace(bridge_mask, newly_connected_idx, TRUE)
-                        recheck <<- c(recheck, newly_connected_idx)
+                        connectivity_state$bridge_mask <- replace(connectivity_state$bridge_mask, newly_connected_idx, TRUE)
+                        connectivity_state$recheck <- c(connectivity_state$recheck, newly_connected_idx)
                     }
                 }
             }
@@ -1217,7 +1604,6 @@
     }
 
     .bpBatchConnectivity <- function(batch_splits, batch_checked_pairs = checked_pairs) {
-        bp_backend <- if (.usesFileBackedBSseq(beta_handler)) "snow" else NULL
         BiocParallel::bplapply(
             X = batch_splits,
             FUN = .connectivityChunkWorker,
@@ -1243,8 +1629,7 @@
             beta_row_ids_offset = 0L,
             BPPARAM = .makeBiocParallelParam(
                 njobs,
-                n_tasks = length(batch_splits),
-                parallel_backend = bp_backend
+                n_tasks = length(batch_splits)
             )
         )
     }
@@ -1271,12 +1656,18 @@
             .applyChunkResult(item)
         }
         rm(ret, batch_splits)
-        gc(verbose = FALSE)
     }
+
+    connected_vec <- connectivity_state$connected_vec
+    pval_vec <- connectivity_state$pval_vec
+    reason_vec <- connectivity_state$reason_vec
+    fail_vec <- connectivity_state$fail_vec
+    delta_vec <- connectivity_state$delta_vec
+    bridge_mask <- connectivity_state$bridge_mask
+    recheck <- sort(unique(connectivity_state$recheck))
 
     connected_vec[bridge_mask] <- TRUE
     reason_vec[bridge_mask] <- "bridged"
-    recheck <- sort(unique(recheck))
 
     # Preserve hard window boundaries even when chunk pooling evaluates ranges spanning multiple windows.
     if (is.null(checked_pairs) && window_mode && exists("pair_ranges", inherits = FALSE) && nrow(pair_ranges) > 0L) {
@@ -1322,12 +1713,13 @@
     covariate_models = NULL,
     max_lookup_dist = 1000,
     entanglement = "strong",
-    aggfun = median,
+    aggfun = stats::median,
     ntries = 500,
     mid_p = TRUE,
     njobs = 1,
     expansion_windows = NULL,
     max_bridge_gaps = 0,
+    memory_njobs = njobs,
     verbose = getOption("CMEnt.verbose", 1L)
 ) {
     if (is.null(covariate_models)) {
@@ -1337,9 +1729,13 @@
     splits <- NULL
     for (gap in seq(0L, max_bridge_gaps)) {
         if (gap == 0L) {
-            .log_info("Building initial connectivity array with no gap bridging.", level = 2)
+            .log_info("Building connectivity array with no gap bridging.", level = 2)
         } else {
-            .log_info("Building bridged connectivity array allowing up to ", gap, " gap(s) between connected seeds.", level = 2)
+            .log_info(
+                "Building bridged connectivity array allowing up to ", gap,
+                " gap(s) between connected seeds.",
+                level = 2
+            )
         }
         build_args <- list(
             beta_handler = beta_handler,
@@ -1362,17 +1758,18 @@
             expansion_windows = expansion_windows,
             connectivity_array = connectivity_array,
             splits = splits,
+            memory_njobs = memory_njobs,
             verbose = verbose
         )
-        .buildConnectivityArraySinglePassWithGaps <- function(build_args, gap) {
+        .buildCASinglePassWithGaps <- function(build_args, gap) {
             build_args$ugap <- gap
             build_args$dgap <- 0
-            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            build_ret <- do.call(.buildCASinglePass, build_args)
             build_args$connectivity_array <- build_ret$connectivity_array
             urecheck <- build_ret$recheck
             build_args$ugap <- 0
             build_args$dgap <- gap
-            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            build_ret <- do.call(.buildCASinglePass, build_args)
             drecheck <- build_ret$recheck
             list(
                 recheck = sort(unique(c(urecheck, drecheck))),
@@ -1382,7 +1779,7 @@
                 empirical_strategy_per_group = build_ret$empirical_strategy_per_group
             )
         }
-        .buildConnectivityArrayBridgeFixedPoint <- function(build_args, max_gap) {
+        .buildCABridgeFixedPoint <- function(build_args, max_gap) {
             active_recheck <- NULL
             base_splits <- build_args$splits
             pass <- 0L
@@ -1405,10 +1802,16 @@
                     .log_info(
                         "Bridge fixed-point pass ", pass,
                         " for gap ", bridge_gap, "/", max_gap,
-                        if (is.null(active_recheck)) " over all connected runs." else paste0(" over ", length(active_recheck), " touched edge(s)."),
+                        if (is.null(active_recheck)) {
+                            " over all connected runs."
+                        } else {
+                            paste0(
+                                " over ", length(active_recheck), " touched edge(s)."
+                            )
+                        },
                         level = 3
                     )
-                    build_ret <- .buildConnectivityArraySinglePassWithGaps(build_args, bridge_gap)
+                    build_ret <- .buildCASinglePassWithGaps(build_args, bridge_gap)
                     build_args$connectivity_array <- build_ret$connectivity_array
                     build_args$testing_mode_per_group <- build_ret$testing_mode_per_group
                     build_args$empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
@@ -1420,9 +1823,8 @@
                 }
                 connected_after <- sum(build_args$connectivity_array$connected, na.rm = TRUE)
                 if (connected_after <= connected_before) {
-                    warning(
-                        "Bridge fixed-point connectivity stopped because a recheck pass made no progress.",
-                        call. = FALSE
+                    .log_warn(
+                        "Bridge fixed-point connectivity stopped because a recheck pass made no progress."
                     )
                     build_ret$recheck <- integer(0)
                     build_ret$splits <- base_splits
@@ -1432,10 +1834,10 @@
             }
         }
         if (gap > 0L) {
-            build_ret <- .buildConnectivityArrayBridgeFixedPoint(build_args, gap)
+            build_ret <- .buildCABridgeFixedPoint(build_args, gap)
             connectivity_array <- build_ret$connectivity_array
         } else {
-            build_ret <- do.call(.buildConnectivityArraySinglePass, build_args)
+            build_ret <- do.call(.buildCASinglePass, build_args)
             connectivity_array <- build_ret$connectivity_array
         }
 
@@ -1444,7 +1846,11 @@
         empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
         .log_info("Connectivity array built with gap allowance of ", gap, " (", sum(connectivity_array$connected), " connected sites).", level = 2)
     }
-    list(connectivity_array = connectivity_array, splits = splits, testing_mode_per_group = testing_mode_per_group, empirical_strategy_per_group = empirical_strategy_per_group)
+    list(
+        connectivity_array = connectivity_array, splits = splits,
+        testing_mode_per_group = testing_mode_per_group,
+        empirical_strategy_per_group = empirical_strategy_per_group
+    )
 }
 
 
@@ -1484,181 +1890,6 @@
 
 #' @keywords internal
 #' @noRd
-.expandDMR <- function(dmr,
-                       connectivity_array,
-                       locs,
-                       min_sites = 3,
-                       locs_idx_map,
-                       expansion_boundaries) {
-    .log_step("Expanding DMR..", level = 4)
-    if (is.data.frame(dmr)) {
-        if (nrow(dmr) != 1L) {
-            stop("dmr must contain exactly one row.")
-        }
-        dmr <- dmr[1L, , drop = FALSE]
-    } else {
-        dmr <- as.data.frame(as.list(dmr), stringsAsFactors = FALSE)
-    }
-    dmr_start <- as.character(dmr[["start_seed"]][[1]])
-    dmr_end <- as.character(dmr[["end_seed"]][[1]])
-
-    dmr_start_ind <- locs_idx_map[[dmr_start]]
-    dmr_end_ind <- locs_idx_map[[dmr_end]]
-    if (is.null(dmr_start_ind)) {
-        stop("Could not find the start site ", dmr_start, " in the beta file row names.")
-    }
-    if (is.null(dmr_end_ind)) {
-        stop("Could not find the end site ", dmr_end, " in the beta file row names.")
-    }
-    dmr_start_ind <- as.integer(dmr_start_ind)
-    dmr_end_ind <- as.integer(dmr_end_ind)
-    locs_rownames <- names(locs_idx_map)
-    projected_site_ids <- locs_rownames
-    projected_positions <- as.integer(locs[, "start"])
-
-    .check_upstream <- function(ustream_exp, exp_step) {
-        ustream_end_lookup_site_ind <- as.integer(ustream_exp - 1L)
-        if (ustream_end_lookup_site_ind < 1L) {
-            return(list(
-                ustream_stop_reason = "end-of-input",
-                ustream_exp = ustream_exp
-            ))
-        }
-        fail_edge <- expansion_boundaries$previous_failed_edge[ustream_end_lookup_site_ind]
-        if (is.na(fail_edge) || fail_edge < 1L) {
-            return(list(
-                ustream_stop_reason = "end-of-input",
-                ustream_exp = 1L
-            ))
-        }
-        list(
-            ustream_stop_reason = expansion_boundaries$reason[fail_edge],
-            ustream_exp = as.integer(fail_edge + 1L)
-        )
-    }
-
-    .check_downstream <- function(dstream_exp, exp_step) {
-        dstream_start_lookup_site_ind <- as.integer(dstream_exp)
-        if (dstream_start_lookup_site_ind >= nrow(locs)) {
-            return(list(
-                dstream_stop_reason = "end-of-input",
-                dstream_exp = dstream_exp
-            ))
-        }
-        fail_edge <- expansion_boundaries$next_failed_edge[dstream_start_lookup_site_ind]
-        if (is.na(fail_edge) || fail_edge > nrow(locs)) {
-            return(list(
-                dstream_stop_reason = "end-of-input",
-                dstream_exp = nrow(locs)
-            ))
-        }
-        list(
-            dstream_stop_reason = expansion_boundaries$reason[fail_edge],
-            dstream_exp = as.integer(fail_edge)
-        )
-    }
-
-    ustream_exp <- dmr_start_ind
-    ustream_stop_reason <- NULL
-    dstream_exp <- dmr_end_ind
-    dstream_stop_reason <- NULL
-
-    t <- 0
-    while (TRUE) {
-        exp_step <- nrow(locs)
-        if (t == 0) { # first iteration, use min_sites and remove the DMRs that are not long enough
-            csites <- dstream_exp - ustream_exp + 1
-            if (csites < (min_sites)) {
-                .log_info("DMR  too short (", csites, " sites). Expanding to reach min_sites=", min_sites, ".", level = 4)
-                exp_step <- min_sites - csites
-            }
-            .log_info("Number of sites in DMR: ", csites, level = 5)
-        }
-        .log_info("Expansion step size: ", exp_step, " bp.", level = 5)
-        .log_step("Checking upstream expansion...", level = 5)
-        if (is.null(ustream_stop_reason)) {
-            res <- .check_upstream(ustream_exp, exp_step)
-            ustream_stop_reason <- res$ustream_stop_reason
-            if (res$ustream_exp > ustream_exp) {
-                .log_info("Upstream expanded by ", ustream_exp - res$ustream_exp, " sites.", level = 5)
-            }
-            ustream_exp <- res$ustream_exp
-        }
-        .log_success("Upstream expansion checked.", level = 5)
-        .log_step("Checking downstream expansion...", level = 5)
-        if (is.null(dstream_stop_reason)) {
-            res <- .check_downstream(dstream_exp, exp_step)
-            dstream_stop_reason <- res$dstream_stop_reason
-            if (res$dstream_exp > dstream_exp) {
-                .log_info("Downstream expanded by ", res$dstream_exp - dstream_exp, " sites.", level = 5)
-            }
-            dstream_exp <- res$dstream_exp
-        }
-        .log_success("Downstream expansion checked.", level = 5)
-        if (t == 0) {
-            new_csites <- dstream_exp - ustream_exp + 1
-            .log_info("Number of sites in expanded DMR after first iteration: ", new_csites, " from ", csites, level = 4)
-            if (new_csites < min_sites) {
-                ustream_stop_reason <- "min-sites-not-reached"
-                dstream_stop_reason <- "min-sites-not-reached"
-                .log_info("DMR could not reach min_sites=", min_sites, " after expansion (", new_csites, "). Stopping expansion.", level = 4)
-            }
-            t <- 1
-        }
-        if (!is.null(ustream_stop_reason) && !is.null(dstream_stop_reason)) {
-            break
-        }
-    }
-    .log_step("Finalizing expanded DMR.", level = 4)
-    dmr[["start_site"]] <- projected_site_ids[ustream_exp]
-    dmr[["end_site"]] <- projected_site_ids[dstream_exp]
-    dmr[["start"]] <- projected_positions[ustream_exp]
-    dmr[["end"]] <- projected_positions[dstream_exp]
-
-    to_site_ids <- function(local_inds) {
-        if (length(local_inds) == 0) {
-            return(character(0))
-        }
-        projected_site_ids[local_inds]
-    }
-
-    dmr[["upstream_expansion_stop_reason"]] <- ustream_stop_reason
-    upstream_candidate <- if (ustream_exp <= (dmr_start_ind - 1L)) {
-        seq.int(ustream_exp, dmr_start_ind - 1L)
-    } else {
-        integer(0)
-    }
-    if (length(upstream_candidate) > 0) {
-        bridged_upstream_m <- connectivity_array[upstream_candidate, "reason"] == "bridged"
-        upstream_kept <- upstream_candidate[!bridged_upstream_m]
-    } else {
-        upstream_kept <- integer(0)
-    }
-    dmr[["upstream_sites"]] <- paste(to_site_ids(upstream_kept), collapse = ",")
-    dmr[["upstream_expansion_length"]] <- length(upstream_kept)
-
-    dmr[["downstream_expansion_stop_reason"]] <- dstream_stop_reason
-    downstream_candidate <- if ((dmr_end_ind + 1L) <= dstream_exp) {
-        seq.int(dmr_end_ind + 1L, dstream_exp)
-    } else {
-        integer(0)
-    }
-    if (length(downstream_candidate) > 0) {
-        bridged_downstream_m <- connectivity_array[downstream_candidate, "reason"] == "bridged"
-        downstream_kept <- downstream_candidate[!bridged_downstream_m]
-    } else {
-        downstream_kept <- integer(0)
-    }
-    dmr[["downstream_sites"]] <- paste(to_site_ids(downstream_kept), collapse = ",")
-    dmr[["downstream_expansion_length"]] <- length(downstream_kept)
-
-    .log_success("Expanded DMR finalized: (start_site: ", dmr[["start_site"]], ", end_site: ", dmr[["end_site"]], ").", level = 4)
-    dmr
-}
-
-
-#' @keywords internal
-#' @noRd
 .expandDMRChunk <- function(dmr_inds,
                             dmrs,
                             connectivity_array,
@@ -1673,18 +1904,105 @@
     on.exit(options(warn = old_warn), add = TRUE)
     options(warn = 2)
 
-    ret <- vector("list", length(dmr_inds))
-    for (i in seq_along(dmr_inds)) {
-        ret[[i]] <- .expandDMR(
-            dmr = dmrs[dmr_inds[[i]], , drop = FALSE],
-            connectivity_array = connectivity_array,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries
-        )
+    dmrs_chunk <- dmrs[dmr_inds, , drop = FALSE]
+    n_dmrs <- nrow(dmrs_chunk)
+    n_locs <- nrow(locs)
+    locs_rownames <- names(locs_idx_map)
+    projected_positions <- as.integer(locs[, "start"])
+    connectivity_reason <- as.character(connectivity_array[["reason"]])
+
+    start_seed <- as.character(dmrs_chunk[["start_seed"]])
+    end_seed <- as.character(dmrs_chunk[["end_seed"]])
+    start_idx <- unname(as.integer(locs_idx_map[start_seed]))
+    end_idx <- unname(as.integer(locs_idx_map[end_seed]))
+    if (anyNA(start_idx)) {
+        stop("Could not find the start site ", start_seed[which(is.na(start_idx))[1L]], " in the beta file row names.")
     }
-    ret
+    if (anyNA(end_idx)) {
+        stop("Could not find the end site ", end_seed[which(is.na(end_idx))[1L]], " in the beta file row names.")
+    }
+
+    upstream_exp <- start_idx
+    upstream_stop_reason <- rep(NA_character_, n_dmrs)
+    upstream_lookup <- start_idx - 1L
+    has_upstream_lookup <- upstream_lookup >= 1L
+    upstream_stop_reason[!has_upstream_lookup] <- "end-of-input"
+    upstream_fail_edge <- rep(NA_integer_, n_dmrs)
+    upstream_fail_edge[has_upstream_lookup] <- expansion_boundaries$previous_failed_edge[upstream_lookup[has_upstream_lookup]]
+    upstream_no_failure <- has_upstream_lookup & (is.na(upstream_fail_edge) | upstream_fail_edge < 1L)
+    upstream_exp[upstream_no_failure] <- 1L
+    upstream_stop_reason[upstream_no_failure] <- "end-of-input"
+    upstream_has_failure <- has_upstream_lookup & !upstream_no_failure
+    upstream_exp[upstream_has_failure] <- upstream_fail_edge[upstream_has_failure] + 1L
+    upstream_stop_reason[upstream_has_failure] <- expansion_boundaries$reason[upstream_fail_edge[upstream_has_failure]]
+
+    downstream_exp <- end_idx
+    downstream_stop_reason <- rep(NA_character_, n_dmrs)
+    downstream_lookup <- end_idx
+    has_downstream_lookup <- downstream_lookup < n_locs
+    downstream_stop_reason[!has_downstream_lookup] <- "end-of-input"
+    downstream_fail_edge <- rep(NA_integer_, n_dmrs)
+    downstream_fail_edge[has_downstream_lookup] <- expansion_boundaries$next_failed_edge[downstream_lookup[has_downstream_lookup]]
+    downstream_no_failure <- has_downstream_lookup & (is.na(downstream_fail_edge) | downstream_fail_edge > n_locs)
+    downstream_exp[downstream_no_failure] <- n_locs
+    downstream_stop_reason[downstream_no_failure] <- "end-of-input"
+    downstream_has_failure <- has_downstream_lookup & !downstream_no_failure
+    downstream_exp[downstream_has_failure] <- downstream_fail_edge[downstream_has_failure]
+    downstream_stop_reason[downstream_has_failure] <- expansion_boundaries$reason[downstream_fail_edge[downstream_has_failure]]
+
+    too_short <- (downstream_exp - upstream_exp + 1L) < min_sites
+    upstream_stop_reason[too_short] <- "min-sites-not-reached"
+    downstream_stop_reason[too_short] <- "min-sites-not-reached"
+
+    expansion_kept_indices <- function(local_inds) {
+        if (length(local_inds) == 0L) {
+            return(integer(0))
+        }
+        bridged <- connectivity_reason[local_inds] == "bridged"
+        local_inds[!bridged]
+    }
+
+    expansion_site_ids <- function(local_inds) {
+        kept <- expansion_kept_indices(local_inds)
+        if (length(kept) == 0L) {
+            return("")
+        }
+        paste(locs_rownames[kept], collapse = ",")
+    }
+
+    upstream_sites <- character(n_dmrs)
+    downstream_sites <- character(n_dmrs)
+    upstream_expansion_length <- integer(n_dmrs)
+    downstream_expansion_length <- integer(n_dmrs)
+    for (i in seq_len(n_dmrs)) {
+        upstream_candidate <- if (upstream_exp[[i]] <= (start_idx[[i]] - 1L)) {
+            seq.int(upstream_exp[[i]], start_idx[[i]] - 1L)
+        } else {
+            integer(0)
+        }
+        downstream_candidate <- if ((end_idx[[i]] + 1L) <= downstream_exp[[i]]) {
+            seq.int(end_idx[[i]] + 1L, downstream_exp[[i]])
+        } else {
+            integer(0)
+        }
+        upstream_sites[[i]] <- expansion_site_ids(upstream_candidate)
+        downstream_sites[[i]] <- expansion_site_ids(downstream_candidate)
+        upstream_expansion_length[[i]] <- length(expansion_kept_indices(upstream_candidate))
+        downstream_expansion_length[[i]] <- length(expansion_kept_indices(downstream_candidate))
+    }
+
+    dmrs_chunk[["start_site"]] <- locs_rownames[upstream_exp]
+    dmrs_chunk[["end_site"]] <- locs_rownames[downstream_exp]
+    dmrs_chunk[["start"]] <- projected_positions[upstream_exp]
+    dmrs_chunk[["end"]] <- projected_positions[downstream_exp]
+    dmrs_chunk[["upstream_expansion_stop_reason"]] <- upstream_stop_reason
+    dmrs_chunk[["upstream_sites"]] <- upstream_sites
+    dmrs_chunk[["upstream_expansion_length"]] <- upstream_expansion_length
+    dmrs_chunk[["downstream_expansion_stop_reason"]] <- downstream_stop_reason
+    dmrs_chunk[["downstream_sites"]] <- downstream_sites
+    dmrs_chunk[["downstream_expansion_length"]] <- downstream_expansion_length
+
+    dmrs_chunk
 }
 
 
@@ -1701,11 +2019,19 @@
                                    ext_site_delta_beta = NA_real_,
                                    max_lookup_dist = NULL,
                                    site_starts = NULL,
+                                   n_sites = NULL,
                                    entanglement = "weak",
                                    aggfun = mean,
                                    ntries = 0, mid_p = FALSE,
                                    check_non_overlapping = FALSE) {
-    n_sites <- nrow(sites_beta)
+    if (is.null(n_sites)) {
+        n_sites <- nrow(sites_beta)
+    } else {
+        n_sites <- suppressWarnings(as.integer(n_sites)[1L])
+        if (!is.finite(n_sites) || is.na(n_sites) || n_sites < 0L) {
+            stop("n_sites must be a non-negative integer.", call. = FALSE)
+        }
+    }
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
         ret <- data.frame(
@@ -1734,11 +2060,21 @@
     if (strict_mode) {
         # null hypothesis: all groups must be significant -> bonferroni correction
         max_pval_corrected <- max_pval / n_groups
-        .log_info("Using max p-value of ", max_pval_corrected, "(group multi-testing corrected) for connectivity testing.", level = 4)
+        .log_info(
+            "Using max p-value of ",
+            max_pval_corrected,
+            "(group multi-testing corrected) for connectivity testing.",
+            level = 4
+        )
     } else {
         # null hypothesis: at least one group must be significant -> independent testing
         max_pval_corrected <- max_pval
-        .log_info("Using max p-value of ", max_pval_corrected, " for connectivity testing.", level = 4)
+        .log_info(
+            "Using max p-value of ",
+            max_pval_corrected,
+            " for connectivity testing.",
+            level = 4
+        )
     }
     # Initialize result vectors
     connected <- rep(TRUE, n_pairs)
@@ -1756,7 +2092,13 @@
         exceeded_dist <- rep(FALSE, n_pairs)
     }
     nexdist_mask <- !exceeded_dist
-    .log_info(sum(exceeded_dist), " out of ", n_pairs, " site pairs exceeded the maximum lookup distance and will be marked as not connected.", level = 4)
+    .log_info(
+        sum(exceeded_dist),
+        " out of ",
+        n_pairs,
+        " site pairs exceeded the maximum lookup distance and will be marked as not connected.",
+        level = 4
+    )
 
     high_delta <- rep(FALSE, n_pairs)
     if (.forceConnectDeltaBetaEnabled(ext_site_delta_beta) && length(unique(pheno[, .CASE_CONTROL_COL])) > 1) {
@@ -1766,7 +2108,7 @@
         case_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 1, drop = FALSE], 1, aggfun, na.rm = TRUE)
         control_betas <- apply(site2_beta_mat[, pheno[, .CASE_CONTROL_COL] == 0, drop = FALSE], 1, aggfun, na.rm = TRUE)
         delta_betas <- case_betas - control_betas
-        high_delta <- !is.na(delta_betas) & abs(delta_betas) >= ext_site_delta_beta & nexdist_mask
+        high_delta <- is.finite(delta_betas) & abs(delta_betas) >= ext_site_delta_beta & nexdist_mask
         connected[high_delta] <- TRUE
         reasons[high_delta] <- "abs(delta_beta)>=ext_site_delta_beta"
     }
@@ -1788,21 +2130,19 @@
         idx <- group_inds[[g]]
         if (length(idx) < 3) next
 
-        # Get data for this group - subset columns
-        group_beta <- sites_beta[, idx, drop = FALSE]
         group_m <- .transformBeta(
-            group_beta,
-            pheno = pheno[idx, ],
+            sites_beta,
+            pheno = pheno,
             covariates = covariates,
-            covariate_model = covariate_models[[g]]
+            covariate_model = covariate_models[[g]],
+            cols = idx
         )
 
-        # Extract only correlation-eligible pair rows; this avoids retaining
+        # Compute only correlation-eligible pair rows; this avoids retaining
         # full pair matrices for distance-filtered or delta-beta-rescued chunks.
-        x_mat <- group_m[start_pair_inds[corr_mask], , drop = FALSE]
-        y_mat <- group_m[end_pair_inds[corr_mask], , drop = FALSE]
-
-        sn_pairs <- nrow(x_mat)
+        corr_start_inds <- start_pair_inds[corr_mask]
+        corr_end_inds <- end_pair_inds[corr_mask]
+        sn_pairs <- length(corr_start_inds)
         if (sn_pairs == 0L) {
             next
         }
@@ -1814,18 +2154,13 @@
             g_mask <- rep(TRUE, sn_pairs)
         }
 
-        # Compute means for each pair (vectorized)
-        x_means <- rowMeans(x_mat, na.rm = TRUE)
-        y_means <- rowMeans(y_mat, na.rm = TRUE)
-
-        # Center the data
-        x_centered <- x_mat - x_means
-        y_centered <- y_mat - y_means
-
-        # Compute sum of products (numerator of correlation)
-        sum_xy <- rowSums(x_centered * y_centered, na.rm = TRUE)
-        sum_x2 <- rowSums(x_centered^2, na.rm = TRUE)
-        sum_y2 <- rowSums(y_centered^2, na.rm = TRUE)
+        corr_stats <- .rowPairCorrelationStats(group_m, corr_start_inds, corr_end_inds)
+        x_means <- corr_stats$x_means
+        y_means <- corr_stats$y_means
+        sum_xy <- corr_stats$sum_xy
+        sum_x2 <- corr_stats$sum_x2
+        sum_y2 <- corr_stats$sum_y2
+        n_valid <- corr_stats$n_valid
         denom <- sqrt(sum_x2 * sum_y2)
 
         # Compute correlations (fully vectorized)
@@ -1833,10 +2168,6 @@
         zero_variance_cor <- g_mask & is.finite(sum_x2) & is.finite(sum_y2) &
             (sum_x2 <= .Machine$double.eps | sum_y2 <= .Machine$double.eps)
 
-        # Compute degrees of freedom (vectorized)
-        # Count non-NA pairs for each row
-        valid_pairs <- !is.na(x_mat) & !is.na(y_mat)
-        n_valid <- rowSums(valid_pairs)
         dfs <- n_valid - 2L
 
         low_df <- (dfs < 1) & g_mask
@@ -1867,6 +2198,10 @@
             # Only compute for rows that are still connected and have finite cors
             mask <- is.finite(cors) & g_mask & !zero_variance_cor
             if (any(mask)) {
+                x_mat <- group_m[corr_start_inds, , drop = FALSE]
+                y_mat <- group_m[corr_end_inds, , drop = FALSE]
+                x_centered <- x_mat - x_means
+                y_centered <- y_mat - y_means
                 counts_ge <- integer(sn_pairs)
                 counts_eq <- integer(sn_pairs)
                 # Number of samples in this group
@@ -1888,7 +2223,12 @@
                     }
                 }
                 if (!skip_empirical) {
-                    .log_info("Computing empirical p-values for group '", g, "' using ", if (do_permutations) "permutations" else "Monte Carlo", " with ", ntries, " tries.", level = 4)
+                    .log_info(
+                        "Computing empirical p-values for group '", g, "' using ",
+                        if (do_permutations) "permutations" else "Monte Carlo",
+                        " with ", ntries, " tries.",
+                        level = 4
+                    )
                     if (ntries == 0) {
                         if (do_permutations) {
                             ntries <- min(500L, factorial(m))
@@ -2103,6 +2443,50 @@
 
 #' @keywords internal
 #' @noRd
+.safeFiniteAgg <- function(x, aggfun) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    as.numeric(aggfun(x, na.rm = TRUE))
+}
+
+#' @keywords internal
+#' @noRd
+.safeFiniteMin <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    min(x)
+}
+
+#' @keywords internal
+#' @noRd
+.safeFiniteMax <- function(x) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    max(x)
+}
+
+#' @keywords internal
+#' @noRd
+.signedFiniteAgg <- function(x, aggfun) {
+    x <- suppressWarnings(as.numeric(x))
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) {
+        return(NA_real_)
+    }
+    .safeFiniteAgg(abs(x), aggfun) * sign(sum(sign(x)))
+}
+
+#' @keywords internal
+#' @noRd
 .aggregateDMRBetaStatsChunk <- function(beta_stats_chunk, aggfun) {
     if (is.null(beta_stats_chunk) || nrow(beta_stats_chunk) == 0L) {
         return(data.frame(
@@ -2118,14 +2502,14 @@
         ))
     }
     as.data.frame(data.table::as.data.table(beta_stats_chunk)[, .(
-        cases_beta = aggfun(abs(cases_beta)) * sign(sum(sign(cases_beta))),
-        controls_beta = aggfun(abs(controls_beta)) * sign(sum(sign(controls_beta))),
-        cases_beta_sd = aggfun(cases_beta_sd, na.rm = TRUE),
-        controls_beta_sd = aggfun(controls_beta_sd, na.rm = TRUE),
-        cases_beta_min = min(cases_beta, na.rm = TRUE),
-        cases_beta_max = max(cases_beta, na.rm = TRUE),
-        controls_beta_min = min(controls_beta, na.rm = TRUE),
-        controls_beta_max = max(controls_beta, na.rm = TRUE)
+        cases_beta = .signedFiniteAgg(cases_beta, aggfun),
+        controls_beta = .signedFiniteAgg(controls_beta, aggfun),
+        cases_beta_sd = .safeFiniteAgg(cases_beta_sd, aggfun),
+        controls_beta_sd = .safeFiniteAgg(controls_beta_sd, aggfun),
+        cases_beta_min = .safeFiniteMin(cases_beta),
+        cases_beta_max = .safeFiniteMax(cases_beta),
+        controls_beta_min = .safeFiniteMin(controls_beta),
+        controls_beta_max = .safeFiniteMax(controls_beta)
     ), by = dmr_id])
 }
 
@@ -2165,12 +2549,140 @@
     }, numeric(1))
 }
 
+#' @keywords internal
+#' @noRd
+.seedPvalColumn <- function(seeds_df) {
+    candidates <- c("pval", "P.Value", "p.value", "p_value")
+    candidates[candidates %in% colnames(seeds_df)][1L]
+}
+
+#' @keywords internal
+#' @noRd
+.seedPvalSource <- function(seeds_df, seeds_id_col) {
+    pval_col <- .seedPvalColumn(seeds_df)
+    if (is.na(pval_col)) {
+        return(NULL)
+    }
+    list(
+        ids = as.character(seeds_df[[seeds_id_col]]),
+        pvals = seeds_df[[pval_col]],
+        pval_col = pval_col
+    )
+}
+
+#' @keywords internal
+#' @noRd
+.seedPvaluesForSelectedSeeds <- function(seed_pval_source, selected_seed_ids) {
+    if (is.null(seed_pval_source) || length(selected_seed_ids) == 0L) {
+        return(NULL)
+    }
+    selected_seed_ids <- unique(as.character(selected_seed_ids))
+    ids <- seed_pval_source$ids
+    keep <- !is.na(ids) & nzchar(ids) & ids %in% selected_seed_ids
+    if (!any(keep)) {
+        return(NULL)
+    }
+    raw_pvals <- seed_pval_source$pvals[keep]
+    if (is.list(raw_pvals)) {
+        raw_pvals <- vapply(raw_pvals, function(x) {
+            if (length(x) == 0L) NA_character_ else as.character(x[[1L]])
+        }, character(1))
+    }
+    pvals <- suppressWarnings(as.numeric(as.character(raw_pvals)))
+    invalid <- !is.na(pvals) & (pvals < 0 | pvals > 1)
+    if (any(invalid)) {
+        stop("Seed p-values in column '", seed_pval_source$pval_col, "' must be between 0 and 1.")
+    }
+    ids <- ids[keep]
+    pvals_by_id <- tapply(pvals, ids, function(x) {
+        if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
+    })
+    stats::setNames(as.numeric(pvals_by_id), names(pvals_by_id))
+}
+
+#' @keywords internal
+#' @noRd
+.stage1SeedChunkRanges <- function(n_seeds, max_chunk_seeds = getOption("CMEnt.max_stage1_seeds_per_chunk", 100000)) {
+    n_seeds <- as.integer(n_seeds)
+    max_chunk_seeds <- suppressWarnings(as.integer(max_chunk_seeds))
+    if (length(max_chunk_seeds) == 0L || is.na(max_chunk_seeds) || max_chunk_seeds < 2L) {
+        max_chunk_seeds <- 100000
+    }
+    if (n_seeds <= 0L) {
+        out <- matrix(integer(0), ncol = 2L)
+        colnames(out) <- c("start", "end")
+        return(out)
+    }
+    if (n_seeds <= max_chunk_seeds) {
+        out <- matrix(c(1L, n_seeds), ncol = 2L)
+        colnames(out) <- c("start", "end")
+        return(out)
+    }
+    starts <- seq.int(1L, n_seeds - 1L, by = max_chunk_seeds - 1L)
+    ends <- pmin(starts + max_chunk_seeds - 1L, n_seeds)
+    cbind(start = starts, end = ends)
+}
+
+#' @keywords internal
+#' @noRd
+.dmrsFromSeedConnectivity <- function(seeds_connectivity_array, seed_ids, seeds_locs, min_seeds) {
+    connected_seeds <- seeds_connectivity_array$connected
+    breakpoints <- which(!connected_seeds)
+    if (length(breakpoints) == 0L || breakpoints[[length(breakpoints)]] != length(seed_ids)) {
+        breakpoints <- c(breakpoints, length(seed_ids))
+    }
+
+    segment_starts <- c(1L, head(breakpoints, -1L) + 1L)
+    segment_ends <- breakpoints
+    segment_lengths <- segment_ends - segment_starts + 1L
+    ids <- seq_along(segment_starts)
+    edge_ids <- rep(ids, segment_lengths)
+    edge_ids[segment_ends] <- NA_integer_
+
+    valid_edge <- !is.na(edge_ids)
+    if (any(valid_edge)) {
+        pvals <- tapply(
+            seeds_connectivity_array$pval[valid_edge],
+            edge_ids[valid_edge],
+            function(x) if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+        )
+    } else {
+        pvals <- numeric(0)
+    }
+
+    dmrs <- data.frame(
+        chr = as.character(seeds_locs[segment_starts, "chr"]),
+        start_seed = seed_ids[segment_starts],
+        end_seed = seed_ids[segment_ends],
+        start_seed_pos = as.integer(seeds_locs[segment_starts, "start"]),
+        end_seed_pos = as.integer(seeds_locs[segment_ends, "start"]),
+        seeds_num = segment_lengths,
+        stop_connection_reason = seeds_connectivity_array$reason[segment_ends],
+        id = ids,
+        stringsAsFactors = FALSE
+    )
+    dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+    if (nrow(dmrs) == 0L) {
+        dmrs$connection_corr_pval <- numeric(0)
+        dmrs$seeds <- character(0)
+        return(dmrs)
+    }
+
+    dmrs$connection_corr_pval <- as.numeric(pvals[as.character(dmrs$id)])
+    dmrs$seeds <- mapply(function(start_idx, end_idx) {
+        paste(seed_ids[start_idx:end_idx], collapse = ",")
+    }, segment_starts[dmrs$id], segment_ends[dmrs$id], USE.NAMES = FALSE)
+    rownames(dmrs) <- NULL
+    dmrs
+}
+
 .checkResult <- function(dmrs, stage, start_col = "start", end_col = "end") {
     end_less_than_start <- dmrs[[end_col]] - dmrs[[start_col]] < 0
 
     if (any(end_less_than_start)) {
         .log_error(
-            paste0("Error in stage ", stage, ": ",
+            paste0(
+                "Error in stage ", stage, ": ",
                 sum(end_less_than_start),
                 " DMRs have been assigned an end larger than start ! (CODE BUG TO BE REPORTED)",
                 " Those are: \n\t",
@@ -2187,7 +2699,6 @@
     beta_handler,
     seed_ids,
     seed_beta_index,
-    seed_pvals,
     pheno_detection,
     group_inds,
     testing_mode_per_group,
@@ -2209,6 +2720,7 @@
     min_sites,
     aggfun,
     njobs,
+    memory_njobs,
     verbose,
     .load_debug,
     pheno,
@@ -2217,21 +2729,31 @@
     covariates,
     covariate_models,
     annotate_with_genes,
-    .score_dmrs,
+    score_dmrs,
     extract_motifs
 ) {
     if (!inherits(beta_handler, "BetaHandler")) {
         stop(".buildDMRsChr expects a chromosome-scoped BetaHandler.")
     }
     array_based <- beta_handler$isArrayBased()
-    beta_locs <- beta_handler$getBetaLocs()
-    all_sites <- .explicitRowNames(beta_locs)
-    chromosome <- unique(as.character(beta_locs[, "chr"]))
+    bsseq_gr <- if (.usesBSseqBackend(beta_handler)) .bsseqBackendGRanges(beta_handler) else NULL
+    if (is.null(bsseq_gr)) {
+        beta_locs <- beta_handler$getBetaLocs()
+        all_sites <- .explicitRowNames(beta_locs)
+        chromosome <- unique(as.character(beta_locs[, "chr"]))
+    } else {
+        beta_locs <- NULL
+        all_sites <- NULL
+        chromosome <- unique(as.character(GenomeInfoDb::seqnames(bsseq_gr)))
+    }
+    .log_step("Building DMRs for ", chromosome, "..", level = 1)
+
     chromosome_progress <- NULL
-    chromosome_progress_step <- 0L
+    chromosome_progress_state <- new.env(parent = emptyenv())
+    chromosome_progress_state$step <- 0L
     chromosome_progress_total <- 6L +
         as.integer(isTRUE(annotate_with_genes)) +
-        as.integer(isTRUE(.score_dmrs)) +
+        as.integer(isTRUE(score_dmrs)) +
         as.integer(isTRUE(extract_motifs))
     if (verbose >= 1L) {
         chromosome_progress <- utils::txtProgressBar(
@@ -2254,10 +2776,10 @@
         if (is.null(chromosome_progress)) {
             return(invisible(NULL))
         }
-        chromosome_progress_step <<- chromosome_progress_step + 1L
+        chromosome_progress_state$step <- chromosome_progress_state$step + 1L
         utils::setTxtProgressBar(
             chromosome_progress,
-            min(chromosome_progress_step, chromosome_progress_total)
+            min(chromosome_progress_state$step, chromosome_progress_total)
         )
         invisible(NULL)
     }
@@ -2279,41 +2801,7 @@
         stop("seed_ids and seed_beta_index must have the same length for chromosome-specific DMR detection.")
     }
 
-    .log_info("Subsetting beta matrix for seeds...", level = 3)
-    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
-    rownames(seeds_locs) <- seed_ids
-    seeds_beta <- beta_handler$getBeta(row_names = seed_beta_index, col_names = beta_col_names_detection)
-    rownames(seeds_beta) <- seed_ids
-
-    if (nrow(seeds_locs) != nrow(seeds_beta)) {
-        stop(
-            "Number of rows in the queried seeds beta file does not match the number of seeds. Number of rows in beta file: ",
-            nrow(seeds_beta),
-            " Number of rows in seeds: ",
-            nrow(seeds_locs)
-        )
-    }
-    .log_info("Checking for seeds with all NA beta values...", level = 3)
-    all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
-
-    if (any(all.na.rows)) {
-        stop(
-            "Beta extraction failure: the following Seed rows have all NA beta values: ",
-            paste(rownames(seeds_beta)[all.na.rows], collapse = ","),
-            ". This indicates a mismatch between requested site IDs and beta file columns or a parsing issue."
-        )
-    }
-
-    seeds_beta_handler <- getBetaHandler(
-        beta = seeds_beta,
-        array = array,
-        genome = genome,
-        sorted_locs = seeds_locs,
-        njobs = njobs
-    )
     .log_info("Number of provided chromosome-scoped seeds: ", length(seed_ids), level = 2)
-    rm(seeds_beta)
-    gc(verbose = FALSE)
 
     .log_success("Input preparation complete.", level = 2)
     .advanceChromosomeProgress()
@@ -2332,105 +2820,117 @@
             row.names = NULL
         )
     } else {
-        .log_step("Building seed connectivity array...", level = 3)
-        ret <- .buildConnectivityArray(
-            beta_handler = seeds_beta_handler,
-            beta_locs = seeds_locs,
-            pheno = pheno_detection,
-            group_inds = group_inds,
-            testing_mode_per_group = testing_mode_per_group,
-            empirical_strategy_per_group = empirical_strategy_per_group,
-            col_names = beta_col_names_detection,
-            max_pval = max_pval,
-            ext_site_delta_beta = NA_real_, # delta-beta based rescue is applied later during the extension
-            covariates = covariates,
-            covariate_models = covariate_models,
-            max_lookup_dist = max_lookup_dist,
-            entanglement = entanglement,
-            aggfun = aggfun,
-            ntries = ntries,
-            mid_p = mid_p,
-            njobs = njobs,
-            expansion_windows = NULL,
-            max_bridge_gaps = max_bridge_seeds_gaps,
-            verbose = verbose
+        seed_chunk_ranges <- .stage1SeedChunkRanges(length(seed_ids))
+        .log_step(
+            "Building seed connectivity array in ", nrow(seed_chunk_ranges),
+            " chunk(s) with up to ",
+            getOption("CMEnt.max_stage1_seeds_per_chunk", 100000),
+            " seeds per chunk...",
+            level = 3
         )
-        rm(seeds_beta_handler)
-        gc(verbose = FALSE)
-        seeds_connectivity_array <- ret$connectivity_array
-        testing_mode_per_group <- ret$testing_mode_per_group
-        empirical_strategy_per_group <- ret$empirical_strategy_per_group
-        # connected_seeds[i] encodes edge i -> i+1
-        connected_seeds <- seeds_connectivity_array$connected
-
-        # vector already includes chromosome-end sentinels as FALSE:
-        breakpoints <- which(!connected_seeds)
-
-        connected_seeds_segments_starts <- c(1L, head(breakpoints, -1L) + 1L)
-        connected_seeds_segments_ends <- breakpoints
-        connected_seeds_segments_lengths <- connected_seeds_segments_ends - connected_seeds_segments_starts + 1L
-        connected_seeds_segments_chrs <- as.character(seeds_locs[connected_seeds_segments_starts, "chr"])
-        connected_seeds_segments_starts_locs <- as.integer(seeds_locs[connected_seeds_segments_starts, "start"])
-        connected_seeds_segments_ends_locs <- as.integer(seeds_locs[connected_seeds_segments_ends, "start"])
-        stop_reasons <- seeds_connectivity_array$reason[connected_seeds_segments_ends]
-        mask <- rep(FALSE, length(seed_ids))
-        mask[connected_seeds_segments_starts] <- TRUE
-        seeds_connectivity_array$id <- cumsum(mask)
-        seeds_connectivity_array$cid <- seeds_connectivity_array$id
-        ids <- unique(seeds_connectivity_array$id)
-        seeds_connectivity_array$id[connected_seeds_segments_ends] <- NA
-        seeds_connectivity_array$seeds <- seed_ids
-        .log_info("Number of segments (potential DMRs before filtering): ", length(connected_seeds_segments_chrs), level = 2)
-        valid_id_mask <- !is.na(seeds_connectivity_array$id)
-        if (any(valid_id_mask)) {
-            agg_data <- seeds_connectivity_array[valid_id_mask, , drop = FALSE]
-            connected_seeds_connection_corr_pval <- aggregate(
-                pval ~ id,
-                data = agg_data, function(x) if (all(is.na(x))) NA else mean(x, na.rm = TRUE)
+        dmrs_chunks <- vector("list", nrow(seed_chunk_ranges))
+        for (chunk_i in seq_len(nrow(seed_chunk_ranges))) {
+            chunk_idx <- seq.int(seed_chunk_ranges[chunk_i, "start"], seed_chunk_ranges[chunk_i, "end"])
+            chunk_seed_ids <- seed_ids[chunk_idx]
+            .log_info(
+                "Processing seed chunk ", chunk_i, "/", nrow(seed_chunk_ranges),
+                " (", length(chunk_idx), " seeds).",
+                level = 3
             )
-        } else {
-            connected_seeds_connection_corr_pval <- data.frame(
-                id = ids,
-                pval = rep(NA_real_, length(ids))
+            seeds_locs <- if (is.null(bsseq_gr)) {
+                as.data.frame(beta_locs[seed_beta_index[chunk_idx], , drop = FALSE])
+            } else {
+                .bsseqLocsFromGRanges(bsseq_gr, seed_beta_index[chunk_idx])
+            }
+            rownames(seeds_locs) <- chunk_seed_ids
+            seeds_beta <- beta_handler$getBeta(row_names = seed_beta_index[chunk_idx], col_names = beta_col_names_detection)
+            rownames(seeds_beta) <- chunk_seed_ids
+
+            if (nrow(seeds_locs) != nrow(seeds_beta)) {
+                stop(
+                    "Number of rows in the queried seeds beta file does not match the number of seeds. Number of rows in beta file: ",
+                    nrow(seeds_beta),
+                    " Number of rows in seeds: ",
+                    nrow(seeds_locs)
+                )
+            }
+            all.na.rows <- matrixStats::rowAlls(is.na(as.matrix(seeds_beta)))
+            if (any(all.na.rows)) {
+                stop(
+                    "Beta extraction failure: the following Seed rows have all NA beta values: ",
+                    paste(rownames(seeds_beta)[all.na.rows], collapse = ","),
+                    ". This indicates a mismatch between requested site IDs and beta file columns or a parsing issue."
+                )
+            }
+
+            seeds_beta_handler <- getBetaHandler(
+                beta = seeds_beta,
+                array = array,
+                genome = genome,
+                sorted_locs = seeds_locs,
+                njobs = njobs
             )
+            rm(seeds_beta)
+
+            ret <- .buildConnectivityArray(
+                beta_handler = seeds_beta_handler,
+                beta_locs = seeds_locs,
+                pheno = pheno_detection,
+                group_inds = group_inds,
+                testing_mode_per_group = testing_mode_per_group,
+                empirical_strategy_per_group = empirical_strategy_per_group,
+                col_names = beta_col_names_detection,
+                max_pval = max_pval,
+                ext_site_delta_beta = NA_real_, # delta-beta based rescue is applied later during the extension
+                covariates = covariates,
+                covariate_models = covariate_models,
+                max_lookup_dist = max_lookup_dist,
+                entanglement = entanglement,
+                aggfun = aggfun,
+                ntries = ntries,
+                mid_p = mid_p,
+                njobs = njobs,
+                memory_njobs = memory_njobs,
+                expansion_windows = NULL,
+                max_bridge_gaps = max_bridge_seeds_gaps,
+                verbose = verbose
+            )
+            testing_mode_per_group <- ret$testing_mode_per_group
+            empirical_strategy_per_group <- ret$empirical_strategy_per_group
+            dmrs_chunks[[chunk_i]] <- .dmrsFromSeedConnectivity(
+                seeds_connectivity_array = ret$connectivity_array,
+                seed_ids = chunk_seed_ids,
+                seeds_locs = seeds_locs,
+                min_seeds = min_seeds
+            )
+            rm(ret, seeds_beta_handler, seeds_locs)
+            gc(FALSE)
         }
-        dmrs_seeds <- data.frame(
-            id = ids,
-            seeds = mapply(function(start_idx, end_idx) {
-                paste(seed_ids[start_idx:end_idx], collapse = ",")
-            }, connected_seeds_segments_starts, connected_seeds_segments_ends, USE.NAMES = FALSE),
-            stringsAsFactors = FALSE
-        )
 
-        dmrs <- data.frame(
-            chr = connected_seeds_segments_chrs,
-            start_seed = seed_ids[connected_seeds_segments_starts],
-            end_seed = seed_ids[connected_seeds_segments_ends],
-            start_seed_pos = connected_seeds_segments_starts_locs,
-            end_seed_pos = connected_seeds_segments_ends_locs,
-            seeds_num = connected_seeds_segments_lengths,
-            stop_connection_reason = stop_reasons,
-            id = ids,
-            stringsAsFactors = FALSE
-        )
-        dmrs <- dmrs[dmrs$seeds_num >= min_seeds, , drop = FALSE]
+        dmrs_chunks <- Filter(function(x) !is.null(x) && nrow(x) > 0L, dmrs_chunks)
+        dmrs <- if (length(dmrs_chunks) > 0L) {
+            do.call(rbind, dmrs_chunks)
+        } else {
+            data.frame()
+        }
+        if (nrow(dmrs) > 0L) {
+            rownames(dmrs) <- NULL
+            dmrs$id <- seq_len(nrow(dmrs))
+        }
         if (min_seeds > 0) {
             .log_info("Number of DMRs after filtering by min_seeds: ", nrow(dmrs), level = 2)
         }
-        dmrs <- merge(dmrs, connected_seeds_connection_corr_pval, by = "id", all.x = TRUE)
-        colnames(dmrs)[colnames(dmrs) == "pval"] <- "connection_corr_pval"
-        dmrs <- merge(dmrs, dmrs_seeds, by = "id", all.x = TRUE)
-
 
         if (nrow(dmrs) == 0) {
             .log_warn("No DMRs remain after filtering based on min_seeds.")
             return(NULL)
         }
         if (getOption("CMEnt.make_debug_dir", FALSE)) {
-            .log_info("Saving initial DMRs from connected seeds to debug/01_dmrs_from_connected_seeds.tsv", level = 1)
+            debug_path <- file.path("debug", paste0("01_dmrs_from_connected_seeds_", chromosome, ".tsv"))
+            .log_info("Saving initial DMRs from connected seeds to ", debug_path, level = 1)
             dir.create("debug", showWarnings = FALSE)
             write.table(dmrs,
-                file = file.path("debug", "01_dmrs_from_connected_seeds.tsv"),
+                file = debug_path,
                 sep = "\t",
                 row.names = FALSE,
                 col.names = TRUE,
@@ -2446,15 +2946,76 @@
 
     # Set up progress tracking for DMR expansion
     n_dmrs <- nrow(dmrs)
-    stage2_beta_handler <- beta_handler
-    stage2_beta_locs <- beta_locs
+    if (is.null(beta_locs)) {
+        beta_locs <- beta_handler$getBetaLocs()
+        all_sites <- .explicitRowNames(beta_locs)
+    }
+    .expandStage2DMRs <- function(dmrs_to_expand, stage2_beta_locs, connectivity_array) {
+        if (nrow(connectivity_array) != nrow(stage2_beta_locs)) {
+            stop(
+                "Stage 2 connectivity_array row count (", nrow(connectivity_array),
+                ") does not match Stage 2 beta_locs row count (", nrow(stage2_beta_locs),
+                "). If using .load_debug, rebuild debug artifacts with the current code."
+            )
+        }
+        .log_step("Expanding ", nrow(dmrs_to_expand), " DMRs using ", njobs, " jobs...", level = 3)
+        locs <- as.data.frame(stage2_beta_locs)
+        connectivity <- connectivity_array
+        locs_rownames <- rownames(locs)
+        locs_idx_map <- setNames(seq_along(locs_rownames), locs_rownames)
+        expansion_boundaries <- .buildExpansionBoundaryLookup(connectivity)
+
+        dmr_inds <- seq_len(nrow(dmrs_to_expand))
+        default_dmr_chunk_size <- max(1L, ceiling(length(dmr_inds) / max(njobs * 4L, 1L)))
+        dmr_chunk_size <- min(default_dmr_chunk_size, length(dmr_inds))
+        dmr_chunks <- split(dmr_inds, ceiling(dmr_inds / dmr_chunk_size))
+        min_dmrs_for_parallel <- suppressWarnings(as.integer(getOption("CMEnt.min_dmrs_for_parallel", 1000L)))
+        if (is.na(min_dmrs_for_parallel) || min_dmrs_for_parallel < 1L) {
+            min_dmrs_for_parallel <- 1L
+        }
+
+        if (njobs == 1L || length(dmr_chunks) == 1L || length(dmr_inds) < min_dmrs_for_parallel) {
+            ret <- lapply(
+                dmr_chunks,
+                .expandDMRChunk,
+                dmrs = dmrs_to_expand,
+                connectivity_array = connectivity,
+                min_sites = min_sites,
+                locs = locs,
+                locs_idx_map = locs_idx_map,
+                expansion_boundaries = expansion_boundaries
+            )
+        } else {
+            ret <- .safeBiocParallelApply(
+                X = dmr_chunks,
+                FUN = .expandDMRChunk,
+                dmrs = dmrs_to_expand,
+                connectivity_array = connectivity,
+                min_sites = min_sites,
+                locs = locs,
+                locs_idx_map = locs_idx_map,
+                expansion_boundaries = expansion_boundaries,
+                BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
+            )
+        }
+        .log_success("", level = 3) 
+        if (inherits(ret, "try-error")) {
+            stop(ret)
+        }
+        as.data.frame(do.call(rbind, ret))
+    }
+
+    connectivity_array <- NULL
+    connectivity_connected_total <- 0L
     if (verbose > 1 && .load_debug && file.exists(file.path("debug", "connectivity_array.rds"))) {
         .log_info("Loading debug connectivity array from file...", level = 2)
         connectivity_array <- readRDS(file.path("debug", "connectivity_array.rds"))
+        extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
+        connectivity_connected_total <- sum(connectivity_array$connected)
     } else {
         expansion_windows <- NULL
         if (is.finite(expansion_window) && expansion_window > 0) {
-            expansion_windows <- .buildConnectivityWindowsFromDMRs(
+            expansion_windows <- .buildWindowsFromDMRs(
                 dmrs = dmrs,
                 expansion_window = expansion_window
             )
@@ -2473,125 +3034,215 @@
             .log_info("Stage 2 connectivity computed genome-wide (expansion_window <= 0).", level = 2)
         }
         if (!is.null(expansion_windows) && nrow(expansion_windows) > 0L) {
-            subset_ret <- .subsetStage2BetaToWindows(
-                beta_handler = beta_handler,
-                beta_locs = beta_locs,
-                col_names = beta_col_names_detection,
-                expansion_windows = expansion_windows,
-                njobs = njobs
+            stage2_site_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(beta_locs[, "chr"]),
+                ranges = IRanges::IRanges(start = as.integer(beta_locs[, "start"]), width = 1L)
             )
-            if (is.null(subset_ret)) {
-                stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
+            expansion_window_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(expansion_windows$chr),
+                ranges = IRanges::IRanges(
+                    start = as.integer(expansion_windows$start),
+                    end = as.integer(expansion_windows$end)
+                )
+            )
+            window_hits <- GenomicRanges::findOverlaps(expansion_window_gr, stage2_site_gr, ignore.strand = TRUE)
+            window_site_counts <- tabulate(S4Vectors::queryHits(window_hits), nbins = nrow(expansion_windows))
+            window_pair_counts <- pmax(1L, window_site_counts - 1L)
+            target_pairs_per_chunk <- .connectivityChunkSize(
+                n_samples = length(beta_col_names_detection),
+                njobs = memory_njobs,
+                n_pairs = sum(window_pair_counts)
+            )
+            window_chunk_ranges <- vector("list", nrow(expansion_windows))
+            window_chunk_n <- 0L
+            window_chunk_start <- 1L
+            window_chunk_pairs <- 0L
+            for (window_i in seq_len(nrow(expansion_windows))) {
+                next_pairs <- as.integer(window_pair_counts[[window_i]])
+                if (window_i > window_chunk_start && window_chunk_pairs + next_pairs > target_pairs_per_chunk) {
+                    window_chunk_n <- window_chunk_n + 1L
+                    window_chunk_ranges[[window_chunk_n]] <- c(window_chunk_start, window_i - 1L)
+                    window_chunk_start <- window_i
+                    window_chunk_pairs <- 0L
+                }
+                window_chunk_pairs <- window_chunk_pairs + next_pairs
             }
-            stage2_beta_handler <- subset_ret$beta_handler
-            stage2_beta_locs <- subset_ret$beta_locs
-            expansion_windows <- subset_ret$expansion_windows
-            if (!isTRUE(extract_motifs)) {
-                beta_locs <- stage2_beta_locs
-            }
+            window_chunk_n <- window_chunk_n + 1L
+            window_chunk_ranges[[window_chunk_n]] <- c(window_chunk_start, nrow(expansion_windows))
+            window_chunk_ranges <- window_chunk_ranges[seq_len(window_chunk_n)]
             .log_info(
-                "Stage 2 beta subset contains ",
-                format(nrow(stage2_beta_locs), big.mark = ","),
-                " sites after subsetting to expansion windows.",
+                "Stage 2 expansion windows split into ", length(window_chunk_ranges),
+                " chunk(s) before connectivity array construction.",
                 level = 2
             )
+
+            dmr_seed_gr <- GenomicRanges::GRanges(
+                seqnames = as.character(dmrs$chr),
+                ranges = IRanges::IRanges(
+                    start = as.integer(dmrs$start_seed_pos),
+                    end = as.integer(dmrs$end_seed_pos)
+                )
+            )
+            extended_chunks <- vector("list", length(window_chunk_ranges))
+            expanded_dmr_mask <- rep(FALSE, nrow(dmrs))
+            for (window_chunk_i in seq_along(window_chunk_ranges)) {
+                window_chunk_range <- window_chunk_ranges[[window_chunk_i]]
+                window <- expansion_windows[seq.int(window_chunk_range[[1L]], window_chunk_range[[2L]]), , drop = FALSE]
+                window_gr <- GenomicRanges::GRanges(
+                    seqnames = as.character(window$chr),
+                    ranges = IRanges::IRanges(
+                        start = as.integer(window$start),
+                        end = as.integer(window$end)
+                    )
+                )
+                dmr_hits <- GenomicRanges::findOverlaps(dmr_seed_gr, window_gr, type = "within", ignore.strand = TRUE)
+                dmr_chunk_inds <- sort(unique(S4Vectors::queryHits(dmr_hits)))
+                if (length(dmr_chunk_inds) == 0L) {
+                    next
+                }
+                if (any(expanded_dmr_mask[dmr_chunk_inds])) {
+                    stop("Stage 2 expansion window chunking assigned a DMR to more than one chunk.")
+                }
+                expanded_dmr_mask[dmr_chunk_inds] <- TRUE
+                subset_ret <- .subsetStage2BetaToWindows(
+                    beta_handler = beta_handler,
+                    beta_locs = beta_locs,
+                    col_names = beta_col_names_detection,
+                    expansion_windows = window,
+                    njobs = njobs
+                )
+                if (is.null(subset_ret)) {
+                    stop("Stage 2 window subsetting produced an empty beta subset. This indicates inconsistent expansion windows.")
+                }
+                .log_info(
+                    "Stage 2 beta subset contains ",
+                    format(nrow(subset_ret$beta_locs), big.mark = ","),
+                    " sites for expansion window chunk ", window_chunk_i, "/", length(window_chunk_ranges),
+                    " (", nrow(window), " window(s)).",
+                    level = 3
+                )
+                .log_step(
+                    "Building expansion connectivity array for window chunk ",
+                    window_chunk_i, "/", length(window_chunk_ranges), "..",
+                    level = 3
+                )
+                ret <- .buildConnectivityArray(
+                    beta_handler = subset_ret$beta_handler,
+                    beta_locs = subset_ret$beta_locs,
+                    pheno = pheno_detection,
+                    group_inds = group_inds,
+                    testing_mode_per_group = testing_mode_per_group,
+                    empirical_strategy_per_group = empirical_strategy_per_group,
+                    col_names = beta_col_names_detection,
+                    max_pval = max_pval,
+                    ext_site_delta_beta = ext_site_delta_beta,
+                    covariates = covariates,
+                    covariate_models = covariate_models,
+                    max_lookup_dist = max_lookup_dist,
+                    entanglement = entanglement,
+                    aggfun = aggfun,
+                    ntries = ntries,
+                    mid_p = mid_p,
+                    njobs = njobs,
+                    memory_njobs = memory_njobs,
+                    expansion_windows = window,
+                    max_bridge_gaps = max_bridge_extension_gaps,
+                    verbose = verbose
+                )
+                testing_mode_per_group <- ret$testing_mode_per_group
+                empirical_strategy_per_group <- ret$empirical_strategy_per_group
+                connectivity_connected_total <- connectivity_connected_total + sum(ret$connectivity_array$connected)
+                if (getOption("CMEnt.make_debug_dir", FALSE)) {
+                    debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, "_window_chunk", window_chunk_i, ".rds"))
+                    .log_info("Saving connectivity array to ", debug_path, level = 1)
+                    dir.create("debug", showWarnings = FALSE)
+                    saveRDS(ret$connectivity_array, file = debug_path)
+                }
+                extended_chunks[[window_chunk_i]] <- .expandStage2DMRs(
+                    dmrs_to_expand = dmrs[dmr_chunk_inds, , drop = FALSE],
+                    stage2_beta_locs = subset_ret$beta_locs,
+                    connectivity_array = ret$connectivity_array
+                )
+                rm(ret, subset_ret)
+                gc(FALSE)
+                .log_success("Stage 2 expansion window chunk ", window_chunk_i, "/", length(window_chunk_ranges), " complete.", level = 3)
+            }
+            if (!all(expanded_dmr_mask)) {
+                stop("Stage 2 expansion window assignment missed one or more DMRs.")
+            }
+            extended_chunks <- Filter(function(x) !is.null(x) && nrow(x) > 0L, extended_chunks)
+            extended_dmrs <- as.data.frame(do.call(rbind, extended_chunks))
+        } else {
+            .log_step("Building expansion connectivity array..", level = 3)
+            ret <- .buildConnectivityArray(
+                beta_handler = beta_handler,
+                beta_locs = beta_locs,
+                pheno = pheno_detection,
+                group_inds = group_inds,
+                testing_mode_per_group = testing_mode_per_group,
+                empirical_strategy_per_group = empirical_strategy_per_group,
+                col_names = beta_col_names_detection,
+                max_pval = max_pval,
+                ext_site_delta_beta = ext_site_delta_beta,
+                covariates = covariates,
+                covariate_models = covariate_models,
+                max_lookup_dist = max_lookup_dist,
+                entanglement = entanglement,
+                aggfun = aggfun,
+                ntries = ntries,
+                mid_p = mid_p,
+                njobs = njobs,
+                memory_njobs = memory_njobs,
+                expansion_windows = NULL,
+                max_bridge_gaps = max_bridge_extension_gaps,
+                verbose = verbose
+            )
+            testing_mode_per_group <- ret$testing_mode_per_group
+            empirical_strategy_per_group <- ret$empirical_strategy_per_group
+            connectivity_array <- ret$connectivity_array
+            connectivity_connected_total <- sum(connectivity_array$connected)
+            extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
+            .log_success("Connectivity array built.", level = 3)
         }
-        .log_step("Building expansion connectivity array..", level = 2)
-        ret <- .buildConnectivityArray(
-            beta_handler = stage2_beta_handler,
-            beta_locs = stage2_beta_locs,
-            pheno = pheno_detection,
-            group_inds = group_inds,
-            testing_mode_per_group = testing_mode_per_group,
-            empirical_strategy_per_group = empirical_strategy_per_group,
-            col_names = beta_col_names_detection,
-            max_pval = max_pval,
-            ext_site_delta_beta = ext_site_delta_beta,
-            covariates = covariates,
-            covariate_models = covariate_models,
-            max_lookup_dist = max_lookup_dist,
-            entanglement = entanglement,
-            aggfun = aggfun,
-            ntries = ntries,
-            mid_p = mid_p,
-            njobs = njobs,
-            expansion_windows = expansion_windows,
-            max_bridge_gaps = max_bridge_extension_gaps,
-            verbose = verbose
-        )
-        connectivity_array <- ret$connectivity_array
     }
-    .log_success("Connectivity array built.", level = 2)
-    .log_info("Number of underlying correlated sites found: ", sum(connectivity_array$connected), level = 2)
-    if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving connectivity array to debug/connectivity_array.rds", level = 1)
+    .log_info("Number of underlying correlated sites found: ", connectivity_connected_total, level = 3)
+    if (!is.null(connectivity_array) && getOption("CMEnt.make_debug_dir", FALSE)) {
+        debug_path <- file.path("debug", paste0("connectivity_array_", chromosome, ".rds"))
+        .log_info("Saving connectivity array to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
-        saveRDS(connectivity_array, file = file.path("debug", "connectivity_array.rds"))
+        saveRDS(connectivity_array, file = debug_path)
     }
-    if (nrow(connectivity_array) != nrow(stage2_beta_locs)) {
-        stop(
-            "Stage 2 connectivity_array row count (", nrow(connectivity_array),
-            ") does not match Stage 2 beta_locs row count (", nrow(stage2_beta_locs),
-            "). If using .load_debug, rebuild debug artifacts with the current code."
-        )
-    }
-    .log_step("Expanding ", n_dmrs, " DMRs using ", njobs, " jobs...", level = 2)
-    dmrs_to_expand <- dmrs
-    locs <- as.data.frame(stage2_beta_locs)
-    connectivity <- connectivity_array
-    locs_rownames <- rownames(locs)
-    locs_idx_map <- setNames(seq_along(locs_rownames), locs_rownames)
-    expansion_boundaries <- .buildExpansionBoundaryLookup(connectivity)
-
-    dmr_inds <- seq_len(nrow(dmrs_to_expand))
-    default_dmr_chunk_size <- max(1L, ceiling(length(dmr_inds) / max(njobs * 4L, 1L)))
-    dmr_chunk_size <- min(default_dmr_chunk_size, length(dmr_inds))
-    dmr_chunks <- split(dmr_inds, ceiling(dmr_inds / dmr_chunk_size))
-    min_dmrs_for_parallel <- suppressWarnings(as.integer(getOption("CMEnt.min_dmrs_for_parallel", 1000L)))
-    if (is.na(min_dmrs_for_parallel) || min_dmrs_for_parallel < 1L) {
-        min_dmrs_for_parallel <- 1L
-    }
-
-    if (njobs == 1L || length(dmr_chunks) == 1L || length(dmr_inds) < min_dmrs_for_parallel) {
-        ret <- lapply(
-            dmr_chunks,
-            .expandDMRChunk,
-            dmrs = dmrs_to_expand,
-            connectivity_array = connectivity,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries
-        )
-    } else {
-        ret <- BiocParallel::bplapply(
-            X = dmr_chunks,
-            FUN = .expandDMRChunk,
-            dmrs = dmrs_to_expand,
-            connectivity_array = connectivity,
-            min_sites = min_sites,
-            locs = locs,
-            locs_idx_map = locs_idx_map,
-            expansion_boundaries = expansion_boundaries,
-            BPPARAM = .makeBiocParallelParam(njobs, n_tasks = length(dmr_chunks))
-        )
-    }
-    ret <- unlist(ret, recursive = FALSE, use.names = FALSE)
-    if (inherits(ret, "try-error")) {
-        stop(ret)
-    }
-    upstream_expansion_length_table <- table(vapply(ret, function(x) x[["upstream_expansion_length"]], numeric(1)))
-    downstream_expansion_length_table <- table(vapply(ret, function(x) x[["downstream_expansion_length"]], numeric(1)))
+    rownames(extended_dmrs) <- NULL
+    u_exp_len_table <- table(
+        extended_dmrs$upstream_expansion_length
+    )
+    d_exp_len_table <- table(
+        extended_dmrs$downstream_expansion_length
+    )
     # sort tables by names (expansion sizes)
-    upstream_expansion_length_table <- upstream_expansion_length_table[order(as.integer(names(upstream_expansion_length_table)))]
-    downstream_expansion_length_table <- downstream_expansion_length_table[order(as.integer(names(downstream_expansion_length_table)))]
-    .log_info("Table of upstream_expansion_length:\n\t", paste(capture.output(upstream_expansion_length_table), collapse = "\n\t"), level = 3)
-    .log_info("Table of downstream_expansion_length:\n\t", paste(capture.output(downstream_expansion_length_table), collapse = "\n\t"), level = 3)
+    u_exp_len_table <- u_exp_len_table[order(as.integer(names(u_exp_len_table)))]
+    d_exp_len_table <- d_exp_len_table[order(as.integer(names(d_exp_len_table)))]
+    .log_info(
+        "Table of upstream_expansion_length:\n\t",
+        paste(
+            capture.output(u_exp_len_table),
+            collapse = "\n\t"
+        ),
+        level = 3
+    )
+    .log_info(
+        "Table of downstream_expansion_length:\n\t",
+        paste(
+            capture.output(d_exp_len_table),
+            collapse = "\n\t"
+        ),
+        level = 3
+    )
 
+    .log_success("DMR expansion complete.", level = 2)
     .advanceChromosomeProgress()
-    .log_step("Post-processing extended DMRs..", level = 3)
+    .log_step("Post-processing extended DMRs..", level = 2)
 
-    extended_dmrs <- as.data.frame(do.call(rbind, ret))
     extended_dmrs$end <- as.numeric(extended_dmrs$end)
     extended_dmrs$start <- as.numeric(extended_dmrs$start)
     extended_dmrs$start_seed_pos <- as.numeric(extended_dmrs$start_seed_pos)
@@ -2601,13 +3252,13 @@
 
 
     .checkResult(extended_dmrs, "2", start_col = "start", end_col = "end")
-    .log_success("Post-processing complete.", level = 3)
-    .log_success("DMR expansion complete.", level = 2)
+    .log_success("Post-processing complete.", level = 2)
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving extended DMRs prior to filtering to debug/03_extended_dmrs.tsv", level = 1)
+        debug_path <- file.path("debug", paste0("02_extended_dmrs_", chromosome, ".tsv"))
+        .log_info("Saving extended DMRs prior to filtering to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(extended_dmrs,
-            file = file.path("debug", "02_extended_dmrs.tsv"),
+            file = debug_path,
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
@@ -2688,7 +3339,7 @@
     agg_df[, "supporting_sites_num"] <- vapply(agg_df$sites, function(x) {
         length(.splitCsvValues(x))
     }, integer(1))
-    agg_df[, "pval"] <- .combineDMRSeedPvalues(agg_df$seeds, seed_pvals)
+    agg_df[, "pval"] <- NA_real_
     if (is.null(all_sites)) {
         agg_df[, "sites_num"] <- vapply(agg_df$sites, function(x) {
             length(.splitCsvValues(x))
@@ -2696,17 +3347,25 @@
     } else {
         agg_df[, "sites_num"] <- match(agg_df$end_site, all_sites) - match(agg_df$start_site, all_sites) + 1
     }
-    agg_df[, "id"] <- paste0(seqnames(merged_dmrs_ranges), ":", agg_df$start_site, "-", agg_df$end_site)
+    start_site_pos <- sub("^[^:]+:", "", agg_df$start_site)
+    end_site_pos <- sub("^[^:]+:", "", agg_df$end_site)
+    agg_df[, "id"] <- paste0(
+        as.character(GenomeInfoDb::seqnames(merged_dmrs_ranges)), ":",
+        start_site_pos,
+        "-",
+        end_site_pos
+    )
 
     GenomicRanges::mcols(merged_dmrs_ranges) <- agg_df
     .log_success("Overlapping extended DMRs merged: ", length(merged_dmrs_ranges), " resulting DMRs.", level = 2)
     merged_dmrs <- .convertToDataFrame(merged_dmrs_ranges)
 
     if (getOption("CMEnt.make_debug_dir", FALSE)) {
-        .log_info("Saving merged DMRs prior to filtering to debug/03_merged_dmrs.tsv", level = 1)
+        debug_path <- file.path("debug", paste0("03_merged_dmrs_", chromosome, ".tsv"))
+        .log_info("Saving merged DMRs prior to filtering to ", debug_path, level = 1)
         dir.create("debug", showWarnings = FALSE)
         write.table(merged_dmrs,
-            file = file.path("debug", "03_merged_dmrs.tsv"),
+            file = debug_path,
             sep = "\t",
             row.names = FALSE,
             col.names = TRUE,
@@ -2715,12 +3374,11 @@
     }
 
     .advanceChromosomeProgress()
-    .log_step("Stage 4: Filtering and annotating resulting DMRs..", level = 2)
+    .log_step("Stage 4: Filtering resulting DMRs..", level = 2)
 
-    if (min_sites > 1 || min_seeds > 1) {
+    if (min_sites > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
-            GenomicRanges::mcols(merged_dmrs_ranges)$seeds_num >= min_seeds &
-                GenomicRanges::mcols(merged_dmrs_ranges)$sites_num >= min_sites
+            GenomicRanges::mcols(merged_dmrs_ranges)$sites_num >= min_sites
         ]
         .log_info(
             "Keeping ",
@@ -2728,8 +3386,6 @@
             " out of ",
             length(merged_dmrs_ranges),
             " with at least ",
-            min_seeds,
-            " supporting seeds and at least ",
             min_sites,
             " sites in the DMR interval.",
             level = 2
@@ -2788,8 +3444,6 @@
         pheno = pheno,
         aggfun = aggfun
     )
-    rm(all_selected_sites_beta)
-    gc(verbose = FALSE)
     .log_success("Per-site beta statistics calculated.", level = 3)
 
     beta_stats <- as.data.frame(beta_stats)
@@ -2856,10 +3510,10 @@
     annotated_dmrs$sites_controls_beta_max <- sites_agg$controls_beta_max
 
     .log_success("DMR delta-beta information added.", level = 3)
-
+    .log_success("DMR filtering complete.", level = 2)
     if (annotate_with_genes) {
-        .advanceChromosomeProgress()
         .log_step("Annotating DMRs with gene information...", level = 2)
+        .advanceChromosomeProgress()
         site_delta_beta <- beta_stats$cases_beta - beta_stats$controls_beta
         names(site_delta_beta) <- rownames(beta_stats)
         annotated_dmrs <- annotateDMRsWithGenes(
@@ -2870,10 +3524,10 @@
             site_delta_beta = site_delta_beta,
             aggfun = aggfun
         )
-        .log_success("DMR annotation completed.", level = 2)
+        .log_success("DMR annotation complete.", level = 2)
     }
 
-    if (.score_dmrs) {
+    if (score_dmrs) {
         .advanceChromosomeProgress()
         .log_step("Scoring DMRs...", level = 2)
         annotated_dmrs <- scoreDMRs(
@@ -2885,10 +3539,14 @@
             sorted_locs = beta_handler$getGenomicLocs(),
             sample_group_col = sample_group_col,
             covariates = covariates,
-            njobs = njobs
+            njobs = njobs,
+            show_progress = verbose >=2,
+            .dmr_beta = all_selected_sites_beta,
+            .memory_njobs = memory_njobs
         )
-        .log_success("DMR scoring completed.", level = 2)
+        .log_success("DMR scoring complete.", level = 2)
     }
+    rm(all_selected_sites_beta)
 
 
     if (is.data.frame(annotated_dmrs)) {
@@ -2907,9 +3565,108 @@
     final_dmrs <- .convertToDataFrame(final_dmrs_granges)
 
     .log_info("Final number of chromosome-scoped DMRs: ", nrow(final_dmrs), level = 2)
-
-    gc()
+    .log_success("DMR building complete for ", chromosome, ".", level = 1)
     invisible(final_dmrs_granges)
+}
+
+
+#' @keywords internal
+#' @noRd
+.buildDMRsChromosomeTask <- function(
+    task,
+    beta_handler,
+    pheno_detection,
+    group_inds,
+    testing_mode_per_group,
+    empirical_strategy_per_group,
+    beta_col_names_detection,
+    ext_site_delta_beta,
+    array,
+    genome,
+    max_pval,
+    entanglement,
+    ntries,
+    mid_p,
+    max_lookup_dist,
+    expansion_window,
+    max_bridge_seeds_gaps,
+    max_bridge_extension_gaps,
+    min_seeds,
+    min_adj_seeds,
+    min_sites,
+    aggfun,
+    njobs,
+    memory_njobs,
+    verbose,
+    .load_debug,
+    pheno,
+    beta_col_names,
+    sample_group_col,
+    covariates,
+    covariate_models,
+    annotate_with_genes,
+    score_dmrs,
+    extract_motifs
+) {
+    .log_step("Processing chromosome ", task$chr, "...", level = 1)
+    task_row_ids <- if (!is.null(task$row_ids)) {
+        task$row_ids
+    } else {
+        seq.int(task$row_start, task$row_end)
+    }
+    chr_handler <- beta_handler$subset(row_names = task_row_ids, col_names = beta_col_names)
+    on.exit(
+        {
+            rm(chr_handler, task_row_ids)
+            gc(FALSE)
+        },
+        add = TRUE
+    )
+
+    withCallingHandlers(
+        .buildDMRsChr(
+            beta_handler = chr_handler,
+            seed_ids = task$seed_ids,
+            seed_beta_index = task$seed_beta_index,
+            pheno_detection = pheno_detection,
+            group_inds = group_inds,
+            testing_mode_per_group = testing_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            beta_col_names_detection = beta_col_names_detection,
+            ext_site_delta_beta = ext_site_delta_beta,
+            array = array,
+            genome = genome,
+            max_pval = max_pval,
+            entanglement = entanglement,
+            ntries = ntries,
+            mid_p = mid_p,
+            max_lookup_dist = max_lookup_dist,
+            expansion_window = expansion_window,
+            max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+            max_bridge_extension_gaps = max_bridge_extension_gaps,
+            min_seeds = min_seeds,
+            min_adj_seeds = min_adj_seeds,
+            min_sites = min_sites,
+            aggfun = aggfun,
+            njobs = njobs,
+            memory_njobs = memory_njobs,
+            verbose = verbose,
+            .load_debug = .load_debug,
+            pheno = pheno,
+            beta_col_names = beta_col_names,
+            sample_group_col = sample_group_col,
+            covariates = covariates,
+            covariate_models = covariate_models,
+            annotate_with_genes = annotate_with_genes,
+            score_dmrs = score_dmrs,
+            extract_motifs = extract_motifs
+        ),
+        warning = function(w) {
+            if (grepl("No DMRs|No connectivity windows", conditionMessage(w))) {
+                invokeRestart("muffleWarning")
+            }
+        }
+    )
 }
 
 #' Build Differentially Methylated Regions (DMRs) from Differentially Methylated Positions (seeds)
@@ -2941,8 +3698,8 @@
 #'  with the locations separately saved and queried as a DelayedDataFrame. object.
 #' @param seeds Character. Path to the seeds (seeds, etc.) TSV file or the seeds dataframe,
 #'  in a format like the one produced by dmpFinder. If a `pval`, `P.Value`, `p.value`,
-#'  or `p_value` column is present, DMR-level `pval` is computed from supporting
-#'  seed p-values using Stouffer's method and `qval` is FDR-corrected globally.
+#'  or `p_value` column is present, DMR-level `pval` is computed from final
+#'  supporting seed p-values using Stouffer's method and `qval` is FDR-corrected globally.
 #' @param pheno Character. Path to the phenotype TSV file or the phenotype dataframe,
 #'  containing sample information including group labels and optionally covariates.
 #' @param seeds_id_col Character. Column name or index for Seed identifiers in the seeds TSV file.
@@ -2981,7 +3738,8 @@
 #'   Set <=0 for genome-wide connectivity. Default is -1 for microarrays and 10000 (10 kb) for NGS datasets.
 #' @param max_bridge_seeds_gaps Integer. Maximum number of consecutive failed seed-to-seed edges to bridge during Stage 1
 #'  when both flanking edges are connected and failures are p-value driven. Set to 0 to disable. Default is 1.
-#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension. Default is 1 (i.e., at most 1 consecutive failing site to bridge).
+#' @param max_bridge_extension_gaps Integer. Maximum gap size to consider during Stage 2 extension.
+#'  Default is 1 (i.e., at most 1 consecutive failing site to bridge).
 #' @param min_seeds Numeric. Minimum number of connected seeds in a DMR. Minimum is 1. Default is 2.
 #' @param min_adj_seeds Numeric. Minimum number of seeds, adjusted by array site density, in a DMR after extension.
 #'  It serves as a less stringent cutoff for arrays with variable site density, allowing regions in sparse areas to be retained
@@ -2996,7 +3754,7 @@
 #' @param beta_row_names_file Character. Path to a file containing row names for the beta values.
 #'  If not provided, row names will be read from the beta file. Default is NULL.
 #' @param annotate_with_genes Logical. Whether to annotate DMRs with overlapping genes. Default is TRUE.
-#' @param .score_dmrs Logical. Whether to add complementary cross-validated
+#' @param score_dmrs Logical. Whether to add complementary cross-validated
 #'  SVM discrimination scores to DMRs. Default is TRUE.
 #' @param extract_motifs Logical. Whether to compute DMRs seeds motifs. Default is TRUE.
 #' @param bed_provided Logical. Whether the beta file is provided as a BED file. Default is FALSE.
@@ -3008,17 +3766,17 @@
 #' @param .load_debug Logical. If TRUE, enables debug mode for loading beta files. Default is FALSE.
 #'
 #' @return GRanges object of identified DMRs with metadata including DMR-level
-#'  `pval` and FDR-adjusted `qval` when seed p-values are available.
+#'  `pval` and FDR-adjusted `qval` when seed p-value aggregation is enabled.
 #'
 #' @examples
 #' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
 #' \donttest{
 #' dmrs <- buildDMRs(
-#'   beta = beta,
-#'   seeds = dmps,
-#'   pheno = pheno,
-#'   array = array_type,
-#'   sample_group_col = "Sample_Group"
+#'     beta = beta,
+#'     seeds = dmps,
+#'     pheno = pheno,
+#'     array = array_type,
+#'     sample_group_col = "Sample_Group"
 #' )
 #' }
 #' @export
@@ -3052,7 +3810,7 @@ buildDMRs <- function(
     njobs = getOption("CMEnt.njobs", .defaultNJobs()),
     beta_row_names_file = NULL,
     annotate_with_genes = TRUE,
-    .score_dmrs = TRUE,
+    score_dmrs = TRUE,
     extract_motifs = TRUE,
     bed_provided = FALSE,
     bed_chrom_col = "chrom",
@@ -3073,7 +3831,8 @@ buildDMRs <- function(
     .readSeeds <- function(seeds, seeds_id_col) {
         if (is.character(seeds) && length(seeds) == 1) {
             seeds_tsv <- try(as.data.frame(data.table::fread(
-                seeds, header = TRUE, check.names = FALSE,
+                seeds,
+                header = TRUE, check.names = FALSE,
                 quote = "", comment.char = "", data.table = FALSE
             )))
         } else if (is.data.frame(seeds)) {
@@ -3112,7 +3871,8 @@ buildDMRs <- function(
     .readPheno <- function(pheno) {
         if (is.character(pheno) && length(pheno) == 1) {
             pheno_df <- try(as.data.frame(data.table::fread(
-                pheno, header = TRUE, check.names = FALSE,
+                pheno,
+                header = TRUE, check.names = FALSE,
                 quote = "", comment.char = ""
             )))
         } else if (is.data.frame(pheno)) {
@@ -3132,7 +3892,10 @@ buildDMRs <- function(
         if (!is.null(covariates)) {
             missing_covars <- covariates[!covariates %in% colnames(pheno_df)]
             if (length(missing_covars) > 0) {
-                stop("The following covariates are not present in pheno: ", paste(missing_covars, collapse = ", "))
+                stop(
+                    "The following covariates are not present in pheno: ",
+                    paste(missing_covars, collapse = ", ")
+                )
             }
         }
         if (!sample_group_col %in% colnames(pheno_df)) {
@@ -3147,33 +3910,6 @@ buildDMRs <- function(
             pheno_df[[casecontrol_col]] <- .coercePhenoColumn(pheno_df[[casecontrol_col]], casecontrol_col)
         }
         pheno_df
-    }
-    .seedPvalColumn <- function(seeds_df) {
-        candidates <- c("pval", "P.Value", "p.value", "p_value")
-        candidates[candidates %in% colnames(seeds_df)][1L]
-    }
-    .prepareSeedPvalues <- function(seeds_df, seeds_id_col) {
-        pval_col <- .seedPvalColumn(seeds_df)
-        if (is.na(pval_col)) {
-            return(NULL)
-        }
-        ids <- as.character(seeds_df[[seeds_id_col]])
-        raw_pvals <- seeds_df[[pval_col]]
-        if (is.list(raw_pvals)) {
-            raw_pvals <- vapply(raw_pvals, function(x) {
-                if (length(x) == 0L) NA_character_ else as.character(x[[1L]])
-            }, character(1))
-        }
-        pvals <- suppressWarnings(as.numeric(as.character(raw_pvals)))
-        invalid <- !is.na(pvals) & (pvals < 0 | pvals > 1)
-        if (any(invalid)) {
-            stop("Seed p-values in column '", pval_col, "' must be between 0 and 1.")
-        }
-        keep <- !is.na(ids) & nzchar(ids)
-        pvals_by_id <- tapply(pvals[keep], ids[keep], function(x) {
-            if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)
-        })
-        stats::setNames(as.numeric(pvals_by_id), names(pvals_by_id))
     }
     .addCaseControlColumn <- function(pheno_df) {
         sample_group_values <- pheno_df[[sample_group_col]]
@@ -3196,9 +3932,12 @@ buildDMRs <- function(
         withr::defer(wait())
     }
 
-    .log_step("Preparing chromosome-sequential DMR input...")
+    .log_step("Preparing DMR input...")
+    .log_step("Reading seeds and phenotype files...", level = 3)
     seeds_ret <- .readSeeds(seeds, seeds_id_col)
+    .log_step("Validating sample group column in phenotype data...", level = 3)
     sample_group_col <- .requireSampleGroupCol(sample_group_col, "buildDMRs()")
+    .log_step("Reading phenotype file...", level = 3)
     pheno <- .readPheno(pheno)
     seeds_df <- seeds_ret$data
     seeds_id_col <- seeds_ret$id_col
@@ -3208,12 +3947,11 @@ buildDMRs <- function(
         return(NULL)
     }
 
-
     array <- .normalizeBuildDMRsArray(array)
     requested_genome <- .normalizeBuildDMRsGenome(genome)
     genome <- .resolveBuildDMRsGenome(beta, array = array, genome = requested_genome, bed_provided = bed_provided)
     .assertDependencyRequirements(
-        requirements = .buildDMRsDependencyRequirements(
+        requirements = .buildDMRsDependencyReqs(
             beta = beta,
             array = array,
             genome = genome,
@@ -3232,6 +3970,7 @@ buildDMRs <- function(
         dir.create(dirname(output_prefix_base), showWarnings = FALSE, recursive = TRUE)
         output_prefix_dot <- paste0(output_prefix_base, ".")
     }
+    .log_step("Preparing beta data handler...", level = 3)
     beta_locs <- NULL
     if (!inherits(beta, "BetaHandler") && is.character(beta) && length(beta) == 1 && file.exists(beta)) {
         beta_file_ext <- tools::file_ext(beta)
@@ -3239,7 +3978,10 @@ buildDMRs <- function(
             bed_provided <- TRUE
             seed_ids <- seeds_df[, seeds_id_col]
             if (!all(grepl("^(chr)?[0-9XYM]+:[0-9]+$", seed_ids))) {
-                stop("When providing a bed file as beta input, seed IDs must be in 'chr:pos' format.")
+                stop(
+                    "When providing a bed file as beta input,",
+                    " seed IDs must be in 'chr:pos' format."
+                )
             }
             ret <- readCustomMethylationBedData(
                 bed_file = beta, pheno = pheno, genome = genome,
@@ -3263,6 +4005,7 @@ buildDMRs <- function(
     )
     beta <- NULL
     array_based <- beta_handler$isArrayBased()
+    .log_step("Validating parameters...", level = 3)
 
     if (!is.function(aggfun)) {
         aggfun_choice <- strex::match_arg(aggfun, ignore_case = TRUE)
@@ -3284,14 +4027,20 @@ buildDMRs <- function(
         } else {
             try(ext_site_delta_beta <- as.numeric(ext_site_delta_beta), silent = TRUE)
             if (!is.numeric(ext_site_delta_beta) || length(ext_site_delta_beta) != 1L) {
-                stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+                stop(
+                    "ext_site_delta_beta must be NULL, NA, Inf,",
+                    " or a numeric scalar in [0, 1]."
+                )
             }
             ext_site_delta_beta <- ext_site_delta_beta[1]
             if (is.infinite(ext_site_delta_beta)) {
                 NA_real_
             } else {
                 if (ext_site_delta_beta < 0 || ext_site_delta_beta > 1) {
-                    stop("ext_site_delta_beta must be NULL, NA, Inf, or a numeric scalar in [0, 1].")
+                    stop(
+                        "ext_site_delta_beta must be NULL, NA, Inf,",
+                        " or a numeric scalar in [0, 1]."
+                    )
                 }
                 ext_site_delta_beta
             }
@@ -3301,9 +4050,19 @@ buildDMRs <- function(
     if (expansion_window == "auto") {
         expansion_window <- if (array_based) -1 else 10000
         if (array_based) {
-            .log_info("Setting expansion_window to -1 for array-based dataset, meaning genome-wide connectivity will be computed during expansion.", level = 2)
+            .log_info(
+                "Setting expansion_window to -1 for array-based dataset,",
+                " meaning genome-wide connectivity will be computed during",
+                " expansion.",
+                level = 2
+            )
         } else {
-            .log_info("Setting expansion_window to 10000 for sequencing-based dataset, meaning connectivity during expansion will only be computed within 10 kb windows around seed-derived DMRs.", level = 2)
+            .log_info(
+                "Setting expansion_window to 10000 for sequencing-based dataset,",
+                " meaning connectivity during expansion will only be computed",
+                " within 10 kb windows around seed-derived DMRs.",
+                level = 2
+            )
         }
     }
     if (!is.numeric(expansion_window) || length(expansion_window) != 1 || is.na(expansion_window)) {
@@ -3313,7 +4072,12 @@ buildDMRs <- function(
         stop("max_bridge_seeds_gaps must be a non-negative integer.")
     }
     max_bridge_seeds_gaps <- as.integer(max_bridge_seeds_gaps)
-    if (!is.numeric(max_bridge_extension_gaps) || length(max_bridge_extension_gaps) != 1 || is.na(max_bridge_extension_gaps) || max_bridge_extension_gaps < 0) {
+    if (
+        !is.numeric(max_bridge_extension_gaps) ||
+            length(max_bridge_extension_gaps) != 1 ||
+            is.na(max_bridge_extension_gaps) ||
+            max_bridge_extension_gaps < 0
+    ) {
         stop("max_bridge_extension_gaps must be a non-negative integer.")
     }
     max_bridge_extension_gaps <- as.integer(max_bridge_extension_gaps)
@@ -3354,61 +4118,88 @@ buildDMRs <- function(
     covariate_models <- .prepareGroupCovariateModels(pheno_detection, group_inds, covariates)
     testing_mode_per_group <- rep(testing_mode, length.out = length(unique(pheno_detection[[sample_group_col]])))
     names(testing_mode_per_group) <- unique(pheno_detection[[sample_group_col]])
-    empirical_strategy_per_group <- rep(empirical_strategy, length.out = length(unique(pheno_detection[[sample_group_col]])))
+    empirical_strategy_per_group <- rep(
+        empirical_strategy,
+        length.out = length(unique(pheno_detection[[sample_group_col]]))
+    )
     names(empirical_strategy_per_group) <- unique(pheno_detection[[sample_group_col]])
 
     if (!is.null(output_prefix_base)) {
         saveRDS(
-            list(pheno = pheno_detection, genome = genome, array = array, sample_group_col = sample_group_col),
+            list(
+                pheno = pheno_detection,
+                genome = genome,
+                array = array,
+                sample_group_col = sample_group_col
+            ),
             file = paste0(output_prefix_base, ".meta.rds")
         )
     }
 
-    beta_locs <- beta_handler$getBetaLocs()
-    beta_chr <- as.character(beta_locs[, "chr"])
-    beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
-    if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
-        stop("Beta locations contain missing chromosome labels.", call. = FALSE)
-    }
-    if (anyNA(beta_start)) {
-        stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
-    }
-    if (length(beta_chr) > 1L) {
-        chr_runs <- rle(beta_chr)
-        if (anyDuplicated(chr_runs$values)) {
-            dup_chr <- chr_runs$values[duplicated(chr_runs$values)][1]
-            stop(
-                "Beta locations are not grouped by chromosome: ", dup_chr,
-                " appears in multiple blocks. Ensure the beta input is ordered by chromosome and genomic start position.",
-                call. = FALSE
-            )
+    bsseq_gr <- if (.usesBSseqBackend(beta_handler)) .bsseqBackendGRanges(beta_handler) else NULL
+    if (!is.null(bsseq_gr)) {
+        beta_locs <- NULL
+        beta_chr <- GenomeInfoDb::seqnames(bsseq_gr)
+        beta_start <- GenomicRanges::start(bsseq_gr)
+        beta_locs_rownames <- NULL
+    } else {
+        beta_locs <- beta_handler$getBetaLocs()
+        beta_chr <- as.character(beta_locs[, "chr"])
+        beta_start <- suppressWarnings(as.numeric(beta_locs[, "start"]))
+        if (anyNA(beta_chr) || any(!nzchar(beta_chr))) {
+            stop("Beta locations contain missing chromosome labels.", call. = FALSE)
         }
-        same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
-        unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
-        if (any(unsorted_adj, na.rm = TRUE)) {
-            bad_idx <- which(unsorted_adj)[1L] + 1L
-            stop("Beta locations are not sorted within chromosome ", beta_chr[bad_idx], call. = FALSE)
+        if (anyNA(beta_start)) {
+            stop("Beta locations contain missing or non-numeric start positions.", call. = FALSE)
         }
+        beta_chr_runs <- .chromosomeRunIndex(beta_chr, require_unique = TRUE)
+        if (length(beta_chr) > 1L) {
+            same_chr_adj <- beta_chr[-1L] == beta_chr[-length(beta_chr)]
+            unsorted_adj <- same_chr_adj & (beta_start[-1L] < beta_start[-length(beta_start)])
+            if (any(unsorted_adj, na.rm = TRUE)) {
+                bad_idx <- which(unsorted_adj)[1L] + 1L
+                stop("Beta locations are not sorted within chromosome ", beta_chr[bad_idx], call. = FALSE)
+            }
+        }
+        beta_locs_rownames <- .explicitRowNames(beta_locs)
     }
-
-    beta_locs_rownames <- .explicitRowNames(beta_locs)
-    use_numeric_sequencing_rows <- !array_based && is.null(beta_locs_rownames)
+    if (!exists("beta_chr_runs", inherits = FALSE)) {
+        beta_chr_runs <- .chromosomeRunIndex(beta_chr, require_unique = TRUE)
+    }
+    use_numeric_sequencing_rows <- !array_based &&
+        (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler))
     beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
     if (use_numeric_sequencing_rows) {
-        seed_beta_index <- .matchSequencingIdsToBeta(seeds_df[, seeds_id_col], beta_chr, beta_start)
+        .log_step("Matching seed IDs to beta genomic locations...", level = 3)
+        seed_coords <- .seedCoordinatesFromSeeds(seeds_df, seeds_id_col)
+        seed_beta_index <- .matchSequencingCoordinatesToBeta(
+            seed_coords$chr,
+            seed_coords$start,
+            beta_chr,
+            beta_start,
+            chromosome_runs = beta_chr_runs
+        )
         if (all(is.na(seed_beta_index))) {
             stop("None of the IDs in seeds_id_col match the beta genomic locations.")
         }
         if (anyNA(seed_beta_index)) {
-            seeds_df <- seeds_df[!is.na(seed_beta_index), , drop = FALSE]
-            seed_beta_index <- seed_beta_index[!is.na(seed_beta_index)]
+            keep_matched <- !is.na(seed_beta_index)
+            seeds_df <- seeds_df[keep_matched, , drop = FALSE]
+            seed_coords$chr <- seed_coords$chr[keep_matched]
+            seed_coords$start <- seed_coords$start[keep_matched]
+            seed_beta_index <- seed_beta_index[keep_matched]
         }
         seeds_df$.__beta_row_index__ <- seed_beta_index
-        seeds_df <- seeds_df[order(seeds_df$.__beta_row_index__), , drop = FALSE]
+        seed_order <- order(seeds_df$.__beta_row_index__)
+        seeds_df <- seeds_df[seed_order, , drop = FALSE]
+        seed_coords$chr <- seed_coords$chr[seed_order]
+        seed_coords$start <- seed_coords$start[seed_order]
         keep_unique <- !duplicated(seeds_df[, seeds_id_col])
         seed_ids <- as.character(seeds_df[keep_unique, seeds_id_col])
         seed_beta_index <- seeds_df[keep_unique, ".__beta_row_index__"]
+        seed_chr <- as.character(beta_chr[seed_beta_index])
     } else {
+        .log_info("Matching seed IDs to beta row names...", level = 2)
         if (!all(seeds_df[, seeds_id_col] %in% beta_row_names)) {
             if (!any(seeds_df[, seeds_id_col] %in% beta_row_names)) {
                 seeds_id_col_found <- NULL
@@ -3431,86 +4222,155 @@ buildDMRs <- function(
         seed_ids <- seed_ids[orderByLoc(seed_ids, genome = genome, genomic_locs = beta_locs)]
         seed_beta_index <- seed_ids
     }
+    .log_success("", level = 3)
     if (length(seed_ids) == 0L) {
         stop("No seeds remain after filtering against beta locations.")
     }
-    seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
-    rownames(seeds_locs) <- seed_ids
-    seed_chr <- as.character(seeds_locs[, "chr"])
+    if (!use_numeric_sequencing_rows) {
+        seeds_locs <- as.data.frame(beta_locs[seed_beta_index, , drop = FALSE])
+        rownames(seeds_locs) <- seed_ids
+        seed_chr <- as.character(seeds_locs[, "chr"])
+    }
     chromosomes <- unique(seed_chr)
-    seed_pvals <- .prepareSeedPvalues(seeds_df, seeds_id_col)
+    seed_pval_source <- .seedPvalSource(seeds_df, seeds_id_col)
     .log_info("Processing ", length(chromosomes), " chromosome(s): ", paste(chromosomes, collapse = ", "), level = 1)
 
-    beta_row_ids_all <- if (is.null(beta_locs_rownames)) {
-        seq_len(nrow(beta_locs))
-    } else {
-        beta_locs_rownames
+    chromosome_tasks <- .buildDMRsChromosomeTasks(
+        beta_handler = beta_handler,
+        beta_chr = beta_chr,
+        beta_locs_rownames = beta_locs_rownames,
+        chromosomes = chromosomes,
+        seed_ids = seed_ids,
+        seed_beta_index = seed_beta_index,
+        seed_chr = seed_chr,
+        beta_col_names = beta_col_names,
+        use_numeric_sequencing_rows = use_numeric_sequencing_rows,
+        chromosome_runs = beta_chr_runs
+    )
+    task_chromosomes <- names(chromosome_tasks)
+    rm(
+        beta_locs,
+        beta_chr,
+        beta_start,
+        beta_locs_rownames,
+        beta_chr_runs,
+        seed_chr,
+        seed_ids,
+        seed_beta_index,
+        use_numeric_sequencing_rows,
+        seeds_df,
+        chromosomes
+    )
+    if (exists("seeds_locs", inherits = FALSE)) {
+        rm(seeds_locs)
     }
-    chr_results <- vector("list", length(chromosomes))
-    names(chr_results) <- chromosomes
-    for (chr in chromosomes) {
-        .log_step("Processing chromosome ", chr, "...", level = 1)
-        chr_beta_idx <- which(beta_chr == chr)
-        chr_row_ids <- if (is.null(beta_locs_rownames)) chr_beta_idx else beta_row_ids_all[chr_beta_idx]
-        chr_handler <- beta_handler$subset(row_names = chr_row_ids, col_names = beta_col_names)
-        chr_seed_mask <- seed_chr == chr
-        chr_seed_ids <- seed_ids[chr_seed_mask]
-        chr_seed_pvals <- if (is.null(seed_pvals)) NULL else seed_pvals[chr_seed_ids]
-        chr_seed_beta_index <- if (use_numeric_sequencing_rows) {
-            as.integer(seed_beta_index[chr_seed_mask] - chr_beta_idx[1L] + 1L)
-        } else {
-            chr_seed_ids
-        }
-        chr_ret <- withCallingHandlers(
-            .buildDMRsChr(
-                beta_handler = chr_handler,
-                seed_ids = chr_seed_ids,
-                seed_beta_index = chr_seed_beta_index,
-                seed_pvals = chr_seed_pvals,
-                pheno_detection = pheno_detection,
-                group_inds = group_inds,
-                testing_mode_per_group = testing_mode_per_group,
-                empirical_strategy_per_group = empirical_strategy_per_group,
-                beta_col_names_detection = beta_col_names_detection,
-                ext_site_delta_beta = ext_site_delta_beta,
-                array = array,
-                genome = genome,
-                max_pval = max_pval,
-                entanglement = entanglement,
-                ntries = ntries,
-                mid_p = mid_p,
-                max_lookup_dist = max_lookup_dist,
-                expansion_window = expansion_window,
-                max_bridge_seeds_gaps = max_bridge_seeds_gaps,
-                max_bridge_extension_gaps = max_bridge_extension_gaps,
-                min_seeds = min_seeds,
-                min_adj_seeds = min_adj_seeds,
-                min_sites = min_sites,
-                aggfun = aggfun,
-                njobs = njobs,
-                verbose = verbose,
-                .load_debug = .load_debug,
-                pheno = pheno,
-                beta_col_names = beta_col_names,
-                sample_group_col = sample_group_col,
-                covariates = covariates,
-                covariate_models = covariate_models,
-                annotate_with_genes = annotate_with_genes,
-                .score_dmrs = .score_dmrs,
-                extract_motifs = extract_motifs
-            ),
-            warning = function(w) {
-                if (grepl("No DMRs|No connectivity windows", conditionMessage(w))) {
-                    invokeRestart("muffleWarning")
-                }
-            }
+    if (exists("seed_coords", inherits = FALSE)) {
+        rm(seed_coords)
+    }
+    if (exists("bsseq_gr", inherits = FALSE)) {
+        rm(bsseq_gr)
+    }
+    if (exists("beta_row_names", inherits = FALSE)) {
+        rm(beta_row_names)
+    }
+    gc(FALSE)
+
+    chr_parallel_jobs <- suppressWarnings(as.integer(getOption("CMEnt.chr_njobs", 3L)))
+    if (is.na(chr_parallel_jobs) || chr_parallel_jobs < 1L) {
+        chr_parallel_jobs <- 1L
+    }
+    chr_parallel_jobs <- min(chr_parallel_jobs, length(chromosome_tasks), max(1L, njobs))
+    chr_njobs <- if (chr_parallel_jobs > 1L) max(1L, floor(njobs / chr_parallel_jobs)) else njobs
+    memory_njobs <- max(1L, chr_parallel_jobs * chr_njobs)
+    if (chr_parallel_jobs > 1L) {
+        .log_info(
+            "Using ", chr_parallel_jobs, " chromosome job(s) with ", chr_njobs,
+            " inner job(s) per chromosome.",
+            level = 2
         )
-        if (!is.null(chr_ret) && length(chr_ret) > 0L) {
-            chr_results[[chr]] <- chr_ret
-        }
-        rm(chr_handler, chr_ret)
-        gc(verbose = FALSE)
     }
+    if (chr_parallel_jobs > 1L) {
+        chr_results <- .safeBiocParallelApply(
+            chromosome_tasks,
+            .buildDMRsChromosomeTask,
+            beta_handler = beta_handler,
+            pheno_detection = pheno_detection,
+            group_inds = group_inds,
+            testing_mode_per_group = testing_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            beta_col_names_detection = beta_col_names_detection,
+            ext_site_delta_beta = ext_site_delta_beta,
+            array = array,
+            genome = genome,
+            max_pval = max_pval,
+            entanglement = entanglement,
+            ntries = ntries,
+            mid_p = mid_p,
+            max_lookup_dist = max_lookup_dist,
+            expansion_window = expansion_window,
+            max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+            max_bridge_extension_gaps = max_bridge_extension_gaps,
+            min_seeds = min_seeds,
+            min_adj_seeds = min_adj_seeds,
+            min_sites = min_sites,
+            aggfun = aggfun,
+            njobs = chr_njobs,
+            memory_njobs = memory_njobs,
+            verbose = verbose,
+            .load_debug = .load_debug,
+            pheno = pheno,
+            beta_col_names = beta_col_names,
+            sample_group_col = sample_group_col,
+            covariates = covariates,
+            covariate_models = covariate_models,
+            annotate_with_genes = annotate_with_genes,
+            score_dmrs = score_dmrs,
+            extract_motifs = extract_motifs,
+            BPPARAM = .makeBiocParallelParam(
+                chr_parallel_jobs,
+                n_tasks = length(chromosome_tasks)
+            )
+        )
+    } else {
+        chr_results <- lapply(
+            chromosome_tasks,
+            .buildDMRsChromosomeTask,
+            beta_handler = beta_handler,
+            pheno_detection = pheno_detection,
+            group_inds = group_inds,
+            testing_mode_per_group = testing_mode_per_group,
+            empirical_strategy_per_group = empirical_strategy_per_group,
+            beta_col_names_detection = beta_col_names_detection,
+            ext_site_delta_beta = ext_site_delta_beta,
+            array = array,
+            genome = genome,
+            max_pval = max_pval,
+            entanglement = entanglement,
+            ntries = ntries,
+            mid_p = mid_p,
+            max_lookup_dist = max_lookup_dist,
+            expansion_window = expansion_window,
+            max_bridge_seeds_gaps = max_bridge_seeds_gaps,
+            max_bridge_extension_gaps = max_bridge_extension_gaps,
+            min_seeds = min_seeds,
+            min_adj_seeds = min_adj_seeds,
+            min_sites = min_sites,
+            aggfun = aggfun,
+            njobs = chr_njobs,
+            memory_njobs = memory_njobs,
+            verbose = verbose,
+            .load_debug = .load_debug,
+            pheno = pheno,
+            beta_col_names = beta_col_names,
+            sample_group_col = sample_group_col,
+            covariates = covariates,
+            covariate_models = covariate_models,
+            annotate_with_genes = annotate_with_genes,
+            score_dmrs = score_dmrs,
+            extract_motifs = extract_motifs
+        )
+    }
+    names(chr_results) <- task_chromosomes
     chr_results <- chr_results[lengths(chr_results) > 0L]
     if (length(chr_results) == 0L) {
         .log_warn("No DMRs remain after filtering based on min_seeds.")
@@ -3522,9 +4382,22 @@ buildDMRs <- function(
     } else {
         Reduce(c, unname(chr_results))
     }
-    .log_info("Total DMRs identified: ", length(final_dmrs_granges), level = 2)
-    final_ord <- order(as.character(GenomicRanges::seqnames(final_dmrs_granges)), GenomicRanges::start(final_dmrs_granges), GenomicRanges::end(final_dmrs_granges))
+    .log_info("Total DMRs assembled: ", length(final_dmrs_granges), level = 2)
+    final_ord <- order(
+        as.character(GenomicRanges::seqnames(final_dmrs_granges)),
+        GenomicRanges::start(final_dmrs_granges),
+        GenomicRanges::end(final_dmrs_granges)
+    )
     final_dmrs_granges <- final_dmrs_granges[final_ord]
+    final_seed_ids <- unique(unlist(
+        lapply(S4Vectors::mcols(final_dmrs_granges)$seeds, .splitCsvValues),
+        use.names = FALSE
+    ))
+    seed_pvals <- .seedPvaluesForSelectedSeeds(seed_pval_source, final_seed_ids)
+    S4Vectors::mcols(final_dmrs_granges)$pval <- .combineDMRSeedPvalues(
+        S4Vectors::mcols(final_dmrs_granges)$seeds,
+        seed_pvals
+    )
     S4Vectors::mcols(final_dmrs_granges)$qval <- stats::p.adjust(
         S4Vectors::mcols(final_dmrs_granges)$pval,
         method = "BH"

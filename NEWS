@@ -1,0 +1,16 @@
+CHANGES IN VERSION 0.99.9
+-------------------------
+
+NEW FEATURES
+
+    o Initial Bioconductor submission of CMEnt.
+
+SIGNIFICANT USER-VISIBLE CHANGES
+
+    o Added Bioconductor installation instructions and example data attribution
+      for package review.
+
+BUG FIXES
+
+    o Avoid changing installed script file permissions at package load time.
+

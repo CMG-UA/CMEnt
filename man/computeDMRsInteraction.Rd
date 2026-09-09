@@ -23,7 +23,8 @@ computeDMRsInteraction(
 
 \item{genome}{Character. Genome version to use for sequence extraction. Required for data.frame DMRs; inferred from GRanges seqinfo when available.}
 
-\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Required only when \code{beta_locs} is not provided and DMR site IDs are array probe IDs.}
+\item{array}{Character. Array platform type (e.g., "450K", "EPIC"). Required only
+when \code{beta_locs} is not provided and DMR site IDs are array probe IDs.}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8)}
 
@@ -40,7 +41,8 @@ locations will be retrieved using getSortedGenomicLocs (default: NULL)}
 
 \item{plot_dir}{Character. Directory to save diagnostic plots (optional). If NULL, no plots are saved (default: NULL)}
 
-\item{output_prefix}{Character. Prefix for output files to save interactions and components (optional). If NULL, results are not saved to file (default: NULL)}
+\item{output_prefix}{Character. Prefix for output files to save interactions
+and components (optional). If NULL, results are not saved to file (default: NULL)}
 }
 \value{
 A list with:

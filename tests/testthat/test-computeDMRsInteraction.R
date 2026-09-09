@@ -4,19 +4,19 @@
     if (length(dmrs) > size) {
         dmrs <- dmrs[seq_len(size)]
     }
-    if ("pwm" %in% names(mcols(dmrs))) {
-        mcols(dmrs)$pwm <- NULL
-        mcols(dmrs)$consensus_seq <- NULL
+    if ("pwm" %in% names(S4Vectors::mcols(dmrs))) {
+        S4Vectors::mcols(dmrs)$pwm <- NULL
+        S4Vectors::mcols(dmrs)$consensus_seq <- NULL
     }
     dmrs
 }
 
 .loadMotifsAndReduce <- function(dmrs) {
     dmrs <- .reduceAndClearMotifs(dmrs)
-    mcols(dmrs)$pwm <- lapply(seq_along(dmrs), function(i) {
+    S4Vectors::mcols(dmrs)$pwm <- lapply(seq_along(dmrs), function(i) {
         matrix(runif(4 * 12), nrow = 4, dimnames = list(c("A", "T", "G", "C"), NULL))
     })
-    mcols(dmrs)$consensus_seq <- lapply(seq_along(dmrs), function(i) {
+    S4Vectors::mcols(dmrs)$consensus_seq <- lapply(seq_along(dmrs), function(i) {
         paste(sample(c("A", "T", "G", "C"), 10, replace = TRUE), collapse = "")
     })
     dmrs
@@ -52,7 +52,7 @@ test_that("computeDMRsInteraction returns correct structure with valid input", {
 
     expect_s3_class(result$components, "data.frame")
     expect_s4_class(result$dmrs, "GRanges")
-    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
+    expect_true("component_ids" %in% colnames(S4Vectors::mcols(result$dmrs)))
     expect_true(
         all(
             c("component_id", "size", "indices", "avg_pwm", "consensus_seq") %in%
@@ -212,7 +212,7 @@ test_that("computeDMRsInteraction assigns contiguous positive component IDs when
     dmrs <- readRDS(.example_dmrs_path)
     dmrs <- .loadMotifsAndReduce(dmrs)
 
-    mcols(dmrs)$score <- seq_along(dmrs)
+    S4Vectors::mcols(dmrs)$score <- seq_along(dmrs)
 
     result <- suppressWarnings(computeDMRsInteraction(
         dmrs,
@@ -424,6 +424,105 @@ test_that("extractDMRMotifs centers seed windows when DMR starts upstream of fir
     expect_equal(substr(consensus_seq, motif_site_flank_size + 1L, motif_site_flank_size + 2L), "CG")
 })
 
+test_that("extractDMRMotifs warns and ignores seeds missing genomic locations", {
+    motif_site_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_site = "cg_seed1",
+        end_site = "cg_seed2",
+        start_seed = "cg_seed1",
+        end_seed = "cg_seed2",
+        seeds = "cg_seed1,cg_missing,cg_seed2",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(110L, 130L),
+        end = c(111L, 131L),
+        row.names = c("cg_seed1", "cg_seed2"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    site_positions <- beta_locs$start - dmrs$start + 1L + motif_site_flank_size
+    seq_chars[site_positions] <- "C"
+    seq_chars[site_positions + 1L] <- "G"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    motif_log <- capture.output(
+        out <- extractDMRMotifs(
+            dmrs,
+            genome = "hg38",
+            array = NULL,
+            beta_locs = beta_locs,
+            motif_site_flank_size = motif_site_flank_size
+        ),
+        type = "message"
+    )
+
+    expect_true(any(grepl("1 seed(s) were missing genomic locations", motif_log, fixed = TRUE)))
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACGAAAAA")
+})
+
+test_that("extractDMRMotifs rescues BED-style zero-based CpG starts", {
+    motif_site_flank_size <- 5L
+    dmrs <- data.frame(
+        chr = "chr1",
+        start = 100L,
+        end = 140L,
+        start_site = "chr1:109",
+        end_site = "chr1:129",
+        start_seed = "chr1:109",
+        end_seed = "chr1:129",
+        seeds = "chr1:109,chr1:129",
+        stringsAsFactors = FALSE
+    )
+    beta_locs <- data.frame(
+        chr = c("chr1", "chr1"),
+        start = c(109L, 129L),
+        end = c(110L, 130L),
+        row.names = c("chr1:109", "chr1:129"),
+        stringsAsFactors = FALSE
+    )
+
+    seq_len <- dmrs$end - dmrs$start + 1L + motif_site_flank_size + motif_site_flank_size + 1L
+    seq_chars <- rep("A", seq_len)
+    c_positions <- beta_locs$start + 1L - dmrs$start + 1L + motif_site_flank_size
+    seq_chars[c_positions] <- "C"
+    seq_chars[c_positions + 1L] <- "G"
+    sequence <- paste(seq_chars, collapse = "")
+
+    testthat::local_mocked_bindings(
+        .assertDependencyRequirements = function(...) invisible(TRUE),
+        getDMRSequences = function(...) sequence,
+        .package = "CMEnt"
+    )
+
+    out <- expect_warning(
+        extractDMRMotifs(
+            dmrs,
+            genome = "hg38",
+            array = NULL,
+            beta_locs = beta_locs,
+            motif_site_flank_size = motif_site_flank_size
+        ),
+        NA
+    )
+
+    consensus_seq <- as.character(out$consensus_seq[[1]])
+    expect_equal(consensus_seq, "AAAAACGAAAAA")
+})
+
 test_that("extractDMRMotifs ignores seed windows not centered on C", {
     motif_site_flank_size <- 5L
     dmrs <- data.frame(
@@ -491,7 +590,7 @@ test_that("motif similarity tolerates DMRs without valid PWMs", {
         ranges = IRanges::IRanges(start = c(100, 200), width = 20),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
     )
-    mcols(dmrs)$pwm <- list(pwm, NULL)
+    S4Vectors::mcols(dmrs)$pwm <- list(pwm, NULL)
 
     sim <- CMEnt:::.extractMotifsSimilarity(dmrs, motif_site_flank_size = 5)
 
@@ -545,8 +644,8 @@ test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
         ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
     )
-    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
-    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+    S4Vectors::mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    S4Vectors::mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
 
     result <- computeDMRsInteraction(
         dmrs,
@@ -559,9 +658,9 @@ test_that("computeDMRsInteraction annotates returned DMRs with component_ids", {
 
     expect_true("dmrs" %in% names(result))
     expect_s4_class(result$dmrs, "GRanges")
-    expect_true("component_ids" %in% colnames(mcols(result$dmrs)))
+    expect_true("component_ids" %in% colnames(S4Vectors::mcols(result$dmrs)))
     expect_equal(
-        as.character(mcols(result$dmrs)$component_ids),
+        as.character(S4Vectors::mcols(result$dmrs)$component_ids),
         c("1", "1", "1", "2", "2", NA)
     )
 })
@@ -588,8 +687,8 @@ test_that("computeDMRsInteraction writes complete tabular outputs", {
         ranges = IRanges::IRanges(start = seq(1, 600, by = 100), width = 50),
         seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
     )
-    mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
-    mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
+    S4Vectors::mcols(dmrs)$pwm <- list(pwm_a, pwm_a, pwm_a, pwm_t, pwm_t, pwm_uniform)
+    S4Vectors::mcols(dmrs)$consensus_seq <- rep("AAAAAAAAAAAA", length(dmrs))
 
     output_prefix <- file.path(tempdir(), paste0("dmr-interaction-", as.integer(Sys.time())))
     interactions_file <- paste0(output_prefix, ".dmr_interactions.tsv")

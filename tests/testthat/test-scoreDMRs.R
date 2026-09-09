@@ -6,9 +6,9 @@ test_that("scoreDMRs adds score column to DMRs", {
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
-    mcols(dmrs)$score <- NULL
+    S4Vectors::mcols(dmrs)$score <- NULL
 
-    expect_false("score" %in% names(mcols(dmrs)))
+    expect_false("score" %in% names(S4Vectors::mcols(dmrs)))
 
     scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
@@ -19,20 +19,21 @@ test_that("scoreDMRs adds score column to DMRs", {
         sample_group_col = "Sample_Group"
     )
 
-    expect_true("score" %in% names(mcols(scoring_dmrs)))
-    expect_true(all(mcols(scoring_dmrs)$score >= 0))
-    expect_true(all(mcols(scoring_dmrs)$score <= 1))
-    expect_true("score_smoothed" %in% names(mcols(scoring_dmrs)))
-    expect_true("segment_id" %in% names(mcols(scoring_dmrs)))
-    expect_true("segment_slope" %in% names(mcols(scoring_dmrs)))
-    expect_true("block_id" %in% names(mcols(scoring_dmrs)))
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_true(all(S4Vectors::mcols(scoring_dmrs)$score >= 0))
+    expect_true(all(S4Vectors::mcols(scoring_dmrs)$score <= 1))
+    expect_true("score_smoothed" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_true("segment_id" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_true("segment_slope" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_true("block_id" %in% names(S4Vectors::mcols(scoring_dmrs)))
     expect_equal(length(dmrs), length(scoring_dmrs))
 })
 
-test_that("scoreDMRs works when called from buildDMRs with .score_dmrs=TRUE", {
+test_that("scoreDMRs works when called from buildDMRs with score_dmrs=TRUE", {
+    skip_if_not_integration_tests()
 
     dmrs <- buildDMRs(
-        .score_dmrs = TRUE,
+        score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = beta,
@@ -46,9 +47,9 @@ test_that("scoreDMRs works when called from buildDMRs with .score_dmrs=TRUE", {
         max_lookup_dist = 1000
     )
 
-    expect_true("score" %in% names(mcols(dmrs)))
-    expect_true(all(mcols(dmrs)$score >= 0))
-    expect_true(all(mcols(dmrs)$score <= 1))
+    expect_true("score" %in% names(S4Vectors::mcols(dmrs)))
+    expect_true(all(S4Vectors::mcols(dmrs)$score >= 0))
+    expect_true(all(S4Vectors::mcols(dmrs)$score <= 1))
 })
 
 test_that("scoreDMRs accepts a BetaHandler input", {
@@ -63,8 +64,99 @@ test_that("scoreDMRs accepts a BetaHandler input", {
         sample_group_col = "Sample_Group"
     )
 
-    expect_true("score" %in% names(mcols(scoring_dmrs)))
-    expect_true("cv_accuracy" %in% names(mcols(scoring_dmrs)))
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_true("cv_accuracy" %in% names(S4Vectors::mcols(scoring_dmrs)))
+})
+
+test_that("scoreDMRs can reuse preloaded DMR beta values", {
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))[1:2]
+    dmr_sites <- strsplit(as.character(S4Vectors::mcols(dmrs)$sites), ",", fixed = TRUE)
+    required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
+    preloaded_beta <- beta[required_sites, , drop = FALSE]
+
+    scoring_dmrs <- scoreDMRs(
+        dmrs = dmrs,
+        beta = beta,
+        pheno = pheno,
+        array = "450K",
+        genome = "hg19",
+        sample_group_col = "Sample_Group",
+        njobs = 1,
+        .dmr_beta = preloaded_beta
+    )
+
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs)))
+    expect_error(
+        scoreDMRs(
+            dmrs = dmrs,
+            beta = beta,
+            pheno = pheno,
+            array = "450K",
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            njobs = 1,
+            .dmr_beta = preloaded_beta[-1, , drop = FALSE]
+        ),
+        "missing DMR sites"
+    )
+})
+
+test_that("scoreDMRs materialization chunk rows are derived from available RAM", {
+    chunk_rows <- CMEnt:::.scoringMaterializationChunkRows(
+        n_samples = 6,
+        njobs = 2,
+        n_rows = 5000,
+        available_ram_bytes = 1024^2
+    )
+    expect_equal(chunk_rows, floor(0.9 * 1024^2 / (2 * 6 * 8 * 12)))
+    expect_equal(
+        CMEnt:::.scoringMaterializationChunkRows(6, 2, 10, available_ram_bytes = 1024^2),
+        10L
+    )
+})
+
+test_that("scoreDMRs materialization chunks respect unique transformed row budget", {
+    chunks <- CMEnt:::.scoreDMRIndexChunks(
+        list(
+            c(1L, 2L),
+            c(2L, 3L),
+            c(3L, 4L),
+            c(10L, 11L, 12L),
+            c(12L)
+        ),
+        max_unique_rows = 3L
+    )
+
+    expect_identical(chunks, list(1:2, 3L, 4:5))
+    expect_identical(
+        CMEnt:::.scoreDMRIndexChunks(list(1:5, 5L), max_unique_rows = 3L),
+        list(1L, 2L)
+    )
+})
+
+test_that("scoreDMRs internal memory job budget tightens materialization chunks", {
+    dmrs <- readRDS(system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt"))[1:4]
+    dmr_sites <- strsplit(as.character(S4Vectors::mcols(dmrs)$sites), ",", fixed = TRUE)
+    required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
+    preloaded_beta <- beta[required_sites, , drop = FALSE]
+
+    local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
+    expect_message(
+        scoreDMRs(
+            dmrs = dmrs,
+            beta = beta,
+            pheno = pheno,
+            array = "450K",
+            genome = "hg19",
+            sample_group_col = "Sample_Group",
+            njobs = 1,
+            verbose = 3,
+            show_progress = FALSE,
+            .dmr_beta = preloaded_beta,
+            .memory_njobs = 4L
+        ),
+        "4 budgeted job\\(s\\)"
+    )
 })
 
 test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
@@ -116,9 +208,10 @@ test_that("scoreDMRs infers beta row names for DMRs without sites metadata", {
 })
 
 test_that("ignored_sample_groups affects detection only, not downstream scoring", {
+    skip_if_not_integration_tests()
 
     dmrs <- buildDMRs(
-        .score_dmrs = TRUE,
+        score_dmrs = TRUE,
         annotate_with_genes = FALSE,
         extract_motifs = FALSE,
         beta = beta,
@@ -135,15 +228,15 @@ test_that("ignored_sample_groups affects detection only, not downstream scoring"
     )
 
     expect_s4_class(dmrs, "GRanges")
-    expect_true("score" %in% names(mcols(dmrs)))
-    expect_true("cv_accuracy" %in% names(mcols(dmrs)))
+    expect_true("score" %in% names(S4Vectors::mcols(dmrs)))
+    expect_true("cv_accuracy" %in% names(S4Vectors::mcols(dmrs)))
 })
 
 test_that("scoreDMRs score values are meaningful", {
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
-    mcols(dmrs)$score <- NULL
+    S4Vectors::mcols(dmrs)$score <- NULL
 
     scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
@@ -154,15 +247,15 @@ test_that("scoreDMRs score values are meaningful", {
         sample_group_col = "Sample_Group"
     )
 
-    expect_true(length(unique(mcols(scoring_dmrs)$score)) > 1)
-    expect_true(any(mcols(scoring_dmrs)$score > 0.5))
+    expect_true(length(unique(S4Vectors::mcols(scoring_dmrs)$score)) > 1)
+    expect_true(any(S4Vectors::mcols(scoring_dmrs)$score > 0.5))
 })
 
 test_that("scoreDMRs works with different nfold values", {
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
-    mcols(dmrs)$score <- NULL
+    S4Vectors::mcols(dmrs)$score <- NULL
 
     options(CMEnt.scoring_nfold = 3)
     scoring_dmrs_3fold <- scoreDMRs(
@@ -184,8 +277,8 @@ test_that("scoreDMRs works with different nfold values", {
         sample_group_col = "Sample_Group"
     )
 
-    expect_true("score" %in% names(mcols(scoring_dmrs_3fold)))
-    expect_true("score" %in% names(mcols(scoring_dmrs_5fold)))
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs_3fold)))
+    expect_true("score" %in% names(S4Vectors::mcols(scoring_dmrs_5fold)))
     expect_equal(length(scoring_dmrs_3fold), length(scoring_dmrs_5fold))
 })
 
@@ -193,7 +286,7 @@ test_that("scoreDMRs returns DMRs ordered by p-value", {
 
     example_output_path <- system.file("extdata", "example_outputChr5And11.rds", package = "CMEnt")
     dmrs <- readRDS(example_output_path)
-    mcols(dmrs)$score <- NULL
+    S4Vectors::mcols(dmrs)$score <- NULL
 
     scoring_dmrs <- scoreDMRs(
         dmrs = dmrs,
@@ -204,7 +297,7 @@ test_that("scoreDMRs returns DMRs ordered by p-value", {
         sample_group_col = "Sample_Group"
     )
 
-    pvals <- mcols(scoring_dmrs)$pval
+    pvals <- S4Vectors::mcols(scoring_dmrs)$pval
     expect_true(all(diff(pvals) >= 0))
 })
 

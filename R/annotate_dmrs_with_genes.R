@@ -1,3 +1,30 @@
+.trimGeneBodiesByPromoters <- function(genes, promoters) {
+    if (length(genes) == 0L || length(promoters) == 0L) {
+        return(genes)
+    }
+    genes_unstranded <- genes
+    promoters_unstranded <- promoters
+    GenomicRanges::strand(genes_unstranded) <- "*"
+    GenomicRanges::strand(promoters_unstranded) <- "*"
+    promoter_free <- GenomicRanges::setdiff(genes_unstranded, promoters_unstranded, ignore.strand = TRUE)
+    if (length(promoter_free) == 0L) {
+        return(genes[FALSE])
+    }
+    hits <- GenomicRanges::findOverlaps(promoter_free, genes, ignore.strand = TRUE)
+    if (length(hits) == 0L) {
+        return(genes)
+    }
+    gene_hits <- S4Vectors::subjectHits(hits)
+    gene_bodies <- GenomicRanges::pintersect(
+        genes[gene_hits],
+        promoter_free[S4Vectors::queryHits(hits)],
+        ignore.strand = TRUE
+    )
+    names(gene_bodies) <- names(genes)[gene_hits]
+    S4Vectors::mcols(gene_bodies) <- S4Vectors::mcols(genes)[gene_hits, , drop = FALSE]
+    gene_bodies
+}
+
 .loadGeneAnnotationFeatures <- function(genome, promoter_upstream = 2000,
                                         promoter_downstream = 200,
                                         context = "gene annotation") {
@@ -7,7 +34,7 @@
     )
     target_genome <- tolower(genome)
     annotation_source_genome <- if (target_genome == "hs1") "hg38" else target_genome
-    annotation_pkgs <- .assertGeneAnnotationPackagesInstalled(
+    annotation_pkgs <- .assertGeneAnnotPkgsInstalled(
         genome = genome,
         context = context
     )
@@ -20,7 +47,7 @@
             level = 2
         )
     }
-    .log_step("Loading gene annotations for ", genome, "...", level = 2)
+    .log_step("Loading gene annotations for ", genome, "...", level = 3)
 
     # Load TxDb namespace
     if (!isNamespaceLoaded(txdb_pkg)) {
@@ -69,7 +96,7 @@
                 }
             )
         }
-        promoters_key <- paste0("promoters_", genome)
+        promoters_key <- paste0("promoters_", genome, "_u", promoter_upstream, "_d", promoter_downstream)
         promoters <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
             .readBiocFileCacheRDS(cache_dir, promoters_key)
         } else {
@@ -81,7 +108,7 @@
             transcripts_by_gene <- GenomicFeatures::transcriptsBy(txdb, by = "gene")
             transcripts_by_gene <- transcripts_by_gene[names(transcripts_by_gene) %in% names(genes)]
             promoters <- GenomicFeatures::promoters(transcripts_by_gene, upstream = promoter_upstream, downstream = promoter_downstream)
-            promoters <- stack(promoters)
+            promoters <- S4Vectors::stack(promoters)
             if (annotation_source_genome != target_genome) {
                 promoters <- .liftOverFromGenomeToGenome(promoters, annotation_source_genome, target_genome)
                 target_std_chroms <- GenomeInfoDb::standardChromosomes(GenomeInfoDb::Seqinfo(genome = target_genome))
@@ -106,7 +133,8 @@
             )
         }
     })
-    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 2)
+    genes <- .trimGeneBodiesByPromoters(genes, promoters)
+    .log_success("Gene annotations loaded: ", length(genes), " genes", level = 3)
     list(genes = genes, promoters = promoters, orgdb_pkg = orgdb_pkg)
 }
 
@@ -183,8 +211,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     promoters <- annotation_features$promoters
     orgdb_pkg <- annotation_features$orgdb_pkg
 
-    .log_step("Finding overlaps with promoters and gene bodies...", level = 2)
-    .log_step("Mapping overlapping Entrez IDs to gene symbols...", level = 2)
+    .log_step("Finding overlaps with promoters and gene bodies...", level = 3)
     annotation_specs <- list(
         list(
             column = "in_promoter_of",
@@ -199,30 +226,39 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
             feature_type = "gene_body"
         )
     )
-    bp_param <- .makeBiocParallelParam(
-        njobs,
-        n_tasks = length(annotation_specs),
-        progressbar = getOption("CMEnt.verbose", 0) > 0L
-    )
-    annotation_results <- BiocParallel::bplapply(
-        annotation_specs,
-        function(spec) {
-            list(
-                column = spec$column,
-                values = .annotateDMRsWithGeneFeature(
-                    dmrs = dmrs,
-                    features = spec$features,
-                    orgdb_pkg = orgdb_pkg,
-                    feature_type = spec$feature_type
-                )
+    task <- function(spec) {
+        list(
+            column = spec$column,
+            values = .annotateDMRsWithGeneFeature(
+                dmrs = dmrs,
+                features = spec$features,
+                orgdb_pkg = orgdb_pkg,
+                feature_type = spec$feature_type
             )
-        },
-        BPPARAM = bp_param
-    )
+        )
+    }
+    if (njobs > 1) {
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = length(annotation_specs),
+            progressbar = FALSE,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
+        )
+        annotation_results <- .safeBiocParallelApply(
+            annotation_specs,
+            task,
+            BPPARAM = bp_param
+        )
+    } else {
+        annotation_results <- lapply(
+            annotation_specs,
+            task
+        )
+    }
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
-    delta_beta_annotations <- .annotateDMRSiteDeltaBetaByFeature(
+    delta_beta_annotations <- .annotateDMRSiteDBByFeature(
         dmrs = dmrs,
         annotation_specs = annotation_specs,
         site_locs = site_locs,
@@ -233,7 +269,7 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     for (delta_column in names(delta_beta_annotations)) {
         S4Vectors::mcols(dmrs)[[delta_column]] <- delta_beta_annotations[[delta_column]]
     }
-    .log_success("Gene symbols mapped", level = 2)
+    .log_success("Gene symbols mapped", level = 3)
     if (dmrs_df_provided) {
         dmrs <- .convertToDataFrame(dmrs)
     }
@@ -242,8 +278,10 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
 
 #' @keywords internal
 #' @noRd
-.annotateDMRSiteDeltaBetaByFeature <- function(dmrs, annotation_specs, site_locs,
-                                               site_delta_beta, aggfun, genome) {
+.annotateDMRSiteDBByFeature <- function(
+    dmrs, annotation_specs, site_locs,
+    site_delta_beta, aggfun, genome
+) {
     out <- stats::setNames(
         replicate(length(annotation_specs), rep(NA_real_, length(dmrs)), simplify = FALSE),
         vapply(annotation_specs, `[[`, character(1), "delta_column")
@@ -257,16 +295,20 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     } else {
         names(site_locs)
     }
-    site_locs <- .convertToGRanges(site_locs, genome)
-    if (!is.null(site_names) &&
-        length(site_names) == length(site_locs) &&
-        all(!is.na(site_names)) &&
-        all(nzchar(site_names))) {
+    site_locs <- .convertSitesToGPos(site_locs, genome)
+    if (
+        !is.null(site_names) &&
+            length(site_names) == length(site_locs) &&
+            all(!is.na(site_names)) &&
+            all(nzchar(site_names))
+    ) {
         names(site_locs) <- site_names
     }
-    if (is.null(names(site_locs)) ||
-        anyNA(names(site_locs)) ||
-        any(!nzchar(names(site_locs)))) {
+    if (
+        is.null(names(site_locs)) ||
+            anyNA(names(site_locs)) ||
+            any(!nzchar(names(site_locs)))
+    ) {
         return(out)
     }
 
@@ -279,28 +321,40 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     if (length(site_locs) == 0L) {
         return(out)
     }
-    site_delta_beta <- site_delta_beta[names(site_locs)]
+    site_names <- names(site_locs)
+    site_delta_beta <- site_delta_beta[site_names]
 
     mcols_names <- colnames(S4Vectors::mcols(dmrs))
     if ("sites" %in% mcols_names) {
-        dmr_site_ids <- lapply(as.character(S4Vectors::mcols(dmrs)$sites), .splitCsvValues)
+        dmr_sites_list <- lapply(
+            as.character(S4Vectors::mcols(dmrs)$sites),
+            .splitCsvValues
+        )
+        dmr_site_idx <- .matchListToReference(
+            dmr_sites_list,
+            site_names,
+            unique_matches = TRUE
+        )
     } else {
         site_hits <- GenomicRanges::findOverlaps(dmrs, site_locs, ignore.strand = TRUE)
-        dmr_site_ids <- vector("list", length(dmrs))
+        dmr_site_idx <- vector("list", length(dmrs))
         if (length(site_hits) > 0L) {
             hits_by_dmr <- split(
                 S4Vectors::subjectHits(site_hits),
                 S4Vectors::queryHits(site_hits)
             )
-            dmr_site_ids[as.integer(names(hits_by_dmr))] <- lapply(
+            dmr_site_idx[as.integer(names(hits_by_dmr))] <- lapply(
                 hits_by_dmr,
-                function(i) names(site_locs)[i]
+                unique
             )
         }
     }
 
-    aggregate_delta <- function(ids) {
-        vals <- site_delta_beta[unique(ids)]
+    aggregate_delta <- function(idx) {
+        if (length(idx) == 0L) {
+            return(NA_real_)
+        }
+        vals <- site_delta_beta[idx]
         vals <- vals[is.finite(vals)]
         if (length(vals) == 0L) {
             return(NA_real_)
@@ -324,10 +378,12 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
         if (length(feature_hits) == 0L) {
             next
         }
-        feature_site_ids <- unique(names(site_locs)[S4Vectors::queryHits(feature_hits)])
+        feature_site_idx <- unique(S4Vectors::queryHits(feature_hits))
+        feature_site_mask <- rep(FALSE, length(site_locs))
+        feature_site_mask[feature_site_idx] <- TRUE
         out[[spec$delta_column]] <- vapply(
-            dmr_site_ids,
-            function(ids) aggregate_delta(intersect(ids, feature_site_ids)),
+            dmr_site_idx,
+            function(idx) aggregate_delta(idx[feature_site_mask[idx]]),
             numeric(1)
         )
     }

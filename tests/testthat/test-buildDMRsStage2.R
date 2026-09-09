@@ -18,7 +18,7 @@ test_that("buildDMRs Stage 2 single pass connectivity array outputs with ugap", 
     conn$reason[10] <- "end-of-input"
     splits <- matrix(c(1, 8), ncol = 2)
     expect_no_error(
-        CMEnt:::.buildConnectivityArraySinglePass(
+        CMEnt:::.buildCASinglePass(
             beta_handler = bh, beta_locs = locs, pheno = pheno, group_inds = gi,
             testing_mode_per_group = c(A = "parametric", B = "parametric"),
             empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -60,7 +60,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
     )
     splits <- matrix(c(1, 5), ncol = 2)
 
-    ret1 <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret1 <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -70,7 +70,7 @@ test_that("bridge recheck follows runs containing newly bridged edges", {
     expect_true(ret1$connectivity_array$connected[[2]])
     expect_equal(ret1$recheck, 2L)
 
-    ret2 <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret2 <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = gi, testing_mode_per_group = c(A = "parametric", B = "parametric"),
         empirical_strategy_per_group = c(A = "auto", B = "auto"), max_pval = 0.05,
@@ -116,7 +116,7 @@ test_that("bridge recheck keeps the minimum p-value observed for bridged edges",
         stringsAsFactors = FALSE
     )
 
-    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = list(A = seq_along(x)),
         testing_mode_per_group = c(A = "parametric"),
@@ -171,7 +171,7 @@ test_that("downstream bridge recheck shifts back when the forward candidate is t
         stringsAsFactors = FALSE
     )
 
-    ret <- CMEnt:::.buildConnectivityArraySinglePass(
+    ret <- CMEnt:::.buildCASinglePass(
         beta_handler = bh, beta_locs = locs, pheno = pheno,
         group_inds = list(A = seq_along(x)),
         testing_mode_per_group = c(A = "parametric"),
@@ -209,6 +209,97 @@ test_that("connectivity chunk size is derived from available RAM", {
         CMEnt:::.connectivityChunkSize(6, 2, 10, available_ram_bytes = 1024^2),
         10L
     )
+})
+
+test_that("available RAM uses cgroup limit when it is tighter than host meminfo", {
+    meminfo <- tempfile()
+    limit <- tempfile()
+    current <- tempfile()
+    writeLines(c(
+        "MemTotal:       1048576 kB",
+        "MemAvailable:    900000 kB"
+    ), meminfo)
+    writeLines(as.character(800 * 1024^2), limit)
+    writeLines(as.character(300 * 1024^2), current)
+
+    expect_equal(
+        CMEnt:::.availableRamBytes(
+            meminfo_path = meminfo,
+            cgroup_limit_paths = limit,
+            cgroup_current_paths = current
+        ),
+        500 * 1024^2
+    )
+
+    writeLines("max", limit)
+    expect_equal(
+        CMEnt:::.availableRamBytes(
+            meminfo_path = meminfo,
+            cgroup_limit_paths = limit,
+            cgroup_current_paths = current
+        ),
+        900000 * 1024
+    )
+})
+
+test_that("connectivity single pass budgets chunks with nested worker count", {
+    set.seed(42)
+    n_sites <- 1200L
+    n_samples <- 6L
+    site_ids <- paste0("cg", seq_len(n_sites))
+    beta <- matrix(runif(n_sites * n_samples), nrow = n_sites)
+    rownames(beta) <- site_ids
+    colnames(beta) <- paste0("S", seq_len(n_samples))
+    locs <- data.frame(
+        chr = rep("chr1", n_sites),
+        start = seq_len(n_sites) * 10L,
+        end = seq_len(n_sites) * 10L + 1L,
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    bh <- getBetaHandler(beta = beta, sorted_locs = locs)
+    pheno <- data.frame(
+        Sample_Group = rep(c("A", "B"), each = n_samples / 2L),
+        row.names = colnames(beta),
+        stringsAsFactors = FALSE
+    )
+    pheno[[CMEnt:::.CASE_CONTROL_COL]] <- rep(c(0L, 1L), each = n_samples / 2L)
+    group_inds <- split(seq_len(n_samples), pheno$Sample_Group)
+
+    local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
+    ret <- CMEnt:::.buildCASinglePass(
+        beta_handler = bh,
+        beta_locs = locs,
+        pheno = pheno,
+        group_inds = group_inds,
+        testing_mode_per_group = c(A = "parametric", B = "parametric"),
+        empirical_strategy_per_group = c(A = "auto", B = "auto"),
+        col_names = colnames(beta),
+        max_pval = 0.05,
+        ext_site_delta_beta = NA_real_,
+        max_lookup_dist = 1000,
+        entanglement = "strong",
+        aggfun = stats::median,
+        ntries = 0,
+        mid_p = FALSE,
+        njobs = 2L,
+        memory_njobs = 4L
+    )
+
+    expected_chunk <- CMEnt:::.connectivityChunkSize(
+        n_samples = n_samples,
+        njobs = 4L,
+        n_pairs = n_sites - 1L,
+        available_ram_bytes = 1024^2
+    )
+    split_widths <- as.integer(ret$splits[, 2L] - ret$splits[, 1L] + 1L)
+    expect_true(all(split_widths <= expected_chunk))
+    expect_gt(nrow(ret$splits), ceiling((n_sites - 1L) / CMEnt:::.connectivityChunkSize(
+        n_samples = n_samples,
+        njobs = 2L,
+        n_pairs = n_sites - 1L,
+        available_ram_bytes = 1024^2
+    )))
 })
 
 test_that("BiocParallel connectivity matches sequential connectivity over multiple chunks", {
@@ -251,10 +342,10 @@ test_that("BiocParallel connectivity matches sequential connectivity over multip
         mid_p = FALSE
     )
 
-    seq_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 1L)))
+    seq_ret <- do.call(CMEnt:::.buildCASinglePass, c(args, list(njobs = 1L)))
     withr::local_options(list(CMEnt.min_pairs_for_parallel = 1L))
     local_mocked_bindings(.availableRamBytes = function(default_gb = 2) 1024^2)
-    bp_ret <- do.call(CMEnt:::.buildConnectivityArraySinglePass, c(args, list(njobs = 2L)))
+    bp_ret <- do.call(CMEnt:::.buildCASinglePass, c(args, list(njobs = 2L)))
 
     expect_gt(nrow(bp_ret$splits), 1L)
     expect_equal(seq_ret$connectivity_array, bp_ret$connectivity_array)
@@ -292,4 +383,80 @@ test_that("connectivity split pooling does not invent chunks beyond natural chun
         min_splits = 4L
     )
     expect_equal(nrow(sparse), 2L)
+})
+
+test_that("Stage 2 DMR expansion chunk handles boundaries and bridged sites", {
+    site_ids <- paste0("cg", seq_len(6))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = seq(100L, 600L, 100L),
+        end = seq(101L, 601L, 100L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    connectivity <- data.frame(
+        connected = c(FALSE, TRUE, TRUE, FALSE, TRUE, FALSE),
+        pval = NA_real_,
+        reason = c("u-stop", "bridged", "", "d-stop", "bridged", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+    dmrs <- data.frame(
+        start_seed = c("cg3", "cg1", "cg5"),
+        end_seed = c("cg3", "cg1", "cg6"),
+        stringsAsFactors = FALSE
+    )
+
+    ret <- CMEnt:::.expandDMRChunk(
+        dmr_inds = seq_len(nrow(dmrs)),
+        dmrs = dmrs,
+        connectivity_array = connectivity,
+        locs = locs,
+        min_sites = 2L,
+        locs_idx_map = setNames(seq_along(site_ids), site_ids),
+        expansion_boundaries = CMEnt:::.buildExpansionBoundaryLookup(connectivity)
+    )
+    out <- ret
+    rownames(out) <- NULL
+
+    expect_equal(nrow(out), 3L)
+    expect_identical(out$start_site, c("cg2", "cg1", "cg5"))
+    expect_identical(out$end_site, c("cg4", "cg1", "cg6"))
+    expect_identical(out$start, c(200L, 100L, 500L))
+    expect_identical(out$end, c(400L, 100L, 600L))
+    expect_identical(out$upstream_expansion_stop_reason, c("u-stop", "min-sites-not-reached", "d-stop"))
+    expect_identical(out$downstream_expansion_stop_reason, c("d-stop", "min-sites-not-reached", "end-of-input"))
+    expect_identical(out$upstream_sites, c("", "", ""))
+    expect_identical(out$downstream_sites, c("cg4", "", ""))
+    expect_identical(out$upstream_expansion_length, c(0L, 0L, 0L))
+    expect_identical(out$downstream_expansion_length, c(1L, 0L, 0L))
+})
+
+test_that("Stage 2 DMR expansion chunk reports missing seed rows", {
+    site_ids <- paste0("cg", seq_len(3))
+    locs <- data.frame(
+        chr = rep("chr1", length(site_ids)),
+        start = seq(100L, 300L, 100L),
+        end = seq(101L, 301L, 100L),
+        row.names = site_ids,
+        stringsAsFactors = FALSE
+    )
+    connectivity <- data.frame(
+        connected = c(TRUE, TRUE, FALSE),
+        pval = NA_real_,
+        reason = c("", "", "end-of-input"),
+        stringsAsFactors = FALSE
+    )
+
+    expect_error(
+        CMEnt:::.expandDMRChunk(
+            dmr_inds = 1L,
+            dmrs = data.frame(start_seed = "missing", end_seed = "cg2", stringsAsFactors = FALSE),
+            connectivity_array = connectivity,
+            locs = locs,
+            min_sites = 2L,
+            locs_idx_map = setNames(seq_along(site_ids), site_ids),
+            expansion_boundaries = CMEnt:::.buildExpansionBoundaryLookup(connectivity)
+        ),
+        "Could not find the start site missing"
+    )
 })

@@ -172,8 +172,8 @@ augmentBSSeq <- function(
 
     n_sites <- nrow(bsseq_filtered)
     n_orig_samples <- ncol(cov)
-    chr <- as.character(seqnames(bsseq_filtered))
-    pos <- start(bsseq_filtered)
+    chr <- as.character(GenomeInfoDb::seqnames(bsseq_filtered))
+    pos <- GenomicRanges::start(bsseq_filtered)
     if (is.null(calibration_samples)) {
         calibration_samples <- min(max(50L, n_orig_samples, n_new_samples), 200L)
     }
@@ -196,7 +196,7 @@ augmentBSSeq <- function(
 
     # Raw per-site variance across samples (used to estimate Beta concentration).
     meth_obs_n <- rowSums(valid_cov, na.rm = TRUE)
-    site_var <- apply(meth_prop, 1, var, na.rm = TRUE)
+    site_var <- apply(meth_prop, 1, stats::var, na.rm = TRUE)
 
     # Convert moments to concentration (kappa). Larger kappa => lower variance.
     mean_var_cap <- pmax(site_mean * (1 - site_mean), 1e-6)
@@ -205,7 +205,7 @@ augmentBSSeq <- function(
     kappa_obs[!is.finite(kappa_obs)] <- NA_real_
 
     # Empirical prior concentration across informative sites.
-    kappa_emp <- median(kappa_obs[meth_obs_n >= 3 & !is.na(kappa_obs)], na.rm = TRUE)
+    kappa_emp <- stats::median(kappa_obs[meth_obs_n >= 3 & !is.na(kappa_obs)], na.rm = TRUE)
     if (!is.finite(kappa_emp)) kappa_emp <- 20
     kappa_prior <- max(12, kappa_emp)
 
@@ -400,15 +400,18 @@ augmentBSSeq <- function(
         if (!is.finite(max_gap)) max_gap <- default_gap
         max_length <- max(default_length, initial_length, max_gap, 1) * 1000
 
-        candidate_lengths <- numeric()
-        candidate_corrs <- numeric()
+        candidate_state <- new.env(parent = emptyenv())
+        candidate_state$lengths <- numeric()
+        candidate_state$corrs <- numeric()
         evaluate <- function(length_scale) {
             corr <- evaluate_corr(length_scale)
-            candidate_lengths <<- c(candidate_lengths, length_scale)
-            candidate_corrs <<- c(candidate_corrs, corr)
+            candidate_state$lengths <- c(candidate_state$lengths, length_scale)
+            candidate_state$corrs <- c(candidate_state$corrs, corr)
             corr
         }
         best_length <- function() {
+            candidate_lengths <- candidate_state$lengths
+            candidate_corrs <- candidate_state$corrs
             valid <- is.finite(candidate_corrs)
             if (!any(valid)) {
                 return(initial_length)

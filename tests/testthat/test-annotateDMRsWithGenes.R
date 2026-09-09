@@ -1,4 +1,28 @@
 options("CMEnt.verbose" = 0)
+
+test_that("gene bodies exclude promoter intervals", {
+    genes <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(c(100L, 500L, 900L), c(300L, 800L, 1000L)),
+        strand = c("+", "-", "+")
+    )
+    names(genes) <- c("gene1", "gene2", "gene3")
+
+    promoters <- GenomicRanges::GRanges(
+        seqnames = "chr1",
+        ranges = IRanges::IRanges(c(50L, 750L, 250L), c(120L, 850L, 550L)),
+        strand = c("+", "-", "+")
+    )
+    S4Vectors::mcols(promoters)$name <- c("gene1", "gene2", "gene3")
+
+    gene_bodies <- CMEnt:::.trimGeneBodiesByPromoters(genes, promoters)
+
+    expect_equal(as.character(GenomicRanges::seqnames(gene_bodies)), rep("chr1", 3))
+    expect_equal(GenomicRanges::start(gene_bodies), c(121L, 551L, 900L))
+    expect_equal(GenomicRanges::end(gene_bodies), c(249L, 749L, 1000L))
+    expect_equal(names(gene_bodies), c("gene1", "gene2", "gene3"))
+})
+
 test_that("annotateDMRsWithGenes matches between sequential and parallel execution", {
     skip_on_cran()
     skip_if_offline()
@@ -55,7 +79,7 @@ test_that("feature-specific delta beta uses DMR sites within annotated regions",
     )
     delta_beta <- c(cg1 = 0.2, cg2 = 0.4, cg3 = -0.1, cg4 = 0.8)
 
-    annotated_delta <- CMEnt:::.annotateDMRSiteDeltaBetaByFeature(
+    annotated_delta <- CMEnt:::.annotateDMRSiteDBByFeature(
         dmrs = dmrs,
         annotation_specs = annotation_specs,
         site_locs = site_locs,
@@ -66,4 +90,48 @@ test_that("feature-specific delta beta uses DMR sites within annotated regions",
 
     expect_equal(annotated_delta$delta_beta_promoter, c(0.3, NA_real_))
     expect_equal(annotated_delta$delta_beta_gene_body, c(-0.1, 0.8))
+})
+
+test_that("feature-specific delta beta aggregates site indices without duplicate weighting", {
+    dmrs <- GenomicRanges::GRanges(
+        seqnames = c("chr1", "chr1"),
+        ranges = IRanges::IRanges(start = c(100, 500), end = c(300, 700)),
+        seqinfo = GenomeInfoDb::Seqinfo(genome = "hg38")
+    )
+    dmrs_with_sites <- dmrs
+    S4Vectors::mcols(dmrs_with_sites)$sites <- c("cg1,cg1,cg2,cg_missing", "cg3")
+
+    site_locs <- data.frame(
+        chr = "chr1",
+        start = c(110L, 160L, 600L),
+        end = c(110L, 160L, 600L),
+        row.names = paste0("cg", 1:3)
+    )
+    annotation_specs <- list(
+        list(
+            delta_column = "delta_beta_promoter",
+            features = GenomicRanges::GRanges("chr1", IRanges::IRanges(100, 175))
+        )
+    )
+    delta_beta <- c(cg1 = 0.2, cg2 = 0.6, cg3 = 0.8)
+
+    annotated_with_sites <- CMEnt:::.annotateDMRSiteDBByFeature(
+        dmrs = dmrs_with_sites,
+        annotation_specs = annotation_specs,
+        site_locs = site_locs,
+        site_delta_beta = delta_beta,
+        aggfun = mean,
+        genome = "hg38"
+    )
+    annotated_by_overlap <- CMEnt:::.annotateDMRSiteDBByFeature(
+        dmrs = dmrs,
+        annotation_specs = annotation_specs,
+        site_locs = site_locs,
+        site_delta_beta = delta_beta,
+        aggfun = mean,
+        genome = "hg38"
+    )
+
+    expect_equal(annotated_with_sites$delta_beta_promoter, c(0.4, NA_real_))
+    expect_equal(annotated_by_overlap$delta_beta_promoter, c(0.4, NA_real_))
 })

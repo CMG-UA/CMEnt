@@ -2,6 +2,35 @@ options("CMEnt.verbose" = 0)
 
 loadExampleInputDataChr5And11()
 
+test_that("Circos interaction legend labels keep sequences and JASPAR matches on separate lines", {
+    label <- CMEnt:::.formatCircosInteractionLegendLabel(
+        score = 0.91,
+        size = 2,
+        sequence = "CCGG",
+        jaspar_names = "KLF7,ELF1,SP1,CEBPB",
+        jaspar_corr = "0.95,0.9,0.88,0.84"
+    )
+    lines <- strsplit(label, "\n", fixed = TRUE)[[1]]
+
+    expect_length(lines, 2L)
+    expect_equal(lines[1], "[score=0.91] [n=2] CCGG")
+    expect_equal(lines[2], "JASPAR matches: KLF7 (0.95) | ELF1 (0.9) | SP1 (0.88) | ...")
+})
+
+test_that("hg19 cytobands fall back to circlize bundled data when UCSC is unavailable", {
+    local_mocked_bindings(
+        .readBiocFileCacheRDS = function(...) NULL,
+        .downloadFirstAvailable = function(...) stop("UCSC unavailable"),
+        .package = "CMEnt"
+    )
+
+    cytoband <- CMEnt:::.getCytobandData("hg19")
+
+    expect_s3_class(cytoband, "data.frame")
+    expect_equal(colnames(cytoband), paste0("V", 1:5))
+    expect_true(all(c("chr5", "chr11") %in% cytoband$V1))
+})
+
 test_that("plotDMRsCircos creates a circos plot", {
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
@@ -25,6 +54,7 @@ test_that("plotDMRsCircos creates a circos plot", {
 })
 
 test_that("plotDMRsCircos works with interactions", {
+    skip_if_not_integration_tests()
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
 
@@ -260,12 +290,13 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
     pheno <- data.frame(Sample_Group = "case", row.names = "S1")
 
-    extracted_n <- NA_integer_
+    extracted <- new.env(parent = emptyenv())
+    extracted$n <- NA_integer_
     stub(
         plotDMRsCircos,
         "extractDMRMotifs",
         function(dmrs, ...) {
-            extracted_n <<- length(dmrs)
+            extracted$n <- length(dmrs)
             S4Vectors::mcols(dmrs)$pwm <- replicate(
                 length(dmrs),
                 matrix(0.25, nrow = 4, ncol = 10),
@@ -299,7 +330,7 @@ test_that("plotDMRsCircos extracts motifs only for scoped DMRs", {
             region = "chr1:50-250"
         )
     )
-    expect_equal(extracted_n, 1L)
+    expect_equal(extracted$n, 1L)
 })
 
 test_that("plotDMRsCircos skips non-drawable gneg-only ideograms without warning", {
@@ -391,12 +422,13 @@ test_that("plotDMRsCircos reuses precomputed interactions without extracting mot
     beta_handler <- getBetaHandler(beta = beta, sorted_locs = sorted_locs)
     pheno <- data.frame(Sample_Group = "case", row.names = "S1")
 
-    extracted_motifs <- FALSE
+    extracted <- new.env(parent = emptyenv())
+    extracted$motifs <- FALSE
     stub(
         plotDMRsCircos,
         "extractDMRMotifs",
         function(...) {
-            extracted_motifs <<- TRUE
+            extracted$motifs <- TRUE
             stop("extractDMRMotifs should not run when precomputed interactions are supplied")
         }
     )
@@ -446,7 +478,7 @@ test_that("plotDMRsCircos reuses precomputed interactions without extracting mot
             query_components_with_jaspar = FALSE
         )
     )
-    expect_false(extracted_motifs)
+    expect_false(extracted$motifs)
 })
 
 test_that(".selectCircosRegions respects region caps and block priority", {
@@ -568,8 +600,7 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
 
     dmrs_subset <- dmrs[seq_len(min(12, length(dmrs)))]
     selected <- NULL
-    expect_no_error(
-        selected <- plotAutoDMRsCircos(
+    selected <- plotAutoDMRsCircos(
             dmrs = dmrs_subset,
             beta = beta,
             pheno = pheno,
@@ -581,7 +612,6 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
             max_regions_per_chr = 1,
             query_components_with_jaspar = FALSE
         )
-    )
 
     expect_s3_class(selected, "data.frame")
     expect_true(all(c("chr", "start", "end") %in% colnames(selected)))
@@ -598,8 +628,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
     expect_false("max_dmrs_per_chr" %in% names(formals(plotAutoDMRsCircos)))
 
     dmrs_subset <- dmrs[seq_len(min(12, length(dmrs)))]
-    expect_no_error(
-        selected <- plotAutoDMRsCircos(
+    selected <- plotAutoDMRsCircos(
             dmrs = dmrs_subset,
             beta = beta,
             pheno = pheno,
@@ -614,7 +643,6 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
             max_sites_per_dmr = 1,
             max_num_samples_per_group = 2
         )
-    )
     expect_s3_class(selected, "data.frame")
     expect_error(
         plotAutoDMRsCircos(
@@ -629,6 +657,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
 })
 
 test_that("plotAutoDMRsCircos supports components and hybrid selection", {
+    skip_if_not_integration_tests()
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
     if (is.null(dmrs) || length(dmrs) == 0) {

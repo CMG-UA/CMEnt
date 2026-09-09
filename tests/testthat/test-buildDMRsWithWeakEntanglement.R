@@ -103,9 +103,10 @@ test_that("weak entanglement reports the best p-value that caused disconnection"
 
     expected <- min(vapply(group_inds, function(idx) {
         group_m <- CMEnt:::.transformBeta(
-            sites_beta[, idx, drop = FALSE],
-            pheno = pheno[idx, , drop = FALSE],
-            covariates = NULL
+            sites_beta,
+            pheno = pheno,
+            covariates = NULL,
+            cols = idx
         )
         r <- stats::cor(group_m[1, ], group_m[2, ])
         df <- length(idx) - 2L

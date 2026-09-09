@@ -156,8 +156,10 @@
 }
 
 .requireSampleGroupCol <- function(sample_group_col, context) {
-    if (is.null(sample_group_col) || length(sample_group_col) != 1L ||
-        is.na(sample_group_col) || !nzchar(as.character(sample_group_col))) {
+    if (
+        is.null(sample_group_col) || length(sample_group_col) != 1L ||
+            is.na(sample_group_col) || !nzchar(as.character(sample_group_col))
+    ) {
         stop(context, " requires 'sample_group_col' when phenotype data is provided.", call. = FALSE)
     }
     as.character(sample_group_col)
@@ -383,7 +385,7 @@
     subset_samplesheet
 }
 
-# Lightweight styled logging helpers -----------------------------------------
+# Lightweight futile.logger-backed logging helpers ----------------------------
 
 # Internal state for timing steps
 .CMEnt_log_env <- local({ # nolint
@@ -431,29 +433,47 @@
     )
 }
 
-
-
 #' @keywords internal
 #' @noRd
-.format_log_output <- function(msg, lead, level, width = getOption("width")) {
+.formatLogOutput <- function(msg, lead, level, width = getOption("width")) {
     prefix <- paste(rep("\t", max(0, level - 1)), collapse = "")
-    paste(strwrap(prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""), width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg), collapse = "\n")
+    paste(
+        strwrap(
+            prefix = paste(" ", prefix), initial =  paste(prefix, lead, " ", sep = ""),
+            width = (0.9 - 0.05 * max(0, level - 1)) * getOption("width"), msg
+        ), collapse = "\n"
+    )
+}
+
+.CMEntFutileLayout <- function(level, msg, id = "", ...) {
+    if (length(list(...)) > 0L) {
+        msg <- do.call(sprintf, c(msg, list(...)))
+    }
+    paste0(msg, "\n")
+}
+
+.configureCMEntFutileLogger <- function() {
+    futile.logger::flog.layout(.CMEntFutileLayout, name = "CMEnt")
+    invisible()
 }
 
 #' @keywords internal
 #' @noRd
 .log_error <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$cross, "red")
-    stop(.format_log_output(msg, lead = lead, level = 0), call. = FALSE)
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$cross, "red"), level = 0)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.error("%s", msg, name = "CMEnt")
+    stop(msg, call. = FALSE)
 }
 
 #' @keywords internal
 #' @noRd
 .log_warn <- function(..., .envir = parent.frame()) {
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$warning, "yellow")
-    warning(.format_log_output(msg, lead = lead, level = 0))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$warning, "yellow"), level = 0)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.warn("%s", msg, name = "CMEnt")
     invisible()
 }
 
@@ -464,29 +484,6 @@
     }
 
     if (bit == 32L) 28L else 56L
-}
-
-.mem_used <- function() {
-    sum(gc()[, 1] * c(.node_size(), 8))
-}
-
-
-.format_mem_used <- function(digits = 3, ...) {
-    x <- .mem_used()
-    power <- min(floor(log(abs(x), 1000)), 4)
-    if (power < 1) {
-        unit <- "B"
-    } else {
-        unit <- c("kB", "MB", "GB", "TB")[[power]]
-        x <- x / (1000^power)
-    }
-
-    formatted <- format(signif(x, digits = digits),
-        big.mark = ",",
-        scientific = FALSE
-    )
-
-    paste(formatted, unit)
 }
 
 #' @keywords internal
@@ -502,12 +499,9 @@
         dur <- ""
     }
     msg <- paste0(paste0(..., collapse = ""), dur)
-    # if level is equal or greater than 2, report memory usage in MBs as well
-    if (level >= 2) {
-        msg <- paste0(msg, " [mem: ", .format_mem_used(), "]")
-    }
-    lead <- .col(cli::symbol$tick, "green")
-    message(.format_log_output(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$tick, "green"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     # Clear the recorded step time for this level after reporting success
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- NULL # nolint
     invisible()
@@ -545,8 +539,9 @@
         return(invisible())
     }
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$info, "blue")
-    message(.format_log_output(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$info, "blue"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     invisible()
 }
 
@@ -563,14 +558,15 @@
     }
     .CMEnt_log_env$last_step_time[[as.character(level)]] <- Sys.time() # nolint
     msg <- paste0(..., collapse = "")
-    lead <- .col(cli::symbol$arrow_right, "cyan")
-    message(.format_log_output(msg, lead = lead, level = level))
+    msg <- .formatLogOutput(msg, lead = .col(cli::symbol$arrow_right, "cyan"), level = level)
+    .configureCMEntFutileLogger()
+    futile.logger::flog.info("%s", msg, name = "CMEnt")
     invisible()
 }
 
 #' @keywords internal
 #' @noRd
-.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL) {
+.makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL, log = TRUE) {
     workers <- suppressWarnings(as.integer(njobs))
     if (length(workers) == 0L || is.na(workers) || workers < 1L) {
         stop("njobs must be a positive integer.", call. = FALSE)
@@ -586,32 +582,69 @@
         workers <- min(workers, 2L)
     }
 
-    if (workers <= 1L) {
-        return(BiocParallel::SerialParam(progressbar = progressbar))
-    }
-
     if (is.null(parallel_backend)) {
         parallel_backend <- getOption("CMEnt.biocparallel_backend", "auto")
     }
     parallel_backend <- tolower(as.character(parallel_backend)[1L])
     if (!parallel_backend %in% c("auto", "multicore", "snow", "sock", "multisession")) {
-        warning("Unsupported CMEnt BiocParallel backend='", parallel_backend, "'. Falling back to 'auto'.")
+        .log_warn("Unsupported CMEnt BiocParallel backend='", parallel_backend, "'. Falling back to 'auto'.")
         parallel_backend <- "auto"
     }
 
-    if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
+    if (workers <= 1L) {
+        BiocParallel::SerialParam(progressbar = progressbar, log = log, threshold = "INFO")
+    } else if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
         if (is.null(n_tasks)) {
-            BiocParallel::MulticoreParam(workers = workers, progressbar = progressbar)
+            BiocParallel::MulticoreParam(
+                workers = workers, progressbar = progressbar, log = log,
+                threshold = "INFO"
+            )
         } else {
-            BiocParallel::MulticoreParam(workers = workers, tasks = n_tasks, progressbar = progressbar)
+            BiocParallel::MulticoreParam(
+                workers = workers, tasks = n_tasks, progressbar = progressbar,
+                log = log, threshold = "INFO"
+            )
         }
     } else {
         if (is.null(n_tasks)) {
-            BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = progressbar)
+            BiocParallel::SnowParam(
+                workers = workers, type = "SOCK", progressbar = progressbar,
+                log = log, threshold = "INFO"
+            )
         } else {
-            BiocParallel::SnowParam(workers = workers, tasks = n_tasks, type = "SOCK", progressbar = progressbar)
+            BiocParallel::SnowParam(
+                workers = workers, tasks = n_tasks, type = "SOCK",
+                progressbar = progressbar, log = log, threshold = "INFO"
+            )
         }
     }
+}
+
+#' @keywords internal
+#' @noRd
+.safeBiocParallelApply <- function(X, FUN, ..., BPPARAM) {
+    tryCatch(
+        {
+            BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
+        },
+        error = function(e) {
+            error_message <- conditionMessage(e)
+            reducer_cache_error <- grepl(
+                "reducer\\$value\\.cache|wrong args for environment subassignment",
+                error_message
+            )
+            if (!reducer_cache_error) {
+                stop(e)
+            }
+
+            .log_warn(
+                "BiocParallel parallel collection failed with a reducer cache error; ",
+                "retrying sequentially for this batch. Original error: ",
+                error_message
+            )
+            lapply(X, FUN, ...)
+        }
+    )
 }
 
 #' @keywords internal
@@ -649,7 +682,7 @@
 }
 
 
-.getTabixCacheDir <- function(output_dir) {
+.getCacheDir <- function(output_dir) {
     cache_dir <- if (is.null(output_dir)) tempdir() else output_dir
     if (!dir.exists(cache_dir)) {
         dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -657,8 +690,100 @@
     cache_dir
 }
 
-createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select = NULL,
-                         chunk_size = 100000, sep = "\t") {
+createH5fileFromDf <- function(
+    df, output_h5file = tempfile(fileext = ".h5"),
+    dataset_name = "data", select_columns = NULL,
+    chunk_size = getOption("CMEnt.chunk_size", 1000000)
+) {
+    stopifnot(is.data.frame(df))
+    stopifnot(is.character(output_h5file), length(output_h5file) == 1)
+
+    if (file.exists(output_h5file)) file.remove(output_h5file)
+    .log_step("Creating HDF5 file: ", output_h5file, " for data frame with ", nrow(df), " rows and ", ncol(df), " columns.", level = 4)
+    dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
+    rhdf5::h5createFile(output_h5file)
+
+    header_names <- colnames(df)
+    selected_header_names <- if (is.null(select_columns)) {
+        header_names
+    } else if (is.numeric(select_columns)) {
+        header_names[select_columns]
+    } else {
+        as.character(select_columns)
+    }
+    p <- length(selected_header_names)
+    if (p == 0L) {
+        stop("No columns available to store in HDF5 dataset.")
+    }
+    rhdf5::h5createDataset(
+        file = output_h5file,
+        dataset = dataset_name,
+        dims = c(1L, p),
+        maxdims = c(rhdf5::H5Sunlimited(), p),
+        chunk = c(1L, p),
+        storage.mode = "character",
+        level = 7
+    )
+    rhdf5::h5write(
+        matrix("", nrow = 1L, ncol = p),
+        file = output_h5file,
+        name = dataset_name,
+        index = list(1L, seq_len(p))
+    )
+    rhdf5::h5write(selected_header_names, output_h5file, paste0(dataset_name, "_colnames"))
+
+
+    if (!is.null(select_columns)) {
+        df <- df[, select_columns, drop = FALSE]
+    }
+
+    row_offset <- 0L
+    .log_step("Writing data frame to HDF5 file: ", output_h5file, " in chunks of ", chunk_size, " rows.", level = 4)
+    verbose <- getOption("CMEnt.verbose", 0) >= 4
+    if (verbose) {
+        pb <- utils::txtProgressBar(min = 0, max = nrow(df), style = 3)
+    }
+
+    repeat {
+        subset <- df[(row_offset + 1L):min(nrow(df), row_offset + chunk_size), , drop = FALSE]
+        n_new <- nrow(subset)
+        if (n_new == 0L) {
+            next
+        }
+        mat <- as.matrix(data.frame(lapply(subset, as.character), check.names = FALSE))
+        new_total <- row_offset + n_new
+        if (new_total > 1L) {
+            rhdf5::h5set_extent(output_h5file, dataset_name, c(new_total, p))
+        }
+
+        idx_rows <- (row_offset + 1L):new_total
+        rhdf5::h5write(
+            mat,
+            file = output_h5file,
+            name = dataset_name,
+            index = list(idx_rows, seq_len(p))
+        )
+
+        row_offset <- new_total
+        if (verbose) {
+            utils::setTxtProgressBar(pb, row_offset)
+        }
+        if (new_total >= nrow(df)) {
+            break
+        }
+    }
+    if (verbose) {
+        close(pb)
+    }
+    rhdf5::h5write(row_offset, output_h5file, paste0(dataset_name, "_nrows"))
+    .log_success("Finished writing data frame to HDF5 file: ", output_h5file, " with ", row_offset, " rows.", level = 4)
+    invisible(output_h5file)
+}
+
+createH5fileFromFile <- function(
+    input_file, output_h5file = tempfile(fileext = ".h5"), dataset_name = "data", select_columns = NULL,
+    chunk_size = getOption("CMEnt.chunk_size", 1000000), sep = "\t"
+) {
     stopifnot(is.character(input_file), length(input_file) == 1, file.exists(input_file))
     stopifnot(is.character(output_h5file), length(output_h5file) == 1)
 
@@ -674,12 +799,12 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
         stop("Input file is empty.")
     }
     header_names <- strsplit(header_line, split = sep, fixed = TRUE)[[1]]
-    selected_header_names <- if (is.null(select)) {
+    selected_header_names <- if (is.null(select_columns)) {
         header_names
-    } else if (is.numeric(select)) {
-        header_names[select]
+    } else if (is.numeric(select_columns)) {
+        header_names[select_columns]
     } else {
-        as.character(select)
+        as.character(select_columns)
     }
     p <- length(selected_header_names)
     if (p == 0L) {
@@ -721,8 +846,8 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
             col.names = header_names,
             check.names = FALSE
         )
-        if (!is.null(select)) {
-            df <- df[, select, drop = FALSE]
+        if (!is.null(select_columns)) {
+            df <- df[, select_columns, drop = FALSE]
         }
 
         n_new <- nrow(df)
@@ -770,9 +895,9 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
 }
 
 
-.postProcessRegistry <- function(df, select = NULL, rename = NULL, derive = NULL, indices = NULL) {
-    if (!is.null(select)) {
-        df <- df[, select, drop = FALSE]
+.postProcessRegistry <- function(df, select_columns = NULL, rename = NULL, derive = NULL, indices = NULL) {
+    if (!is.null(select_columns)) {
+        df <- df[, select_columns, drop = FALSE]
     }
     if (!is.null(rename)) {
         for (name in names(rename)) {
@@ -810,27 +935,49 @@ createH5file <- function(input_file, output_h5file = tempfile(fileext = ".h5"), 
     df
 }
 
-getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, derive = NULL,
-                        chunk_size = 100000, output_h5file = NULL) {
+getRegistry <- function(obj, indices = NULL, select_columns = NULL, rename = NULL, derive = NULL,
+                        chunk_size = getOption("CMEnt.chunk_size", 1000000), output_h5file = NULL) {
+    if (inherits(obj, "BSseq") && inherits(SummarizedExperiment::assays(obj)$M, "matrix")) {
+        gr <- GenomicRanges::granges(obj)
+        obj <- as.data.frame(gr)
+    }
     if (is.data.frame(obj)) {
-        return(.postProcessRegistry(obj, select = select, rename = rename, derive = derive, indices = indices))
+        return(.postProcessRegistry(obj, select_columns = select_columns, rename = rename, derive = derive, indices = indices))
     }
     if (is.null(output_h5file)) {
         output_h5file <- tempfile(fileext = ".h5")
     }
-    createH5file(
-        input_file = obj,
-        output_h5file = output_h5file,
-        dataset_name = "data",
-        select = select,
-        chunk_size = chunk_size
-    )
+    if (inherits(obj, "BSseq")) {
+        .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
+        .log_step("Loading genomic locations from BSseq object into memory.", level = 4)
+        df <- as.data.frame(GenomicRanges::granges(obj))
+        .log_success("Finished loading genomic locations from BSseq object into memory.", level = 4)
+        createH5fileFromDf(
+            df = df,
+            output_h5file = output_h5file,
+            dataset_name = "data",
+            select_columns = NULL,
+            chunk_size = chunk_size
+        )
+    } else {
+        .log_info("Input object is a file; creating HDF5 file from input file.", level = 4)
+        createH5fileFromFile(
+            input_file = obj,
+            output_h5file = output_h5file,
+            dataset_name = "data",
+            select_columns = select_columns,
+            chunk_size = chunk_size
+        )
+    }
     da <- HDF5Array::HDF5Array(output_h5file, "data")
     n_rows <- as.integer(rhdf5::h5read(output_h5file, "data_nrows"))
     da <- da[seq_len(n_rows), , drop = FALSE]
     x <- DelayedDataFrame::DelayedDataFrame(da)
     colnames(x) <- rhdf5::h5read(output_h5file, "data_colnames")
-    .postProcessRegistry(x, select = NULL, rename = rename, derive = derive, indices = indices)
+    .log_step("Post-processing registry: selecting columns, renaming, deriving new columns, and setting indices.", level = 4)
+    ret <- .postProcessRegistry(x, select_columns = NULL, rename = rename, derive = derive, indices = indices)
+    .log_success("Finished post-processing registry.", level = 4)
+    ret
 }
 
 
@@ -839,21 +986,20 @@ getRegistry <- function(obj, indices = NULL, select = NULL, rename = NULL, deriv
 #' @description This function creates a Registry from a Tabix-indexed BED file.
 #' @param input_tabix Character. Path to the Tabix-indexed BED file.
 #' @param output_dir Character. Directory used for temporary or explicit derived files.
-#' @param num_rows Integer. Number of rows in the BED file. If NULL, the function will compute it automatically (default: NULL)
 #' @param hash Character. Hash string used for deterministic temporary file names.
-#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: 50000)
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: getOption("CMEnt.chunk_size", 1000000))
 #' @return Returns a DelayedDataFrame object
 #' @keywords internal
 #' @noRd
-genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL, hash = NULL,
-                                 chunk_size = 50000, use_id_as_rownames = FALSE,
+genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, hash = NULL,
+                                 chunk_size = getOption("CMEnt.chunk_size", 1000000), use_id_as_rownames = FALSE,
                                  chrom_col = "#chrom", start_col = "start",
                                  output_h5file = NULL) { # nolint
     renaming <- c("chr", "start")
     names(renaming) <- c(chrom_col, start_col)
     if (is.null(output_h5file)) {
         temp_cache <- is.null(output_dir)
-        output_dir <- .getTabixCacheDir(output_dir)
+        output_dir <- .getCacheDir(output_dir)
         if (is.null(hash)) {
             hash <- .getFileHash(input_tabix)
         }
@@ -866,7 +1012,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     if (!use_id_as_rownames) {
         sorted_locs <- getRegistry(
             input_tabix,
-            select = c(chrom_col, start_col),
+            select_columns = c(chrom_col, start_col),
             rename = renaming,
             derive = list(
                 index = list(
@@ -881,13 +1027,70 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     } else {
         sorted_locs <- getRegistry(
             input_tabix,
-            select = c(chrom_col, start_col, "end", "id"),
+            select_columns = c(chrom_col, start_col, "id"),
             rename = renaming,
             indices = "id",
             chunk_size = chunk_size,
             output_h5file = output_h5file
         )
     }
+    sorted_locs
+}
+
+
+#' Create Genomic Location Registry from bsseq Object
+#'
+#' @description
+#' If the bsseq object is memory-backed, it extracts the genomic locations directly from the object.
+#' If not, it extracts the genomic locations and stores them in an HDF5 file for memory-efficient access.
+#' @param input_bsseq bsseq The bsseq object.
+#' @param output_dir Character. Directory used for temporary or explicit derived files.
+#' @param hash Character. Hash string used for deterministic temporary file names.
+#' @param chunk_size Integer. Number of rows to process in each chunk for memory efficiency (default: getOption("CMEnt.chunk_size", 1000000))
+#' @return Returns a DelayedDataFrame object
+#' @keywords internal
+#' @noRd
+genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
+                                 output_h5file = NULL) { # nolint
+    # If bsseq is memory backed, we extract the genomic locations directly from the bsseq object into memory.
+    if (inherits(input_bsseq, "BSseq") && inherits(assays(input_bsseq)$M, "matrix")) {
+        .log_info("BSseq object is memory-backed; extracting genomic locations directly from the object.", level = 4)
+        gr <- GenomicRanges::granges(input_bsseq)
+        df <- as.data.frame(gr)[, c("seqnames", "start")]
+        colnames(df) <- c("chr", "start")
+        df$index <- paste0(df$chr, ":", df$start)
+        rownames(df) <- df$index
+        return(df)
+    }
+
+    if (is.null(output_h5file)) {
+        temp_cache <- is.null(output_dir)
+        output_dir <- .getCacheDir(output_dir)
+        if (is.null(hash)) {
+            hash <- .getFileHash(DelayedArray::path(assays(input_bsseq)$M))
+        }
+        output_h5file <- if (temp_cache) {
+            tempfile(paste0("bed_locations_", hash, "_"), tmpdir = output_dir, fileext = ".h5")
+        } else {
+            file.path(output_dir, paste0("bed_locations_", hash, ".h5"))
+        }
+    }
+    renaming <- c("chr", "start")
+    names(renaming) <- c("seqnames", "start")
+    # If bsseq is not memory backed, we extract the genomic locations from the bsseq object and store them in an HDF5 file for efficient access.
+    sorted_locs <- getRegistry(
+        input_bsseq,
+        select_columns = c("seqnames", "start"),
+        rename = renaming,
+        derive = list(
+            index = list(
+                cols = c("chr", "start"),
+                fun = function(chr, start) paste0(chr, ":", start)
+            )
+        ),
+        indices = "index",
+        output_h5file = output_h5file
+    )
     sorted_locs
 }
 
@@ -901,7 +1104,10 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     }
     covariate_df <- as.data.frame(pheno[, covariates, drop = FALSE], check.names = FALSE)
     if (anyNA(covariate_df)) {
-        stop("Covariates contain missing values; cannot residualize without dropping samples. Perform imputation or drop samples with missing covariate values before running CMEnt")
+        stop(
+            "Covariates contain missing values; cannot residualize without dropping samples.",
+            " Perform imputation or drop samples with missing covariate values before running CMEnt"
+        )
     }
     varying_covariates <- covariates[vapply(covariate_df, function(x) length(unique(x)) > 1L, logical(1))]
     dropped_columns <- setdiff(covariates, varying_covariates)
@@ -953,9 +1159,13 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     signal - fitted
 }
 
-.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL) {
+.transformBeta <- function(beta, pheno, covariates = NULL, covariate_model = NULL, cols = NULL) {
     if (inherits(beta, "DelayedDataFrame")) {
         beta <- DelayedArray::DelayedArray(beta)
+    }
+    if (!is.null(cols)) {
+        beta <- beta[, cols, drop = FALSE]
+        pheno <- pheno[cols, , drop = FALSE]
     }
     m_values <- log2(beta / (1 - beta + 1e-6) + 1e-6)
     if (is.null(covariate_model)) {
@@ -990,12 +1200,14 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     )
     bfc <- .getBiocFileCache(cache_dir)
     chain_name <- paste0(from_genome, "To", stringr::str_to_title(to_genome), ".over.chain")
+    chain_rname <- paste0("liftOver_", chain_name)
     chain_file <- .getBiocFileCachePath(
         bfc,
-        rname = paste0("liftOver_", chain_name),
-        ext = ".over.chain"
+        rname = chain_rname,
+        ext = ".over.chain",
+        create = FALSE
     )
-    if (!file.exists(chain_file)) {
+    if (is.null(chain_file) || !file.exists(chain_file)) {
         temp_gz <- tempfile(fileext = ".over.chain.gz")
         on.exit(unlink(temp_gz), add = TRUE)
         .downloadFirstAvailable(
@@ -1006,12 +1218,29 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
             destfile = temp_gz,
             mode = "wb"
         )
-        R.utils::gunzip(
-            filename = temp_gz,
-            destname = chain_file,
-            overwrite = TRUE,
-            remove = FALSE
-        )
+        chain_file <- .withBiocFileCacheLock(bfc, {
+            chain_file <- .getBiocFileCachePath(
+                bfc,
+                rname = chain_rname,
+                ext = ".over.chain",
+                lock = FALSE
+            )
+            if (!file.exists(chain_file)) {
+                temp_chain <- tempfile(
+                    pattern = paste0(".", basename(chain_file), "-"),
+                    tmpdir = dirname(chain_file)
+                )
+                on.exit(unlink(temp_chain), add = TRUE)
+                R.utils::gunzip(
+                    filename = temp_gz,
+                    destname = temp_chain,
+                    overwrite = TRUE,
+                    remove = FALSE
+                )
+                .moveFileAtomic(temp_chain, chain_file)
+            }
+            chain_file
+        })
     }
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
@@ -1207,8 +1436,10 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
     missing_pkgs <- unique(missing_reqs$pkg_name)
 
     if (isTRUE(getOption("CMEnt.auto_install_dep_if_missing", FALSE))) {
-        # This is a hidden option only used by the dockerrized version of CMEnt to automatically install missing dependencies without user intervention.
-        # It is not recommended to set this option in interactive use as it may lead to unintended package installations.
+        # This is a hidden option only used by the dockerrized version of CMEnt to
+        # automatically install missing dependencies without user intervention.
+        # It is not recommended to set this option in interactive use as it may lead to
+        # unintended package installations.
         .installDependencyPackages(missing_pkgs)
         missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
         if (!any(missing_mask)) {
@@ -1271,7 +1502,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 }
 
 
-.assertArrayAnnotationPackageInstalled <- function(array, genome, context) {
+.assertArrayAnnotPkgInstalled <- function(array, genome, context) {
     pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
     .assertDependencyRequirements(
         requirements = .makeDependencyRequirements(
@@ -1287,7 +1518,7 @@ genomicLocsFromTabix <- function(input_tabix, output_dir = NULL, num_rows = NULL
 }
 
 
-.arrayAnnotationDependencyRequirements <- function(array, genome, reason = NULL) {
+.arrayAnnotDependencyReqs <- function(array, genome, reason = NULL) {
     pkg_name <- .getArrayAnnotationPackage(array = array, genome = genome)
     .makeDependencyRequirements(
         pkg_names = pkg_name,
@@ -1333,7 +1564,7 @@ supportedOrganisms <- function() {
 }
 
 
-.assertGeneAnnotationPackagesInstalled <- function(genome, context) {
+.assertGeneAnnotPkgsInstalled <- function(genome, context) {
     pkgs <- .getGeneAnnotationPackages(genome)
     .assertDependencyRequirements(
         requirements = .makeDependencyRequirements(
@@ -1349,7 +1580,7 @@ supportedOrganisms <- function() {
 }
 
 
-.geneAnnotationDependencyRequirements <- function(genome, reason = NULL) {
+.geneAnnotDependencyReqs <- function(genome, reason = NULL) {
     pkgs <- .getGeneAnnotationPackages(genome)
     .makeDependencyRequirements(
         pkg_names = unname(pkgs),
@@ -1385,7 +1616,7 @@ supportedOrganisms <- function() {
 }
 
 
-.assertBSGenomePackageInstalled <- function(genome, context) {
+.assertBSGenomePkgInstalled <- function(genome, context) {
     pkg_name <- .resolveBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         stop(
@@ -1408,7 +1639,7 @@ supportedOrganisms <- function() {
 }
 
 
-.bsgenomeDependencyRequirements <- function(genome, reason = NULL) {
+.bsgenomeDependencyReqs <- function(genome, reason = NULL) {
     pkg_name <- .resolveBSGenomePackage(genome)
     if (is.null(pkg_name)) {
         stop(
@@ -1457,7 +1688,7 @@ supportedOrganisms <- function() {
 }
 
 
-.experimentHubDependencyRequirements <- function(resource, reason = NULL) {
+.experimentHubDependencyReqs <- function(resource, reason = NULL) {
     .makeDependencyRequirements(
         pkg_names = "ExperimentHub",
         reason = if (is.null(reason)) {
@@ -1472,10 +1703,12 @@ supportedOrganisms <- function() {
 }
 
 
-.buildDMRsDependencyRequirements <- function(beta, array, genome,
-                                            annotate_with_genes = TRUE,
-                                            extract_motifs = TRUE,
-                                            bed_provided = FALSE) {
+.buildDMRsDependencyReqs <- function(
+    beta, array, genome,
+    annotate_with_genes = TRUE,
+    extract_motifs = TRUE,
+    bed_provided = FALSE
+) {
     is_tabix_input <- is.character(beta) &&
         length(beta) == 1L &&
         file.exists(beta) &&
@@ -1490,7 +1723,7 @@ supportedOrganisms <- function() {
 
     .combineDependencyRequirements(
         if (needs_array_annotations) {
-            .arrayAnnotationDependencyRequirements(
+            .arrayAnnotDependencyReqs(
                 array = array,
                 genome = genome,
                 reason = paste0(
@@ -1500,7 +1733,7 @@ supportedOrganisms <- function() {
             )
         },
         if (isTRUE(annotate_with_genes)) {
-            .geneAnnotationDependencyRequirements(
+            .geneAnnotDependencyReqs(
                 genome = genome,
                 reason = paste0(
                     "'annotate_with_genes = TRUE' requires gene annotation packages for genome '",
@@ -1509,7 +1742,7 @@ supportedOrganisms <- function() {
             )
         },
         if (isTRUE(extract_motifs)) {
-            .bsgenomeDependencyRequirements(
+            .bsgenomeDependencyReqs(
                 genome = genome,
                 reason = paste0(
                     "'extract_motifs = TRUE' requires the BSgenome package for genome '",
@@ -1530,12 +1763,12 @@ supportedOrganisms <- function() {
         )
     }
     .combineDependencyRequirements(
-        .bsgenomeDependencyRequirements(
+        .bsgenomeDependencyReqs(
             genome = genome,
             reason = paste0(context, " requires the BSgenome package for genome '", genome, "'.")
         ),
         if (!is.null(array) && (is.null(beta_locs) || (is.character(beta_locs) && length(beta_locs) == 1L && file.exists(beta_locs)))) {
-            .arrayAnnotationDependencyRequirements(
+            .arrayAnnotDependencyReqs(
                 array = array,
                 genome = genome,
                 reason = paste0(
@@ -1556,7 +1789,8 @@ supportedOrganisms <- function() {
 #'
 #' @param array Character. Array platform type (supported: "450K", "EPIC", "EPICv2", "27K", "Mouse"), ignored when locations_file is provided.
 #' @param genome Character. Genome version (supported: "hg38", "hg19", "hs1", "mm10", "mm39"), ignored if locations_file is provided
-#' @param locations_file Character. Optional path to a precomputed locations file (RDS format). If provided, this file will be used directly (default: NULL)
+#' @param locations_file Character. Optional path to a precomputed locations file (RDS format).
+#'  If provided, this file will be used directly (default: NULL)
 #'
 #' @return A data frame containing sorted genomic locations with rownames as site IDs and columns:
 #' \itemize{
@@ -1567,16 +1801,13 @@ supportedOrganisms <- function() {
 #' }
 #'
 #' @examples
-#' \donttest{
-#' # Get sorted locations for 450K array on hg19
-#' locs_450k <- getSortedGenomicLocs(array = "450K", genome = "hg19")
+#' locs <- data.frame(chr = c("chr1", "chr1"), start = c(100L, 200L))
+#' rownames(locs) <- c("cg1", "cg2")
+#' locations_file <- tempfile(fileext = ".rds")
+#' saveRDS(locs, locations_file)
 #'
-#' # Get sorted locations for EPIC array with hg38
-#' locs_epic <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
-#'
-#' # Get sorted locations for EPICv2 array
-#' locs_epicv2 <- getSortedGenomicLocs(array = "EPICv2", genome = "hg38")
-#' }
+#' sorted_locs <- getSortedGenomicLocs(locations_file = locations_file)
+#' head(sorted_locs)
 #'
 #' @export
 getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = NULL) {
@@ -1602,7 +1833,7 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
     genome <- tolower(genome)
     cache_key <- paste0(
         array, "_", genome,
-        "_locations"
+        "_locations_v2"
     )
     locs <- if (getOption("CMEnt.use_annotation_cache", TRUE)) {
         .readBiocFileCacheRDS(cache_dir, cache_key)
@@ -1613,7 +1844,7 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
         .log_info("Using cached annotation file: ", cache_key, level = 3)
         return(locs)
     }
-    pkg_name <- .assertArrayAnnotationPackageInstalled(
+    pkg_name <- .assertArrayAnnotPkgInstalled(
         array = array,
         genome = genome,
         context = "getSortedGenomicLocs()"
@@ -1634,17 +1865,15 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
     if (!is.null(from_genome)) {
         locs <- .liftOverFromGenomeToGenome(locs, from_genome, genome)
     }
+    location_names <- names(locs)
     locs <- .convertToDataFrame(locs)
+    if (!is.null(location_names) && length(location_names) == nrow(locs)) {
+        rownames(locs) <- location_names
+    }
     ord <- stringr::str_order(paste0(locs[, "chr"], ":", locs[, "start"]), numeric = TRUE)
     locs <- locs[ord, , drop = FALSE]
     locs <- locs[!duplicated(rownames(locs)), ]
-    if (!"end" %in% colnames(locs)) {
-        locs[, "end"] <- locs[, "start"] + 1
-    }
-    locs[locs[, "end"] == locs[, "start"], "end"] <- locs[locs[
-        ,
-        "end"
-    ] == locs[, "start"], "start"] + 1
+    locs$end <- NULL
     locs$name <- rownames(locs)
     locs <- getRegistry(locs, "name")
     tryCatch(
@@ -1680,15 +1909,12 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
 #' @return Integer vector of ordered indices
 #'
 #' @examples
-#' \donttest{
-#' # Order site indices by genomic location
-#' site_ids <- c("cg00000029", "cg00000108", "cg00000109")
-#' ordered_indices <- orderByLoc(site_ids, array = "450K", genome = "hg19")
+#' locs <- data.frame(chr = c("chr1", "chr1", "chr2"), start = c(100L, 200L, 50L))
+#' rownames(locs) <- c("cg1", "cg2", "cg3")
+#' site_ids <- c("cg2", "cg3", "cg1")
 #'
-#' # Order using pre-computed genomic locations
-#' locs <- getSortedGenomicLocs(array = "EPIC", genome = "hg38")
 #' ordered_indices <- orderByLoc(site_ids, genomic_locs = locs)
-#' }
+#' site_ids[ordered_indices]
 #'
 #' @export
 orderByLoc <- function(x,
@@ -1729,6 +1955,59 @@ orderByLoc <- function(x,
         inds <- as.integer(vals)
     })
     inds[!is.na(inds)]
+}
+
+
+#' @keywords internal
+#' @noRd
+.matchListToReference <- function(values_list,
+                                  reference_values,
+                                  missing_context = NULL,
+                                  unique_matches = FALSE,
+                                  return_missing = FALSE) {
+    groups <- rep(seq_along(values_list), lengths(values_list))
+    out <- replicate(length(values_list), integer(0), simplify = FALSE)
+    if (length(groups) == 0L) {
+        if (isTRUE(return_missing)) {
+            attr(out, "missing_values") <- replicate(length(values_list), character(0), simplify = FALSE)
+        }
+        return(out)
+    }
+
+    values <- unlist(values_list, use.names = FALSE)
+    matched <- match(values, reference_values)
+    keep_matched <- !is.na(matched)
+    missing_out <- NULL
+    if (any(!keep_matched)) {
+        if (!is.null(missing_context)) {
+            missing_values <- unique(values[!keep_matched])
+            stop(
+                missing_context,
+                paste(head(missing_values, 10), collapse = ", "),
+                if (length(missing_values) > 10L) " ..." else ""
+            )
+        }
+        if (isTRUE(return_missing)) {
+            missing_split <- split(values[!keep_matched], groups[!keep_matched])
+            missing_out <- replicate(length(values_list), character(0), simplify = FALSE)
+            missing_out[as.integer(names(missing_split))] <- missing_split
+        }
+        matched <- matched[keep_matched]
+        groups <- groups[keep_matched]
+    }
+
+    matched_split <- split(matched, groups)
+    if (isTRUE(unique_matches)) {
+        matched_split <- lapply(matched_split, unique)
+    }
+    out[as.integer(names(matched_split))] <- matched_split
+    if (isTRUE(return_missing)) {
+        if (is.null(missing_out)) {
+            missing_out <- replicate(length(values_list), character(0), simplify = FALSE)
+        }
+        attr(out, "missing_values") <- missing_out
+    }
+    out
 }
 
 
@@ -1792,7 +2071,53 @@ orderByLoc <- function(x,
     BiocFileCache::BiocFileCache(cache, ask = FALSE)
 }
 
-.getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE) {
+.getBiocFileCacheDir <- function(cache) {
+    if (methods::is(cache, "BiocFileCache")) {
+        return(BiocFileCache::bfccache(cache))
+    }
+    normalizePath(cache, mustWork = FALSE)
+}
+
+.withBiocFileCacheLock <- function(cache, expr) {
+    cache_dir <- .getBiocFileCacheDir(cache)
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    lock <- filelock::lock(
+        file.path(cache_dir, ".CMEnt.lock"),
+        timeout = getOption("CMEnt.cache_lock_timeout", Inf)
+    )
+    if (is.null(lock)) {
+        stop("Timed out waiting for CMEnt cache lock: ", cache_dir, call. = FALSE)
+    }
+    on.exit(filelock::unlock(lock), add = TRUE)
+    force(expr)
+}
+
+.moveFileAtomic <- function(from, to) {
+    if (!file.rename(from, to)) {
+        copied <- file.copy(from, to, overwrite = TRUE, copy.mode = TRUE)
+        if (!copied) {
+            stop("Failed to move temporary file into place: ", to, call. = FALSE)
+        }
+        unlink(from)
+    }
+    invisible(to)
+}
+
+.saveRDSAtomic <- function(object, path) {
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    tmp_path <- tempfile(pattern = paste0(".", basename(path), "-"), tmpdir = dirname(path))
+    on.exit(unlink(tmp_path), add = TRUE)
+    saveRDS(object, tmp_path)
+    .moveFileAtomic(tmp_path, path)
+}
+
+.getBiocFileCachePath <- function(bfc, rname, ext = "", create = TRUE, lock = TRUE) {
+    if (isTRUE(lock)) {
+        return(.withBiocFileCacheLock(
+            bfc,
+            .getBiocFileCachePath(bfc, rname = rname, ext = ext, create = create, lock = FALSE)
+        ))
+    }
     cache_records <- BiocFileCache::bfcquery(
         bfc,
         query = rname,
@@ -1820,23 +2145,32 @@ orderByLoc <- function(x,
 
 .readBiocFileCacheRDS <- function(cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
-    if (is.null(cache_file) || !file.exists(cache_file)) {
-        return(NULL)
-    }
-    readRDS(cache_file)
+    .withBiocFileCacheLock(bfc, {
+        cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE, lock = FALSE)
+        if (is.null(cache_file) || !file.exists(cache_file)) {
+            NULL
+        } else {
+            readRDS(cache_file)
+        }
+    })
 }
 
 .hasBiocFileCacheRDS <- function(cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE)
+    cache_file <- .withBiocFileCacheLock(
+        bfc,
+        .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", create = FALSE, lock = FALSE)
+    )
     !is.null(cache_file) && file.exists(cache_file)
 }
 
 .saveBiocFileCacheRDS <- function(object, cache_dir, rname) {
     bfc <- .getBiocFileCache(cache_dir)
-    cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds")
-    saveRDS(object, cache_file)
+    cache_file <- .withBiocFileCacheLock(bfc, {
+        cache_file <- .getBiocFileCachePath(bfc, rname = rname, ext = ".rds", lock = FALSE)
+        .saveRDSAtomic(object, cache_file)
+        cache_file
+    })
     invisible(cache_file)
 }
 
@@ -1912,7 +2246,7 @@ orderByLoc <- function(x,
         if (canonical_chr) {
             chrs <- chrs[grepl("^chr[0-9XYM]+$", chrs)]
         }
-        cgs <- lapply(chrs, function(x) start(Biostrings::matchPattern("CG", seq_db[[x]])))
+        cgs <- lapply(chrs, function(x) BiocGenerics::start(Biostrings::matchPattern("CG", seq_db[[x]])))
         names(cgs) <- chrs
         suppressWarnings(
             sites <- do.call(
@@ -2023,7 +2357,11 @@ orderByLoc <- function(x,
     }
 
     if (njobs > 1 && n_batches > 1) {
-        bp_param <- .makeBiocParallelParam(njobs, n_tasks = n_batches)
+        bp_param <- .makeBiocParallelParam(
+            njobs,
+            n_tasks = n_batches,
+            log = getOption("CMEnt.verbose", 1L) >= 1L
+        )
         batch_results <- BiocParallel::bplapply(
             seq_len(n_batches),
             fetch_batch,
@@ -2132,11 +2470,15 @@ orderByLoc <- function(x,
             obj[[1]] <- paste0("chr", obj[[1]])
             obj$chr_prefix_added <- TRUE
         }
-        # if the chromosome appears in the form of chr1:1230, save the original location in a separate column and parse the location into chr, start, end
+        # if the chromosome appears in the form of chr1:1230, save the original location
+        # in a separate column and parse the location into chr, start, end
         if (any(grepl(":", obj[[1]]))) {
             obj$original_location <- obj[[1]]
             loc_split <- base::strsplit(as.character(obj[[1]]), ":", fixed = TRUE)
             obj[[1]] <- vapply(loc_split, function(x) x[1], character(1))
+        }
+        if (!"end" %in% colnames(obj) && "start" %in% colnames(obj)) {
+            obj$end <- obj$start
         }
         obj <- GenomicRanges::makeGRangesFromDataFrame(obj,
             keep.extra.columns = TRUE,
@@ -2144,14 +2486,13 @@ orderByLoc <- function(x,
             na.rm = TRUE
         )
     } else {
-        if (!is(obj, "GRanges")) {
+        if (!methods::is(obj, "GRanges")) {
             stop("dmrs must be a data.frame or GRanges object")
         }
         if (is.null(genome)) {
             .resolveGRangesGenome(obj)
             return(obj)
         }
-        
         # if the genome info in the gr is different from the specified genome, update the locations with liftOver
         grs_genome <- unique(as.character(GenomeInfoDb::genome(GenomeInfoDb::seqinfo(obj))))
         grs_genome <- grs_genome[!is.na(grs_genome) & nzchar(grs_genome)]
@@ -2171,12 +2512,37 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
+.convertSitesToGPos <- function(obj, genome = NULL) {
+    site_names <- if (is.data.frame(obj)) {
+        rn_info <- .row_names_info(obj, type = 0L)
+        if (
+            is.integer(rn_info) && length(rn_info) == 2L &&
+                is.na(rn_info[1L]) && rn_info[2L] < 0L
+        ) NULL else rownames(obj)
+    } else {
+        names(obj)
+    }
+    obj <- .convertToGRanges(obj, genome)
+    if (!inherits(obj, "GPos")) {
+        obj <- methods::as(GenomicRanges::resize(obj, width = 1, fix = "start"), "GPos")
+    }
+    if (
+        !is.null(site_names) && length(site_names) == length(obj) &&
+            all(!is.na(site_names)) && all(nzchar(site_names))
+    ) {
+        names(obj) <- site_names
+    }
+    obj
+}
+
+#' @keywords internal
+#' @noRd
 .convertToDataFrame <- function(gr) {
     if (is.data.frame(gr)) {
         return(gr)
     }
     chr_prefix_added <- FALSE
-    if ("chr_prefix_added" %in% names(mcols(gr))) {
+    if ("chr_prefix_added" %in% names(S4Vectors::mcols(gr))) {
         chr_prefix_added <- TRUE
     }
     df <- as.data.frame(gr, stringsAsFactors = FALSE)
@@ -2234,7 +2600,17 @@ orderByLoc <- function(x,
 #' @keywords internal
 #' @noRd
 .decodeSerializedOutputColumns <- function(df) {
-    stopifnot(is.data.frame(df))
+    if (!is.data.frame(df)) {
+        try(df <- as.data.frame(df, stringsAsFactors = FALSE), silent = TRUE)
+    }
+    if (!is.data.frame(df)) {
+        stop(
+            "Input must be a data.frame or coercible to a data.frame. ",
+            "Unable to coerce input of type: ",
+            typeof(df),
+            call. = FALSE
+        )
+    }
 
     serialized_columns <- names(df)[vapply(df, .isSerializedOutputColumn, logical(1))]
     if (length(serialized_columns) == 0L) {
@@ -2267,6 +2643,7 @@ orderByLoc <- function(x,
     is_case <- pheno[, "__casecontrol__"] == 1
     cases <- beta_values[, is_case, drop = FALSE]
     cases <- as.matrix(cases)
+    cases[!is.finite(cases)] <- NA_real_
 
     if (identical(aggfun, mean)) {
         cases_beta <- matrixStats::rowMeans2(cases, na.rm = TRUE)
@@ -2282,6 +2659,7 @@ orderByLoc <- function(x,
     is_ctrl <- !is_case
     ctrl <- beta_values[, is_ctrl, drop = FALSE]
     ctrl <- as.matrix(ctrl)
+    ctrl[!is.finite(ctrl)] <- NA_real_
     if (identical(aggfun, mean)) {
         controls_beta <- matrixStats::rowMeans2(ctrl, na.rm = TRUE)
     } else if (identical(aggfun, stats::median)) {
@@ -2335,7 +2713,7 @@ orderByLoc <- function(x,
 
 #' @keywords internal
 #' @noRd
-.summarizeCorrelationAssumptions <- function(x_mat, y_mat, n_valid) {
+.summarizeCorrAssumptions <- function(x_mat, y_mat, n_valid) {
     min_nvalid_q10 <- getOption("CMEnt.auto_pval_min_nvalid_q10", 10)
     corr_delta_threshold <- getOption("CMEnt.auto_pval_corr_delta_threshold", 0.10)
     skew_threshold <- getOption("CMEnt.auto_pval_skew_threshold", 2)
@@ -2415,10 +2793,10 @@ orderByLoc <- function(x,
         excess_kurtosis[2L * k] <- my["excess_kurtosis"]
     }
 
-    median_abs_delta_spearman <- median(delta_spearman, na.rm = TRUE)
-    median_abs_delta_winsorized <- median(delta_winsorized, na.rm = TRUE)
-    median_abs_skew <- median(abs_skew, na.rm = TRUE)
-    median_excess_kurtosis <- median(excess_kurtosis, na.rm = TRUE)
+    median_abs_delta_spearman <- stats::median(delta_spearman, na.rm = TRUE)
+    median_abs_delta_winsorized <- stats::median(delta_winsorized, na.rm = TRUE)
+    median_abs_skew <- stats::median(abs_skew, na.rm = TRUE)
+    median_excess_kurtosis <- stats::median(excess_kurtosis, na.rm = TRUE)
     if (!is.finite(median_abs_delta_spearman)) {
         median_abs_delta_spearman <- Inf
     }
@@ -2455,15 +2833,16 @@ orderByLoc <- function(x,
 
 
 .loadExampleInputDataSubset <- function(..., subset, envir) {
-    resources <- .normalizeExampleInputResources(list(...))
+    resources <- .normExInputResources(list(...))
     values <- .fetchExampleInputData(resources)
-    subset_locs <- NULL
+    subset_cache <- new.env(parent = emptyenv())
+    subset_cache$locs <- NULL
     get_subset_locs <- function() {
-        if (is.null(subset_locs)) {
+        if (is.null(subset_cache$locs)) {
             locs <- getSortedGenomicLocs(array = "450k", genome = "hg19")
-            subset_locs <<- locs[locs$chr %in% subset, , drop = FALSE]
+            subset_cache$locs <- locs[locs$chr %in% subset, , drop = FALSE]
         }
-        subset_locs
+        subset_cache$locs
     }
 
     if ("beta" %in% resources) {
@@ -2481,7 +2860,7 @@ orderByLoc <- function(x,
     invisible(if (length(values) == 1L) values[[1L]] else values)
 }
 
-.normalizeExampleInputResources <- function(args) {
+.normExInputResources <- function(args) {
     available_resources <- c("beta", "pheno", "dmps", "array_type")
     if (length(args) == 0L) {
         return(available_resources)
@@ -2521,7 +2900,7 @@ orderByLoc <- function(x,
     )
 
     .assertDependencyRequirements(
-        requirements = .experimentHubDependencyRequirements(
+        requirements = .experimentHubDependencyReqs(
             resource = paste(resources, collapse = ", ")
         ),
         context = "loadExampleInputData()"
@@ -2567,4 +2946,17 @@ orderByLoc <- function(x,
     values <- .fetchExampleInputData(resources)
     list2env(values, envir = envir)
     invisible(if (length(values) == 1L) values[[1L]] else values)
+}
+
+.orderChromosomesNaturally <- function(chromosomes) {
+    chromosomes <- unique(as.character(chromosomes))
+    if (length(chromosomes) == 0) {
+        return(chromosomes)
+    }
+    chr_clean <- gsub("^chr", "", chromosomes, ignore.case = TRUE)
+    chr_num <- suppressWarnings(as.numeric(chr_clean))
+    chr_special <- match(toupper(chr_clean), c("X", "Y", "M", "MT"))
+    chr_special[is.na(chr_special)] <- Inf
+    ord <- order(is.na(chr_num), chr_num, chr_special, chr_clean)
+    chromosomes[ord]
 }
