@@ -200,6 +200,9 @@ read_cache <- function(path, signature) {
         return(NULL)
     }
     value <- readRDS(path)
+    # remove njobs from signature comparison because it does not affect the result
+    signature$cment_parameters$njobs <- NULL
+    value$signature$cment_parameters$njobs <- NULL
     if (!is.list(value) || !identical(value$signature, signature)) {
         return(NULL)
     }
