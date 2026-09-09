@@ -17,6 +17,20 @@ test_that("Circos interaction legend labels keep sequences and JASPAR matches on
     expect_equal(lines[2], "JASPAR matches: KLF7 (0.95) | ELF1 (0.9) | SP1 (0.88) | ...")
 })
 
+test_that("hg19 cytobands fall back to circlize bundled data when UCSC is unavailable", {
+    local_mocked_bindings(
+        .readBiocFileCacheRDS = function(...) NULL,
+        .downloadFirstAvailable = function(...) stop("UCSC unavailable"),
+        .package = "CMEnt"
+    )
+
+    cytoband <- CMEnt:::.getCytobandData("hg19")
+
+    expect_s3_class(cytoband, "data.frame")
+    expect_equal(colnames(cytoband), paste0("V", 1:5))
+    expect_true(all(c("chr5", "chr11") %in% cytoband$V1))
+})
+
 test_that("plotDMRsCircos creates a circos plot", {
 
     dmrs <- readRDS(system.file("extdata/example_outputChr5And11.rds", package = "CMEnt"))
@@ -586,8 +600,7 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
 
     dmrs_subset <- dmrs[seq_len(min(12, length(dmrs)))]
     selected <- NULL
-    expect_no_error(
-        selected <- plotAutoDMRsCircos(
+    selected <- plotAutoDMRsCircos(
             dmrs = dmrs_subset,
             beta = beta,
             pheno = pheno,
@@ -599,7 +612,6 @@ test_that("plotAutoDMRsCircos returns selected regions invisibly", {
             max_regions_per_chr = 1,
             query_components_with_jaspar = FALSE
         )
-    )
 
     expect_s3_class(selected, "data.frame")
     expect_true(all(c("chr", "start", "end") %in% colnames(selected)))
@@ -616,8 +628,7 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
     expect_false("max_dmrs_per_chr" %in% names(formals(plotAutoDMRsCircos)))
 
     dmrs_subset <- dmrs[seq_len(min(12, length(dmrs)))]
-    expect_no_error(
-        selected <- plotAutoDMRsCircos(
+    selected <- plotAutoDMRsCircos(
             dmrs = dmrs_subset,
             beta = beta,
             pheno = pheno,
@@ -632,7 +643,6 @@ test_that("plotAutoDMRsCircos forwards plot arguments through dots", {
             max_sites_per_dmr = 1,
             max_num_samples_per_group = 2
         )
-    )
     expect_s3_class(selected, "data.frame")
     expect_error(
         plotAutoDMRsCircos(

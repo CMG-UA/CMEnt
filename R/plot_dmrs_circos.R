@@ -2431,6 +2431,19 @@ plotAutoDMRsCircos <- function(dmrs,
             cytoband
         },
         error = function(e) {
+            if (identical(genome, "hg19")) {
+                bundled_cytoband <- tryCatch(
+                    circlize::read.cytoband()$df,
+                    error = function(e) NULL
+                )
+                if (!is.null(bundled_cytoband)) {
+                    .log_warn(
+                        "Failed to download cytoband data: ", e$message,
+                        ". Using bundled hg19 cytoband data."
+                    )
+                    return(bundled_cytoband)
+                }
+            }
             .log_warn("Failed to download cytoband data: ", e$message, ". Using default ideogram.")
             NULL
         }
