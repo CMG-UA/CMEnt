@@ -553,8 +553,8 @@ dmr_summary <- data.frame(
     Total_coverage_bp = sum(width(dmrs_cment)),
     Median_delta_beta = round(median(dmr_delta, na.rm = TRUE), 4),
     Mean_abs_delta_beta = round(mean(abs(dmr_delta), na.rm = TRUE), 4),
-    Hypermethylated_DMRs = sum(dmr_delta > 0, na.rm = TRUE),
-    Hypomethylated_DMRs = sum(dmr_delta < 0, na.rm = TRUE)
+    Hypermethylated_DMRs = sum(dmr_delta > 0.05, na.rm = TRUE),
+    Hypomethylated_DMRs = sum(dmr_delta < -0.05, na.rm = TRUE)
 )
 
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for PanNET versus neuroendocrine islets")
