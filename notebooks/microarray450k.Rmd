@@ -289,7 +289,7 @@ knitr::kable(dmr_summary, caption = "CMEnt DMR summary for AML versus normal sam
 ```
 
 
-```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4}
+```{r cment_dmr_scatter_plot, fig.width=9, fig.height=4, fig.cap="DMR width versus AML-minus-normal delta beta in promoter and gene-body contexts, restricted to absolute delta beta of at least 0.05.", fig.alt="Two scatter panels plot context-specific delta beta against DMR width on a logarithmic axis. Red points indicate hypermethylation and blue points hypomethylation; bars and labels summarize medians and counts, and stars mark Mood median-test significance."}
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
@@ -476,7 +476,7 @@ gene_context_df <- data.frame(
 knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
 ```
 
-```{r gene_context_plot, fig.width=6, fig.height=3.5}
+```{r gene_context_plot, fig.width=6, fig.height=3.5, fig.cap="Gene context of CMEnt DMRs. Promoter and gene-body overlap categories can include the same DMR.", fig.alt="Horizontal bars show DMR counts for promoter overlap, gene-body overlap, both overlaps, and no annotated gene overlap."}
 ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
     geom_col(width = 0.7) +
     coord_flip() +
@@ -509,7 +509,7 @@ if (requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = T
 }
 ```
 
-```{r cpg_island_context_plot, fig.width=8, fig.height=4}
+```{r cpg_island_context_plot, fig.width=8, fig.height=4, fig.cap="CpG island context of significant DMPs and sites inside CMEnt DMRs.", fig.alt="Overlaid horizontal bars compare site counts by CpG island context: grey for significant DMPs and blue for sites inside DMRs. Labels show the count differences."}
 if (exists("site_context_df")) {
     context_levels <- site_context_df |>
         group_by(Relation_to_Island) |>
@@ -645,7 +645,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
 }
 ```
 
-```{r, fig.width=10, fig.height=6}
+```{r, fig.width=10, fig.height=6, fig.cap="Top missMethyl GO and KEGG enrichments from CMEnt DMRs in GSE63409.", fig.alt="Faceted dot plots show enriched terms against negative log10 FDR. Dot size gives the number of differentially methylated genes; red dots mark AML-context terms and grey dots mark other top terms."}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     ggplot(missmethyl_top, aes(x = NegLog10FDR, y = Term_Collection, size = DE, color = AML_Context)) +
         geom_point(alpha = 0.9) +
@@ -689,7 +689,7 @@ if (nrow(focused_terms) > 0L) {
 }
 ```
 
-```{r focused_terms_plot, fig.width=10, fig.height=5}
+```{r focused_terms_plot, fig.width=10, fig.height=5, fig.cap="Top AML-relevant GO and KEGG enrichment terms from CMEnt DMRs in GSE63409.", fig.alt="Faceted horizontal bars show negative log10 FDR for AML-relevant enrichment terms, with separate panels for GO and KEGG collections."}
 if (nrow(focused_terms) > 0L) {
     ggplot(focused_terms, aes(x = -log10(pmax(FDR, .Machine$double.xmin)), y = Term_Collection, fill = Collection)) +
         geom_col(width = 0.7) +
@@ -745,7 +745,7 @@ knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overl
 ```
 
 ## Top CMEnt DMR Visualization
-```{r top_dmr, fig.width=6, fig.height=6}
+```{r top_dmr, fig.width=6, fig.height=6, fig.cap="Structure, gene context, and sample methylation of the top-ranked CMEnt DMR in GSE63409.", fig.alt="Aligned panels show the selected DMR, seed and surrounding-site positions, annotated gene context, and a heatmap of sample beta values along the locus."}
 CMEnt::plotDMR(
     dmrs_cment,
     dmr_index = top_dmr_index,
@@ -759,7 +759,7 @@ CMEnt::plotDMR(
 ```
 
 ## CMEnt DMR Manhattan Plot
-```{r manhattan, fig.width=10, fig.height=4}
+```{r manhattan, fig.width=10, fig.height=4, fig.cap="Genome-wide CMEnt DMR scores in GSE63409, colored by primary gene annotation class.", fig.alt="Manhattan plot places DMR scores along genomic position across chromosomes, with point colors indicating primary gene annotation class."}
 CMEnt::plotDMRsManhattan(
     dmrs_cment,
     genome = "hg19"
@@ -767,7 +767,7 @@ CMEnt::plotDMRsManhattan(
 ```
 
 ## CMEnt DMR Interaction Circos Visualization
-```{r circos, fig.width=10, fig.height=10}
+```{r circos, fig.width=10, fig.height=10, fig.cap="Circos summary of CMEnt DMR locations, methylation direction, and detected interactions in GSE63409.", fig.alt="Circular chromosome tracks show DMR positions and methylation direction. Links connect interacting DMRs; the adjacent legends explain track colors and motif-supported interaction groups."}
 CMEnt::plotDMRsCircos(
     dmrs_cment,
     genome = "hg19",

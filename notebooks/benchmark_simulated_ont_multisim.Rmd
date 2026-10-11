@@ -764,7 +764,7 @@ stats_summary <- summarise_benchmark_table(stats_all, runtime_all)
 knitr::kable(stats_summary, caption = "Benchmark statistics across simulations, mean (+/- SD)")
 ```
 
-```{r, fig.width=9, fig.height=4}
+```{r, fig.width=9, fig.height=4, fig.cap="DMR counts and total genomic coverage by method across simulated ONT datasets.", fig.alt="Faceted point plots compare DMR counts and total base-pair coverage by method. Colored points represent simulations; black points show medians and error bars show minima and maxima."}
 stats_plot <- stats_all |>
     dplyr::select(Method, simulation_id, Number_of_DMRs, Total_Coverage_bp) |>
     tidyr::pivot_longer(c(Number_of_DMRs, Total_Coverage_bp), names_to = "Metric", values_to = "Value")
@@ -801,7 +801,7 @@ knitr::kable(regions_truth_eval, caption = "Macro region-level performance again
 knitr::kable(bp_truth_eval, caption = "Micro base-pair-level performance against ground truth, mean (+/- SD)")
 ```
 
-```{r, fig.width=10, fig.height=5}
+```{r, fig.width=10, fig.height=5, fig.cap="Region-level F1, base-pair-level F1, and base-pair intersection over union against ground truth across simulated ONT datasets.", fig.alt="Three panels compare region-level F1, base-pair-level F1, and base-pair intersection over union by method on a zero-to-one scale. Colored points represent simulations; black points show medians and error bars show minima and maxima."}
 metric_plot <- truth_eval_all |>
     dplyr::select(Method, simulation_id, F1_regions, F1_bp, IoU_bp) |>
     tidyr::pivot_longer(c(F1_regions, F1_bp, IoU_bp), names_to = "Metric", values_to = "Value")
@@ -831,7 +831,7 @@ seed_summary <- do.call(rbind, lapply(benchmark_results, function(res) {
 knitr::kable(summarise_mean_pm(seed_summary, character(0), c("Seeds", "Truth_DMRs"), digits = 2), caption = "Seed and truth-set sizes, mean (+/- SD)")
 ```
 
-```{r, fig.width=7, fig.height=4}
+```{r, fig.width=7, fig.height=4, fig.cap="CMEnt seed counts passing the FDR threshold in each simulated ONT dataset.", fig.alt="Line plot with points shows the number of seeds passing the FDR threshold against simulation identifier."}
 ggplot(seed_summary, aes(simulation_id, Seeds)) +
     geom_line() +
     geom_point() +
@@ -846,7 +846,7 @@ runtime_summary <- summarise_mean_pm(runtime_all, "Method", c("Seconds", "Max_R_
 knitr::kable(runtime_summary, caption = "Runtime and maximum R heap across simulations, mean (+/- SD)")
 ```
 
-```{r runtime_plot, fig.width=8, fig.height=4}
+```{r runtime_plot, fig.width=8, fig.height=4, fig.cap="Runtime and maximum R heap usage by method across simulated ONT datasets.", fig.alt="Faceted point plots compare runtime in seconds and maximum R heap usage in megabytes by method. Colored points represent simulations; black points show medians and error bars show minima and maxima."}
 runtime_plot <- runtime_all |>
     tidyr::pivot_longer(c(Seconds, Max_R_Heap_MB), names_to = "Metric", values_to = "Value")
 
@@ -863,7 +863,7 @@ ggplot(runtime_plot, aes(Method, Value, colour = Method)) +
 
 ### Width Distributions
 
-```{r dmr_width_distributions_plot, fig.width=8, fig.height=6}
+```{r dmr_width_distributions_plot, fig.width=8, fig.height=6, fig.cap="DMR width distributions by method and ground truth, pooled across simulated ONT datasets.", fig.alt="Violin plots with boxplots compare DMR widths by method and the ground-truth set, pooled across simulations, on a logarithmic base-pair axis."}
 width_data <- do.call(rbind, lapply(benchmark_results, function(res) {
     sets <- c(lapply(res$methods, `[[`, "dmrs"), list(Truth = res$truth))
     do.call(rbind, lapply(names(sets), function(method) {

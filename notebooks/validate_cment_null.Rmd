@@ -398,7 +398,7 @@ cat(sprintf(
 ))
 ```
 
-```{r primary-plot}
+```{r primary-plot, fig.cap="Observed CMEnt seed incorporation compared with the conditional null distribution from chromosome-stratified methylation-profile permutations.", fig.alt="Histogram shows the number of unique supplied seeds incorporated into DMRs across null permutations. An orange vertical line marks the observed seed-incorporation count."}
 ggplot(null_summary, aes(x = incorporated_seeds)) +
     geom_histogram(bins = 40, fill = "#0072B2", color = "white") +
     geom_vline(xintercept = observed_statistic, color = "#D55E00", linewidth = 1) +

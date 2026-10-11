@@ -560,7 +560,7 @@ dmr_summary <- data.frame(
 knitr::kable(dmr_summary, caption = "CMEnt DMR summary for PanNET versus neuroendocrine islets")
 ```
 
-```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect for the top 1,000 CMEnt-scoring DMRs. Positive values indicate higher methylation in PanNET samples; point size shows within-plot CMEnt score percentile."}
+```{r cment_effect_plot, fig.width=8, fig.height=4, fig.cap="DMR width versus methylation effect for the top 1,000 CMEnt-scoring DMRs. Positive values indicate higher methylation in PanNET samples; point size shows within-plot CMEnt score percentile.", fig.alt="Scatterplot shows PanNET-minus-islet delta beta against DMR width on a logarithmic axis for up to 1,000 top-scoring DMRs. Red and blue distinguish hypermethylation and hypomethylation; point size shows score percentile and contours show density."}
 if (length(dmrs_cment) > 0L) {
     max_effect_plot_dmrs <- 1000L
     dmr_effect_df <- data.frame(
@@ -660,7 +660,7 @@ if (length(dmrs_cment) > 0L) {
 }
 ```
 
-```{r chromosome_arm_delta_plot, fig.width=4, fig.height=8, out.width="35%", fig.align="center", fig.cap="Chromosome-arm presence of hypermethylated and hypomethylated DMRs. Upper triangles show hypermethylated DMR counts per arm; lower triangles show hypomethylated DMR counts per arm."}
+```{r chromosome_arm_delta_plot, fig.width=4, fig.height=8, out.width="35%", fig.align="center", fig.cap="Chromosome-arm presence of hypermethylated and hypomethylated DMRs. Upper triangles show hypermethylated DMR counts per arm; lower triangles show hypomethylated DMR counts per arm.", fig.alt="Chromosome-arm tiles are split into upper red triangles for hypermethylated DMR counts and lower blue triangles for hypomethylated DMR counts. Separate color scales indicate counts for each direction."}
 if (length(dmrs_cment) > 0L && requireNamespace("ggnewscale", quietly = TRUE)) {
     get_chromosome_arms <- function(genome) {
         if (!requireNamespace("rtracklayer", quietly = TRUE)) {
@@ -844,7 +844,7 @@ gene_context_df <- data.frame(
 knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
 ```
 
-```{r gene_context_plot, fig.width=6, fig.height=3.5}
+```{r gene_context_plot, fig.width=6, fig.height=3.5, fig.cap="Gene context of CMEnt DMRs. Promoter and gene-body overlap categories can include the same DMR.", fig.alt="Horizontal bars show DMR counts for promoter overlap, gene-body overlap, both overlaps, and no annotated gene overlap."}
 ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
     geom_col(width = 0.7) +
     coord_flip() +
@@ -893,7 +893,7 @@ top_dmrs <- dmr_table |>
 knitr::kable(top_dmrs, digits = 4, caption = "Top 20 promoter or gene-body overlapping CMEnt DMRs ranked by score")
 ```
 
-```{r top_dmr_genes_plot, fig.width=9, fig.height=6}
+```{r top_dmr_genes_plot, fig.width=9, fig.height=6, fig.cap="Median context-specific delta beta for the top 20 genes per promoter or gene-body context, ranked by CMEnt score.", fig.alt="Two horizontal bar panels show median delta beta for promoter and gene-body overlaps. Bars extend around zero, and fill color indicates the highest overlapping DMR score for each gene."}
 build_gene_delta_df <- function(context, gene_col, delta_col) {
     if (nrow(dmr_table) == 0L) return(NULL)
     do.call(rbind, lapply(seq_len(nrow(dmr_table)), function(i) {
@@ -960,7 +960,7 @@ The heatmap averages beta values over the highest-ranked DMRs for each sample. I
 sample-level sanity check rather than a classifier: grey cells indicate missing regional
 beta estimates, which can occur in ONT data.
 
-```{r top_dmr_heatmap, fig.width=9, fig.height=6}
+```{r top_dmr_heatmap, fig.width=9, fig.height=6, fig.cap="Sample-level mean beta values across the top 15 ranked CMEnt DMRs, grouped by phenotype. Grey cells indicate missing regional beta estimates.", fig.alt="Heatmap rows represent top-ranked DMRs and columns represent samples grouped by phenotype. Blue, white, and red encode increasing mean beta values from zero to one; grey indicates missing values."}
 
 
 if (!file.exists(heatmap_file) && length(dmrs_cment) > 0L) {
@@ -1012,7 +1012,7 @@ if (file.exists(heatmap_file)) {
 
 ## Top CMEnt DMR Visualization
 
-```{r top_dmr, fig.width=10, fig.height=8}
+```{r top_dmr, fig.width=10, fig.height=8, fig.cap="Structure, gene context, and sample methylation of the CMEnt DMR selected by cross-validation accuracy, seed count, and absolute regional delta beta.", fig.alt="Aligned panels show the selected DMR, seed and surrounding-site positions, annotated gene context, and a heatmap of sample beta values along the locus, with motif information when available."}
 if (!file.exists(dmr_vis_file) && length(dmrs_cment) > 0L) {
     if (!exists("beta_handler")) {
         stop(
@@ -1045,7 +1045,7 @@ if (file.exists(dmr_vis_file)) {
 
 ## CMEnt DMR Manhattan Plot
 
-```{r manhattan, fig.width=10, fig.height=4}
+```{r manhattan, fig.width=10, fig.height=4, fig.cap="Genome-wide CMEnt DMR scores for PanNET versus neuroendocrine islets, colored by primary gene annotation class.", fig.alt="Manhattan plot places DMR scores along genomic position across chromosomes, with point colors indicating primary gene annotation class."}
 if (length(dmrs_cment) > 0L && "score" %in% colnames(mcols(dmrs_cment))) {
     CMEnt::plotDMRsManhattan(dmrs_cment, genome = genome)
 }

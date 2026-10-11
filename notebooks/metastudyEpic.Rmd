@@ -269,7 +269,7 @@ dmp_direction <- data.frame(
 )
 knitr::kable(dmp_direction, row.names = FALSE, caption = "Direction of published DMPs")
 ```
-```{r dmp-diagnostics, fig.width=8, fig.height=6}
+```{r dmp-diagnostics, fig.width=8, fig.height=6, fig.cap="Distribution of available Tumor-minus-Stroma delta beta values for the published GSE244696 DMPs.", fig.alt="Histogram shows published DMP counts across delta beta values. A dashed vertical line marks zero; text labels give medians for DMPs with higher methylation in Tumor or Stroma."}
 sig_dmps_delta_beta_medians <- sig_dmps |>
     group_by(Direction = ifelse(delta_beta_available > 0, "Higher in Tumor", "Higher in Stroma")) |>
     summarise(
@@ -345,7 +345,7 @@ methods_list <- list(CMEnt = dmrs_cment, `BH` = published_bumphunter)
 ```
 
 
-```{r cment_dmr_scatter_plot, fig.width=12, fig.height=6}
+```{r cment_dmr_scatter_plot, fig.width=12, fig.height=6, fig.cap="DMR width versus Tumor-minus-Stroma delta beta in promoter and gene-body contexts, restricted to absolute delta beta of at least 0.05.", fig.alt="Two scatter panels plot context-specific delta beta against DMR width on a logarithmic axis. Red points indicate hypermethylation and blue points hypomethylation; bars and labels summarize medians and counts, and stars mark Mood median-test significance."}
 dmr_effect_df <- bind_rows(
     data.frame(
         Region = "Promoter-overlapping DMRs",
@@ -563,7 +563,7 @@ if (nrow(cment_meta_summary) > 0L) {
     knitr::kable(cment_meta_summary, digits = 3, row.names = FALSE, caption = "CMEnt numeric metadata summary")
 }
 ```
-```{r dmr-width-comparison, fig.width=9, fig.height=4}
+```{r dmr-width-comparison, fig.width=9, fig.height=4, fig.cap="Width distributions of CMEnt and supplied Bumphunter DMRs in GSE244696.", fig.alt="Boxplots compare DMR widths in base pairs on a logarithmic axis for CMEnt and the supplied Bumphunter regions."}
 width_df <- base::do.call(rbind, lapply(names(methods_list), function(method) {
     data.frame(Method = method, Width = width(methods_list[[method]]))
 }))
@@ -591,7 +591,7 @@ gene_context_df <- data.frame(
 knitr::kable(gene_context_df, caption = "Gene context of CMEnt DMRs")
 ```
 
-```{r gene_context_plot, fig.width=6, fig.height=3.5}
+```{r gene_context_plot, fig.width=6, fig.height=3.5, fig.cap="Gene context of CMEnt DMRs. Promoter and gene-body overlap categories can include the same DMR.", fig.alt="Horizontal bars show DMR counts for promoter overlap, gene-body overlap, both overlaps, and no annotated gene overlap."}
 ggplot(gene_context_df, aes(x = reorder(Context, DMRs), y = DMRs, fill = Context)) +
     geom_col(width = 0.7) +
     coord_flip() +
@@ -629,7 +629,7 @@ if (requireNamespace("IlluminaHumanMethylationEPICanno.ilm10b4.hg19", quietly = 
 }
 ```
 
-```{r cpg_island_context_plot, fig.width=8, fig.height=4}
+```{r cpg_island_context_plot, fig.width=8, fig.height=4, fig.cap="CpG island context of significant DMPs and sites inside CMEnt DMRs.", fig.alt="Overlaid horizontal bars compare site counts by CpG island context: grey for significant DMPs and blue for sites inside DMRs. Labels show the count differences."}
 if (exists("site_context_df")) {
     context_levels <- site_context_df |>
         group_by(Relation_to_Island) |>
@@ -700,7 +700,7 @@ capture_by_set <- data.frame(
 capture_by_set$Captured_Pct <- 100 * capture_by_set$Captured_DMPs / capture_by_set$Total_DMPs
 knitr::kable(capture_by_set, digits = 1, row.names = FALSE, caption = "Published DMPs captured by each DMR set")
 ```
-```{r dmp-capture-plot, fig.width=8, fig.height=4}
+```{r dmp-capture-plot, fig.width=8, fig.height=4, fig.cap="Percentage of published GSE244696 DMPs captured by each DMR set.", fig.alt="Bars compare the percentage of published DMPs overlapping each DMR set. Labels above the bars give the captured probe counts."}
 ggplot(capture_by_set, aes(x = Set, y = Captured_Pct, fill = Set)) +
     geom_col(width = 0.6) +
     geom_text(aes(label = paste0(scales::comma(Captured_DMPs), " probes")), vjust = -0.4, size = 3.3) +
@@ -748,7 +748,7 @@ if (length(overlap_hits) > 0L) {
 }
 ```
 ## CMEnt-specific plots
-```{r cment-specific-plots-plot-dmr, fig.width=8, fig.height=6}
+```{r cment-specific-plots-plot-dmr, fig.width=8, fig.height=6, fig.cap="Structure, gene context, and sample methylation of the top CMEnt DMR ranked by score in GSE244696.", fig.alt="Aligned panels show the top-scoring DMR, seed and surrounding-site positions, annotated gene context, and a heatmap of sample beta values along the locus."}
 dmr_rank_table <- as.data.frame(dmrs_cment)
 CMEnt::plotDMRs(
     dmrs_cment,
@@ -762,14 +762,14 @@ CMEnt::plotDMRs(
     genome = "hg19"
 )
 ```
-```{r cment-specific-plots-plot-manhattan, fig.width=10, fig.height=5}
+```{r cment-specific-plots-plot-manhattan, fig.width=10, fig.height=5, fig.cap="Genome-wide CMEnt DMR scores in GSE244696, colored by primary gene annotation class.", fig.alt="Manhattan plot places DMR scores along genomic position across chromosomes, with point colors indicating primary gene annotation class."}
 cat("CMEnt DMR Manhattan plot:\n")
 CMEnt::plotDMRsManhattan(
     dmrs_cment,
     genome = "hg19"
 )
 ```
-```{r cment-specific-plots-circos-interactions, fig.width=8, fig.height=8}
+```{r cment-specific-plots-circos-interactions, fig.width=8, fig.height=8, fig.cap="Circos summary of CMEnt DMR locations, methylation direction, and detected interactions in GSE244696.", fig.alt="Circular chromosome tracks show DMR positions and methylation direction. Links connect interacting DMRs; the adjacent legends explain track colors and motif-supported interaction groups."}
 cat("CMEnt DMR Circos interactions plot:\n")
 CMEnt::plotDMRsCircos(
     dmrs_cment,
@@ -943,7 +943,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     )
 }
 ```
-```{r biology-missmethyl, fig.width=15, fig.height=7}
+```{r biology-missmethyl, fig.width=15, fig.height=7, fig.cap="Top missMethyl GO and KEGG enrichments from promoter-overlapping DMRs by method. Bold term labels indicate terms shared across methods.", fig.alt="Faceted dot plots show enriched terms against negative log10 FDR by method and collection. Dot size gives the number of differentially methylated genes, and bold labels identify terms shared across methods."}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
     ggplot(missmethyl_top, aes(x = NegLog10FDR, y = Term_Facet, size = DE)) +
         geom_point(alpha = 0.9) +
@@ -958,7 +958,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L) {
 }
 ```
 
-```{r missmethyl-kegg-pathview, fig.width=10, fig.height=7}
+```{r missmethyl-kegg-pathview, fig.width=10, fig.height=7, fig.cap="Top missMethyl KEGG pathway with promoter-gene overlap, colored by CMEnt promoter delta beta in GSE244696.", fig.alt="KEGG pathway diagram colors mapped genes by promoter delta beta: red for higher methylation in Tumor, blue for lower methylation in Tumor, and white near zero."}
 if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
     requireNamespace("pathview", quietly = TRUE) &&
     requireNamespace("KEGGREST", quietly = TRUE)) {
