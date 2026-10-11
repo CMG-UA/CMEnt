@@ -128,11 +128,7 @@ if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
 ```{r simulate_data}
 input_bsseq_path <- getBenchmarkFile("ont_bsseq_augmented.rds")
 zenodo_url <- "https://zenodo.org/records/20592944/files/ont_bsseq_augmented.rds?download=1"
-if (!file.exists(input_bsseq_path)) {
-    curl::curl_download(zenodo_url, input_bsseq_path)
-}
-input_bsseq <- sort(readRDS(input_bsseq_path))
-stopifnot(inherits(input_bsseq, "BSseq"))
+input_bsseq <- NULL
 
 base_simulation <- list(
     delta_jitter = 0.1,
@@ -169,6 +165,14 @@ simulate_one <- function(plan_row) {
             plan_row$simulation_id, plan_row$seed, plan_row$delta_beta_max, plan_row$expected_corr
         )
     )
+
+    if (is.null(input_bsseq)) {
+        if (!file.exists(input_bsseq_path)) {
+            curl::curl_download(zenodo_url, input_bsseq_path)
+        }
+        input_bsseq <<- sort(readRDS(input_bsseq_path))
+        stopifnot(inherits(input_bsseq, "BSseq"))
+    }
 
     set.seed(plan_row$seed)
     sim <- CMEnt::simulateDMRs(
@@ -472,9 +476,6 @@ time_method <- function(expr) {
 
 ```{r run_benchmark, cache=FALSE}
 run_one_simulation <- function(plan_row) {
-    sim <- simulate_one(plan_row)
-    truth_dmrs <- as_truth_gr(sim)
-    dat <- prepare_bsseq_data(sim, plan_row)
     sim_dir <- sprintf("sim_%02d", plan_row$simulation_id)
     common <- list(delta_beta_max = plan_row$delta_beta_max, simulation_seed = plan_row$seed)
 
@@ -544,11 +545,11 @@ run_one_simulation <- function(plan_row) {
         )
     )
 
-    method_outputs <- lapply(names(method_specs), function(method) {
+    cached_methods <- lapply(names(method_specs), function(method) {
         spec <- method_specs[[method]]
         cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
         cached <- read_cache(cache_file, spec$params)
-        out <- if (
+        if (
             !is.null(cached) &&
                 inherits(cached$value$dmrs, "GenomicRanges") &&
                 length(cached$value$dmrs) > 0L &&
@@ -556,6 +557,37 @@ run_one_simulation <- function(plan_row) {
         ) {
             cached$value
         } else {
+            NULL
+        }
+    })
+    names(cached_methods) <- names(method_specs)
+
+    summary_file <- getSimulationFile(plan_row$simulation_id, "simulation_summary.rds")
+    summary_params <- c(base_simulation, list(
+        seed = plan_row$seed,
+        delta_beta_max = plan_row$delta_beta_max,
+        expected_corr = plan_row$expected_corr,
+        max_pval = max_pval
+    ))
+    cached_summary <- read_cache(summary_file, summary_params)
+    if (!is.null(cached_summary) && all(!vapply(cached_methods, is.null, logical(1)))) {
+        truth_dmrs <- cached_summary$value$truth
+        seeds_n <- cached_summary$value$seeds_n
+    } else {
+        sim <- simulate_one(plan_row)
+        truth_dmrs <- as_truth_gr(sim)
+        dat <- prepare_bsseq_data(sim, plan_row)
+        seeds_n <- nrow(dat$seeds)
+        save_cache(summary_file, list(truth = truth_dmrs, seeds_n = seeds_n), summary_params)
+    }
+
+    method_outputs <- lapply(names(method_specs), function(method) {
+        spec <- method_specs[[method]]
+        cached <- cached_methods[[method]]
+        out <- if (!is.null(cached)) {
+            cached
+        } else {
+            cache_file <- getBenchmarkFile(file.path(sim_dir, sprintf("dmrs.%s.rds", gsub("[^A-Za-z0-9]+", "_", method))))
             cat(sprintf("Running method %s for simulation %d", method, plan_row$simulation_id))
             value <- spec$run(spec$params)
             if (length(value$dmrs) > 0L) {
@@ -571,7 +603,7 @@ run_one_simulation <- function(plan_row) {
         simulation_id = plan_row$simulation_id,
         params = plan_row,
         truth = truth_dmrs,
-        seeds_n = nrow(dat$seeds),
+        seeds_n = seeds_n,
         methods = method_outputs
     )
 }
@@ -814,7 +846,7 @@ runtime_summary <- summarise_mean_pm(runtime_all, "Method", c("Seconds", "Max_R_
 knitr::kable(runtime_summary, caption = "Runtime and maximum R heap across simulations, mean (+/- SD)")
 ```
 
-```{r, fig.width=8, fig.height=4}
+```{r runtime_plot, fig.width=8, fig.height=4}
 runtime_plot <- runtime_all |>
     tidyr::pivot_longer(c(Seconds, Max_R_Heap_MB), names_to = "Metric", values_to = "Value")
 
@@ -831,7 +863,7 @@ ggplot(runtime_plot, aes(Method, Value, colour = Method)) +
 
 ### Width Distributions
 
-```{r, fig.width=8, fig.height=6}
+```{r dmr_width_distributions_plot, fig.width=8, fig.height=6}
 width_data <- do.call(rbind, lapply(benchmark_results, function(res) {
     sets <- c(lapply(res$methods, `[[`, "dmrs"), list(Truth = res$truth))
     do.call(rbind, lapply(names(sets), function(method) {
