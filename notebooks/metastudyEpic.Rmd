@@ -67,10 +67,22 @@ suppressWarnings(
         ))
     }
 )
-
-try(devtools::load_all(), silent = TRUE)
+.loadCMEnt <- function() {
+    root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
+    if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
+        ok <- tryCatch({
+            pkgload::load_all(root, quiet = TRUE)
+            TRUE
+        }, error = function(e) {
+            message("Could not load local CMEnt source: ", conditionMessage(e))
+            FALSE
+        })
+        if (ok) return(invisible(TRUE))
+    }
+    suppressPackageStartupMessages(library(CMEnt))
+}
+.loadCMEnt()
 suppressPackageStartupMessages({
-    try(library(CMEnt), silent = TRUE)
     library(data.table)
     library(dplyr)
     library(ggplot2)
@@ -203,7 +215,7 @@ dmp_gr <- makeGRangesFromDataFrame(
     data.frame(
         chr = dmp_locs$chr,
         start = dmp_locs$start,
-        end = dmp_locs$end,
+        end = dmp_locs$start + 1L,
         site_id = sig_dmps$site_id,
         pval = sig_dmps$pval,
         qval = sig_dmps$qval
