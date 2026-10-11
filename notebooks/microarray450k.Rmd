@@ -187,7 +187,7 @@ if (!file.exists(dmps_file)) {
         data.frame(
             chr = locs$chr,
             start = locs$start,
-            end = locs$end,
+            end = locs$start + 1L,
             pval = dmps$pval,
             qval = dmps$qval,
             stat = dmps$qval,
