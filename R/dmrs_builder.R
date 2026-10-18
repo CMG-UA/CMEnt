@@ -3757,8 +3757,8 @@
 #'  connecting seeds into preliminary DMRs based on significant correlations.
 #' 2. **DMR Expansion**: It expands the preliminary DMRs by including nearby sites that show significant correlation with the seeds,
 #'  allowing for a specified delta-beta threshold to connect sites that may not meet the correlation p-value cutoff but have a strong effect size.
-#' 3. **DMR Merging and Filtering**: It merges overlapping extended DMRs into final DMRs and applies filtering based on the number of seeds and sites,
-#'  as well as optional adjustments for array-based analyses.
+#' 3. **DMR Merging, Filtering and Scoring**: It merges overlapping extended DMRs into final
+#'  DMRs, applies filtering based on the number of seeds and sites and optionally scores the DMRs based on an SVM cross-prediction strategy.
 #'
 #' @section Note on Input Data:
 #' Do not apply heavy filtering to your seeds prior to using this function, particularly based on
