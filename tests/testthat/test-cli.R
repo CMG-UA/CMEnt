@@ -1,6 +1,5 @@
 .loadStandaloneCMEntCLI <- function() {
-    script <- test_path("..", "..", "run_cment.R")
-    skip_if_not(file.exists(script), "Standalone CLI is excluded from the R source package.")
+    script <- system.file("docker", "run_cment.R", package = "CMEnt")
     expressions <- parse(script)
     cli_env <- new.env(parent = baseenv())
     # Load definitions without running the final commandArgs() invocation.
@@ -65,4 +64,33 @@ test_that("standalone buildDMRs CLI resolves package helpers and preserves optio
     expect_equal(captured$seeds, "seeds.tsv")
     expect_equal(captured$njobs, 4L)
     expect_equal(captured$entanglement, "weak")
+})
+
+test_that("container preparation runs after validation and before dispatch", {
+    skip_if_not_installed("optparse")
+    cli <- .loadStandaloneCMEntCLI()
+    state <- new.env(parent = emptyenv())
+    state$events <- character()
+    prepare <- function(command, args) {
+        state$events <- c(state$events, "prepare")
+        expect_equal(command, "findDMPsBSSeq")
+        expect_equal(args$njobs, 4L)
+    }
+    cli$findDMPsBSSeqCLI <- function(args) {
+        state$events <- c(state$events, "analysis")
+    }
+    expect_output(cli$.runCMEntCLI("--help", prepare_dependencies = prepare),
+                  "CMEnt command line interface")
+    expect_output(cli$.runCMEntCLI(c("help", "findDMPsBSSeq"),
+                                  prepare_dependencies = prepare),
+                  "Identify differentially methylated positions")
+    expect_error(cli$.runCMEntCLI("findDMPsBSSeq", prepare_dependencies = prepare),
+                 "Missing required option(s)", fixed = TRUE)
+    expect_length(state$events, 0L)
+    cli$.runCMEntCLI(c(
+        "findDMPsBSSeq", "--bsseq", "input.rds", "--samplesheet", "pheno.tsv",
+        "--sample_group_col", "Group", "--output_file", "dmps.tsv",
+        "--njobs", "4"
+    ), prepare_dependencies = prepare)
+    expect_equal(state$events, c("prepare", "analysis"))
 })

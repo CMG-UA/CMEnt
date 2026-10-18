@@ -72,8 +72,13 @@ convertBetaToTabix <- function(beta_file,
 
     .log_step("Converting beta file to tabix format...", level = 1)
 
+    # Conversion has three stages: write BED-like rows, sort genomic keys, then
+    # bgzip and index. The outer handler reports conversion failures.
     tryCatch(
         {
+            # A supplied BED file belongs to the caller. Only remove the
+            # intermediate BED created here; both paths share sorting,
+            # compression and indexing.
             owns_temp_bed <- is.null(.bed_file)
             if (owns_temp_bed) {
                 # Get sorted locations if not provided

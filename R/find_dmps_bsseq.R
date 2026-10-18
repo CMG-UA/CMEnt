@@ -37,7 +37,6 @@
 #'       Age = c(30, 32, 31, 28, 29, 27)
 #'     )
 #'     # Find DMPs with DSS
-#'     \donttest{
 #'     dmps <- findDMPsBSSeq(
 #'        bsseq = BS.cancer.ex,
 #'        samplesheet = samplesheet,
@@ -49,7 +48,6 @@
 #'        njobs = 4
 #'     )
 #'     print(head(dmps))
-#'     }
 #' }
 #' @importFrom stats as.formula
 #' @export
@@ -65,6 +63,8 @@ findDMPsBSSeq <- function(
     output_file = NULL,
     njobs = 1L
 ) {
+    # Workflow: validate and align samples, fit DSS per chromosome, then
+    # assemble finite site statistics and effects in the common DMP schema.
     sample_group_col <- .requireSampleGroupCol(sample_group_col, "findDMPsBSSeq()")
     .assertPackagesInstalled(
         pkg_names = "DSS",
@@ -129,6 +129,8 @@ findDMPsBSSeq <- function(
         }
     }
 
+    # Set control as the reference so positive delta beta consistently means
+    # higher methylation in the selected case group.
     pheno$condition <- factor(
         pheno[[sample_group_col]] == case_group,
         levels = c(FALSE, TRUE),
@@ -150,6 +152,8 @@ findDMPsBSSeq <- function(
     chr_in_bsseq <- unique(seqn)
     nworkers <- min(njobs, length(chr_in_bsseq))
 
+    # Chromosomes are the independent work units; each task sees the same
+    # aligned phenotype table and covariate model.
     bsseq_by_chr <- lapply(
         chr_in_bsseq,
         function(chr_name) bsseq_obj[seqn == chr_name, ]
@@ -181,6 +185,8 @@ findDMPsBSSeq <- function(
 
         case_idx <- pheno$condition == "case"
         control_idx <- pheno$condition == "control"
+        # Compute the reported case-minus-control effect from raw methylation
+        # proportions; DSS supplies the fitted significance statistics.
         meth_chr <- bsseq::getMeth(bsseq_chr, type = "raw")
         if (is.null(dim(meth_chr))) {
             meth_chr <- matrix(
@@ -237,6 +243,8 @@ findDMPsBSSeq <- function(
     }
     dml_test <- do.call(rbind, dml_by_chr)
 
+    # Keep only usable tests before computing scores and formatting output. The
+    # q-values here are the FDR values returned by the chromosome DSS fits.
     dml_test <- dml_test[
         is.finite(dml_test$pvals) &
             is.finite(dml_test$fdrs) &

@@ -91,13 +91,8 @@ avoid exhaustive optimization to keep region finding inexpensive.
 dmrs <- readRDS(system.file(
     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 ))
-\donttest{
-if (interactive()) {
-    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
-    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
-    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
-    plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
-}
-}
+regions <- plotAutoDMRsCircos(
+    dmrs, beta = NULL, pheno = NULL, method = "quick", n_regions = 1,
+    query_components_with_jaspar = FALSE
+)
 }

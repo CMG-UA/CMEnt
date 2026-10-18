@@ -74,6 +74,8 @@ combinePvalues <- function(
     p_floor = 9e-117,
     na_correlation = 0
 ) {
+    # Validate and sort a working copy for spatial calculations; .index below
+    # restores the caller's order and leaves excluded entries as NA.
     method <- match.arg(method)
     correlation <- match.arg(correlation)
 
@@ -135,6 +137,8 @@ combinePvalues <- function(
     dat$p <- .clipCombPvalues(dat$p, p_floor)
     dat <- dat[order(dat$chr, dat$start, dat$end, dat$.index), , drop = FALSE]
 
+    # Use either the estimated distance-dependent correlation or the supplied
+    # lag table as the covariance model for local Stouffer-Liptak-Kechris tests.
     if (is.null(acf)) {
         acf_tbl <- .estimateCombPAcf(
             dat = dat,
@@ -163,6 +167,8 @@ combinePvalues <- function(
         return(out)
     }
 
+    # Apply the requested multiple-testing correction after local combination,
+    # retaining both the lag model and unadjusted combined values as attributes.
     adjusted <- stats::p.adjust(out, method = method)
     names(adjusted) <- names(out)
     attr(adjusted, "acf") <- acf_tbl
@@ -227,6 +233,8 @@ combinePvalues <- function(
     max_lag <- max(lag_max)
     by_chr <- split(dat, dat$chr, drop = TRUE)
 
+    # Count within-chromosome pairs first so lag-bin vectors can be allocated
+    # once. Sorted positions let each scan stop beyond the largest lag.
     n_pairs <- integer(length(lag_min))
     for (chrom_dat in by_chr) {
         n <- nrow(chrom_dat)
@@ -282,6 +290,8 @@ combinePvalues <- function(
         }
     }
 
+    # Estimate each distance bin separately, or accumulate shorter lags when
+    # partial is FALSE. Uninformative bins retain the configured correlation.
     corr <- rep(na_correlation, length(pair_x))
     cumulative_x <- numeric()
     cumulative_y <- numeric()

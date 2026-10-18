@@ -85,6 +85,8 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
     if (is.na(njobs) || njobs < 1L) {
         stop("njobs must be a positive integer.")
     }
+    # Normalize sample columns and coordinates once into a shared BED file.
+    # Build the location registry and preferred query backend from that file.
     tabix_available <- .tabixToolsAvailable()
 
     cache_dir <- .getCacheDir(output_dir)
@@ -228,6 +230,8 @@ readCustomMethylationBedData <- function(bed_file, pheno, genome, chrom_col = "#
         tabix_file
     }
 
+    # On Unix, registry creation can run alongside Tabix sorting within the
+    # requested job budget. Otherwise create both outputs sequentially.
     if (tabix_available && njobs > 1L && identical(.Platform$OS.type, "unix")) {
         locations_job <- parallel::mcparallel(build_locations(), silent = TRUE)
         tabix_result <- tryCatch(

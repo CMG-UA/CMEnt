@@ -72,9 +72,14 @@ You can install the development version of CMEnt from GitHub with:
     # install.packages("devtools") # nolint
     devtools::install_github("CMG-UA/CMEnt")
 
-Another option is to use the Docker image available on DockerHub, which
-contains a pre-installed version of CMEnt along with all dependencies.
-You can pull the image using the following command:
+Another option is the Docker image on GitHub Container Registry. It contains
+CMEnt and common dependencies. At startup, the container installs missing optional
+packages for the requested command, inputs, and genome before running CMEnt.
+Viewer setup uses the saved analysis metadata. Installation requires network
+access and a writable R library when packages are missing; CMEnt package
+functions never install software. See [INSTALL](INSTALL) for external tools and
+Windows limitations, and `inst/docker/` for the container build and setup scripts.
+You can pull the image using:
 
     docker pull ghcr.io/cmg-ua/cment/cment:latest
 
@@ -88,7 +93,7 @@ Shiny port from the container and bind the app to `0.0.0.0`:
     docker run --rm -p 3838:3838 \
       ghcr.io/cmg-ua/cment/cment:latest \
       launchCMEntViewer \
-      --output_prefix /CMEnt/inst/extdata/example_output \
+      --output_prefix /CMEnt/inst/extdata/example_outputChr5And11 \
       --launch_browser FALSE \
       --host 0.0.0.0 \
       --port 3838

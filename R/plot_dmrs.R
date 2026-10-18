@@ -125,6 +125,8 @@
                               min_extension_bp = 50,
                               plot_title = TRUE,
                               .ret_details = FALSE) {
+    # Structure roadmap: recover seed/support membership, resolve the shown site
+    # span, build schematic layers, then return shared axis information.
     .coercePlotLocs <- function(df) {
         df <- as.data.frame(df)
         for (col in intersect(c("start", "end"), colnames(df))) {
@@ -212,6 +214,8 @@
     dmr_locs <- beta_locs[start_site_ind:end_site_ind, , drop = FALSE]
     dmr_locs <- .coercePlotLocs(dmr_locs)
 
+    # Positions between DMR endpoints can include non-supporting sites. Keep
+    # that context separate from the explicit membership used for support.
     nsup_sites <- setdiff(rownames(dmr_locs), sites)
     nsup_sites_locs <- .locsToDf(dmr_locs[nsup_sites, , drop = FALSE])
 
@@ -247,6 +251,8 @@
     )
 
 
+    # Translate site roles into separate geometric layers: seeds, linked seed
+    # span, supported extensions, and non-supporting context positions.
     # Create plotting data frame
     # 1. seeds (stem plots at y=1)
     seeds_df <- data.frame(
@@ -607,6 +613,8 @@
         .log_info("Title of the generated plot:\n", title)
     }
 
+    # Return the same site coordinates and axis breaks used by the schematic so
+    # accompanying heatmap and gene tracks can align to its genomic scale.
     if (.ret_details) {
         nsup_df <- extended_nsup_sites_locs
         if (!"site_id" %in% colnames(nsup_df)) {
@@ -681,6 +689,8 @@
         return(NULL)
     }
 
+    # Map gene features onto the shown site tiles so this track aligns with the
+    # schematic and heatmap rather than introducing another x-axis.
     site_ids <- rownames(total_shown_positions)
     site_gr <- GenomicRanges::GPos(
         seqnames = total_shown_positions$chr,
@@ -740,6 +750,8 @@
         .collapseGeneLabels(unique(unlist(strsplit(x, ","), use.names = FALSE)))
     }, character(1))
     label_df$Gene <- unname(gene_labels[as.character(label_df$Context)])
+    # Expand strand markers only across overlapping tiles; labels summarize the
+    # corresponding genes separately for promoter and gene-body tracks.
     strand_df <- do.call(rbind, lapply(seq_len(nrow(track_df)), function(i) {
         row <- track_df[i, , drop = FALSE]
         has_plus <- grepl("+", row$Strand, fixed = TRUE)
@@ -828,6 +840,8 @@
     # Prepare data
     beta_data <- as.data.frame(beta_data)
     beta_data[, "site"] <- rownames(beta_data)
+    # When thinning groups, prioritize observed values at seeds, then fill
+    # remaining slots by overall observed coverage. Missing cells stay missing.
     select_samples <- function(group_samples) {
         if (length(group_samples) <= max_samples_per_group) {
             return(group_samples)
@@ -928,6 +942,8 @@
     } else {
         beta_melted$Sample <- factor(beta_melted$Sample, levels = sample_order)
     }
+    # Fix sample order before removing non-finite beta cells, so missing
+    # measurements leave gaps rather than collapsing rows or changing groups.
     sample_index <- seq_along(sample_order)
     names(sample_index) <- sample_order
     beta_melted$SampleIndex <- unname(sample_index[as.character(beta_melted$Sample)])
@@ -1033,6 +1049,8 @@ minmaxscale <- function(x) {
     } else {
         ord <- seq_along(dmrs)
     }
+    # Keep the focal DMR in the bounded comparison pool even when it falls
+    # outside the score-based priority list; report the strongest other motifs.
     candidate_inds <- unique(c(ord[seq_len(pool_size)], dmr_index))
     cand_dmrs <- dmrs[candidate_inds]
 
@@ -1179,6 +1197,8 @@ minmaxscale <- function(x) {
         seed_ids <- base::strsplit(as.character(S4Vectors::mcols(dmr)$seeds[[1]]), ",", fixed = TRUE)[[1]]
         seed_count <- sum(nzchar(seed_ids))
     }
+    # A one-hot PWM has one observed base per position across seed windows.
+    # Label this consensus-only case explicitly before drawing the logo.
     consensus_only <- all(colSums(pwm > 0) <= 1)
     pwm_subtitle <- NULL
     if (consensus_only) {
@@ -1275,14 +1295,11 @@ minmaxscale <- function(x) {
 #' dmrs <- readRDS(system.file(
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
-#' \donttest{
-#' # Plot structure only
-#' plotDMRs(dmrs, dmr_indices = 1:2, ncol = 2, plot_motif = FALSE)
-#'
-#' # Plot with beta values heatmap
-#' if (interactive()) {
-#'     plotDMRs(dmrs, top_n = 4, beta = "beta.txt", pheno = pheno_df)
-#' }
+#' if (requireNamespace(
+#'     "IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE
+#' )) {
+#'     plotDMRs(dmrs, dmr_indices = seq_len(min(2, length(dmrs))),
+#'              array = "450K", ncol = 2, plot_motif = FALSE)
 #' }
 #'
 #' @export
@@ -1316,6 +1333,8 @@ plotDMRs <- function(dmrs,
         dmr_indices <- ord[seq_len(min(top_n, length(dmrs)))]
     }
 
+    # Prepare a shared beta handler once, then let plotDMR() compose each
+    # requested region using the same data access and display parameters.
     # Create individual plots
     if (!is.null(beta)) {
         beta <- getBetaHandler(
@@ -1395,8 +1414,10 @@ plotDMRs <- function(dmrs,
 #' dmrs <- readRDS(system.file(
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
-#' \donttest{
-#' plotDMR(dmrs, 1, plot_motif = FALSE)
+#' if (requireNamespace(
+#'     "IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE
+#' )) {
+#'     plotDMR(dmrs, 1, array = "450K", plot_motif = FALSE)
 #' }
 #'
 #' @export
@@ -1418,6 +1439,8 @@ plotDMR <- function(dmrs,
                     output_file = NULL,
                     width = 8,
                     height = 12) {
+    # Composition workflow: validate the selected DMR, derive a common genomic
+    # axis, add optional beta/gene/motif panels, then align and draw the grobs.
     input_dmrs_n <- if (inherits(dmrs, "GRanges")) {
         length(dmrs)
     } else if (is.data.frame(dmrs)) {
@@ -1522,6 +1545,8 @@ plotDMR <- function(dmrs,
     structure_plot <- ret$structure_plot
     breaks <- ret$breaks
     breaks_labels <- ret$breaks_labels
+    # The structure panel defines which sites and coordinates are visible. Use
+    # those exact rows and breaks for the optional beta and gene panels.
     total_shown_positions <- ret$total_locs
 
 
@@ -1585,6 +1610,8 @@ plotDMR <- function(dmrs,
         x_aligned_grobs <- 1L
     }
 
+    # Motif panels have their own sequence-position scale. Add them after
+    # recording the panels that must share genomic x-axis geometry.
     if (plot_motif) {
         .log_info("Generating motif PWM plot...", level = 3)
         pwm_plot <- .plotPWM(dmr, genome = genome, array = array, beta_locs = beta_locs, motif_site_flank_size = motif_site_flank_size)
@@ -1671,6 +1698,8 @@ plotDMR <- function(dmrs,
         return(stats::setNames(numeric(), character()))
     }
 
+    # Resolve chromosome extents from seqinfo, then cytobands, then observed DMR
+    # ends. This allows plotting ranges without complete genome metadata.
     chr_lengths <- stats::setNames(rep(NA_real_, length(chromosomes)), chromosomes)
     seq_lengths <- suppressWarnings(GenomeInfoDb::seqlengths(dmrs))
     if (length(seq_lengths) > 0) {
@@ -1729,6 +1758,8 @@ plotDMR <- function(dmrs,
         stop("No chromosomes available for Manhattan plotting.")
     }
 
+    # Full-genome views use resolved chromosome extents. Regional views merge
+    # overlapping requested intervals before assigning cumulative offsets.
     if (is.null(region)) {
         chr_lengths <- .getManhattanChromosomeLengths(
             dmrs = dmrs,
@@ -1851,6 +1882,8 @@ plotDMR <- function(dmrs,
     if (!any(keep)) {
         return(data.frame())
     }
+    # Separate blocks by display span as well as block ID, so one biological
+    # block shown in different windows cannot produce a rectangle across them.
     base_cols <- c("chr", "position", "score", block_col)
     if ("span_id" %in% colnames(dmr_df)) {
         base_cols <- c(base_cols, "span_id")
@@ -1891,6 +1924,9 @@ plotDMR <- function(dmrs,
             xmin <- xmin - x_pad
             xmax <- xmax + x_pad
         }
+        # A minimum display width keeps tiny blocks visible; this padding
+        # affects only the drawn rectangle, not its underlying membership or
+        # coordinates.
         min_width <- max(
             x_pad * 2,
             chr_span_value * min_display_fraction
@@ -2004,6 +2040,8 @@ plotDMRBlockFormation <- function(dmrs,
 
     chr_dmrs <- dmrs[keep]
 
+    # Recompute the same block-formation stages used for scoring and request
+    # their intermediate tables, so this plot explains the actual decisions.
     details_result <- .assignDMRBlocksFromScores(
         dmrs = chr_dmrs,
         k_neighbors = k_neighbors,
@@ -2065,6 +2103,8 @@ plotDMRBlockFormation <- function(dmrs,
             y_span <- 1
         }
     }
+    # Place candidate and accepted-block bands below the score profile; segment
+    # fits and gap markers show why candidates are retained or split.
     candidate_band <- c(y_rng[1] - y_span * 0.22, y_rng[1] - y_span * 0.15)
     block_band <- c(y_rng[1] - y_span * 0.12, y_rng[1] - y_span * 0.05)
 
@@ -2300,6 +2340,8 @@ plotDMRsManhattan <- function(dmrs,
     dmrs <- dmrs[keep]
     scores <- scores[keep]
 
+    # Prepare point metadata before mapping genomic coordinates to display
+    # spans. Region class controls the point legend independently of block fill.
     dmr_class <- .classifyDMRRegionForManhattan(dmrs, promoter_col = promoter_col, gene_body_col = gene_body_col)
     m <- !is.na(dmr_class)
     dmrs <- dmrs[m]
@@ -2381,6 +2423,8 @@ plotDMRsManhattan <- function(dmrs,
     dmr_df$plot_start <- plot_spans$plot_start[span_idx]
     dmr_df$plot_end <- plot_spans$plot_end[span_idx]
     dmr_df$offset <- plot_spans$offset[span_idx]
+    # Use each assigned span's offset to concatenate displayed intervals. Clip
+    # crossing DMR midpoints to the visible edge of their assigned span.
     midpoint_clipped <- pmin(pmax(dmr_df$midpoint, dmr_df$plot_start), dmr_df$plot_end)
     dmr_df$position <- (midpoint_clipped - dmr_df$plot_start + 1) + dmr_df$offset
     chr_levels <- .orderChromosomesNaturally(unique(plot_spans$chr))
@@ -2424,6 +2468,8 @@ plotDMRsManhattan <- function(dmrs,
     )
 
     p <- ggplot2::ggplot(dmr_df, ggplot2::aes(x = position, y = score, color = dmr_class, shape = dmr_class))
+    # Draw block backgrounds from displayed membership, then overlay the DMR
+    # points so region class and score remain visible within each block.
     block_rects <- data.frame()
     if (show_blocks) {
         .log_info("Building block rectangles for visualization...", level = 3)

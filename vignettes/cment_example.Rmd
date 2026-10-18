@@ -178,9 +178,11 @@ DMR pairs.
 
 The rationale is that DMRs with similar motifs may be co-regulated or
 functionally related, even if they are not in close genomic proximity.
-The function computes pairwise similarities between the PWMs of the extracted motifs,
+The function computes pairwise similarities between the PWMs of the extracted
+motifs,
 excluding the center site positions, corrects for microarray design biases,
-applies a minimum similarity threshold of 0.8, and identifies connected components of interacting DMRs. 
+applies a minimum similarity threshold of 0.8, and identifies connected
+components of interacting DMRs.
 The resulting components are annotated with JASPAR motifs if available.
 ```{r motif_interactions}
 query_with_jaspar <- requireNamespace("JASPAR2024", quietly = TRUE)
@@ -237,7 +239,9 @@ if (annotated_components > 0) {
 ### DMR Score Manhattan Plot
 
 A manhattan plot of the DMRs is drawn, showing complementary SVM scores,
-their annotation as promoter or gene body DMRs, and translucent block squares for localized score peaks identified by the scoring block extension. The DMRs that belong to both promoter and gene body are omitted.
+their annotation as promoter or gene body DMRs, and translucent block squares
+for localized score peaks identified by the scoring block extension. The DMRs
+that belong to both promoter and gene body are omitted.
 ```{r manhattan_plot, fig.height=6, fig.width=14, dpi=150}
 plotDMRsManhattan(
     dmrs = dmrs,
@@ -296,86 +300,63 @@ A circos plot consisting of extracted CMEnt information is drawn along the
 genome or a specified region.
 The information includes:
 
-- The DMRs and their complementary SVM scores (at most 40 DMRs per chromosome are shown)
-- Selected beta values of the DMRs (at most 5 sites per DMR, scoring by absolute delta-beta, are shown)
-- The motif-based interactions between DMRs, with links direction going from higher scoring to lower scoring (at most 120 interactions groups are shown)
+- The DMRs and their complementary SVM scores (at most 40 DMRs per chromosome
+  are shown)
+- Selected beta values of the DMRs (at most 5 sites per DMR, scoring by
+  absolute delta-beta, are shown)
+- The motif-based interactions between DMRs, with links direction going from
+  higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
 ```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1}
 circos_dmrs <- dmrs
-circos_summary_plotted <- FALSE
-
-tryCatch(
-    {
-        plotDMRsCircos(
-            dmrs = circos_dmrs,
-            beta = beta_handler,
-            pheno = pheno,
-            genome = genome,
-            array = array_type,
-            sample_group_col = "Sample_Group",
-            min_similarity = 0.8,
-            motif_site_flank_size = 5,
-            max_num_samples_per_group = 5,
-            max_dmrs_per_chr = 40,
-            max_sites_per_dmr = 5,
-            max_components = 120,
-            #region = "chr11:2Mb-5Mb, chr11:72Mb-83Mb, chr5:1Mb-12Mb", # nolint
-            degenerate_resolution = 1e6,
-            verbose = 1
-        )
-        circos_summary_plotted <- TRUE
-    },
-    error = function(e) {
-        message("Circos plot generation failed: ", conditionMessage(e))
-        NULL
-    }
+plotDMRsCircos(
+    dmrs = circos_dmrs,
+    beta = beta_handler,
+    pheno = pheno,
+    genome = genome,
+    array = array_type,
+    sample_group_col = "Sample_Group",
+    min_similarity = 0.8,
+    motif_site_flank_size = 5,
+    max_num_samples_per_group = 5,
+    max_dmrs_per_chr = 40,
+    max_sites_per_dmr = 5,
+    max_components = 120,
+    degenerate_resolution = 1e6,
+    verbose = 1
 )
-if (!circos_summary_plotted) {
-    plot.new()
-    text(0.5, 0.5, "Circos summary plot unavailable for this dataset.", cex = 1.1)
-}
 ```
 It is also possible to plot circos output for one or more regions to assess
 connectivity. The reported score in the legend is computed from the visible
-DMRs of each component.
-```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1.5}
-circos_region_plotted <- FALSE
-
-tryCatch(
-    {
-        plotDMRsCircos(
-            dmrs = circos_dmrs,
-            beta = beta_handler,
-            pheno = pheno,
-            genome = genome,
-            array = array_type,
-            sample_group_col = "Sample_Group",
-            min_similarity = 0.8,
-            motif_site_flank_size = 5,
-            max_num_samples_per_group = 5,
-            max_dmrs_per_chr = 40,
-            max_sites_per_dmr = 5,
-            max_components = 120,
-            region = "chr17:2Mb-5Mb, chr17:72Mb-83Mb, chr19:1Mb-12Mb",
-            degenerate_resolution = 10e2,
-            verbose = 1
-        )
-        circos_region_plotted <- TRUE
-    },
-    error = function(e) {
-        message("Circos plot generation failed: ", conditionMessage(e))
-        NULL
-    }
+DMRs of each component. The selected intervals lie on chromosomes 5 and 11,
+which are covered by the example dataset.
+```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1}
+plotDMRsCircos(
+    dmrs = circos_dmrs,
+    beta = beta_handler,
+    pheno = pheno,
+    genome = genome,
+    array = array_type,
+    sample_group_col = "Sample_Group",
+    min_similarity = 0.8,
+    motif_site_flank_size = 5,
+    max_num_samples_per_group = 5,
+    max_dmrs_per_chr = 40,
+    max_sites_per_dmr = 5,
+    max_components = 120,
+    region = "chr11:2Mb-5Mb, chr11:72Mb-83Mb, chr5:1Mb-12Mb",
+    degenerate_resolution = 10e2,
+    verbose = 1
 )
-if (!circos_region_plotted) {
-    plot.new()
-    text(0.5, 0.5, "Circos region plot unavailable for selected regions.", cex = 1.1)
-}
 ```
 
 ### CMEnt interactive Shiny App
-The CMEnt interactive Shiny app can be launched with the `launchCMEntViewer` function, 
-which allows for interactive exploration of the DMRs and the aforementioned plots. In order to use it, the `output_prefix` argument should be provided in the `buildDMRs` function, as the app looks for the output files with this prefix.
+The CMEnt interactive Shiny app can be launched with the `launchCMEntViewer`
+function,
+which allows for interactive exploration of the DMRs and the aforementioned
+plots. In order to use it, the `output_prefix` argument should be provided in
+the `buildDMRs` function, as the app looks for the output files with this
+prefix.
 ```{r launch_shiny_app, eval=FALSE}
 launchCMEntViewer("tmp/CMEnt_example")
 ```

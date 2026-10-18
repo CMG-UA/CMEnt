@@ -1,3 +1,24 @@
+CHANGES IN VERSION 0.99.13
+--------------------------
+
+SIGNIFICANT USER-VISIBLE CHANGES
+
+    o Move optional dependency installation to container setup, using the
+      requested analysis inputs and genome. Package functions only check
+      dependencies and provide installation instructions.
+
+    o Ship the Dockerfile, CLI, and container setup scripts in inst/docker.
+
+    o Document external tool installation and Windows limitations in INSTALL.
+
+    o Replace donttest examples with small runnable examples and wrap long
+      vignette prose and comments.
+
+BUG FIXES
+
+    o Select Circos example regions on the chromosomes represented in the
+      bundled data and allow vignette plotting errors to surface.
+
 CHANGES IN VERSION 0.99.9
 -------------------------
 

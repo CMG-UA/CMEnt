@@ -28,6 +28,8 @@
 .loadGeneAnnotationFeatures <- function(genome, promoter_upstream = 2000,
                                         promoter_downstream = 200,
                                         context = "gene annotation") {
+    # Resolve the annotation source first; hs1 uses hg38 models lifted below.
+    # Cache keys describe the target genome and, for promoters, the TSS window.
     cache_dir <- getOption(
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
@@ -133,6 +135,8 @@
             )
         }
     })
+    # Remove promoter-covered sequence from gene bodies so the two annotation
+    # classes refer to distinct genomic portions of a gene.
     genes <- .trimGeneBodiesByPromoters(genes, promoters)
     .log_success("Gene annotations loaded: ", length(genes), " genes", level = 3)
     list(genes = genes, promoters = promoters, orgdb_pkg = orgdb_pkg)
@@ -197,6 +201,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
                                   site_locs = NULL,
                                   site_delta_beta = NULL,
                                   aggfun = stats::median) {
+    # Use GRanges for overlaps, then restore the input representation on return.
+    # The same feature definitions drive gene labels and site-level effects.
     dmrs_df_provided <- is.data.frame(dmrs)
     dmrs <- .convertToGRanges(dmrs, genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
@@ -212,6 +218,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     orgdb_pkg <- annotation_features$orgdb_pkg
 
     .log_step("Finding overlaps with promoters and gene bodies...", level = 3)
+    # Promoter and gene-body annotation are independent tasks; keep their column
+    # names with each task so results remain identifiable after dispatch.
     annotation_specs <- list(
         list(
             column = "in_promoter_of",
@@ -258,6 +266,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     for (annotation_result in annotation_results) {
         S4Vectors::mcols(dmrs)[[annotation_result$column]] <- annotation_result$values
     }
+    # Aggregate effects only from DMR sites that overlap the relevant feature; a
+    # gene label alone does not imply that every DMR site lies in that feature.
     delta_beta_annotations <- .annotateDMRSiteDBByFeature(
         dmrs = dmrs,
         annotation_specs = annotation_specs,
@@ -282,6 +292,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     dmrs, annotation_specs, site_locs,
     site_delta_beta, aggfun, genome
 ) {
+    # Start with missing effects for every DMR. Missing site data or absent
+    # feature overlaps must stay NA rather than suggesting a zero effect.
     out <- stats::setNames(
         replicate(length(annotation_specs), rep(NA_real_, length(dmrs)), simplify = FALSE),
         vapply(annotation_specs, `[[`, character(1), "delta_column")
@@ -324,6 +336,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
     site_names <- names(site_locs)
     site_delta_beta <- site_delta_beta[site_names]
 
+    # Prefer explicit DMR membership when available. Coordinate overlaps are the
+    # fallback for ranges that do not carry their constituent site IDs.
     mcols_names <- colnames(S4Vectors::mcols(dmrs))
     if ("sites" %in% mcols_names) {
         dmr_sites_list <- lapply(
@@ -369,6 +383,8 @@ annotateDMRsWithGenes <- function(dmrs, genome = NULL,
         as.numeric(val[1L])
     }
 
+    # Intersect each DMR membership list with a feature-specific site mask
+    # before aggregating, preserving the original DMR order.
     for (spec in annotation_specs) {
         feature_hits <- GenomicRanges::findOverlaps(
             site_locs,

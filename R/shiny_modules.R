@@ -3,6 +3,8 @@
 #' @importFrom DT DTOutput renderDT datatable
 NULL
 
+# Overview controls and outputs share one module namespace; the server filters
+# the summary table and returns selected DMR IDs to the parent.
 .overviewUI <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
@@ -88,6 +90,9 @@ NULL
             )
         })
 
+        # Apply controls to the table view, keeping stable IDs so selecting a
+        # filtered row still identifies the corresponding DMR in the complete
+        # data.
         filtered_dmrs <- shiny::reactive({
             shiny::req(data$dmrs)
             dmrs_df <- .convertToDataFrame(data$dmrs)
@@ -125,6 +130,8 @@ NULL
             )
         })
 
+        # Resolve selection against the filtered table, never its original row
+        # position; the parent uses this ID to navigate to the DMR plot.
         return(shiny::reactive({
             sel <- input$dmr_table_rows_selected
             if (is.null(sel) || length(sel) == 0) return(NULL)
@@ -182,6 +189,8 @@ NULL
 
 .plotDMRServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        # Snapshot controls only on Generate Plot. Keep successfully rendered
+        # parameters separately so PDF export reproduces that displayed request.
         plot_request <- shiny::reactiveVal(0L)
         plot_params <- shiny::reactiveVal(NULL)
         requested_params <- shiny::reactiveVal(NULL)
@@ -483,6 +492,8 @@ NULL
 
 .manhattanServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        # Separate edited controls, requested parameters and successful plot
+        # parameters; PDF export uses the last successful Manhattan request.
         plot_request <- shiny::reactiveVal(0L)
         plot_params <- shiny::reactiveVal(NULL)
         requested_params <- shiny::reactiveVal(NULL)
@@ -609,6 +620,8 @@ NULL
 
 .blockFormationServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        # Update available chromosomes from the data, then snapshot the selected
+        # chromosome and block settings only when Generate Plot is pressed.
         plot_request <- shiny::reactiveVal(0L)
         plot_params <- shiny::reactiveVal(NULL)
 
@@ -737,6 +750,8 @@ NULL
         )
     }
 
+    # An existing cache may contain no usable links. Distinguish that state from
+    # missing files when offering computation or reporting readiness.
     button_label <- if (isTRUE(has_precomputed_cache)) {
         "Recompute Interactions"
     } else {
@@ -882,6 +897,8 @@ NULL
     invisible(prepared_plot_state)
 }
 
+# Offer automatic window selection and manual scope controls together with cache
+# status; the server restricts methods to available interactions.
 .circosUI <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
@@ -955,6 +972,9 @@ NULL
 
 .circosServer <- function(id, data, task_controller) {
     shiny::moduleServer(id, function(input, output, session) {
+        # Maintain computed interaction data separately from prepared plotting
+        # state. New interaction results invalidate the latter before the next
+        # plot.
         circos_cache_override <- shiny::reactiveVal(NULL)
         circos_prepared_state <- shiny::reactiveVal(NULL)
         plot_request <- shiny::reactiveVal(0L)
@@ -999,6 +1019,9 @@ NULL
             shiny::updateSelectInput(session, "method", choices = choices, selected = selected)
         })
 
+        # Interaction computation is an explicit background task. Only its
+        # success callback replaces the module cache and refreshes method
+        # choices.
         shiny::observeEvent(input$compute_interactions, {
             current_data <- viewer_data()
             shiny::req(
@@ -1085,6 +1108,9 @@ NULL
                 ),
                 has_precomputed_interactions = has_precomputed_interactions()
             )
+            # Reuse prepared data only for the matching preparation settings;
+            # view coordinates and export rendering are handled by the plotting
+            # helpers.
             prepared_state_key <- .viewerCircosPreparedStateKey(params)
             cached_prepared_state <- circos_prepared_state()
             if (
@@ -1156,6 +1182,9 @@ NULL
             content = function(file) {
                 params <- plot_params()
                 shiny::req(params)
+                # Export from the last successful request. Reuse its matching
+                # prepared state when available rather than relying on
+                # subsequently edited controls.
                 cached_prepared_state <- circos_prepared_state()
                 prepared_state <- NULL
                 if (

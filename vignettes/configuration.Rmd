@@ -44,11 +44,15 @@ BiocManager::install("CMEnt")
 **Required:** Yes  
 **Description:** Input methylation data. Can be:
 
-- Path to a beta value file (tab-separated). The beta file will be loaded into memory if its size is below `getOption("CMEnt.beta_in_mem_threshold_mb")`Megabytes or genomically sorted and converted to tabix for faster access, if samtools tabix is installed.
+- Path to a beta value file (tab-separated). The beta file will be loaded into
+  memory if its size is below
+  `getOption("CMEnt.beta_in_mem_threshold_mb")`Megabytes or genomically sorted
+  and converted to tabix for faster access, if samtools tabix is installed.
 - Path to a tabix-indexed file (.bed.gz with .tbi index)
 - A beta matrix with site IDs as rownames and sample IDs as column names.
 - A BetaHandler object (see `?BetaHandler`)
-- A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by sample columns, existing as row names in the provided pheno data
+- A BED file with columns `bed_chrom_col` and `bed_start_col`, followed by
+  sample columns, existing as row names in the provided pheno data
 
 **Example:**
 ```{r beta_example}
@@ -64,8 +68,11 @@ loadExampleInputDataChr5And11("beta")
 - A data.frame with DMP information
 
 **Format requirements:**
-- Row names or first column or the column given by `seeds_id_col` should contain site IDs
-- The site IDs must match those in the beta data, either as Illumina IDs or genomic coordinates (chr:start). The latter is required when using BED files for beta.
+- Row names or first column or the column given by `seeds_id_col` should
+  contain site IDs
+- The site IDs must match those in the beta data, either as Illumina IDs or
+  genomic coordinates (chr:start). The latter is required when using BED files
+  for beta.
 
 **Example:**
 ```{r seeds_example}
@@ -93,18 +100,23 @@ loadExampleInputDataChr5And11("pheno")
 ### `sample_group_col`
 **Type:** Character  
 **Required:** Yes, whenever `pheno` or a samplesheet is provided  
-**Description:** Column name in `pheno` that specifies sample groups (e.g., "case" vs "control", "treated" vs "untreated"). More than two groups are supported.
+**Description:** Column name in `pheno` that specifies sample groups (e.g.,
+"case" vs "control", "treated" vs "untreated"). More than two groups are
+supported.
 
 ### `casecontrol_col`
 **Type:** Character  
 **Default:** `NULL`  
-**Description:** Column name in `pheno` for case (TRUE/1) vs control (FALSE/0) status, for delta beta computations. If `NULL`, controls are assumed to be the first level found at `sample_group_col`.
+**Description:** Column name in `pheno` for case (TRUE/1) vs control (FALSE/0)
+status, for delta beta computations. If `NULL`, controls are assumed to be the
+first level found at `sample_group_col`.
 
 
 ### `ignored_sample_groups`
 **Type:** Character vector  
 **Default:** `NULL`  
-**Description:** Sample groups to exclude while considering connection and expansion. Can also be "case" or "control".
+**Description:** Sample groups to exclude while considering connection and
+expansion. Can also be "case" or "control".
 
 **Example:**
 ```{r basic_usage, eval=FALSE}
@@ -121,14 +133,18 @@ dmrs <- buildDMRs(
 ### `array`
 **Type:** Character  
 **Options:** `"450K"`, `"27K"`, `"EPIC"`, `"EPICv2"`  
-**Required:** When beta row names are array probe IDs and no explicit genomic locations are supplied  
-**Description:** Type of methylation array platform used. Ignored when beta is provided as a BED file or explicit genomic locations are supplied.
+**Required:** When beta row names are array probe IDs and no explicit genomic
+locations are supplied
+**Description:** Type of methylation array platform used. Ignored when beta is
+provided as a BED file or explicit genomic locations are supplied.
 
 
 ### `genome`
 **Type:** Character
 **Options:** `"hg19"`, `"hg38"`, `"hs1"`, `"mm10"`, `"mm39"`
-**Description:** Reference genome version. Required when array annotations or BED coordinates need an explicit genome. For DMR `GRanges` inputs, functions infer the genome from seqinfo when available.
+**Description:** Reference genome version. Required when array annotations or
+BED coordinates need an explicit genome. For DMR `GRanges` inputs, functions
+infer the genome from seqinfo when available.
 
 ## Filtering Parameters
 
@@ -136,29 +152,40 @@ dmrs <- buildDMRs(
 **Type:** Numeric  
 **Default:** `0.2`  
 **Range:** 0 to 1, or `NA` to disable  
-**Description:** Absolute delta beta value for neighboring sites to be included in DMRs, during the **second stage** of DMR extension, without considering correlation.
+**Description:** Absolute delta beta value for neighboring sites to be
+included in DMRs, during the **second stage** of DMR extension, without
+considering correlation.
 
-**Recommendation:** Keep 0.2 for balanced precision/recall. Use `NA` to disable the shortcut entirely. Set to 0 only when you intentionally want any proximal site with a non-missing case/control delta beta to be eligible for force-connection.
+**Recommendation:** Keep 0.2 for balanced precision/recall. Use `NA` to
+disable the shortcut entirely. Set to 0 only when you intentionally want any
+proximal site with a non-missing case/control delta beta to be eligible for
+force-connection.
 
 ### `min_seeds`
 **Type:** Integer  
 **Default:** `1`  
 **Description:** Minimum number of connected seeds required in a DMR.
 
-**Recommendation:** Increase this value (e.g., to 3 or 4) for higher-confidence DMRs.
+**Recommendation:** Increase this value (e.g., to 3 or 4) for
+higher-confidence DMRs.
 
 ### `min_adj_seeds`
 **Type:** Integer  
 **Default:** `2`  
-**Description:** Minimum number of seeds in a DMR after adjusting for site density. Minimum 2. This accounts for regions with different site coverage, and it is mostly applicable to array-based data. Only used when min_seeds < min_adj_seeds.
+**Description:** Minimum number of seeds in a DMR after adjusting for site
+density. Minimum 2. This accounts for regions with different site coverage,
+and it is mostly applicable to array-based data. Only used when min_seeds <
+min_adj_seeds.
 
 
 ### `min_sites`
 **Type:** Integer  
 **Default:** `50`  
-**Description:** Minimum number of sites required in a DMR after region expansion. Minimum 2.
+**Description:** Minimum number of sites required in a DMR after region
+expansion. Minimum 2.
 
-**Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep higher (50+) for WGBS data.
+**Recommendation:** Lower this value (e.g., 3-5) for array-based data, keep
+higher (50+) for WGBS data.
 
 
 ## Region Building Parameters
@@ -167,7 +194,8 @@ dmrs <- buildDMRs(
 **Type:** Integer  
 **Default:** `10000`  
 **Unit:** Base pairs  
-**Description:** Maximum genomic distance between adjacent seeds to be considered part of the same DMR.
+**Description:** Maximum genomic distance between adjacent seeds to be
+considered part of the same DMR.
 
 **Recommendation:**
 - 1,000-5,000 bp for tightly connected regions
@@ -178,19 +206,24 @@ dmrs <- buildDMRs(
 ### `expansion_window`
 **Type:** Numeric  
 **Default:** `1e6`  
-**Description:** Stage 2 connectivity is computed only around seed-derived Stage 1 neighborhoods, using this total window width in base pairs.
+**Description:** Stage 2 connectivity is computed only around seed-derived
+Stage 1 neighborhoods, using this total window width in base pairs.
 
 Set to `<= 0` to compute connectivity genome-wide.
 
 ### `max_bridge_seeds_gaps`
 **Type:** Integer  
 **Default:** `1`  
-**Description:** In Stage 1 seed connectivity, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
+**Description:** In Stage 1 seed connectivity, allows bridging up to this many
+consecutive p-value-driven failed edges when both flanking edges are
+connected.
 
 ### `max_bridge_extension_gaps`
 **Type:** Integer
 **Default:** `1`
-**Description:** In Stage 2 DMR extension, allows bridging up to this many consecutive p-value-driven failed edges when both flanking edges are connected.
+**Description:** In Stage 2 DMR extension, allows bridging up to this many
+consecutive p-value-driven failed edges when both flanking edges are
+connected.
 
 ## Statistical Parameters
 
@@ -198,18 +231,29 @@ Set to `<= 0` to compute connectivity genome-wide.
 **Type:** Numeric  
 **Default:** `0.05`  
 **Range:** 0 to 1  
-**Description:** Maximum p-value threshold for considering correlation between seeds as significant during the first stage of connectivity testing, and between proxial sites during the second stage DMR extension. Under `strong` entanglement, a Bonferroni correction is applied based on the number of samples groups (number of tests per site).
+**Description:** Maximum p-value threshold for considering correlation between
+seeds as significant during the first stage of connectivity testing, and
+between proxial sites during the second stage DMR extension. Under `strong`
+entanglement, a Bonferroni correction is applied based on the number of
+samples groups (number of tests per site).
 
 ### `entanglement`
 **Type:** Character  
 **Options:** `"strong"`, `"weak"`  
 **Default:** `"strong"`  
-**Description:** Strategy for determining connectivity between sites across sample groups:
+**Description:** Strategy for determining connectivity between sites across
+sample groups:
 
-- `"strong"`: Requires all sample groups to show significant correlation for two sites to be considered connected. This is more conservative and ensures consistent methylation patterns across all groups.
-- `"weak"`: Requires at least one sample group to show significant correlation. This is more permissive and may identify DMRs that are specific to certain groups.
+- `"strong"`: Requires all sample groups to show significant correlation for
+  two sites to be considered connected. This is more conservative and ensures
+  consistent methylation patterns across all groups.
+- `"weak"`: Requires at least one sample group to show significant
+  correlation. This is more permissive and may identify DMRs that are specific
+  to certain groups.
 
-**Recommendation:** Use `"strong"` (default) for most cases to ensure robust, reproducible DMRs. Use `"weak"` when you want to capture group-specific methylation patterns or when working with heterogeneous sample groups.
+**Recommendation:** Use `"strong"` (default) for most cases to ensure robust,
+reproducible DMRs. Use `"weak"` when you want to capture group-specific
+methylation patterns or when working with heterogeneous sample groups.
 
 **Example:**
 ```{r bsseq_usage, eval=FALSE}
@@ -227,26 +271,38 @@ dmrs <- buildDMRs(
 **Default:** `"auto"`  
 **Description:** Method for calculating p-values during connectivity testing:
 
-- `"parametric"`: Uses t-based correlation p-values (faster, assumes normal distribution)
-- `"empirical"`: Uses permutation-based p-values (slower, no distribution assumptions)
-- `"auto"`: Evaluates correlation test assumptions per sample group and chooses `"parametric"` only when diagnostics are acceptable; otherwise switches to `"empirical"`
+- `"parametric"`: Uses t-based correlation p-values (faster, assumes normal
+  distribution)
+- `"empirical"`: Uses permutation-based p-values (slower, no distribution
+  assumptions)
+- `"auto"`: Evaluates correlation test assumptions per sample group and
+  chooses `"parametric"` only when diagnostics are acceptable; otherwise
+  switches to `"empirical"`
 
-**Recommendation:** Use `"auto"` when you want robust defaults across heterogeneous datasets. Use `"parametric"` when assumptions are known to hold and runtime is critical, and `"empirical"` when assumptions are clearly questionable.
+**Recommendation:** Use `"auto"` when you want robust defaults across
+heterogeneous datasets. Use `"parametric"` when assumptions are known to hold
+and runtime is critical, and `"empirical"` when assumptions are clearly
+questionable.
 
 ### `empirical_strategy`
 **Type:** Character  
 **Options:** `"auto"`, `"montecarlo"`, `"permutations"`  
 **Default:** `"auto"`  
-**Description:** Strategy for empirical p-value calculation (only applies when `testing_mode = "empirical"`):
+**Description:** Strategy for empirical p-value calculation (only applies when
+`testing_mode = "empirical"`):
 
-- `"auto"`: Uses Monte Carlo for groups <6 samples, permutations for groups ≥6 samples
+- `"auto"`: Uses Monte Carlo for groups <6 samples, permutations for groups ≥6
+  samples
 - `"montecarlo"`: Always uses Monte Carlo simulation
 - `"permutations"`: Always uses exact permutations
 
 ### `ntries`
 **Type:** Integer  
 **Default:** `200`  
-**Description:** Number of permutations/simulations when `testing_mode = "empirical"`. The number has an upper bound of `factorial(n)` where `n` is the size of the smallest sample group. If `ntries` exceeds this bound, it will be reduced to `factorial(n)`.
+**Description:** Number of permutations/simulations when `testing_mode =
+"empirical"`. The number has an upper bound of `factorial(n)` where `n` is the
+size of the smallest sample group. If `ntries` exceeds this bound, it will be
+reduced to `factorial(n)`.
 
 **Recommendation:**
 - 100-500: Faster, less precise
@@ -255,15 +311,18 @@ dmrs <- buildDMRs(
 ### `mid_p`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Whether to use mid-p correction in empirical p-value calculation.
+**Description:** Whether to use mid-p correction in empirical p-value
+calculation.
 
 ### `aggfun`
 **Type:** Character or function  
 **Options:** `"median"`, `"mean"`, or a custom function  
 **Default:** `"median"`  
-**Description:** Aggregation function for calculating DMR-level statistics (delta beta, p-values).
+**Description:** Aggregation function for calculating DMR-level statistics
+(delta beta, p-values).
 
-**Recommendation:** Median is more robust to outliers; mean may be more sensitive.
+**Recommendation:** Median is more robust to outliers; mean may be more
+sensitive.
 
 ## Performance Parameters
 
@@ -294,24 +353,28 @@ dmrs <- buildDMRs(
 ### `seeds_id_col`
 **Type:** Character or integer  
 **Default:** `NULL`  
-**Description:** Column name or index for seed identifiers in the seeds file. If `NULL`, uses row names if present, otherwise the first column.
+**Description:** Column name or index for seed identifiers in the seeds file.
+If `NULL`, uses row names if present, otherwise the first column.
 
 ### `output_prefix`
 **Type:** Character  
 **Default:** `NULL`  
-**Description:** Prefix for output files. If provided, results will be saved to files with this prefix. If `NULL`, no files are saved.
+**Description:** Prefix for output files. If provided, results will be saved
+to files with this prefix. If `NULL`, no files are saved.
 
 ### `beta_row_names_file`
 **Type:** Character  
 **Default:** `NULL`  
-**Description:** Path to a file containing row names for beta values. Useful for large beta files where reading row names separately is more efficient.
+**Description:** Path to a file containing row names for beta values. Useful
+for large beta files where reading row names separately is more efficient.
 
 ## BED File Parameters
 
 ### `bed_provided`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Whether the beta file is provided as a BED file. Automatically set to `TRUE` if the input file has a `.bed` extension.
+**Description:** Whether the beta file is provided as a BED file.
+Automatically set to `TRUE` if the input file has a `.bed` extension.
 
 
 ### `bed_chrom_col`
@@ -335,12 +398,18 @@ dmrs <- buildDMRs(
 ### `score_dmrs`
 **Type:** Logical  
 **Default:** `TRUE`  
-**Description:** Whether to add complementary SVM-based discrimination scores to DMRs. When enabled, each DMR is evaluated for its ability to separate sample groups using stratified k-fold cross-validation with an RBF kernel SVM. The resulting `score` and `cv_accuracy` values summarize sample-level discriminative strength and should be read alongside DMR `pval`, `qval`, and effect-size columns, not as replacements for them.
+**Description:** Whether to add complementary SVM-based discrimination scores
+to DMRs. When enabled, each DMR is evaluated for its ability to separate
+sample groups using stratified k-fold cross-validation with an RBF kernel SVM.
+The resulting `score` and `cv_accuracy` values summarize sample-level
+discriminative strength and should be read alongside DMR `pval`, `qval`, and
+effect-size columns, not as replacements for them.
 
 **Details:**
 - Uses stratified k-fold cross-validation (default: 5-fold)
 - Number of folds can be controlled with `options(CMEnt.scoring_nfold = 5)`
-- Reproducible fold assignments can be obtained with `set.seed(...)` before calling `scoreDMRs()`
+- Reproducible fold assignments can be obtained with `set.seed(...)` before
+  calling `scoreDMRs()`
 - Higher `score` and `cv_accuracy` values indicate stronger discriminative power
 - Requires the `e1071` package for SVM classification
 
@@ -349,18 +418,21 @@ dmrs <- buildDMRs(
 ### `.load_debug`
 **Type:** Logical  
 **Default:** `FALSE`  
-**Description:** Enable debug mode for loading intermediate files, through short-circuiting. For internal development use only.
+**Description:** Enable debug mode for loading intermediate files, through
+short-circuiting. For internal development use only.
 
 # Global Package Options
 
-CMEnt uses several global options that can be set using the `options()` function. These persist across function calls in your R session.
+CMEnt uses several global options that can be set using the `options()`
+function. These persist across function calls in your R session.
 
 ## Parallelism
 
 ### Option: `CMEnt.njobs`
 **Type:** Integer  
 **Default:** `min(8, parallel::detectCores(logical = TRUE) - 1)`  
-**Description:** Number of parallel jobs (defaults to the minimum of 8 and one less than the number of available CPU cores).
+**Description:** Number of parallel jobs (defaults to the minimum of 8 and one
+less than the number of available CPU cores).
 
 ```{r njobs_option}
 options("CMEnt.njobs" = 4)
@@ -382,7 +454,8 @@ options("CMEnt.verbose" = 2)
 ### Option: `CMEnt.beta_in_mem_threshold_mb`
 **Type:** Integer  
 **Default:** `500`  
-**Description:** Maximum size (in Megabytes) of beta files to load into memory. Files larger than this will be processed using disk-based methods.
+**Description:** Maximum size (in Megabytes) of beta files to load into
+memory. Files larger than this will be processed using disk-based methods.
 
 ```{r beta_in_memory_option}
 options("CMEnt.beta_in_mem_threshold_mb" = 200)
@@ -440,7 +513,8 @@ options("CMEnt.min_motif_similarity" = 0.75)
 ### Option: `CMEnt.min_motif_similarity`
 **Type:** Numeric  
 **Default:** `0.8`  
-**Description:** Minimum motif similarity threshold for DMR interaction analysis.
+**Description:** Minimum motif similarity threshold for DMR interaction
+analysis.
 
 ```{r jaspar_tax_group_option}
 options("CMEnt.jaspar_tax_group" = "vertebrates")
@@ -536,19 +610,24 @@ dmrs <- buildDMRs(
 
 1. **Start with default parameters** and adjust based on your specific needs.
 
-2. **For array data** (450K, EPIC), use lower `min_sites` values (3-5) since site coverage is sparse.
+2. **For array data** (450K, EPIC), use lower `min_sites` values (3-5) since
+   site coverage is sparse.
 
 3. **For WGBS data**, keep `min_sites` higher (50+) to ensure robust regions.
 
-4. **Avoid heavy pre-filtering** of seeds based on effect size. Let CMEnt handle filtering internally.
+4. **Avoid heavy pre-filtering** of seeds based on effect size. Let CMEnt
+   handle filtering internally.
 
-5. **Use empirical p-values** for small sample sizes (<10 per group) or when normality assumptions are questionable.
+5. **Use empirical p-values** for small sample sizes (<10 per group) or when
+   normality assumptions are questionable.
 
-6. **Use parallel processing** (`njobs > 1`) for faster computation, but be mindful of memory requirements.
+6. **Use parallel processing** (`njobs > 1`) for faster computation, but be
+   mindful of memory requirements.
 
 7. **Save intermediate results** using `output_prefix` for large analyses.
 
-8. **Document your configuration** by saving parameter settings for reproducibility.
+8. **Document your configuration** by saving parameter settings for
+   reproducibility.
 
 ## Troubleshooting
 
@@ -556,26 +635,36 @@ dmrs <- buildDMRs(
 
 **Solution:**
 - Decrease `njobs`
-- Decrease `getOption("CMEnt.beta_in_mem_threshold_mb")` (default 500) to enable disk-based processing
+- Decrease `getOption("CMEnt.beta_in_mem_threshold_mb")` (default 500) to
+  enable disk-based processing
 - Use tabix-indexed files for very large datasets
 - Enable caching options
 
 ## Issue: DMRs Too Small
 
 **Solution:**
-- Increase `max_lookup_dist`. This will allow seeds that are farther apart to be connected, leading to larger DMRs.
-- Increase `max_pval`. This will make connectivity testing less stringent, allowing more sites to be connected and thus larger DMRs.
-- Decrease `ext_site_delta_beta` . This will allow more sites to be included in DMRs during the second stage of extension, leading to larger DMRs.
+- Increase `max_lookup_dist`. This will allow seeds that are farther apart to
+  be connected, leading to larger DMRs.
+- Increase `max_pval`. This will make connectivity testing less stringent,
+  allowing more sites to be connected and thus larger DMRs.
+- Decrease `ext_site_delta_beta` . This will allow more sites to be included
+  in DMRs during the second stage of extension, leading to larger DMRs.
 
 
 ## Issue: Too Many DMRs
 
 **Solution:**
-- Increase `min_seeds`. This will require more seeds to be connected to form a DMR, leading to fewer total DMRs.
-- Increase `min_sites`. This will require more sites to be included in a DMR, leading to fewer total DMRs.
-- Decrease `max_pval`. This will make connectivity testing more stringent, leading to fewer connected sites and thus fewer DMRs.
-- Increase `max_lookup_dist`. This will join more seeds into the same DMRs, reducing the total number of DMRs.
-- Decrease `ext_site_delta_beta`. This will allow more sites to be included in DMRs during the second stage of extension, leading to more merging of nearby DMRs and thus fewer total DMRs.
+- Increase `min_seeds`. This will require more seeds to be connected to form a
+  DMR, leading to fewer total DMRs.
+- Increase `min_sites`. This will require more sites to be included in a DMR,
+  leading to fewer total DMRs.
+- Decrease `max_pval`. This will make connectivity testing more stringent,
+  leading to fewer connected sites and thus fewer DMRs.
+- Increase `max_lookup_dist`. This will join more seeds into the same DMRs,
+  reducing the total number of DMRs.
+- Decrease `ext_site_delta_beta`. This will allow more sites to be included in
+  DMRs during the second stage of extension, leading to more merging of nearby
+  DMRs and thus fewer total DMRs.
 
 ## Issue: Slow Performance
 

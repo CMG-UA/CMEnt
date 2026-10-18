@@ -103,6 +103,8 @@ sortBetaFileByCoordinates <- function(beta_file,
         .log_info("Note: ", length(missing_from_beta), " sites in ", array, " annotation are missing from beta file", level = 2)
     }
 
+    # The location table defines genomic order. Retain the intersection of known
+    # site IDs and reorder beta rows by that reference, not by ID text.
     final_order <- rownames(sorted_locs)[rownames(sorted_locs) %in% common_sites]
 
     # Reorder beta values

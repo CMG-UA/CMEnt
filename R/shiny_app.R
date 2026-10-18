@@ -473,6 +473,9 @@ launchCMEntViewer <- function(
 }
 
 .viewerRunBgTaskFromData <- function(task_type, data, params) {
+    # Worker-side dispatch receives initialized viewer data and a parameter
+    # snapshot. Plot tasks capture graphics; interaction tasks return cache
+    # data.
     switch(task_type,
         single_dmr_plot = list(
             task_type = task_type,
@@ -654,6 +657,8 @@ launchCMEntViewer <- function(
 }
 
 .readViewerWorkerTask <- function(worker) {
+    # Drain available worker events without waiting for completion. A DONE event
+    # carries the result; liveness checks distinguish busy from lost work.
     task_error <- NULL
     task_result <- NULL
     close_worker <- FALSE
@@ -731,6 +736,8 @@ launchCMEntViewer <- function(
 }
 
 .createViewerTaskController <- function(session, data) {
+    # Controller lifecycle: reserve one task, launch after the UI flush, poll
+    # for completion, then clear state and deliver success/error callbacks.
     active_task <- shiny::reactiveVal(NULL)
     task_state <- shiny::reactiveVal(list(
         active = FALSE,
@@ -772,6 +779,8 @@ launchCMEntViewer <- function(
         invisible(TRUE)
     }
 
+    # Reuse only a live idle worker; cancellation and failed launches close it
+    # so the next request starts with a fresh initialized session.
     ensure_worker <- function() {
         if (!is.null(worker_state_env$session)) {
             worker_state <- tryCatch(worker_state_env$session$get_state(), error = function(e) "finished")
@@ -838,6 +847,9 @@ launchCMEntViewer <- function(
             return(FALSE)
         }
 
+        # Publish pending state before scheduling work. The unique task ID lets
+        # the deferred callback detect cancellation or replacement before
+        # launch.
         descriptor <- .viewerTaskMessage(task_type)
         worker_state_env$task_counter <- worker_state_env$task_counter + 1L
         task_id <- worker_state_env$task_counter
@@ -863,6 +875,8 @@ launchCMEntViewer <- function(
             cancelable = TRUE
         )
 
+        # Let the browser receive busy/cancel controls before worker startup.
+        # Recheck task identity inside the callback before touching the worker.
         session$onFlushed(function() {
             current <- get_active_task()
             if (is.null(current) || !identical(current$task_id, task_id)) {
@@ -889,6 +903,9 @@ launchCMEntViewer <- function(
                 return()
             }
 
+            # Dispatch task parameters to the initialized worker, which retains
+            # the viewer data between requests and refreshes its cache after
+            # computation.
             launch_error <- tryCatch(
                 {
                     worker$call(
@@ -962,6 +979,8 @@ launchCMEntViewer <- function(
         TRUE
     }
 
+    # Poll active work through reactive invalidation. Clear task state before
+    # callbacks run so their UI updates do not leave the controller busy.
     shiny::observe({
         current <- active_task()
         if (is.null(current)) {
@@ -1027,6 +1046,8 @@ launchCMEntViewer <- function(
             )
         )
     }
+    # Compose ordinary analysis tabs first; the diagnostic flag adds the
+    # block-formation tab before the common navigation shell is assembled.
     panels_list <- list(
         bslib::nav_panel(
             title = "Overview",
@@ -1080,6 +1101,9 @@ launchCMEntViewer <- function(
 
 .createViewerServer <- function(data) {
     function(input, output, session) {
+        # All modules share one controller for explicit background work. Mirror
+        # its state in page controls and close its worker when this session
+        # ends.
         task_controller <- .createViewerTaskController(session, data)
         page_spinner_visible <- shiny::reactiveVal(FALSE)
         page_spinner_state_key <- shiny::reactiveVal(NULL)
@@ -1122,6 +1146,8 @@ launchCMEntViewer <- function(
             }
         })
 
+        # Wire table selection by stable DMR ID, resolving it back to an index
+        # before updating the single-DMR controls.
         selected_dmr_id <- .overviewServer("overview", data)
         .plotDMRServer("single_dmr", data, task_controller)
         .manhattanServer("manhattan", data, task_controller)

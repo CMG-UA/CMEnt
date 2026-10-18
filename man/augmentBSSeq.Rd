@@ -89,9 +89,7 @@ retained original sites and samples with the synthetic samples.
 if (requireNamespace("bsseqData", quietly = TRUE)) {
     data(BS.cancer.ex, package = "bsseqData")
     BS.cancer.ex <- BS.cancer.ex[seq_len(100), ]
-    \donttest{
     set.seed(123)
     augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 2)
-    }
 }
 }

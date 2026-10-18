@@ -69,10 +69,8 @@
 #' if (requireNamespace("bsseqData", quietly = TRUE)) {
 #'     data(BS.cancer.ex, package = "bsseqData")
 #'     BS.cancer.ex <- BS.cancer.ex[seq_len(100), ]
-#'     \donttest{
 #'     set.seed(123)
 #'     augmented_bs <- augmentBSSeq(BS.cancer.ex, n_new_samples = 2)
-#'     }
 #' }
 #' @export
 augmentBSSeq <- function(
@@ -81,6 +79,8 @@ augmentBSSeq <- function(
     calibration_iterations = 8,
     calibration_samples = NULL
     ) {
+    # Workflow: normalize loci, estimate site marginals and spatial dependence,
+    # optionally calibrate that dependence, then append synthetic count columns.
     .prepareInputBSseq <- function(bs) {
         if (!inherits(bs, "BSseq")) {
             stop("'bs' must be a BSseq object")
@@ -120,6 +120,8 @@ augmentBSSeq <- function(
         sort(collapsed)
     }
 
+    # Collapse duplicate coordinates by summing counts before estimating the
+    # simulation model, so each genomic position contributes one observation.
     bs <- .prepareInputBSseq(bs)
     n_new_samples <- as.integer(n_new_samples)
     min_samples <- as.integer(min_samples)
@@ -179,6 +181,8 @@ augmentBSSeq <- function(
     }
 
     # Coverage: compute mean per site (excluding zeros)
+    # Estimate coverage and methylation marginals separately. Zero coverage is
+    # missing information for these estimates, rather than zero methylation.
     cov_nonzero <- cov
     cov_nonzero[cov_nonzero == 0] <- NA_real_
     lambda_per_site <- rowMeans(cov_nonzero, na.rm = TRUE)
@@ -400,6 +404,9 @@ augmentBSSeq <- function(
         if (!is.finite(max_gap)) max_gap <- default_gap
         max_length <- max(default_length, initial_length, max_gap, 1) * 1000
 
+        # Keep every evaluated candidate so an unbracketed target or a
+        # non-finite evaluation can fall back to the closest observed
+        # correlation.
         candidate_state <- new.env(parent = emptyenv())
         candidate_state$lengths <- numeric()
         candidate_state$corrs <- numeric()
@@ -452,6 +459,8 @@ augmentBSSeq <- function(
             return(best_length())
         }
 
+        # Bisect geometrically to search multiplicative differences in length.
+        # The iteration cap applies to refinement after bracketing the target.
         for (iteration in seq_len(max_iterations)) {
             mid <- sqrt(lower * upper)
             mid_corr <- evaluate(mid)
@@ -505,6 +514,9 @@ augmentBSSeq <- function(
             cov_target_corr <- median_pair_correlation(adjacent_pair_correlations(cov_signal))
             meth_target_corr <- median_pair_correlation(adjacent_pair_correlations(meth_signal))
 
+            # Reuse the same random draws across candidate lengths so
+            # calibration compares spatial dependence rather than fresh Monte
+            # Carlo noise.
             cov_base_noise <- matrix(
                 stats::rnorm(n_calibration_pairs * calibration_samples),
                 nrow = n_calibration_pairs,
@@ -596,6 +608,8 @@ augmentBSSeq <- function(
         dimnames = list(NULL, new_sample_names)
     )
 
+    # Restart latent fields at chromosome boundaries. Transform the fields to
+    # Poisson coverage and Beta probabilities before drawing methylated counts.
     chr_groups <- split(seq_len(n_sites), chr)
     for (idx in chr_groups) {
         chr_pos <- pos[idx]
@@ -636,6 +650,8 @@ augmentBSSeq <- function(
     storage.mode(new_cov) <- "integer"
     storage.mode(new_M) <- "integer"
 
+    # Package the simulated integer counts on the retained input loci, then
+    # combine them with the corresponding original samples.
     synthetic_bsseq <- bsseq::BSseq(
         chr = chr,
         pos = pos,

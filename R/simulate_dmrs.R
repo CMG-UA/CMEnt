@@ -157,6 +157,8 @@ simulateDMRs <- function(
     verbose = getOption("CMEnt.verbose", 1)
 ) {
     
+    # Simulation roadmap: align counts and samples, choose eligible genomic
+    # segments, inject spatial case effects, then return data with truth tables.
     old_setting <- options("CMEnt.verbose" = verbose)
     on.exit(options(old_setting), add = TRUE)
     num_dmrs <- as.integer(num_dmrs)
@@ -306,6 +308,8 @@ simulateDMRs <- function(
         )
     }
 
+    # Normalize duplicate positions and genomic order before defining contiguous
+    # segments; segment constraints apply to unique ordered loci.
     collapsed_input <- .collapseSimulationDuplicateLoci(
         meth = meth_mat,
         cov = cov_mat,
@@ -362,6 +366,8 @@ simulateDMRs <- function(
     dmr_indices <- index_by_segment[dmr_segment_ids]
 
     .log_step("Fitting correlation structure for DMR simulation...", level = 1)
+    # Choose effect-noise strength from the correlation lookup, taking the
+    # requested correlation as a floor on the sampled background target.
     default_corr_sd <- 0.30
     corr_lookup <- .simulationBuildCorrelationLookup(
         affected_samples = length(case_samples),
@@ -420,6 +426,9 @@ simulateDMRs <- function(
         } else if (direction < 0 && reference_beta < delta_max) {
             direction <- 1
         }
+        # Apply a tapered case effect and correlated site noise. Coverage
+        # remains the count denominator when shifted probabilities are converted
+        # to counts.
         diff_hit <- direction * delta_max * prof
         current_corr_sd <- corr_sd_used[[dmr_i]]
 
@@ -471,6 +480,8 @@ simulateDMRs <- function(
             seqnames = chr[truth_idx[[1L]]],
             ranges = IRanges::IRanges(start = min(pos[truth_idx]), end = max(end_pos[truth_idx]))
         )
+        # Record intended and realized effects separately: count generation and
+        # existing case/control variation can change the observed delta beta.
         truth_rows[[dmr_i]] <- data.frame(
             seqnames = chr[truth_idx[[1L]]],
             start = min(pos[truth_idx]),
@@ -516,6 +527,8 @@ simulateDMRs <- function(
 
     colnames(meth_mat) <- colnames(cov_mat) <- sample_names
     .log_step("Building output object...", level = 1)
+    # Reconstruct the input assay representation on the normalized loci and
+    # attach the metadata needed to interpret or benchmark the injected regions.
     output <- .buildSimulationOutputObject(
         input = input,
         meth = meth_mat,
@@ -581,6 +594,8 @@ simulateDMRs <- function(
         }
     }
 
+    # BSseq inputs retain their original count/coverage information. Other
+    # inputs are aligned by site ID below and represented as pseudo-counts.
     if (inherits(beta, "BSseq")) {
         bs <- sort(beta)
         meth_mat <- as.matrix(bsseq::getCoverage(bs, type = "M"))
@@ -666,6 +681,8 @@ simulateDMRs <- function(
     beta_mat[invalid_mask] <- 0
     beta_mat <- .clampSimulationBeta(beta_mat)
 
+    # Beta-only inputs have no measured coverage. Use depth 100 to encode their
+    # proportions, with zero depth marking originally missing values.
     cov_mat <- matrix(
         100L,
         nrow = nrow(beta_mat),
@@ -802,6 +819,8 @@ simulateDMRs <- function(
         stop("'samplesheet' sample names must be unique.")
     }
 
+    # Keep only samples represented in the sheet and restore input order. The
+    # caller subsets count columns using these returned phenotype rows.
     missing_samples <- setdiff(sample_names, rownames(pheno))
     if (length(missing_samples) == length(sample_names)) {
         stop(
@@ -815,6 +834,8 @@ simulateDMRs <- function(
     sample_groups <- sample_groups[sample_keep]
 
     pheno <- pheno[sample_names, , drop = FALSE]
+    # Preserve an existing multi-group label as a covariate before replacing the
+    # displayed group with the simulated case/control assignment.
     if (sample_group_col %in% colnames(pheno) && length(unique(pheno[[sample_group_col]])) > 1L) {
         sample_group_col_new <- paste0(sample_group_col, "_orig")
         pheno[[sample_group_col_new]] <- pheno[[sample_group_col]]

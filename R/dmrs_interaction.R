@@ -122,6 +122,8 @@ comparePWMToJaspar <- function(pwm_queries) {
         "CMEnt.jaspar_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "jaspar_cache"))
     )
+    # Keep one result row per query, including unmatched motifs. The cached
+    # reference set is keyed by JASPAR version and taxonomic group.
     empty_jaspar_matches <- data.frame(
         jaspar_names = rep(NA_character_, length(pwm_queries)),
         jaspar_ids = rep(NA_character_, length(pwm_queries)),
@@ -168,6 +170,8 @@ comparePWMToJaspar <- function(pwm_queries) {
         .saveBiocFileCacheRDS(vertebrate_pwms, bfc, cache_key)
         jaspar_pwms <- vertebrate_pwms
     }
+    # Compare both query orientations so a reverse-complement match receives the
+    # same opportunity to pass the configured correlation threshold.
     jaspar_pwm_mats <- lapply(jaspar_pwms, TFBSTools::Matrix)
     complimentary_bases <- c("A" = "T", "C" = "G", "G" = "C", "T" = "A")
     revcomp_queries <- lapply(pwm_queries, function(pwm) {
@@ -230,6 +234,9 @@ getBackgroundArrayMotif <- function(genome, array, motif_site_flank_size = 5, .s
     cache_dir <- getOption("CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
+    # Estimate an array-wide background using the same centered windows and
+    # orientation rules as DMR motifs; cache it for this genome/array/flank
+    # size.
     cache_key <- paste0("bgpwm_", genome, "_", array, "_", motif_site_flank_size)
     bfc <- .getBiocFileCache(cache_dir)
     bg_pwm <- .readBiocFileCacheRDS(bfc, cache_key)
@@ -411,6 +418,8 @@ extractDMRMotifs <- function(
     sequences <- getDMRSequences(
         dmrs, genome, uflank_size = motif_site_flank_size, dflank_size = motif_site_flank_size + 1
     )
+    # DMR sequence provides genomic context, but only the listed seed sites
+    # contribute motif windows. Resolve seed locations before iterating regions.
     dmrs_seeds <- base::strsplit(as.character(S4Vectors::mcols(dmrs)[, "seeds"]), split = ",", fixed = TRUE)
     dmrs_seeds <- lapply(dmrs_seeds, function(x) x[nzchar(x)])
     dmr_seed_indices <- .matchListToReference(
@@ -420,6 +429,8 @@ extractDMRMotifs <- function(
     )
     missing_seed_ids <- attr(dmr_seed_indices, "missing_values")
     expected_len <- 2 * motif_site_flank_size + 2
+    # Build each motif from valid, consistently oriented seed windows. Array
+    # motifs additionally use the array background prepared above.
     pwms <- vector("list", length(dmrs))
     consensus_seq <- rep(NA_character_, length(dmrs))
     for (i in seq_along(dmrs)) {
@@ -650,6 +661,8 @@ computeDMRsInteraction <- function(
             ggplot2::labs(title = "DMR Motif Similarity Heatmap", x = "DMR Index", y = "DMR Index")
         ggplot2::ggsave(filename = file.path(plot_dir, "dmr_motif_similarity_heatmap.png"), plot = p, width = 8, height = 6)
     }
+    # Threshold motif similarities to form links. Link orientation can follow
+    # DMR scores, while component membership uses undirected connectivity.
     mask <- !is.na(similarity_matrix) & (similarity_matrix >= min_similarity)
     # remove diagonal
     diag(mask) <- FALSE
@@ -728,6 +741,9 @@ computeDMRsInteraction <- function(
             }, character(1))
             # Order by component size
             components_df <- components_df[order(-components_df$size), ]
+            # After sorting components by size, remap membership IDs as well as
+            # the component table so links and DMR metadata refer to the
+            # displayed IDs.
             old_component_ids <- components_df$component_id
             components_df$component_id <- seq_len(nrow(components_df))
             id_remap <- rep(NA_integer_, max(old_component_ids))
@@ -769,6 +785,8 @@ computeDMRsInteraction <- function(
     if (find_components && nrow(interactions_df) > 0) {
         interactions_df$component_id <- membership_to_component[interactions_df$index1]
     }
+    # Serialize list-valued component fields only for tabular export; retain the
+    # structured objects in the returned results.
     if (!is.null(output_prefix)) {
         .writeTabularOutputAtomic(
             interactions_df,

@@ -1,0 +1,65 @@
+Installing CMEnt
+================
+
+Install the package and its R dependencies using BiocManager:
+
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+    BiocManager::install("CMEnt")
+
+Optional annotation, reference genome, and analysis packages depend on the
+requested functionality. CMEnt reports missing packages and gives installation
+commands; package functions do not install software. Install the indicated
+packages before repeating the analysis.
+
+External command-line tools
+===========================
+
+Tabix-backed file workflows use bgzip and tabix from HTSlib. On Linux and macOS,
+conversion also uses GNU sort, with head, tail, and a POSIX shell. These tools
+must be visible on the PATH inherited by R. Matrix-based workflows do not need
+the external tools. R does not install them automatically.
+
+Linux (Debian/Ubuntu):
+
+    sudo apt-get update
+    sudo apt-get install tabix coreutils
+
+macOS (with Homebrew already installed):
+
+    brew install htslib coreutils
+    export PATH="$(brew --prefix coreutils)/libexec/gnubin:$PATH"
+
+The PATH setting selects GNU sort rather than the macOS sort command. Start R
+from that shell, or arrange for the same PATH in the R session.
+
+Windows:
+
+The Windows conversion path sorts in R and does not use GNU sort. It still
+requires compatible bgzip.exe and tabix.exe on PATH for compression/indexing.
+Native Windows execution of those external tools has not been verified here.
+For these file workflows, use the Linux Docker image or run R inside WSL2,
+installing the Linux tools there as described above. Installing tools only
+inside WSL2 does not make them available to a native Windows R session.
+
+Check tool discovery in R with:
+
+    Sys.which(c("bgzip", "tabix", "sort"))
+
+Container setup
+===============
+
+The source distribution includes the Dockerfile and related scripts under
+inst/docker. From the repository root, build with:
+
+    docker build -f inst/docker/Dockerfile -t cment .
+
+The container entrypoint installs missing optional R packages for the selected
+command, inputs, and genome before starting analysis. Viewer setup uses the
+saved metadata to prepare packages for that analysis's plots and interactions.
+This requires network access and a writable R library when packages are missing.
+It does not enable installation from CMEnt package functions or worker processes.
+
+Running inst/docker/run_cment.R directly provides the CLI without container
+installation. For arbitrary interactive R scripts, install their optional
+dependencies explicitly before calling CMEnt.

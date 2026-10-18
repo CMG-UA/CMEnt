@@ -64,17 +64,11 @@ for much faster local sequence retrieval.
 }
 \examples{
 dmrs <- GenomicRanges::GRanges("chr1", IRanges::IRanges(100000, 100100))
-\donttest{
-# Extract sequences for DMRs using BSgenome packages
-sequences <- getDMRSequences(dmrs, "hg19")
-
-# Force use of online UCSC API with parallel processing
-sequences <- getDMRSequences(dmrs, "hg19", use_online = TRUE, njobs = 4)
-
-# Calculate GC content
-gc_content <- vapply(sequences, function(s) {
-    (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
-}, numeric(1))
+if (requireNamespace("BSgenome.Hsapiens.UCSC.hg19", quietly = TRUE)) {
+    sequences <- getDMRSequences(dmrs, "hg19")
+    gc_content <- vapply(sequences, function(s) {
+        (stringr::str_count(s, "G") + stringr::str_count(s, "C")) / nchar(s)
+    }, numeric(1))
 }
 
 }

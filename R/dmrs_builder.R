@@ -303,6 +303,8 @@
                                       beta_col_names,
                                       use_numeric_sequencing_rows,
                                       chromosome_runs = .chromosomeRunIndex(beta_chr, require_unique = TRUE)) {
+    # Describe each contiguous chromosome slice without realizing its beta
+    # matrix. Numeric seed indices become relative to that chromosome slice.
     tasks <- vector("list", length(chromosomes))
     names(tasks) <- chromosomes
 
@@ -574,6 +576,8 @@
     }
     min_splits_eff <- min(min_splits_eff, n_input_splits)
 
+    # Pool neighboring ranges by estimated pair workload, while reserving enough
+    # splits for the requested workers. Weights may be sparse rechecks.
     pooled <- vector("list", n_input_splits)
     pooled_weights <- integer(n_input_splits)
     pooled_n <- 0L
@@ -616,6 +620,8 @@
     }
     storage.mode(pooled) <- "integer"
 
+    # If necessary, divide the heaviest divisible range to recover the minimum
+    # task count; keep weights aligned with the replacement ranges.
     while (nrow(pooled) < min_splits_eff) {
         spans <- as.integer(pooled[, 2L] - pooled[, 1L] + 1L)
         candidates <- which(spans > 1L & pooled_weights > 1L)
@@ -664,6 +670,8 @@
     if (n_sites == 0L) {
         return(NULL)
     }
+    # This helper receives one chromosome. Select window-covered sites first,
+    # then subset the handler and coordinates with the same ordered indices.
     beta_start <- as.integer(beta_locs[, "start"])
     keep <- rep(FALSE, n_sites)
     if (nrow(expansion_windows) > 0L) {
@@ -698,6 +706,8 @@
             rownames(beta_locs)
         }
     }
+    # BSseq reads use numeric rows; array inputs can retain stable probe IDs.
+    # Returned locus names identify seeds within the resulting local handler.
     if (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler)) {
         subset_ids <- subset_idx
         subset_names <- paste0(as.character(subset_locs[, "chr"]), ":", as.integer(subset_locs[, "start"]))
@@ -786,6 +796,8 @@
         ))
     }
 
+    # Accumulate row means and paired observation counts column by column,
+    # avoiding full copies of both members of every candidate pair.
     x_sum <- numeric(n_pairs)
     y_sum <- numeric(n_pairs)
     x_count <- integer(n_pairs)
@@ -829,6 +841,8 @@
         }
     }
 
+    # A second pass accumulates centered products and sums of squares. Missing
+    # entries contribute zero after centering; n_valid tracks pairs.
     x_means <- x_sum / x_count
     y_means <- y_sum / y_count
     sum_xy <- numeric(n_pairs)
@@ -923,6 +937,8 @@
     beta_row_ids = NULL,
     beta_row_ids_offset = 0L
 ) {
+    # Pair i refers to the edge from site i to i + 1, so a contiguous pair chunk
+    # needs one extra site. Bridge rechecks instead supply explicit pairs.
     pair_start <- as.integer(split[[1]])
     pair_end <- as.integer(split[[2]])
     site_start <- pair_start
@@ -938,6 +954,8 @@
         inds <- as.vector(t(as.matrix(chunk_pairs)))
     }
 
+    # Resolve local indices to backend row IDs before fetching beta values;
+    # coordinate and beta rows must stay in precisely the same order.
     site_starts <- beta_start_vec[inds]
     if (use_numeric_row_index) {
         row_ids <- inds
@@ -1074,6 +1092,8 @@
             )
         )
     }
+    # One output row represents one outgoing site edge; the last row is an
+    # end-of-input sentinel. Window boundaries must also remain disconnected.
     chr_ends <- as.integer(n_sites)
     window_mode <- !is.null(expansion_windows) && nrow(expansion_windows) > 0L
     default_reason <- if (window_mode) "outside_connectivity_window" else ""
@@ -1095,6 +1115,8 @@
         level = 3
     )
 
+    # Prepare ranges and chunks before reading beta data. An initial pass tests
+    # adjacent sites; later passes target boundaries of connected runs.
     .makeOutputTemplate <- function(nrows, reason_default) {
         ret <- data.frame(
             connected = rep(FALSE, nrows),
@@ -1222,6 +1244,8 @@
         )
     }
 
+    # Initialize only eligible pair ranges. Bridge passes below reuse the
+    # existing decisions and select explicit endpoint pairs to reassess.
     if (is.null(connectivity_array)) {
         connectivity_array <- .makeOutputTemplate(n_sites, default_reason)
         connectivity_array[chr_ends, "connected"] <- FALSE
@@ -1391,6 +1415,8 @@
         "; chunks to evaluate: ", nrow(splits), ".",
         level = 3
     )
+    # The testing phase shares one row-identity convention across the pilot and
+    # every worker, including handlers that already represent a subset.
     beta_row_ids_full <- rownames(beta_locs)
     # Numeric indices in this function are relative to beta_locs, which may be a subset
     # of the full beta matrix. Prefer stable row IDs whenever they are available so that
@@ -1530,6 +1556,8 @@
     }
 
     .applyChunkResult <- function(item) {
+        # Merge decisions in the parent process. Bridge results may add links,
+        # but must preserve existing links and identify newly touched edges.
         x <- item$result
         if (nrow(x) == 0L) {
             return(invisible(NULL))
@@ -1634,6 +1662,8 @@
         )
     }
 
+    # Dispatch complete chunks, then assemble results through the same merge
+    # helper for serial and parallel execution.
     pairs_to_eval <- if (is.null(checked_pairs)) {
         sum(as.integer(splits[, 2]) - as.integer(splits[, 1]) + 1L)
     } else {
@@ -1666,6 +1696,8 @@
     bridge_mask <- connectivity_state$bridge_mask
     recheck <- sort(unique(connectivity_state$recheck))
 
+    # Finalize bridged edge labels only after all chunk results are merged; then
+    # restore hard boundaries that pooled chunks may have crossed.
     connected_vec[bridge_mask] <- TRUE
     reason_vec[bridge_mask] <- "bridged"
 
@@ -1727,6 +1759,8 @@
     }
     connectivity_array <- NULL
     splits <- NULL
+    # Build adjacent-site connectivity first, then allow successively wider
+    # bridges. Each allowance starts from the connections already established.
     for (gap in seq(0L, max_bridge_gaps)) {
         if (gap == 0L) {
             .log_info("Building connectivity array with no gap bridging.", level = 2)
@@ -1780,6 +1814,9 @@
             )
         }
         .buildCABridgeFixedPoint <- function(build_args, max_gap) {
+            # A new bridge can expose another run boundary, including at a
+            # smaller gap. Repeat the allowed gaps until no additional edges are
+            # connected.
             active_recheck <- NULL
             base_splits <- build_args$splits
             pass <- 0L
@@ -1817,6 +1854,9 @@
                     build_args$empirical_strategy_per_group <- build_ret$empirical_strategy_per_group
                     cycle_recheck <- sort(unique(c(cycle_recheck, build_ret$recheck)))
                 }
+                # Stop when no edges were touched; otherwise require monotone
+                # progress and restrict the next cycle to runs affected by this
+                # cycle.
                 if (length(cycle_recheck) == 0L) {
                     build_ret$splits <- base_splits
                     return(build_ret)
@@ -1911,6 +1951,8 @@
     projected_positions <- as.integer(locs[, "start"])
     connectivity_reason <- as.character(connectivity_array[["reason"]])
 
+    # Translate seed endpoints into local site indices. Boundary lookups then
+    # find the nearest failed edge on each side without walking each DMR.
     start_seed <- as.character(dmrs_chunk[["start_seed"]])
     end_seed <- as.character(dmrs_chunk[["end_seed"]])
     start_idx <- unname(as.integer(locs_idx_map[start_seed]))
@@ -1922,6 +1964,8 @@
         stop("Could not find the end site ", end_seed[which(is.na(end_idx))[1L]], " in the beta file row names.")
     }
 
+    # An upstream failed edge stops expansion at the following site; a
+    # downstream failed edge stops at that edge's starting site.
     upstream_exp <- start_idx
     upstream_stop_reason <- rep(NA_character_, n_dmrs)
     upstream_lookup <- start_idx - 1L
@@ -1954,6 +1998,8 @@
     upstream_stop_reason[too_short] <- "min-sites-not-reached"
     downstream_stop_reason[too_short] <- "min-sites-not-reached"
 
+    # Bridged gaps can extend the genomic span without providing supporting
+    # sites. Exclude those entries from membership lists and support counts.
     expansion_kept_indices <- function(local_inds) {
         if (length(local_inds) == 0L) {
             return(integer(0))
@@ -2032,6 +2078,8 @@
             stop("n_sites must be a non-negative integer.", call. = FALSE)
         }
     }
+    # Apply distance and optional delta-beta screens before group correlation
+    # tests. Strong mode requires all tested groups; weak mode accepts any.
     strict_mode <- identical(entanglement, "strong")
     if (n_sites < 2) {
         ret <- data.frame(
@@ -2047,6 +2095,8 @@
         }
         return(ret)
     }
+    # Ordinary chunks test consecutive rows. Bridge chunks arrange explicit
+    # endpoint pairs as alternating rows, so neighboring pairs do not overlap.
     if (check_non_overlapping) {
         n_pairs <- n_sites / 2
         start_pair_inds <- seq(1, n_sites - 1, by = 2)
@@ -2165,6 +2215,9 @@
 
         # Compute correlations (fully vectorized)
         cors <- sum_xy / denom
+        # The connectivity convention treats a constant site as fully
+        # correlated. Handle it explicitly before divisions and empirical tests
+        # can produce NA.
         zero_variance_cor <- g_mask & is.finite(sum_x2) & is.finite(sum_y2) &
             (sum_x2 <= .Machine$double.eps | sum_y2 <= .Machine$double.eps)
 
@@ -2285,6 +2338,9 @@
                             counts_eq[comp_mask] <- counts_eq[comp_mask] + (abs(ap - ao) <= compare_tol)
                         }
                     }
+                    # Count strict exceedances and ties separately so mid-p uses
+                    # half the tie mass; the added observation prevents a zero
+                    # empirical p-value.
                     if (mid_p) {
                         ps[mask] <- (counts_ge[mask] + 0.5 * counts_eq[mask] + 1) / (ntries + 1)
                     } else {
@@ -2302,6 +2358,8 @@
         g_reasons[exceed_pval] <- "pval>max_pval"
         g_mask[exceed_pval] <- FALSE
 
+        # Strong mode retains the running maximum p-value until the first failure.
+        # Weak mode stores per-group results for the final any-group decision.
         # Update results back to main vectors
         if (strict_mode) {
             sconnected <- connected[corr_mask]
@@ -2732,6 +2790,9 @@
     score_dmrs,
     extract_motifs
 ) {
+    # Chromosome workflow: connect seeds, expand through neighboring sites,
+    # merge overlaps, filter support, then annotate, score regions and extract
+    # motifs as requested.
     if (!inherits(beta_handler, "BetaHandler")) {
         stop(".buildDMRsChr expects a chromosome-scoped BetaHandler.")
     }
@@ -2820,6 +2881,9 @@
             row.names = NULL
         )
     } else {
+        # Stage 1 uses seed-only beta rows. Neighboring chunks share a boundary
+        # seed so every adjacent seed pair is available for connectivity
+        # testing.
         seed_chunk_ranges <- .stage1SeedChunkRanges(length(seed_ids))
         .log_step(
             "Building seed connectivity array in ", nrow(seed_chunk_ranges),
@@ -2959,6 +3023,8 @@
             )
         }
         .log_step("Expanding ", nrow(dmrs_to_expand), " DMRs using ", njobs, " jobs...", level = 3)
+        # Build one index and failed-edge lookup for this Stage 2 coordinate
+        # set. Every expansion task uses that same local ordering.
         locs <- as.data.frame(stage2_beta_locs)
         connectivity <- connectivity_array
         locs_rownames <- rownames(locs)
@@ -3013,6 +3079,8 @@
         extended_dmrs <- .expandStage2DMRs(dmrs, beta_locs, connectivity_array)
         connectivity_connected_total <- sum(connectivity_array$connected)
     } else {
+        # Stage 2 introduces neighboring non-seed sites. Finite windows bound
+        # which sites are read and tested; otherwise use the full chromosome.
         expansion_windows <- NULL
         if (is.finite(expansion_window) && expansion_window > 0) {
             expansion_windows <- .buildWindowsFromDMRs(
@@ -3053,6 +3121,9 @@
                 njobs = memory_njobs,
                 n_pairs = sum(window_pair_counts)
             )
+            # Group whole windows by pair workload before reading beta data.
+            # Each initial DMR must be assigned to exactly one window chunk
+            # below.
             window_chunk_ranges <- vector("list", nrow(expansion_windows))
             window_chunk_n <- 0L
             window_chunk_start <- 1L
@@ -3268,6 +3339,8 @@
     .advanceChromosomeProgress()
     .log_step("Stage 3: Merging overlapping extended DMRs..", level = 2)
 
+    # Expansion can make seed-derived DMRs overlap. Reduce their spans first,
+    # then merge membership and metadata using the original-to-merged overlaps.
     extended_dmrs_ranges <- GenomicRanges::makeGRangesFromDataFrame(
         extended_dmrs,
         keep.extra.columns = TRUE,
@@ -3376,6 +3449,8 @@
     .advanceChromosomeProgress()
     .log_step("Stage 4: Filtering resulting DMRs..", level = 2)
 
+    # Filter merged regions by supporting sites, then apply the additional
+    # array-specific adjacent-seed requirement when requested.
     if (min_sites > 1) {
         filtered_dmrs_ranges <- merged_dmrs_ranges[
             GenomicRanges::mcols(merged_dmrs_ranges)$sites_num >= min_sites
@@ -3436,6 +3511,8 @@
 
     annotated_dmrs <- filtered_dmrs
 
+    # Read retained sites once for effect summaries. Seed-only and all-site
+    # aggregates are computed separately because they describe different sets.
     all_selected_sites <- unique(unlist(base::strsplit(annotated_dmrs$sites, ","), use.names = FALSE))
     all_selected_sites_beta <- beta_handler$getBeta(row_names = all_selected_sites, col_names = beta_col_names)
     .log_step("Calculating per-site beta statistics..", level = 3)
@@ -3511,6 +3588,8 @@
 
     .log_success("DMR delta-beta information added.", level = 3)
     .log_success("DMR filtering complete.", level = 2)
+    # Optional downstream annotations operate on the final retained regions;
+    # they do not alter the earlier connectivity or support decisions.
     if (annotate_with_genes) {
         .log_step("Annotating DMRs with gene information...", level = 2)
         .advanceChromosomeProgress()
@@ -3609,6 +3688,8 @@
     extract_motifs
 ) {
     .log_step("Processing chromosome ", task$chr, "...", level = 1)
+    # Create the chromosome-local handler here so seed indices prepared for the
+    # task refer to its rows, while retaining all samples for summaries.
     task_row_ids <- if (!is.null(task$row_ids)) {
         task$row_ids
     } else {
@@ -3769,16 +3850,26 @@
 #'  `pval` and FDR-adjusted `qval` when seed p-value aggregation is enabled.
 #'
 #' @examples
-#' loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
-#' \donttest{
-#' dmrs <- buildDMRs(
-#'     beta = beta,
-#'     seeds = dmps,
-#'     pheno = pheno,
-#'     array = array_type,
-#'     sample_group_col = "Sample_Group"
+#' beta <- matrix(
+#'     rep(c(0.10, 0.12, 0.14, 0.78, 0.80, 0.82), each = 3), nrow = 3,
+#'     dimnames = list(paste0("site", 1:3), paste0("S", 1:6))
 #' )
-#' }
+#' locs <- data.frame(
+#'     chr = "chr1", start = c(100L, 200L, 300L), row.names = rownames(beta)
+#' )
+#' handler <- getBetaHandler(beta, sorted_locs = locs, genome = "hg38")
+#' pheno <- data.frame(
+#'     Sample_Group = "cohort", casecontrol = rep(0:1, each = 3),
+#'     row.names = colnames(beta)
+#' )
+#' seeds <- data.frame(pval = rep(1e-6, 3), row.names = rownames(beta))
+#' dmrs <- buildDMRs(
+#'     beta = handler, seeds = seeds, pheno = pheno,
+#'     sample_group_col = "Sample_Group", casecontrol_col = "casecontrol",
+#'     annotate_with_genes = FALSE, extract_motifs = FALSE, score_dmrs = FALSE,
+#'     min_seeds = 2, min_sites = 2, max_lookup_dist = 150,
+#'     testing_mode = "parametric", njobs = 1
+#' )
 #' @export
 buildDMRs <- function(
     beta,
@@ -3818,6 +3909,8 @@ buildDMRs <- function(
     verbose = getOption("CMEnt.verbose", 1),
     .load_debug = FALSE
 ) {
+    # Pipeline roadmap: normalize inputs and sample roles, match seeds to beta
+    # rows, dispatch chromosome tasks, then combine and export final regions.
     .emptyOutputs <- function(prefix_base) {
         if (is.null(prefix_base)) {
             return(invisible(NULL))
@@ -3934,6 +4027,8 @@ buildDMRs <- function(
 
     .log_step("Preparing DMR input...")
     .log_step("Reading seeds and phenotype files...", level = 3)
+    # Normalize the supported input forms before constructing the handler; empty
+    # seed sets return through the common empty-output path.
     seeds_ret <- .readSeeds(seeds, seeds_id_col)
     .log_step("Validating sample group column in phenotype data...", level = 3)
     sample_group_col <- .requireSampleGroupCol(sample_group_col, "buildDMRs()")
@@ -3994,6 +4089,8 @@ buildDMRs <- function(
         }
     }
 
+    # Centralize beta access so later stages can share the same logic for
+    # in-memory, file-backed, array and sequencing inputs.
     beta_handler <- getBetaHandler(
         beta = beta,
         beta_row_names_file = beta_row_names_file,
@@ -4090,6 +4187,8 @@ buildDMRs <- function(
             if (length(missing_pheno_samples) > 10) " ..." else ""
         )
     }
+    # Align phenotype rows to beta columns before selecting detection groups.
+    # Keep full metadata for effect summaries even when some groups are ignored.
     pheno <- pheno[beta_col_names, , drop = FALSE]
     pheno <- .addCaseControlColumn(pheno)
 
@@ -4166,6 +4265,8 @@ buildDMRs <- function(
     if (!exists("beta_chr_runs", inherits = FALSE)) {
         beta_chr_runs <- .chromosomeRunIndex(beta_chr, require_unique = TRUE)
     }
+    # Resolve seed identities once in genomic order. Sequencing backends can use
+    # numeric positions without constructing a genome-wide row-name vector.
     use_numeric_sequencing_rows <- !array_based &&
         (is.null(beta_locs_rownames) || .usesBSseqBackend(beta_handler))
     beta_row_names <- if (use_numeric_sequencing_rows) NULL else beta_handler$getBetaRowNames()
@@ -4275,6 +4376,8 @@ buildDMRs <- function(
     }
     gc(FALSE)
 
+    # Split the requested job budget between chromosomes and their inner
+    # connectivity work; memory estimates use the combined concurrent budget.
     chr_parallel_jobs <- suppressWarnings(as.integer(getOption("CMEnt.chr_njobs", 3L)))
     if (is.na(chr_parallel_jobs) || chr_parallel_jobs < 1L) {
         chr_parallel_jobs <- 1L
@@ -4389,6 +4492,8 @@ buildDMRs <- function(
         GenomicRanges::end(final_dmrs_granges)
     )
     final_dmrs_granges <- final_dmrs_granges[final_ord]
+    # Combine seed p-values for the final regions, then adjust across the
+    # assembled DMR set rather than independently within each chromosome.
     final_seed_ids <- unique(unlist(
         lapply(S4Vectors::mcols(final_dmrs_granges)$seeds, .splitCsvValues),
         use.names = FALSE
@@ -4408,6 +4513,8 @@ buildDMRs <- function(
     }
 
     if (!is.null(output_prefix_dot)) {
+        # Persist beta values for retained DMR sites alongside the result table,
+        # so the viewer can reconstruct the selected detection samples.
         viewer_sites <- unique(unlist(lapply(S4Vectors::mcols(final_dmrs_granges)$sites, .splitCsvValues), use.names = FALSE))
         viewer_beta <- beta_handler$getBeta(row_names = viewer_sites, col_names = beta_col_names_detection)
         viewer_file <- paste0(output_prefix_dot, "seeds_beta.tsv.gz")

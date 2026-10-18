@@ -79,8 +79,10 @@ plot is added showing the nucleotide composition and information content around 
 dmrs <- readRDS(system.file(
     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 ))
-\donttest{
-plotDMR(dmrs, 1, plot_motif = FALSE)
+if (requireNamespace(
+    "IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE
+)) {
+    plotDMR(dmrs, 1, array = "450K", plot_motif = FALSE)
 }
 
 }

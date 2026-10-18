@@ -183,14 +183,24 @@ but avoid filtering based on beta value thresholds or effect size cutoffs before
 }
 
 \examples{
-loadExampleInputDataChr21And22("beta", "dmps", "pheno", "array_type")
-\donttest{
-dmrs <- buildDMRs(
-    beta = beta,
-    seeds = dmps,
-    pheno = pheno,
-    array = array_type,
-    sample_group_col = "Sample_Group"
+beta <- matrix(
+    rep(c(0.10, 0.12, 0.14, 0.78, 0.80, 0.82), each = 3), nrow = 3,
+    dimnames = list(paste0("site", 1:3), paste0("S", 1:6))
 )
-}
+locs <- data.frame(
+    chr = "chr1", start = c(100L, 200L, 300L), row.names = rownames(beta)
+)
+handler <- getBetaHandler(beta, sorted_locs = locs, genome = "hg38")
+pheno <- data.frame(
+    Sample_Group = "cohort", casecontrol = rep(0:1, each = 3),
+    row.names = colnames(beta)
+)
+seeds <- data.frame(pval = rep(1e-6, 3), row.names = rownames(beta))
+dmrs <- buildDMRs(
+    beta = handler, seeds = seeds, pheno = pheno,
+    sample_group_col = "Sample_Group", casecontrol_col = "casecontrol",
+    annotate_with_genes = FALSE, extract_motifs = FALSE, score_dmrs = FALSE,
+    min_seeds = 2, min_sites = 2, max_lookup_dist = 150,
+    testing_mode = "parametric", njobs = 1
+)
 }

@@ -44,8 +44,7 @@ SHELL ["/bin/bash", "-c"]
 
 COPY --link --from=builder /opt/samtools/bin/* /usr/local/bin/
 COPY --link --from=builder /opt/samtools/lib/* /usr/local/lib/
-RUN mkdir -p "${HOME}" && \
-    printf '%s\n' 'options(CMEnt.auto_install_dep_if_missing = TRUE)' > "${HOME}/.Rprofile"
+RUN mkdir -p "${HOME}"
 
 # Install system dependencies
 RUN apt update && apt install -y r-cran-devtools r-cran-remotes r-cran-optparse r-cran-biocmanager
@@ -56,4 +55,4 @@ RUN Rscript -e "pak::pkg_install('R6', upgrade = TRUE)"
 RUN Rscript -e "devtools::install()"
 RUN apt clean && rm -rf /var/lib/apt/lists/*
 
-ENTRYPOINT ["/CMEnt/run_cment.R"]
+ENTRYPOINT ["Rscript", "/CMEnt/inst/docker/entrypoint.R"]

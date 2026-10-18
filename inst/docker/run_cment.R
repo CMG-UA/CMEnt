@@ -601,7 +601,8 @@ launchCMEntViewerCLI <- function(args) {
     }
 }
 
-.runCMEntCLI <- function(cli_args = commandArgs(trailingOnly = TRUE), script_name = NULL) {
+.runCMEntCLI <- function(cli_args = commandArgs(trailingOnly = TRUE),
+                         script_name = NULL, prepare_dependencies = NULL) {
     invocation <- .resolveCMEntCLIInvocation(cli_args)
 
     if (isTRUE(invocation$top_level_help)) {
@@ -621,22 +622,30 @@ launchCMEntViewerCLI <- function(args) {
         return(invisible(0L))
     }
 
+    required_options <- switch(
+        invocation$command,
+        buildDMRs = c("beta", "seeds_file", "samplesheet", "sample_group_col"),
+        findDMPsArray = c("beta", "samplesheet", "sample_group_col", "array", "genome", "output_file"),
+        findDMPsBSSeq = c("bsseq", "samplesheet", "sample_group_col", "output_file"),
+        launchCMEntViewer = "output_prefix"
+    )
+    .requireCLIOptions(parsed_args, required_options)
+    if (!is.null(prepare_dependencies)) {
+        prepare_dependencies(invocation$command, parsed_args)
+    }
+
     switch(
         invocation$command,
         buildDMRs = {
-            .requireCLIOptions(parsed_args, c("beta", "seeds_file", "samplesheet", "sample_group_col"))
             invisible(buildDMRsCLI(parsed_args))
         },
         findDMPsArray = {
-            .requireCLIOptions(parsed_args, c("beta", "samplesheet", "sample_group_col", "array", "genome", "output_file"))
             invisible(findDMPsArrayCLI(parsed_args))
         },
         findDMPsBSSeq = {
-            .requireCLIOptions(parsed_args, c("bsseq", "samplesheet", "sample_group_col", "output_file"))
             invisible(findDMPsBSSeqCLI(parsed_args))
         },
         launchCMEntViewer = {
-            .requireCLIOptions(parsed_args, "output_prefix")
             invisible(launchCMEntViewerCLI(parsed_args))
         }
     )
@@ -645,7 +654,9 @@ launchCMEntViewerCLI <- function(args) {
 
 
 
-.runCMEntCLI(
-    cli_args = commandArgs(trailingOnly = TRUE),
-    script_name = commandArgs(FALSE)[1]
-)
+if (sys.nframe() == 0L) {
+    .runCMEntCLI(
+        cli_args = commandArgs(trailingOnly = TRUE),
+        script_name = "run_cment.R"
+    )
+}

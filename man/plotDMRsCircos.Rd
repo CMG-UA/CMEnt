@@ -32,7 +32,7 @@ plotDMRsCircos(
   neg_delta_color = "#055709",
   zero_delta_color = "#f0ec10",
   pos_delta_color = "#801414",
-  legend_width_ratio = 0.50,
+  legend_width_ratio = 0.5,
   degenerate_resolution = 1e+06,
   output_file = NULL,
   verbose = NULL
@@ -119,11 +119,6 @@ beta value heatmaps for each sample, and motif-based interaction links between D
 dmrs <- readRDS(system.file(
     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 ))
-\donttest{
-if (interactive()) {
-    plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-    plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
-}
-}
+plotDMRsCircos(dmrs, query_components_with_jaspar = FALSE)
 
 }

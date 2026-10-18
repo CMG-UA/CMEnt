@@ -150,6 +150,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                               start_col = "start",
                               output_prefix = NULL,
                               njobs = 1) {
+            # Establish the backend and coordinate source before validation.
+            # BSseq and Tabix carry locations; ordinary matrices/files may need
+            # array annotations.
             # Validate inputs
             if (is.null(beta)) {
                 stop("Beta values must be provided")
@@ -222,6 +225,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Load beta file data into memory or prepare for file-based access
         #' @return Self (invisibly)
         load = function() {
+            # Load once and record the active storage backend. Later queries
+            # dispatch to memory, a plain file, Tabix, or BSseq without
+            # repeating this setup.
             if (private$.loaded) {
                 return(invisible(self))
             }
@@ -258,6 +264,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 # Check file size
                 file_size_mb <- file.info(private$.beta_file)$size / (1024^2)
 
+                # Small plain files may be realized in memory; larger files can
+                # be converted to Tabix so subsequent queries can retrieve
+                # genomic slices.
                 mem_thres <- getOption("CMEnt.beta_in_mem_threshold_mb", 500)
                 if (file_size_mb < mem_thres) {
                     private$.beta_file_in_memory <- tryCatch(
@@ -349,6 +358,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
 
         #' @description Get row names (site IDs) from the beta file
         #' @return Character vector of row names
+        # Row-name discovery follows the selected backend and is cached below;
+        # externally annotated inputs retain only IDs with known coordinates.
         getBetaRowNames = function() {
             self$load()
 
@@ -446,6 +457,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @description Validate that the beta file is properly sorted and formatted
         #' @return Self (invisibly)
         validate = function() {
+            # Validate the coordinate/data ordering once. File sorting refreshes
+            # row and location caches; in-memory sorting updates the matrix
+            # itself.
             if (private$.validated) {
                 return(invisible(self))
             }
@@ -591,6 +605,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @return A BetaHandler object scoped to the requested subset
         subset = function(row_names = NULL, col_names = NULL, allow_missing = FALSE) {
             self$validate()
+            # Resolve the requested rows within this handler's view, then map
+            # them to storage rows. This distinction also applies to subsets of
+            # subsets.
             bsseq_numeric_rows <- !is.null(private$.bsseq_object) && is.numeric(row_names)
             if (bsseq_numeric_rows) {
                 row_idx <- as.integer(row_names)
@@ -676,6 +693,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 }
             }
 
+            # For delayed BSseq data, subset the object without realizing its
+            # assays or constructing all coordinate-derived row names.
             if (bsseq_numeric_rows && !.bsseqIsInMemory(private$.bsseq_object)) {
                 storage_rows <- if (!is.null(private$.beta_row_index_map)) {
                     private$.beta_row_index_map[row_match]
@@ -728,6 +747,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 ))
             }
 
+            # File-backed views share storage and carry their own row/column
+            # metadata. Mark this validated slice as self-contained for
+            # subsequent queries.
             subset_handler <- self$clone(deep = FALSE)
             subset_handler$sorted_locs <- subset_locs
             subset_handler$beta_row_names_file <- NULL
@@ -758,6 +780,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
         #' @param allow_missing Logical. If TRUE, missing site sites will be ignored instead of throwing an error (default: FALSE)
         #' @param chr Character vector of chromosome names to extract, cannot be used along with row_names (default: NULL for all)
         #' @return Matrix-like object of beta values
+        # Each backend branch below returns sites by samples. Resolve view
+        # indices and requested sample order before extracting or realizing
+        # their values.
         getBeta = function(row_names = NULL, col_names = NULL, allow_missing = FALSE, chr = NULL) {
             if (!is.null(row_names) && !is.null(chr)) {
                 stop("Cannot specify both row_names and chr for subsetting.")
@@ -788,6 +813,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
             }
             if (!is.null(private$.beta_file_in_memory)) {
                 .log_step("Subsetting from in-memory beta data..", level = 3)
+                # A view can refer to rows in a larger in-memory matrix; resolve
+                # those storage indices before slicing instead of assuming view
+                # and storage agree.
                 resolve_memory_rows <- function(requested_rows, requested_chr = NULL) {
                     handler_row_names <- self$getBetaRowNames()
                     row_index_map <- private$.beta_row_index_map
@@ -905,6 +933,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < nrow(qregions))) {
                     stop("Requested site sites not found in beta tabix file")
                 }
+                # Tabix queries operate on genomic ranges, which can return
+                # extra rows or a different order. Recover site identities, then
+                # restore the request order.
                 # bedr forces the first three columns to be named "chr",
                 # "start", "stop" ....
                 # https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
@@ -1046,6 +1077,9 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                     )
                 }
 
+                # Slice count assays before division so delayed inputs realize
+                # only the requested portion. Zero or unusable coverage yields
+                # missing beta values.
                 m_assay <- SummarizedExperiment::assay(private$.bsseq_object, "M", withDimnames = FALSE)
                 cov_assay <- SummarizedExperiment::assay(private$.bsseq_object, "Cov", withDimnames = FALSE)
                 beta_subset <- m_assay[row_idx, col_idx, drop = FALSE] / cov_assay[row_idx, col_idx, drop = FALSE]

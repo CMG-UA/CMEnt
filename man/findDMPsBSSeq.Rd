@@ -66,7 +66,6 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
       Age = c(30, 32, 31, 28, 29, 27)
     )
     # Find DMPs with DSS
-    \donttest{
     dmps <- findDMPsBSSeq(
        bsseq = BS.cancer.ex,
        samplesheet = samplesheet,
@@ -78,6 +77,5 @@ if (requireNamespace("bsseqData", quietly = TRUE) &&
        njobs = 4
     )
     print(head(dmps))
-    }
 }
 }

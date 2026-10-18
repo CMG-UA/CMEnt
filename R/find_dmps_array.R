@@ -103,6 +103,8 @@ findDMPsArray <- function(
     array <- match.arg(array, c("450K", "27K", "EPIC", "EPICv2", "Mouse"))
     genome <- .resolveBuildDMRsGenome(beta = beta, array = array, genome = genome)
 
+    # Align sample metadata to beta columns before fitting; site coordinates are
+    # taken from the same handler after chromosome filtering.
     beta_handler <- getBetaHandler(
         beta = beta,
         array = array,
@@ -136,6 +138,8 @@ findDMPsArray <- function(
     }
     locs <- beta_handler$getBetaLocs()[rownames(beta_mat), , drop = FALSE]
 
+    # Fit the case coefficient on M-values, clipping boundary beta values only
+    # for this transform. Report the effect on the original beta scale below.
     eps <- 1e-6
     m_values <- log2(pmax(pmin(beta_mat, 1 - eps), eps) / (1 - pmax(pmin(beta_mat, 1 - eps), eps)))
     condition <- pheno$condition
@@ -182,6 +186,8 @@ findDMPsArray <- function(
     tab$score <- -log10(tab$P.Value + .Machine$double.xmin) * abs(tab$delta_beta)
     tab$score <- (tab$score - min(tab$score)) / (max(tab$score) - min(tab$score) + .Machine$double.xmin)
 
+    # Assemble the common DMP schema used by buildDMRs(), then sort genomic
+    # coordinates independently of the model's input row order.
     dmps <- data.frame(
         chr = as.character(tab$chr),
         start = as.integer(tab$start),

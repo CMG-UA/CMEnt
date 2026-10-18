@@ -6,7 +6,7 @@ on:
       dockerfile:
         required: false
         type: string
-        default: "Dockerfile"
+        default: "inst/docker/Dockerfile"
       docker_context:
         required: false
         type: string
@@ -14,7 +14,7 @@ on:
       docker_dir:
         required: false
         type: string
-        default: "."
+        default: "inst/docker"
       image_suffix:
         required: false
         type: string

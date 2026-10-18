@@ -85,6 +85,8 @@
         )
     }
 
+    # Samples are rows here. Reuse the caller's fold plan for every DMR so
+    # comparisons use the same held-out samples rather than new random splits.
     predictions <- vector("character", nrow(beta_mat_t))
     decision_values <- rep(NA_real_, nrow(beta_mat_t))
     groups_chr <- fold_plan$groups_chr
@@ -110,6 +112,9 @@
             fold_decision <- rep(NA_real_, length(test_indices))
         } else {
             train_levels <- fold_info$train_levels
+            # Orient decision signs to the training level order before
+            # calculating the margin loss; predicted class labels provide the
+            # orientation check.
             pred_from_sign <- ifelse(fold_decision >= 0, train_levels[1], train_levels[2])
             if (mean(pred_from_sign == fold_pred_chr, na.rm = TRUE) < 0.5) {
                 fold_decision <- -fold_decision
@@ -237,6 +242,8 @@
     }
     k <- min(k, n)
 
+    # Adapt the kernel bandwidth to nearby genomic positions, with a positive
+    # spacing floor for repeated coordinates or coincident neighbors.
     unique_x <- sort(unique(x))
     dx <- diff(unique_x)
     min_pos_dx <- suppressWarnings(min(dx[dx > 0], na.rm = TRUE))
@@ -370,6 +377,8 @@
     }
     penalty <- max(as.numeric(penalty), 0)
 
+    # Prefix sums make each candidate line-fit cost independent of its span. The
+    # dynamic program tracks admissible previous change points below.
     prefixes <- .buildLinearCostPrefixes(x, y)
 
     # cost[t + 1] stores optimal cost up to index t; t = 0..n
@@ -408,9 +417,13 @@
             keep_eligible <- eligible
         }
 
+        # Retain candidates too recent to satisfy the minimum segment size,
+        # prune dominated eligible candidates, and add the current endpoint.
         runlen <- sort(unique(c(ineligible, keep_eligible, t)))
     }
 
+    # Reconstruct the chosen segments and map their fitted slopes back to every
+    # observation, preserving the supplied genomic order.
     best_cps <- cps[[n + 1L]]
     if (length(best_cps) == 0L) {
         ends <- n
@@ -585,6 +598,8 @@
                                                    block_gap_multiplier = 1.5,
                                                    block_gap_min_bp = 250000,
                                                    block_gap_max_bp = 5000000) {
+    # Block formation proceeds from smoothed scores to linear segments, then
+    # slope-defined candidates and finally gap-separated accepted blocks.
     f_chr <- .gaussianSmoothAdaptiveKNN(x_chr, y_chr, k = k_neighbors)
     seg <- .segmentLinearPELT(
         x = x_chr,
@@ -646,6 +661,9 @@
                 next
             }
 
+            # A candidate can cross an unsupported genomic gap. Split it before
+            # rechecking slope order, and retain split details for diagnostic
+            # plots.
             split_result <- .splitCandidateByGaps(x_chr[candidate_idx], gap_threshold_bp)
             if (nrow(split_result$split_events) > 0) {
                 ev <- split_result$split_events
@@ -733,6 +751,8 @@
         )
     }
 
+    # Return both assignments and their intermediate evidence so plotting can
+    # show how smoothing, segmentation and gap filtering produced a block.
     dmr_df <- data.frame(
         chr = chr,
         dmr_order = seq_along(x_chr),
@@ -780,6 +800,8 @@
     }
     block_gap_mode <- strex::match_arg(block_gap_mode, ignore_case = TRUE)
 
+    # Reserve output slots in the original DMR order. Each chromosome task sorts
+    # only its finite scores, returning indices for placement below.
     block_id <- rep(NA_character_, length(dmrs))
     score_smooth <- rep(NA_real_, length(dmrs))
     segment_id <- rep(NA_integer_, length(dmrs))
@@ -848,6 +870,9 @@
         chr_details <- res$chr_details
         details[[chr]] <- chr_details
         chr_idx <- res$chr_idx
+        # Place chromosome-local results back on the original ranges; prefix
+        # block IDs with the chromosome to keep identifiers distinct across
+        # tasks.
         score_smooth[chr_idx] <- chr_details$dmr_df$score_smoothed
         segment_id[chr_idx] <- chr_details$dmr_df$segment_id
         segment_slope[chr_idx] <- chr_details$dmr_df$segment_slope
@@ -972,6 +997,8 @@ scoreDMRs <- function(
 ) {
     old_setting <- options("CMEnt.verbose" = verbose)
     on.exit(options(old_setting), add = TRUE)
+    # Scoring workflow: align samples, prepare one fold plan, transform DMR site
+    # values, classify each region, then derive blocks from genomic scores.
     df_provided <- inherits(dmrs, "data.frame") && !inherits(dmrs, "GRanges")
     dmrs <- .convertToGRanges(dmrs, genome = genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
@@ -1018,6 +1045,8 @@ scoreDMRs <- function(
         S4Vectors::mcols(dmrs)$sites <- sites
         .log_success("DMR sites inferred from genomic overlaps", level = 3)
     }
+    # Use explicit DMR site membership, inferring it by overlaps only when
+    # absent. Shared sites are fetched and transformed once for all regions.
     dmr_sites <- base::strsplit(as.character(S4Vectors::mcols(dmrs)$sites), split = ",", fixed = TRUE)
     covariate_model <- .prepareCovariateModel(pheno = pheno, covariates = covariates)
     required_sites <- unique(unlist(dmr_sites, use.names = FALSE))
@@ -1066,6 +1095,8 @@ scoreDMRs <- function(
     )
     .log_success("DMR-specific beta matrix row indices prepared", level = 3)
     .log_step("Computing cross-validated classification scores for DMRs", level = 3)
+    # Bound realization of delayed values by grouping whole DMRs according to
+    # their unique site rows and the concurrent worker memory budget.
     max_materialized_rows <- .scoringMaterializationChunkRows(
         n_samples = ncol(dmrs_m),
         njobs = .memory_njobs,
@@ -1087,6 +1118,8 @@ scoreDMRs <- function(
         level = 3
     )
     score_chunk <- function(dmr_idx) {
+        # Materialize and transpose the shared chunk once, then remap each DMR
+        # to local columns while using the common cross-validation fold plan.
         chunk_site_indices <- dmr_site_indices[dmr_idx]
         chunk_rows <- unique(unlist(chunk_site_indices, use.names = FALSE))
         if (length(chunk_rows) == 0L) {
@@ -1151,6 +1184,8 @@ scoreDMRs <- function(
     S4Vectors::mcols(dmrs)$cv_accuracy <- as.numeric(cv_metrics[, "cv_accuracy"])
     .log_step("Assigning DMRs to blocks based on smoothed score profiles", level = 3)
 
+    # Block detection uses genomic order within each chromosome. Score-based
+    # ordering is applied only after those assignments are attached.
     dmrs <- .assignDMRBlocksFromScores(
         dmrs = dmrs,
         block_gap_mode = block_gap_mode,

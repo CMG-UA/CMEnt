@@ -80,6 +80,8 @@
         return(NULL)
     }
 
+    # Normalize every supported region representation to one coordinate table,
+    # then validate and intersect it with available cytoband ranges.
     region_df <- NULL
     if (inherits(region, "GRanges")) {
         if (length(region) == 0) {
@@ -326,6 +328,9 @@
             if (nrow(chunk) == 0) {
                 return(NULL)
             }
+            # Give each displayed interval its own sector ID. Two windows on one
+            # chromosome must remain distinct after clipping their track
+            # coordinates.
             chunk[[chr_col]] <- sprintf("%s:%d-%d", reg_chr, reg_start, reg_end)
             chunk
         })
@@ -392,6 +397,9 @@
         return(ret)
     }
     if (!is.null(region_df) && nrow(region_df) > 0) {
+        # Scope both link endpoints independently, then join by original link
+        # ID. A link is drawable only when both anchors survive the selected
+        # regions.
         ret$.row_id <- seq_len(nrow(ret))
         anchor1 <- .scopeCircosLinkAnchors(ret, anchor = 1, region_df = region_df)
         anchor2 <- .scopeCircosLinkAnchors(ret, anchor = 2, region_df = region_df)
@@ -441,6 +449,8 @@
                                     max_components = 30,
                                     query_components_with_jaspar = TRUE,
                                     verbose = NULL) {
+    # Prepare expensive motif, beta and interaction data once for reuse by the
+    # viewer. Display-specific clipping is handled by the renderer.
     dmrs <- .convertToGRanges(dmrs, genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!is.null(max_components)) {
@@ -507,6 +517,8 @@
 
     .log_step("Preparing data for Circos plot...")
 
+    # The DMR limit applies to the beta heatmap selection. Arc and interaction
+    # data are prepared from the full DMR set supplied to this stage.
     heatmap_dmrs <- NULL
     if (show_beta_track) {
         .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
@@ -605,6 +617,8 @@
         stop("legend_width_ratio must be a single numeric value in (0.05, 0.80).")
     }
 
+    # Rendering workflow: scope prepared tracks to the requested view, open the
+    # device if needed, draw the circle tracks, then assemble legends.
     requested_chrs <- NULL
     if (!is.null(chromosomes)) {
         if (!is.character(chromosomes)) {
@@ -622,6 +636,8 @@
         old_setting <- options("CMEnt.verbose" = verbose)
         on.exit(options(old_setting), add = TRUE)
     }
+    # Apply the same display scope to DMRs, arcs, heatmap rows and both link
+    # anchors so cached data cannot draw outside the requested view.
     region_df <- .normalizeCircosRegion(region, cytoband)
     dmrs <- .filterDMRsByScopeForCircos(
         prepared_state$dmrs,
@@ -674,6 +690,8 @@
     on.exit(try(grid::upViewport(0), silent = TRUE), add = TRUE)
     graphics::plot.new()
     circle_width_ratio <- 1 - legend_width_ratio
+    # Reserve separate viewports for the circle and legends before track
+    # creation, so legend width does not depend on the number of drawn tracks.
     root_layout <- grid::viewport(layout = grid::grid.layout(
         nrow = 1, ncol = 2,
         widths = grid::unit.c(grid::unit(circle_width_ratio, "npc"), grid::unit(legend_width_ratio, "npc"))
@@ -701,6 +719,8 @@
             plotType = c("labels", "axis")
         )
     }
+    # Draw sample beta tracks in phenotype order with shared group colors. The
+    # following arc track instead encodes DMR-level delta beta.
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
         heatmap_numeric <- as.matrix(heatmap_df[, -seq_len(3L), drop = FALSE])
@@ -887,6 +907,8 @@
         }
     }
 
+    # Assign interaction colors at the component level, then draw links using
+    # the already scoped endpoints and collect their legend entries.
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
 
@@ -1017,6 +1039,8 @@
 
     circlize::circos.clear()
     grid::upViewport(2)
+    # Pack only legends for tracks that were actually drawn, then position the
+    # interaction legend within the reserved legend viewport.
     top_legends <- Filter(Negate(is.null), list(heatmap_legend, arc_legend))
     has_any_legend <- length(top_legends) > 0 || !is.null(link_legend)
     if (has_any_legend) {
@@ -1285,6 +1309,8 @@
     } else {
         rep(NA_real_, length(dmrs))
     }
+    # A component can span chromosomes. Build one candidate window per
+    # chromosome while carrying its component identity and ranking evidence.
     dmr_priority <- .getCircosDMRPriority(dmrs)
     candidates <- lapply(seq_len(nrow(components)), function(i) {
         idxs <- .parseDMRComponentIndices(components$indices[[i]])
@@ -1360,6 +1386,8 @@
     if (is.null(candidates) || nrow(candidates) == 0) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
+    # Consume candidates in priority order. Nearby windows merge into an
+    # existing selection; new windows must fit the total and chromosome limits.
     selected <- candidates[0, , drop = FALSE]
     selected$selection_order <- numeric(0)
     for (i in seq_len(nrow(candidates))) {
@@ -1406,6 +1434,8 @@
     if (nrow(selected) == 0) {
         return(data.frame(chr = character(0), start = numeric(0), end = numeric(0)))
     }
+    # Re-rank the merged windows using priority and tie breakers, then return
+    # only the coordinates needed by the plotting entry point.
     chr_levels <- .orderChromosomesNaturally(selected$chr)
     selected <- selected[order(
         selected$priority,
@@ -1443,6 +1473,8 @@
     if (!is.numeric(min_inter_region_bp) || length(min_inter_region_bp) != 1 || is.na(min_inter_region_bp) || min_inter_region_bp < 0) {
         stop("min_inter_region_bp must be a single numeric value >= 0.")
     }
+    # Generate candidate windows from blocks, individual DMRs and components.
+    # The chosen method sets priority; empty specialized sets fall back below.
     block_candidates <- .buildCircosBlockCandidates(dmrs, region_flank_bp = region_flank_bp)
     quick_candidates <- .buildCircosQuickCandidates(dmrs, region_flank_bp = region_flank_bp)
     component_candidates <- .buildCircosComponentCandidates(
@@ -1611,12 +1643,7 @@
 #' dmrs <- readRDS(system.file(
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
-#' \donttest{
-#' if (interactive()) {
-#'     plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-#'     plotDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, genome = "hg38")
-#' }
-#' }
+#' plotDMRsCircos(dmrs, query_components_with_jaspar = FALSE)
 #'
 #' @importFrom circlize circos.initializeWithIdeogram circos.trackPlotRegion circos.genomicHeatmap
 #' @importFrom circlize circos.genomicLink circos.clear colorRamp2 circos.rect circos.link CELL_META
@@ -1654,6 +1681,8 @@ plotDMRsCircos <- function(
     output_file = NULL,
     verbose = NULL
 ) {
+    # Workflow: resolve the display scope, prepare motifs and optional beta
+    # tracks, prepare links, then render tracks and their matching legends.
     dmrs <- .convertToGRanges(dmrs, genome)
     genome <- .resolveGRangesGenome(dmrs, "DMRs")
     if (!is.null(max_components)) {
@@ -1711,6 +1740,8 @@ plotDMRsCircos <- function(
 
     beta_locs <- if (!is.null(beta_handler)) beta_handler$getBetaLocs() else sorted_locs
     region_df <- .normalizeCircosRegion(region, cytoband)
+    # Subset by overlap before extracting motifs, keeping original DMR spans for
+    # sequence offsets. Clip ranges to display windows only afterwards.
     dmrs_for_motif_prep <- .subsetDMRsByScopeForCircos(
         dmrs,
         chromosomes = requested_chrs,
@@ -1776,6 +1807,8 @@ plotDMRsCircos <- function(
 
     .log_step("Preparing data for Circos plot...")
 
+    # Choose heatmap DMRs separately from arcs and links: limiting displayed
+    # beta rows should not redefine the full set of retained DMR ranges.
     heatmap_dmrs <- NULL
     if (show_beta_track) {
         .log_step("Filtering DMRs for plotting by maximum absolute delta beta...", level = 2)
@@ -1864,6 +1897,8 @@ plotDMRsCircos <- function(
     on.exit(try(grid::upViewport(0), silent = TRUE), add = TRUE)
     graphics::plot.new()
     circle_width_ratio <- 1 - legend_width_ratio
+    # Reserve separate viewports for the circle and legends before track
+    # creation, so legend width does not depend on the number of drawn tracks.
     root_layout <- grid::viewport(layout = grid::grid.layout(
         nrow = 1, ncol = 2,
         widths = grid::unit.c(grid::unit(circle_width_ratio, "npc"), grid::unit(legend_width_ratio, "npc"))
@@ -1891,6 +1926,8 @@ plotDMRsCircos <- function(
             plotType = c("labels", "axis")
         )
     }
+    # Draw sample beta tracks in phenotype order with shared group colors. The
+    # following arc track instead encodes DMR-level delta beta.
     if (!is.null(heatmap_df) && nrow(heatmap_df) > 0) {
         .log_step("Adding heatmap track...", level = 2)
         heatmap_numeric <- as.matrix(heatmap_df[, -seq_len(3L), drop = FALSE])
@@ -2076,6 +2113,8 @@ plotDMRsCircos <- function(
         }
     }
 
+    # Assign interaction colors at the component level, then draw links using
+    # the already scoped endpoints and collect their legend entries.
     if (!is.null(link_data) && nrow(link_data) > 0) {
         .log_step("Adding link track...", level = 2)
 
@@ -2206,6 +2245,8 @@ plotDMRsCircos <- function(
 
     circlize::circos.clear()
     grid::upViewport(2)
+    # Pack only legends for tracks that were actually drawn, then position the
+    # interaction legend within the reserved legend viewport.
     top_legends <- Filter(Negate(is.null), list(heatmap_legend, arc_legend))
     has_any_legend <- length(top_legends) > 0 || !is.null(link_legend)
     if (has_any_legend) {
@@ -2280,15 +2321,10 @@ plotDMRsCircos <- function(
 #' dmrs <- readRDS(system.file(
 #'     "extdata", "example_outputChr5And11.rds", package = "CMEnt"
 #' ))
-#' \donttest{
-#' if (interactive()) {
-#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df)
-#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "blocks")
-#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "components")
-#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "hybrid")
-#'     plotAutoDMRsCircos(dmrs, beta = "beta.txt", pheno = pheno_df, method = "quick", n_regions = 4)
-#' }
-#' }
+#' regions <- plotAutoDMRsCircos(
+#'     dmrs, beta = NULL, pheno = NULL, method = "quick", n_regions = 1,
+#'     query_components_with_jaspar = FALSE
+#' )
 #' @export
 plotAutoDMRsCircos <- function(dmrs,
                                beta,
@@ -2309,6 +2345,8 @@ plotAutoDMRsCircos <- function(dmrs,
                                chromosomes = NULL,
                                query_components_with_jaspar = TRUE,
                                ...) {
+    # Automatic plotting owns region selection. Resolve any needed motif
+    # components, choose windows, then delegate rendering to plotDMRsCircos().
     call_arg_names <- names(as.list(sys.call()))
     if (!is.null(call_arg_names) && "region" %in% call_arg_names[nzchar(call_arg_names)]) {
         stop("plotAutoDMRsCircos() manages `region` directly. Pass only plotDMRsCircos()-specific arguments through `...`.")
@@ -2356,6 +2394,8 @@ plotAutoDMRsCircos <- function(dmrs,
         components = interaction_state$components
     )
     .log_info("Automatically selected Circos regions (", method, "): ", .formatCircosRegionSelection(region_df), level = 2)
+    # Pass only chosen coordinates to the renderer and return that same table
+    # invisibly, allowing callers to inspect or reuse the plotted windows.
     selected_region_df <- region_df[, c("chr", "start", "end"), drop = FALSE]
 
     plotDMRsCircos(
@@ -2381,6 +2421,8 @@ plotAutoDMRsCircos <- function(dmrs,
 
 .getCytobandData <- function(genome) {
     cache_dir <- .getOSCacheDir(file.path("R", "CMEnt", "cytoband_cache"))
+    # Prefer cached cytobands, then try the UCSC ideogram and ordinary tables.
+    # The error handler supplies bundled hg19 data or the default-ideogram path.
     cache_key <- paste0("cytoband_", genome)
     cytoband <- .readBiocFileCacheRDS(cache_dir, cache_key)
     if (!is.null(cytoband)) {
@@ -2473,6 +2515,8 @@ plotAutoDMRsCircos <- function(dmrs,
         return(list(heatmap_df = NULL, reduced_pheno = NULL))
     }
     pheno <- pheno[order(pheno[[sample_group_col]]), , drop = FALSE]
+    # The heatmap represents supporting site beta values, so gather explicit DMR
+    # membership and drop unavailable sites before requesting beta rows.
     dmrs_sites <- as.character(S4Vectors::mcols(dmrs)$sites)
     dmrs_sites <- dmrs_sites[!is.na(dmrs_sites)]
     dmrs_sites_list <- base::strsplit(dmrs_sites, split = ",", fixed = TRUE)
@@ -2514,6 +2558,8 @@ plotAutoDMRsCircos <- function(dmrs,
         shown_locs <- shown_locs[ord, , drop = FALSE]
     }
     beta_data <- beta_handler$getBeta(row_names = rownames(shown_locs), col_names = rownames(pheno))
+    # For oversized groups, choose representative samples near PCA/k-means
+    # centroids. Preserve that selected order in both beta data and phenotype.
     if (max_num_samples_per_group > 0) {
         selected_samples <- c()
         groups <- pheno[[sample_group_col]]
@@ -2573,6 +2619,8 @@ plotAutoDMRsCircos <- function(dmrs,
                                    query_components_with_jaspar = TRUE,
                                    components = NULL,
                                    interactions = NULL) {
+    # Compute interaction state when needed, or remap supplied state to the
+    # current DMR coordinates before using its indices to look up scores.
     if (is.null(components) || is.null(interactions)) {
         .log_info("Computing motif-based interactions for DMRs with min_similarity = ", min_similarity, "...")
         ret <- tryCatch(
@@ -2638,6 +2686,8 @@ plotAutoDMRsCircos <- function(dmrs,
             sort = FALSE
         )
     }
+    # Attach component annotations with explicit missing defaults so both newly
+    # computed and precomputed links provide the same legend fields.
     required_defaults <- list(
         size = NA_real_,
         consensus_seq = NA_character_,
@@ -2674,6 +2724,8 @@ plotAutoDMRsCircos <- function(dmrs,
         link_data$component_best_score <- NA_real_
     }
 
+    # Rank and limit drawable interactions only after component scores and
+    # JASPAR match status are available for the selection policy.
     original_n <- nrow(link_data)
     link_data <- .selectCircosInteractions(link_data, max_components)
     if (!is.null(max_components) && nrow(link_data) < original_n) {

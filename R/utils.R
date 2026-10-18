@@ -263,6 +263,8 @@
                              sample_group_control,
                              target_col,
                              subset = NULL) {
+    # Read the complete sheet first, then validate requested group/sample
+    # columns before extracting labels and assigning binary case/control roles.
     ref <- read.table(
         samplesheet_file,
         header = TRUE,
@@ -350,6 +352,8 @@
         subset_samplesheet <- ref
     }
 
+    # Use sample IDs as row names and sort them naturally. Callers still align
+    # this table to their beta columns before statistical calculations.
     rownames(subset_samplesheet) <- subset_samplesheet[, target_col]
     subset_samplesheet <- subset_samplesheet[, sample_group_col,
         drop =
@@ -567,6 +571,8 @@
 #' @keywords internal
 #' @noRd
 .makeBiocParallelParam <- function(njobs, n_tasks = NULL, progressbar = FALSE, parallel_backend = NULL, log = TRUE) {
+    # Resolve worker limits independently from task count and backend choice.
+    # The package-check core cap is applied before constructing the backend.
     workers <- suppressWarnings(as.integer(njobs))
     if (length(workers) == 0L || is.na(workers) || workers < 1L) {
         stop("njobs must be a positive integer.", call. = FALSE)
@@ -591,6 +597,8 @@
         parallel_backend <- "auto"
     }
 
+    # Use serial execution for one worker, Unix multicore when selected, and
+    # SOCK workers otherwise; preserve task and logging settings in each branch.
     if (workers <= 1L) {
         BiocParallel::SerialParam(progressbar = progressbar, log = log, threshold = "INFO")
     } else if (identical(.Platform$OS.type, "unix") && parallel_backend %in% c("auto", "multicore")) {
@@ -703,6 +711,8 @@ createH5fileFromDf <- function(
     dir.create(dirname(output_h5file), recursive = TRUE, showWarnings = FALSE)
     rhdf5::h5createFile(output_h5file)
 
+    # Store a column-name companion dataset and a row-extendible character
+    # matrix, allowing mixed data-frame columns to share one storage format.
     header_names <- colnames(df)
     selected_header_names <- if (is.null(select_columns)) {
         header_names
@@ -737,6 +747,8 @@ createH5fileFromDf <- function(
         df <- df[, select_columns, drop = FALSE]
     }
 
+    # Append each chunk at the current row offset, extending the dataset as
+    # needed. Persist the final row count for registry readers.
     row_offset <- 0L
     .log_step("Writing data frame to HDF5 file: ", output_h5file, " in chunks of ", chunk_size, " rows.", level = 4)
     verbose <- getOption("CMEnt.verbose", 0) >= 4
@@ -794,6 +806,8 @@ createH5fileFromFile <- function(
     con <- if (endsWith(input_file, ".gz")) gzfile(input_file, "r") else file(input_file, "r")
     on.exit(close(con), add = TRUE)
 
+    # Resolve the selected schema from the header once. Data chunks below reuse
+    # that schema while streaming through this open connection.
     header_line <- readLines(con, n = 1L)
     if (length(header_line) == 0L) {
         stop("Input file is empty.")
@@ -830,6 +844,8 @@ createH5fileFromFile <- function(
     row_offset <- 0L
 
     repeat {
+        # Append non-empty chunks into the extendible dataset; metadata records
+        # column names and the number of rows actually written.
         chunk_lines <- readLines(con, n = chunk_size)
         if (length(chunk_lines) == 0L) {
             break
@@ -1199,6 +1215,8 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
     bfc <- .getBiocFileCache(cache_dir)
+    # Identify the directional genome mapping in the shared cache. Download
+    # outside the lock, then publish an uncompressed chain atomically under it.
     chain_name <- paste0(from_genome, "To", stringr::str_to_title(to_genome), ".over.chain")
     chain_rname <- paste0("liftOver_", chain_name)
     chain_file <- .getBiocFileCachePath(
@@ -1244,6 +1262,8 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
     }
     chain <- rtracklayer::import.chain(chain_file)
     lifted <- rtracklayer::liftOver(granges, chain)
+    # Flatten all returned mappings, including multiple mappings per source
+    # range, and label their coordinates with the target assembly.
     lifted_unlisted <- unlist(lifted)
     if (length(lifted_unlisted) > 0) {
         GenomeInfoDb::genome(lifted_unlisted) <- to_genome
@@ -1359,14 +1379,6 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
 }
 
 
-.installDependencyPackages <- function(pkg_names) {
-    for (cmd in .formatInstallInstructions(pkg_names)) {
-        eval(parse(text = cmd), envir = .GlobalEnv)
-    }
-    invisible(pkg_names)
-}
-
-
 .assertPackagesInstalled <- function(pkg_names, context, reason = NULL) {
     pkg_names <- unique(pkg_names[!is.na(pkg_names) & nzchar(pkg_names)])
     if (length(pkg_names) == 0L) {
@@ -1434,20 +1446,6 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
 
     missing_reqs <- requirements[missing_mask, , drop = FALSE]
     missing_pkgs <- unique(missing_reqs$pkg_name)
-
-    if (isTRUE(getOption("CMEnt.auto_install_dep_if_missing", FALSE))) {
-        # This is a hidden option only used by the dockerrized version of CMEnt to
-        # automatically install missing dependencies without user intervention.
-        # It is not recommended to set this option in interactive use as it may lead to
-        # unintended package installations.
-        .installDependencyPackages(missing_pkgs)
-        missing_mask <- !vapply(requirements$pkg_name, .isPackageInstalled, logical(1))
-        if (!any(missing_mask)) {
-            return(invisible(requirements$pkg_name))
-        }
-        missing_reqs <- requirements[missing_mask, , drop = FALSE]
-        missing_pkgs <- unique(missing_reqs$pkg_name)
-    }
 
     missing_reasons <- unique(missing_reqs$reason[nzchar(missing_reqs$reason)])
     msg <- c(
@@ -1811,6 +1809,8 @@ supportedOrganisms <- function() {
 #'
 #' @export
 getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = NULL) {
+    # An explicit locations file bypasses annotation discovery. Otherwise
+    # resolve cached or installed array coordinates for the requested assembly.
     if (!is.null(locations_file) && file.exists(locations_file)) {
         locs <- readRDS(locations_file)
         return(locs)
@@ -1849,6 +1849,8 @@ getSortedGenomicLocs <- function(array = NULL, genome = NULL, locations_file = N
         genome = genome,
         context = "getSortedGenomicLocs()"
     )
+    # Array annotations have a native assembly. Lift coordinates only when the
+    # requested assembly differs, then restore probe identities and sort.
     source_genome <- NULL
     if (tolower(array) %in% c("450k", "epic", "27k")) {
         source_genome <- "hg19"
@@ -2228,6 +2230,8 @@ orderByLoc <- function(x,
         "CMEnt.annotation_cache_dir",
         .getOSCacheDir(file.path("R", "CMEnt", "annotation_cache"))
     )
+    # For a local genome, cache CpG start positions once and count overlaps for
+    # each requested region instead of rescanning its sequence repeatedly.
     cache_key <- paste0(pkg_name, "_site_positions")
     if (canonical_chr) {
         cache_key <- paste0(pkg_name, "_canonical_chr_site_positions")
@@ -2307,6 +2311,8 @@ orderByLoc <- function(x,
         return(character(0))
     }
 
+    # Split requests into ordered batches. Serial and parallel paths flatten
+    # results in input order so each sequence still corresponds to its DMR.
     n_batches <- ceiling(n_dmrs / batch_size)
 
     if (n_dmrs > 100) {
@@ -2327,6 +2333,9 @@ orderByLoc <- function(x,
             start <- GenomicRanges::start(batch_dmrs[j])
             end <- GenomicRanges::end(batch_dmrs[j])
 
+            # Convert the one-based inclusive GRanges start to the UCSC request
+            # start. Keep the end unchanged and preserve an NA slot for failed
+            # requests.
             url <- sprintf(
                 "%s?genome=%s;chrom=%s;start=%d;end=%d",
                 base_url, genome, chr, start - 1, end
@@ -2459,6 +2468,8 @@ orderByLoc <- function(x,
 }
 
 .convertToGRanges <- function(obj, genome = NULL) {
+    # Normalize tables to genomic ranges while retaining metadata needed for
+    # round trips. Existing ranges instead validate or reconcile their assembly.
     input_is_df <- !inherits(obj, "GRanges")
     if (input_is_df) {
         if (is.null(genome)) {
@@ -2721,6 +2732,8 @@ orderByLoc <- function(x,
     pilot_max_pairs <- as.integer(getOption("CMEnt.auto_pval_pilot_pairs", 2000L))
     pilot_max_pairs <- max(1L, pilot_max_pairs)
 
+    # Reject low effective sample sizes before distributional diagnostics. This
+    # pilot guides automatic test selection; it is not a connectivity test.
     q10_n_valid <- if (length(n_valid) > 0L) {
         as.numeric(stats::quantile(n_valid, probs = 0.10, na.rm = TRUE, names = FALSE, type = 7))
     } else {
@@ -2753,6 +2766,8 @@ orderByLoc <- function(x,
         ))
     }
 
+    # Take evenly spaced valid pairs for a bounded, deterministic pilot, then
+    # compare Pearson correlations with rank and winsorized alternatives.
     if (length(valid_idx) > pilot_max_pairs) {
         sel_pos <- unique(as.integer(round(seq(1, length(valid_idx), length.out = pilot_max_pairs))))
         valid_idx <- valid_idx[sel_pos]
@@ -2810,6 +2825,8 @@ orderByLoc <- function(x,
         median_excess_kurtosis <- Inf
     }
 
+    # Require all diagnostic summaries to pass their thresholds. Non-finite
+    # summaries become Inf above so failed diagnostics cannot imply acceptance.
     use_parametric <- (median_abs_delta_spearman <= corr_delta_threshold) &&
         (median_abs_delta_winsorized <= corr_delta_threshold) &&
         (median_abs_skew <= skew_threshold) &&

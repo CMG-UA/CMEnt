@@ -29,10 +29,7 @@
 ^_pkgdown\.yml$
 ^_site$
 ^docs$
-^build_and_push\.sh$
-^Dockerfile$
 ^pkgdown$
-^run_cment\.R$
 ^tmp$
 ^Rplots\.pdf$
 ^tests/testthat/Rplots\.pdf$
