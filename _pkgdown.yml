@@ -65,20 +65,20 @@ external-articles:
 - name: microarray450k
   title: AML 450K Analysis
   description: Biological interpretation of GSE63409 with CMEnt.
-  href: microarray450k.html
+  href: https://cmg-ua.github.io/CMEnt/articles/microarray450k.html
 - name: metastudyEpic
   title: EPIC Meta-Analysis
   description: CMEnt meta-analysis of GSE244696 and comparison with published regions.
-  href: metastudyEpic.html
+  href: https://cmg-ua.github.io/CMEnt/articles/metastudyEpic.html
 - name: benchmark_simulated_ont_multisim
   title: Simulated ONT Benchmark
   description: CMEnt comparison against DMRcate, dmrseq, and hummingbird.
-  href: benchmark_simulated_ont_multisim.html
+  href: https://cmg-ua.github.io/CMEnt/articles/benchmark_simulated_ont_multisim.html
 - name: benchmark_simulated_microarray450k_multisim
   title: Simulated 450K Benchmark
   description: CMEnt comparison against comb-p, probeLasso, DMRcate, and Bumphunter.
-  href: benchmark_simulated_microarray450k_multisim.html
+  href: https://cmg-ua.github.io/CMEnt/articles/benchmark_simulated_microarray450k_multisim.html
 - name: validate_cment_null
   title: CMEnt Null Permutations Experiment
   description: CMEnt null permutations experiment to assess DMR calling robustness.
-  href: validate_cment_null.html
+  href: https://cmg-ua.github.io/CMEnt/articles/validate_cment_null.html
