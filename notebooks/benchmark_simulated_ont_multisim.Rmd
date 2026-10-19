@@ -1,6 +1,6 @@
 ---
 title: "Benchmarking CMEnt on Repeated Simulated ONT Data"
-subtitle: "CMEnt vs DMRcate, DMRseq, and hummingbird across repeated simulateDMRs runs"
+subtitle: "CMEnt vs DSS, DMRcate, DMRseq, and hummingbird across repeated simulateDMRs runs"
 author: "CMEnt Package"
 date: "`r Sys.Date()`"
 output:
@@ -33,9 +33,16 @@ plots show medians with observed interval ranges across simulations.
 Methods:
 
 - **CMEnt**: seed-guided, correlation-based DMR assembly
+- **DSS**: smoothed two-group beta-binomial testing and native DMR calling
 - **DMRcate**: Gaussian kernel smoothing-based DMR detection
 - **DMRseq**: BSseq-native region-level inference
 - **hummingbird**: HMM-based DMR detection
+
+DSS uses `DMLtest(smoothing = TRUE, smoothing.span = 500)` followed by
+`callDMR()` per chromosome with its default site-level p-value threshold of `1e-5` and
+`minCG = 50`, matching the benchmark's minimum-site setting. This p-value
+threshold is not a region-level FDR cutoff. Other DMR-calling settings retain
+their DSS defaults. The DSS runtime includes both testing and region calling.
 
 ## Setup and Dependencies
 
@@ -117,10 +124,12 @@ knitr::kable(simulation_plan, caption = "Simulation parameters generated under m
 ```{r install_dependencies, warning=FALSE, message=FALSE, cache=FALSE}
 if (!requireNamespace("benchmarkme", quietly = TRUE)) install.packages("benchmarkme")
 if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+if (!requireNamespace("DSS", quietly = TRUE)) BiocManager::install("DSS", update = FALSE, ask = FALSE)
 if (!requireNamespace("DMRcate", quietly = TRUE)) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
 if (!requireNamespace("dmrseq", quietly = TRUE)) BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
 if (!requireNamespace("hummingbird", quietly = TRUE)) BiocManager::install("hummingbird", update = FALSE, ask = FALSE)
 if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+suppressPackageStartupMessages(library(DSS))
 ```
 
 ## Load Input Data and Simulate
@@ -271,6 +280,29 @@ prepare_bsseq_data <- function(sim, plan_row) {
     seeds <- seeds[seeds$qval < max_pval, , drop = FALSE]
     rownames(seeds) <- seeds$site_id
     list(bs = bs, pheno = pheno, seeds = seeds)
+}
+
+run_dss_bsseq <- function(bs_obj, params) {
+    sample_groups <- SummarizedExperiment::colData(bs_obj)$Sample_Group
+    dml <- DSS::DMLtest(
+        BSobj = bs_obj,
+        group1 = which(sample_groups == "case"),
+        group2 = which(sample_groups == "control"),
+        smoothing = params$smoothing,
+        smoothing.span = params$smoothing_span,
+        ncores = NJOBS
+    )
+    # DSS 2.60 callDMR detects region boundaries from position gaps alone.
+    dmrs <- do.call(rbind, lapply(split(dml, dml$chr), function(dml_chr) {
+        DSS::callDMR(dml_chr, p.threshold = params$p_threshold, minCG = params$min_sites)
+    }))
+    if (is.null(dmrs) || nrow(dmrs) == 0L) return(GRanges())
+    sort(makeGRangesFromDataFrame(
+        dmrs,
+        seqnames.field = "chr",
+        keep.extra.columns = TRUE,
+        seqinfo = GenomeInfoDb::Seqinfo(genome = base_simulation$genome)
+    ))
 }
 
 run_dmrcate_bsseq <- function(bs_obj, design, params) {
@@ -516,6 +548,10 @@ run_one_simulation <- function(plan_row) {
                     )
                 })
             }
+        ),
+        DSS = list(
+            params = c(common, list(min_sites = min_sites, p_threshold = 1e-5, smoothing = TRUE, smoothing_span = 500L)),
+            run = function(params) time_method(run_dss_bsseq(dat$bs, params))
         ),
         DMRcate = list(
             params = c(common, list(min_sites = min_sites, max_pval = max_pval, lambda = 1000, C = 2)),

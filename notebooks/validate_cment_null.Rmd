@@ -46,6 +46,8 @@ get_project_file <- function(...) {
         do.call(file.path, as.list(parts))
     } else if (file.exists("../DESCRIPTION")) {
         do.call(file.path, as.list(c("..", parts)))
+    } else if (basename(getwd()) == "notebooks") {
+        do.call(file.path, as.list(parts[-1L]))
     } else {
         stop("Render this notebook from the CMEnt repository root or its notebooks directory.")
     }
@@ -434,6 +436,23 @@ secondary_summary <- data.frame(
     )
 )
 knitr::kable(secondary_summary, digits = 1, row.names = FALSE, caption = "Descriptive regional-assembly summaries")
+```
+
+```{r dmr-count-plot, fig.cap="Number of DMRs called in the original, unpermuted data compared with the conditional null distribution from chromosome-stratified methylation-profile permutations.", fig.alt="Histogram shows the number of called DMRs across null permutations. An orange vertical line marks the DMR count in the original, unpermuted data."}
+ggplot(null_summary, aes(x = dmrs)) +
+    geom_histogram(bins = 40, fill = "#0072B2", color = "white") +
+    geom_vline(xintercept = observed_summary$dmrs[[1L]], color = "#D55E00", linewidth = 1) +
+    theme_minimal(base_size = 11) +
+    labs(
+        title = "Called DMRs under the conditional null",
+        subtitle = sprintf(
+            "Observed: %s DMRs (orange); %d chromosome-stratified permutations",
+            format(observed_summary$dmrs[[1L]], big.mark = ","),
+            n_permutations
+        ),
+        x = "Number of called DMRs",
+        y = "Null permutations"
+    )
 ```
 
 ## Interpretation
