@@ -18,8 +18,8 @@ knitr::opts_chunk$set(
     message = FALSE,
     fig.width = 12,
     fig.height = 8,
-    dpi = 300,
-    fig.retina = 2
+    dpi = 200,
+    fig.retina = 1
 )
 ```
 
@@ -307,7 +307,7 @@ The information includes:
 - The motif-based interactions between DMRs, with links direction going from
   higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
-```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1}
+```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14}
 circos_dmrs <- dmrs
 plotDMRsCircos(
     dmrs = circos_dmrs,
@@ -330,7 +330,7 @@ It is also possible to plot circos output for one or more regions to assess
 connectivity. The reported score in the legend is computed from the visible
 DMRs of each component. The selected intervals lie on chromosomes 5 and 11,
 which are covered by the example dataset.
-```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14, dpi=300, fig.retina=1}
+```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14}
 plotDMRsCircos(
     dmrs = circos_dmrs,
     beta = beta_handler,
