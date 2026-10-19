@@ -1,3 +1,5 @@
 cached_results/simulated_ont/ont_sim_bs.rds
 cached_results/simulated_ont/ont_sim_bs_hdf5
 cached_results/simulated_microarray/sim_microarray_beta_500.tsv
+*_cache/*
+*_files/*
