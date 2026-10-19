@@ -47,12 +47,18 @@ COPY --link --from=builder /opt/samtools/lib/* /usr/local/lib/
 RUN mkdir -p "${HOME}"
 
 # Install system dependencies
-RUN apt update && apt install -y r-cran-devtools r-cran-remotes r-cran-optparse r-cran-biocmanager
+RUN apt-get update && apt-get -o Acquire::Retries=3 install -y r-cran-devtools r-cran-remotes r-cran-optparse r-cran-biocmanager
 # Pre-install some annotation packages
 RUN Rscript -e "BiocManager::install(c('IlluminaHumanMethylation27kanno.ilmn12.hg19', 'IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'IlluminaHumanMethylationEPICv2anno.20a1.hg38'), ask = FALSE, update = FALSE)"
 RUN Rscript -e "BiocManager::install(c('JASPAR2024', 'BSgenome.Hsapiens.UCSC.hg38'), ask = FALSE, update = FALSE)"
 RUN Rscript -e "pak::pkg_install('R6', upgrade = TRUE)"
-RUN Rscript -e "devtools::install()"
+RUN for attempt in {1..4}; do \
+            if Rscript -e "devtools::install()"; then \
+                exit 0; \
+            fi; \
+            [ "$attempt" -lt 4 ] && sleep 10; \
+        done; \
+        exit 1
 RUN apt clean && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["Rscript", "/CMEnt/inst/docker/entrypoint.R"]
