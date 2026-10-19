@@ -314,7 +314,7 @@ DMRs of each component. The selected intervals lie on chromosomes 5 and 11,
 which are covered by the example dataset.
 ```{r circos_plot_region, eval=TRUE, fig.height=10, fig.width=14}
 plotDMRsCircos(
-    dmrs = circos_dmrs,
+    dmrs = dmrs,
     beta = beta_handler,
     pheno = pheno,
     genome = genome,
