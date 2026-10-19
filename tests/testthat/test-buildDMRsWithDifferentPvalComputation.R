@@ -55,6 +55,91 @@ test_that(".testConnectivityBatch can use supplied n_sites without forcing sites
     expect_equal(nrow(ret), 0L)
 })
 
+test_that("parametric connectivity p-values match regression with the fitted covariate rank", {
+    sites_beta <- plogis(log(2) * rbind(
+        seq(-1.5, 1.5, length.out = 12),
+        c(-1.4, 0.4, -0.8, -1.1, 0.2, -0.5, 0.9, -0.1, 1.4, 0.7, 0.5, 1.1)
+    ))
+    pheno <- data.frame(
+        age = c(2, 7, 3, 9, 1, 8, 4, 12, 6, 10, 5, 11),
+        batch = factor(rep(c("A", "B", "C"), 4)),
+        constant = 1
+    )
+    pheno$duplicate_age <- pheno$age
+    m_values <- CMEnt:::.transformBeta(sites_beta, pheno)
+    regression_data <- cbind(pheno, x = m_values[1, ], y = m_values[2, ])
+    covariate_sets <- list(
+        unadjusted = character(0),
+        constant = "constant",
+        numeric = "age",
+        aliased_factor = c("age", "batch", "duplicate_age", "constant")
+    )
+
+    for (covariates in covariate_sets) {
+        fit <- stats::lm(stats::reformulate(c("x", covariates), response = "y"), data = regression_data)
+        expected_p <- summary(fit)$coefficients["x", "Pr(>|t|)"]
+        models <- CMEnt:::.prepareGroupCovariateModels(pheno, list(g1 = 1:12), covariates)
+
+        for (prepared in c(FALSE, TRUE)) {
+            for (entanglement in c("strong", "weak")) {
+                ret <- CMEnt:::.testConnectivityBatch(
+                    sites_beta = sites_beta,
+                    group_inds = list(g1 = 1:12),
+                    pheno = pheno,
+                    testing_mode_per_group = c(g1 = "parametric"),
+                    empirical_strategy_per_group = c(g1 = "auto"),
+                    covariates = covariates,
+                    covariate_models = if (prepared) models else NULL,
+                    max_pval = 0.02,
+                    entanglement = entanglement
+                )
+
+                expect_equal(ret$pval[[1]], expected_p)
+                expect_identical(ret$connected[[1]], expected_p <= 0.02)
+            }
+        }
+    }
+})
+
+test_that("parametric connectivity rejects nonpositive residual degrees of freedom", {
+    sites_beta <- rbind(c(0.2, 0.4, 0.6, 0.8), c(0.3, 0.6, 0.4, 0.7))
+    pheno <- data.frame(age = 1:4, quadratic = (1:4)^2, cubic = (1:4)^3)
+
+    for (covariates in list(c("age", "quadratic"), c("age", "quadratic", "cubic"))) {
+        for (entanglement in c("strong", "weak")) {
+            expect_no_warning(ret <- CMEnt:::.testConnectivityBatch(
+                sites_beta = sites_beta,
+                group_inds = list(g1 = 1:4),
+                pheno = pheno,
+                testing_mode_per_group = c(g1 = "parametric"),
+                empirical_strategy_per_group = c(g1 = "auto"),
+                covariates = covariates,
+                max_pval = 1,
+                entanglement = entanglement
+            ))
+
+            expect_false(ret$connected[[1]])
+            expect_identical(ret$reason[[1]], "df<1")
+            expect_true(is.na(ret$pval[[1]]))
+        }
+    }
+
+    empirical <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = list(g1 = 1:4),
+        pheno = pheno,
+        testing_mode_per_group = c(g1 = "empirical"),
+        empirical_strategy_per_group = c(g1 = "permutations"),
+        covariates = c("age", "quadratic"),
+        max_pval = 1,
+        entanglement = "weak",
+        ntries = 24
+    )
+
+    expect_true(empirical$connected[[1]])
+    expect_true(is.finite(empirical$pval[[1]]))
+})
+
 test_that("empirical Monte Carlo connectivity is reproducible under the same RNG seed", {
     sites_beta <- rbind(
         c(0.30, 0.35, 0.40, 0.45, 0.50),
@@ -131,7 +216,7 @@ test_that("ntries = 0 enumerates the full permutation set when it is small enoug
     expect_equal(ret_default, ret_full)
 })
 
-test_that(".testConnectivityBatch treats zero-variance correlations as connected with p-value zero", {
+test_that("strong mode treats zero-variance correlations as connected with p-value zero", {
     sites_beta <- rbind(
         c(0.20, 0.30, 0.40, 0.50, 0.60, 0.70),
         rep(0.10, 6)

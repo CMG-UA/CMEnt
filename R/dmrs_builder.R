@@ -2178,13 +2178,22 @@
         .log_step("Processing group '", g, "' (", g_index, "/", n_groups, ") for chunk connectivity testing...", level = 4)
         g_index <- g_index + 1
         idx <- group_inds[[g]]
-        if (length(idx) < 3) next
+        if (length(idx) < 3) {
+            if (!strict_mode) {
+                per_group_reasons[g_index, corr_mask] <- "df<1"
+            }
+            next
+        }
 
+        covariate_model <- covariate_models[[g]]
+        if (is.null(covariate_model) && length(covariates) > 0L) {
+            covariate_model <- .prepareCovariateModel(pheno[idx, , drop = FALSE], covariates)
+        }
         group_m <- .transformBeta(
             sites_beta,
             pheno = pheno,
             covariates = covariates,
-            covariate_model = covariate_models[[g]],
+            covariate_model = covariate_model,
             cols = idx
         )
 
@@ -2215,31 +2224,35 @@
 
         # Compute correlations (fully vectorized)
         cors <- sum_xy / denom
-        # The connectivity convention treats a constant site as fully
-        # correlated. Handle it explicitly before divisions and empirical tests
-        # can produce NA.
+        # Strong mode treats a constant site as fully correlated. In weak
+        # mode its correlation is undefined and cannot support connectivity.
         zero_variance_cor <- g_mask & is.finite(sum_x2) & is.finite(sum_y2) &
             (sum_x2 <= .Machine$double.eps | sum_y2 <= .Machine$double.eps)
 
+        effective_testing_mode <- testing_mode_per_group[g]
         dfs <- n_valid - 2L
+        if (effective_testing_mode == "parametric" &&
+            !is.null(covariate_model) && !isTRUE(covariate_model$is_singular)) {
+            # Prepared designs have aliased columns removed and include an intercept.
+            dfs <- n_valid - ncol(covariate_model$covariate_matrix) - 1L
+        }
 
         low_df <- (dfs < 1) & g_mask
         g_reasons[low_df] <- ifelse(g_reasons[low_df] == "", "df<1", g_reasons[low_df])
         g_mask[low_df] <- FALSE
 
-        cors[zero_variance_cor] <- 1
+        cors[zero_variance_cor] <- if (strict_mode) 1 else NA_real_
 
         na_r <- is.na(cors) & g_mask
         g_reasons[na_r] <- ifelse(g_reasons[na_r] == "", "na r", g_reasons[na_r])
         g_mask[na_r] <- FALSE
 
         ps <- rep(NA_real_, sn_pairs)
-        ps[zero_variance_cor] <- 0
-        effective_testing_mode <- testing_mode_per_group[g]
+        ps[zero_variance_cor & g_mask] <- 0
 
         # Precompute parametric p-values as fallback when empirical is not feasible/resolved
         if (effective_testing_mode == "parametric") {
-            tstats <- cors * sqrt(dfs / pmax(1e-12, 1 - cors * cors))
+            tstats <- cors * sqrt(pmax(0, dfs) / pmax(1e-12, 1 - cors * cors))
             # Compute t-statistics (vectorized)
             na_tstat <- is.na(tstats) & g_mask
             g_reasons[na_tstat] <- "na tstat"
@@ -3789,7 +3802,9 @@
 #' @param casecontrol_col Boolean Column in pheno for case (TRUE/1) / control (FALSE/0) status .
 #'  If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.
 #' @param covariates Character vector of column names in pheno to adjust for (e.g. "age", "sex").
-#'  When provided, correlations are computed on residuals after regressing M-values on these covariates within each group
+#'  When provided, correlations are computed on residuals after regressing M-values on these covariates within each group.
+#'  Parametric tests use `n - rank(X) - 1` degrees of freedom, where `X` is the
+#'  within-group covariate design matrix including its intercept.
 #' @param ext_site_delta_beta Numeric. Minimum absolute delta beta value that will
 #'  force proximal sites to be treated as connected during Stage 2 expansion,
 #'  regardless of their correlation p-value. Set to `NA`, `NULL`, or `Inf` to
@@ -3805,6 +3820,7 @@
 #' @param max_pval Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.
 #' @param entanglement Character. "weak" (default) requires at least one group to show significant correlation;
 #'  "strong" requires all groups to show significant correlation for connectivity.
+#'  Constant sites do not provide a passing group correlation in weak mode.
 #' @param testing_mode Character. "auto" (default) selects between t-based correlation p-values and empirical p-values
 #'  per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values
 #'  or "empirical" for permutation-based p-values.

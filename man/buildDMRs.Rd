@@ -67,7 +67,9 @@ Default is NULL, which corresponds to the rows names if existing, or the first c
 If NULL, controls will be assumed to be the first level of sample_group_col. Default is NULL.}
 
 \item{covariates}{Character vector of column names in pheno to adjust for (e.g. "age", "sex").
-When provided, correlations are computed on residuals after regressing M-values on these covariates within each group}
+When provided, correlations are computed on residuals after regressing M-values on these covariates within each group.
+Parametric tests use \code{n - rank(X) - 1} degrees of freedom, where \code{X} is the
+within-group covariate design matrix including its intercept.}
 
 \item{ext_site_delta_beta}{Numeric. Minimum absolute delta beta value that will
 force proximal sites to be treated as connected during Stage 2 expansion,
@@ -87,7 +89,8 @@ Ignored if the beta file is provided as a beta values BED file.}
 \item{max_pval}{Numeric. Maximum p-value to assume seeds correlation is significant. Default is 0.05.}
 
 \item{entanglement}{Character. "weak" (default) requires at least one group to show significant correlation;
-"strong" requires all groups to show significant correlation for connectivity.}
+"strong" requires all groups to show significant correlation for connectivity.
+Constant sites do not provide a passing group correlation in weak mode.}
 
 \item{testing_mode}{Character. "auto" (default) selects between t-based correlation p-values and empirical p-values
 per sample group using data diagnostics. You can also force "parametric" for t-based correlation p-values

@@ -120,6 +120,108 @@ test_that("weak entanglement reports the best p-value that caused disconnection"
     expect_gt(weak$pval[[1]], 0.05)
 })
 
+test_that("undersized groups cannot supply a passing result in weak mode", {
+    x <- seq(0.2, 0.8, length.out = 8)
+    y <- c(0.5, 0.1, 0.8, 0.3, 0.7, 0.2, 0.4, 0.6)
+    sites_beta <- rbind(c(0.2, 0.8, x), c(0.2, 0.8, y), c(0.2, 0.8, y))
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+
+    ret <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = list(small = 1:2, eligible = 3:10),
+        pheno = pheno,
+        testing_mode_per_group = c(small = "parametric", eligible = "parametric"),
+        empirical_strategy_per_group = c(small = "auto", eligible = "auto"),
+        max_pval = 0.05,
+        entanglement = "weak"
+    )
+
+    expect_identical(ret$connected, c(FALSE, TRUE))
+    expect_identical(ret$reason, c("df<1;pval>max_pval", ""))
+    expect_identical(ret$failing_groups, c("small;eligible", ""))
+    expect_gt(ret$pval[[1]], 0.05)
+    expect_lt(ret$pval[[2]], 0.05)
+})
+
+test_that("weak mode rejects correlations when all groups are undersized", {
+    sites_beta <- rbind(c(0.2, 0.4, 0.6), c(0.3, 0.5, 0.7))
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+
+    ret <- CMEnt:::.testConnectivityBatch(
+        sites_beta = sites_beta,
+        group_inds = list(empty = integer(0), single = 1L, pair = 2:3),
+        pheno = pheno,
+        testing_mode_per_group = c(empty = "parametric", single = "parametric", pair = "parametric"),
+        empirical_strategy_per_group = c(empty = "auto", single = "auto", pair = "auto"),
+        max_pval = 0.05,
+        entanglement = "weak"
+    )
+
+    expect_false(ret$connected[[1]])
+    expect_true(is.na(ret$pval[[1]]))
+    expect_identical(ret$reason[[1]], "df<1;df<1;df<1")
+    expect_identical(ret$failing_groups[[1]], "empty;single;pair")
+})
+
+test_that("weak mode cannot use constant sites as evidence of correlation", {
+    sites_beta <- rbind(rep(0.2, 6), seq(0.2, 0.7, length.out = 6), rep(0.7, 6), rep(0.8, 6))
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+
+    for (testing_mode in c("parametric", "empirical")) {
+        ret <- CMEnt:::.testConnectivityBatch(
+            sites_beta = sites_beta,
+            group_inds = list(g1 = 1:6),
+            pheno = pheno,
+            testing_mode_per_group = c(g1 = testing_mode),
+            empirical_strategy_per_group = c(g1 = "permutations"),
+            max_pval = 0.05,
+            entanglement = "weak",
+            ntries = 10
+        )
+
+        expect_identical(ret$connected, rep(FALSE, 3))
+        expect_true(all(is.na(ret$pval)))
+        expect_identical(ret$reason, rep("na r", 3))
+        expect_identical(ret$failing_groups, rep("g1", 3))
+    }
+})
+
+test_that("constant groups cannot connect weak-mode pairs or lower another group's p-value", {
+    x <- seq(0.2, 0.7, length.out = 6)
+    y <- c(0.5, 0.1, 0.8, 0.3, 0.7, 0.2)
+    sites_beta <- rbind(c(rep(0.2, 6), x), c(rep(0.3, 6), y), c(rep(0.4, 6), y))
+    pheno <- data.frame(sample = seq_len(ncol(sites_beta)))
+
+    for (testing_mode in c("parametric", "empirical")) {
+        reference <- CMEnt:::.testConnectivityBatch(
+            sites_beta = sites_beta,
+            group_inds = list(variable = 7:12),
+            pheno = pheno,
+            testing_mode_per_group = c(variable = testing_mode),
+            empirical_strategy_per_group = c(variable = "permutations"),
+            max_pval = 0.05,
+            entanglement = "weak",
+            ntries = factorial(6)
+        )
+        ret <- CMEnt:::.testConnectivityBatch(
+            sites_beta = sites_beta,
+            group_inds = list(constant = 1:6, variable = 7:12),
+            pheno = pheno,
+            testing_mode_per_group = c(constant = testing_mode, variable = testing_mode),
+            empirical_strategy_per_group = c(constant = "permutations", variable = "permutations"),
+            max_pval = 0.05,
+            entanglement = "weak",
+            ntries = factorial(6)
+        )
+
+        expect_identical(ret$connected, c(FALSE, TRUE))
+        expect_equal(ret$pval, reference$pval)
+        expect_gt(ret$pval[[2]], 0)
+        expect_identical(ret$reason, c("na r;pval>max_pval", ""))
+        expect_identical(ret$failing_groups, c("constant;variable", ""))
+    }
+})
+
 test_that("buildDMRs accepts weak entanglement on deterministic synthetic data", {
     fixture <- makeSyntheticBuildDMRsFixture()
 
