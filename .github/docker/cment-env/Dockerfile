@@ -3,8 +3,8 @@ FROM ubuntu:24.04 AS builder
 ARG SAMTOOLS_VERSION=1.23.1
 
 # install samtools/htslib/bgzip/tabix, to get the latest version (1.22.1 instead of 1.13)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Retries=3 update && \
+    apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     ca-certificates \
     curl \
     bzip2 \
@@ -45,7 +45,7 @@ SHELL ["/bin/bash", "-c"]
 
 ENV R_COMPILE_AND_INSTALL_PACKAGES=never
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     curl \
     git \
     libcurl4-openssl-dev \
@@ -83,7 +83,7 @@ COPY --link --from=builder /opt/samtools/lib/* /usr/local/lib/
 COPY .github/docker/cment-env/docker.Rprofile .Rprofile
 ENV R_PROFILE_USER=/home/root/.Rprofile
 # Refresh cleaned indexes explicitly: bspm can skip updates for five minutes.
-RUN apt-get update && \
+RUN apt-get -o Acquire::Retries=3 update && \
     mkdir -p "$HOME/.cache/R/ExperimentHub" && \
     for i in {1..5}; do \
         Rscript -e "install.packages('BiocManager'); BiocManager::install(version='${BIOCONDUCTOR_VERSION}', ask=FALSE)" && \
@@ -96,12 +96,12 @@ COPY .github/docker/cment-env/cran-requirements.txt cran-requirements.txt
 COPY .github/docker/cment-env/bioc-requirements.txt bioc-requirements.txt
 COPY .github/docker/cment-env/install-requirements.R install-requirements.R
 
-RUN apt-get update && \
+RUN apt-get -o Acquire::Retries=3 update && \
     Rscript install-requirements.R && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 # Install additional packages that are not in the requirements files but are needed for testing and development
-RUN apt-get update && \
+RUN apt-get -o Acquire::Retries=3 update && \
     Rscript -e "install_deps(packages=c('covr', 'xml2', 'rcmdcheck', 'mockery', 'knitr', 'pkgdown', 'rmarkdown', 'rcmdcheck', 'devtools', 'magick'), bioc_packages=c('BiocCheck', 'IlluminaHumanMethylation450kanno.ilmn12.hg19', 'IlluminaHumanMethylationEPICanno.ilm10b4.hg19', 'BSgenome.Hsapiens.UCSC.hg19'))" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
