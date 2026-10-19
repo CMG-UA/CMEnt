@@ -307,25 +307,7 @@ The information includes:
 - The motif-based interactions between DMRs, with links direction going from
   higher scoring to lower scoring (at most 120 interactions groups are shown)
 - The JASPAR annotation of the motif-based groups, if available, on the legend.
-```{r circos_plot, eval=TRUE, fig.height=10, fig.width=14}
-circos_dmrs <- dmrs
-plotDMRsCircos(
-    dmrs = circos_dmrs,
-    beta = beta_handler,
-    pheno = pheno,
-    genome = genome,
-    array = array_type,
-    sample_group_col = "Sample_Group",
-    min_similarity = 0.8,
-    motif_site_flank_size = 5,
-    max_num_samples_per_group = 5,
-    max_dmrs_per_chr = 40,
-    max_sites_per_dmr = 5,
-    max_components = 120,
-    degenerate_resolution = 1e6,
-    verbose = 1
-)
-```
+
 It is also possible to plot circos output for one or more regions to assess
 connectivity. The reported score in the legend is computed from the visible
 DMRs of each component. The selected intervals lie on chromosomes 5 and 11,
