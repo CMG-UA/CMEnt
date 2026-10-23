@@ -171,8 +171,10 @@ for (pkg in c("DSS", "TxDb.Hsapiens.UCSC.hg38.knownGene", "org.Hs.eg.db", "BSgen
 
 ## Load Data
 
-The sample sheet and BSseq HDF5 archive are downloaded from Zenodo. The archive is
-already a tarred HDF5-backed BSseq object.
+The sample sheet and BSseq HDF5 archive are downloaded from restricted Zenodo
+version 1. Set the `ZENODO_TOKEN` environment variable to a personal access token
+from an account with access when these inputs are not already cached. The archive
+is already a tarred HDF5-backed BSseq object.
 
 ```{r load_data}
 sample_group_col <- "Sample_Group"
@@ -181,12 +183,24 @@ control_label <- "ISLT"
 case_label <- "PNET"
 genome <- "hg38"
 
-zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
-samplesheet_url <- paste0(zenodo_base_url, "pannet_samplesheet.csv?download=1")
-bsseq_archive_url <- paste0(zenodo_base_url, "pannet.h5.tar.gz?download=1")
+zenodo_base_url <- "https://zenodo.org/api/records/20592944/files/"
+samplesheet_url <- paste0(zenodo_base_url, "pannet_samplesheet.csv/content")
+bsseq_archive_url <- paste0(zenodo_base_url, "pannet.h5.tar.gz/content")
+
+if ((!file.exists(samplesheet_file) ||
+    (need_download && !has_hdf5_se(bsseq_h5_dir) && !file.exists(bsseq_archive))) &&
+    !nzchar(Sys.getenv("ZENODO_TOKEN"))) {
+    stop("Set ZENODO_TOKEN to download the restricted PanNET inputs from Zenodo.")
+}
 
 if (!file.exists(samplesheet_file)) {
-    curl::curl_download(samplesheet_url, samplesheet_file)
+    curl::curl_download(
+        samplesheet_url,
+        samplesheet_file,
+        handle = curl::new_handle(
+            httpheader = paste0("Authorization: Bearer ", Sys.getenv("ZENODO_TOKEN"))
+        )
+    )
 }
 pheno <- data.table::fread(samplesheet_file, data.table = FALSE, check.names = FALSE)
 stopifnot(all(c("Sample_ID", sample_group_col) %in% colnames(pheno)))
@@ -200,7 +214,13 @@ if (need_download) {
 
     if (!dir.exists(bsseq_h5_dir) || !file.exists(file.path(bsseq_h5_dir, "assays.h5"))) {
         if (!file.exists(bsseq_archive)) {
-            curl::curl_download(bsseq_archive_url, bsseq_archive)
+            curl::curl_download(
+                bsseq_archive_url,
+                bsseq_archive,
+                handle = curl::new_handle(
+                    httpheader = paste0("Authorization: Bearer ", Sys.getenv("ZENODO_TOKEN"))
+                )
+            )
         }
         utils::untar(bsseq_archive, exdir = dirname(bsseq_h5_dir))
     }

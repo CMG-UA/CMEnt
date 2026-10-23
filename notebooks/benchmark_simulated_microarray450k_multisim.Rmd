@@ -174,8 +174,8 @@ array_type <- "450K"
 genome <- "hg19"
 input_beta_path <- getBenchmarkFile("GSE40279_beta_subset.tsv.gz")
 input_samplesheet_path <- getBenchmarkFile("GSE40279_sim_samplesheet.tsv")
-zenodo_url <- "https://zenodo.org/records/20592944/files/GSE40279_beta_subset.tsv.gz?download=1"
-zenodo_samplesheet_url <- "https://zenodo.org/records/20592944/files/GSE40279_sim_samplesheet.tsv?download=1"
+zenodo_url <- "https://zenodo.org/records/23590928/files/GSE40279_beta_subset.tsv.gz?download=1"
+zenodo_samplesheet_url <- "https://zenodo.org/records/23590928/files/GSE40279_sim_samplesheet.tsv?download=1"
 
 if (!file.exists(input_samplesheet_path)) {
     curl::curl_download(zenodo_samplesheet_url, input_samplesheet_path)

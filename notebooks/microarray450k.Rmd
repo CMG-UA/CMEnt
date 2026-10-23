@@ -129,7 +129,7 @@ sample_group_col <- "subject.status.ch1"
 beta <- getBenchmarkFile("GSE63409_beta_values.tsv.gz")
 samplesheet <- getBenchmarkFile("GSE63409_samplesheet.tsv")
 
-zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
+zenodo_base_url <- "https://zenodo.org/records/23590928/files/"
 if (!file.exists(beta)) {
     curl::curl_download(
         url = paste0(zenodo_base_url, basename(beta), "?download=1"),

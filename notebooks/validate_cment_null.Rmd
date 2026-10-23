@@ -117,7 +117,7 @@ beta_file <- file.path(input_dir, "GSE244696_beta_values.tsv.gz")
 samplesheet_file <- file.path(input_dir, "GSE244696_samplesheet.tsv")
 published_dmp_file <- file.path(input_dir, "GSE244696_DMPs.xlsx")
 
-zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
+zenodo_base_url <- "https://zenodo.org/records/23590928/files/"
 for (path in c(beta_file, samplesheet_file, published_dmp_file)) {
     if (!file.exists(path)) {
         curl::curl_download(

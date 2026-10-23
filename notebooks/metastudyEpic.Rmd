@@ -135,7 +135,7 @@ dmp_file <- getBenchmarkFile("GSE244696_DMPs.xlsx")
 published_dmr_file <- getBenchmarkFile("GSE244696_DMRs.xlsx")
 
 
-zenodo_base_url <- "https://zenodo.org/records/20592944/files/"
+zenodo_base_url <- "https://zenodo.org/records/23590928/files/"
 if (!file.exists(beta_file)) {
     curl::curl_download(
         url = paste0(zenodo_base_url, basename(beta_file), "?download=1"),

@@ -10,3 +10,4 @@ notebooks/*.html
 .lintr
 notebooks/cached_results/simulated_microarray450k_multisim/*/simulation.rds
 notebooks/cached_results/simulated_ont_multisim/*/simulation.rds
+.secrets

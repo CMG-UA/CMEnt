@@ -136,7 +136,7 @@ suppressPackageStartupMessages(library(DSS))
 
 ```{r simulate_data}
 input_bsseq_path <- getBenchmarkFile("ont_bsseq_augmented.rds")
-zenodo_url <- "https://zenodo.org/records/20592944/files/ont_bsseq_augmented.rds?download=1"
+zenodo_url <- "https://zenodo.org/records/23590928/files/ont_bsseq_augmented.rds?download=1"
 input_bsseq <- NULL
 
 base_simulation <- list(
