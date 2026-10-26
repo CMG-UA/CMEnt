@@ -43,7 +43,61 @@ signals, immune and differentiation pathways, and candidate prognostic genes.
 ## Setup and Dependencies
 
 ```{r setup, message=FALSE}
-try(devtools::load_all(), silent = TRUE)
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
+}
+
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
+}
+suppressWarnings(
+    {
+        ensure_cran_packages(c("data.table", "pkgload", "ggplot2", "dplyr", "scales", "tidyr", "curl"))
+        ensure_bioc_packages(c("minfi", "GenomicRanges", "IlluminaHumanMethylation450kanno.ilmn12.hg19", "TxDb.Hsapiens.UCSC.hg19.knownGene", "org.Hs.eg.db", "missMethyl"))
+    }
+)
+
+.loadCMEnt <- function() {
+    root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
+    if (!is.null(root)) {
+        ok <- tryCatch({
+            pkgload::load_all(root, quiet = TRUE)
+            TRUE
+        }, error = function(e) {
+            message("Could not load local CMEnt source: ", conditionMessage(e))
+            FALSE
+        })
+        if (ok) return(invisible(TRUE))
+    }
+    suppressPackageStartupMessages(library(CMEnt))
+}
+.loadCMEnt()
 suppressPackageStartupMessages({
     try(library(CMEnt), silent = TRUE)
     library(minfi)
@@ -52,8 +106,10 @@ suppressPackageStartupMessages({
     library(dplyr)
     library(GenomicRanges)
 })
+```
 
-getBenchmarkFile <- function(filename) {
+```{r setup_study, message=FALSE, warning=FALSE}
+getStudyFile <- function(filename) {
     benchmark_file <- ""
     folder <- "microarray450k"
     if (getwd() == "notebooks") {
@@ -85,35 +141,48 @@ short_label <- function(x, width = 65L) {
 
 ```{r install, eval=FALSE}
 r <- getOption("repos")
+install_with_retries <- function(pkg, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkg, update = FALSE, ask = FALSE) else install.packages(pkg)
+            missing <- pkg[!vapply(pkg, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install after %d attempts", retries))
+        })
+        Sys.sleep(1L)
+    }
+}
 if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 }
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
+    install_with_retries("BiocManager")
 }
 
 if (!requireNamespace("tidyr", quietly = TRUE)) {
-    install.packages("tidyr")
+    install_with_retries("tidyr")
 }
 
 if (!requireNamespace("scales", quietly = TRUE)) {
-    install.packages("scales")
+    install_with_retries("scales")
 }
 
 if (!requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
-    BiocManager::install("IlluminaHumanMethylation450kanno.ilmn12.hg19", update = FALSE, ask = FALSE)
+    install_with_retries("IlluminaHumanMethylation450kanno.ilmn12.hg19", is_bioc = TRUE)
 }
 
 if (!requireNamespace("TxDb.Hsapiens.UCSC.hg19.knownGene", quietly = TRUE)) {
-    BiocManager::install("TxDb.Hsapiens.UCSC.hg19.knownGene", update = FALSE, ask = FALSE)
+    install_with_retries("TxDb.Hsapiens.UCSC.hg19.knownGene", is_bioc = TRUE)
 }
 
 if (!requireNamespace("org.Hs.eg.db", quietly = TRUE)) {
-    BiocManager::install("org.Hs.eg.db", update = FALSE, ask = FALSE)
+    install_with_retries("org.Hs.eg.db", is_bioc = TRUE)
 }
 
 if (!requireNamespace("missMethyl", quietly = TRUE)) {
-    BiocManager::install("missMethyl", update = FALSE, ask = FALSE)
+    install_with_retries("missMethyl", is_bioc = TRUE)
 }
 ```
 
@@ -126,8 +195,8 @@ Covariates are:
 covariates <- c("predictedSex", "subject.id.ch1", "source_name_ch1")
 sample_group_col <- "subject.status.ch1"
 
-beta <- getBenchmarkFile("GSE63409_beta_values.tsv.gz")
-samplesheet <- getBenchmarkFile("GSE63409_samplesheet.tsv")
+beta <- getStudyFile("GSE63409_beta_values.tsv.gz")
+samplesheet <- getStudyFile("GSE63409_samplesheet.tsv")
 
 zenodo_base_url <- "https://zenodo.org/records/23590928/files/"
 if (!file.exists(beta)) {
@@ -160,7 +229,7 @@ pheno$casecontrol <- pheno[[sample_group_col]] == "AML"
 ## Find Differentially Methylated Positions
 
 ```{r find_dmps}
-dmps_file <- getBenchmarkFile("dmps.rds")
+dmps_file <- getStudyFile("dmps.rds")
 if (!file.exists(dmps_file)) {
     dmps <- CMEnt::findDMPsArray(
         beta_handler,
@@ -207,7 +276,7 @@ cat(sprintf("Found %d significant DMPs (FDR < 0.05, |delta beta| >= 0.05)\n", nr
 
 ## Method 1: CMEnt
 ```{r CMEnt}
-cment_file <- getBenchmarkFile("dmrs.CMEnt.rds")
+cment_file <- getStudyFile("dmrs.CMEnt.rds")
 if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     options("CMEnt.verbose" = 1)
@@ -459,6 +528,38 @@ ggplot(dmr_effect_df, aes(x = Delta_beta, y = Width, color = Direction)) +
   )
 ```
 
+### Paired Promoter and Gene-Body Effects
+
+Each point pairs the two context summaries within the same DMR. Opposite-sign
+quadrants identify context-dependent methylation changes; the promoter and
+gene-body annotations can refer to different genes.
+
+```{r context_effect_concordance, fig.width=6, fig.height=5, fig.cap="Paired AML-minus-normal promoter and gene-body delta beta for all CMEnt DMRs with finite estimates in both contexts. Bin color shows DMR counts; the diagonal indicates equal effects.", fig.alt="A two-dimensional binned plot compares promoter delta beta on the horizontal axis with gene-body delta beta on the vertical axis. Zero lines divide matching and opposing methylation directions; a diagonal marks equal effects."}
+context_effects <- data.frame(
+    Promoter = as.numeric(mcols(dmrs_cment)$delta_beta_promoter),
+    Gene_body = as.numeric(mcols(dmrs_cment)$delta_beta_gene_body)
+) |>
+    filter(is.finite(Promoter), is.finite(Gene_body))
+if (nrow(context_effects) > 0L) {
+    effect_limit <- max(0.01, abs(as.matrix(context_effects)))
+    ggplot(context_effects, aes(Promoter, Gene_body)) +
+        geom_bin_2d(bins = 40) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+        geom_hline(yintercept = 0, linewidth = 0.3, color = "grey60") +
+        geom_vline(xintercept = 0, linewidth = 0.3, color = "grey60") +
+        scale_fill_viridis_c(trans = "log10", name = "DMRs per bin") +
+        coord_fixed(xlim = c(-effect_limit, effect_limit), ylim = c(-effect_limit, effect_limit)) +
+        theme_minimal(base_size = 11) +
+        labs(
+            title = "Promoter and gene-body effect concordance",
+            subtitle = sprintf("%s DMRs with both context estimates; no effect-size filter", scales::comma(nrow(context_effects))),
+            x = "Promoter delta beta", y = "Gene-body delta beta"
+        )
+} else {
+    cat("No DMRs have finite promoter and gene-body effects.\n")
+}
+```
+
 ## CpG and Gene Context
 
 ```{r gene_context}
@@ -589,7 +690,7 @@ missmethyl_long <- NULL
 if (requireNamespace("missMethyl", quietly = TRUE) &&
     requireNamespace("IlluminaHumanMethylation450kanno.ilmn12.hg19", quietly = TRUE)) {
     library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
-    cached <- getBenchmarkFile("missmethyl_cment_enrichment_results.rds")
+    cached <- getStudyFile("missmethyl_cment_enrichment_results.rds")
     if (file.exists(cached)) {
         missmethyl_long <- readRDS(cached)
     } else {

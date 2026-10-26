@@ -36,6 +36,19 @@ provided by the original researchers.
 ## Setup
 
 ```{r setup, message=FALSE}
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
 ensure_cran_packages <- function(pkgs) {
     repos <- getOption("repos")
     if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
@@ -43,7 +56,7 @@ ensure_cran_packages <- function(pkgs) {
     }
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
     if (length(missing) > 0L) {
-        install.packages(missing)
+        install_with_retries(missing)
     }
 }
 
@@ -53,12 +66,12 @@ ensure_bioc_packages <- function(pkgs) {
     }
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
     if (length(missing) > 0L) {
-        BiocManager::install(missing, update = FALSE, ask = FALSE)
+        install_with_retries(missing, is_bioc = TRUE)
     }
 }
 suppressWarnings(
     {
-        ensure_cran_packages(c("readxl", "data.table", "devtools", "dplyr", "ggplot2", "tidyr", "scales", "svglite"))
+        ensure_cran_packages(c("readxl", "curl", "data.table", "pkgload", "dplyr", "utils", "ggplot2", "tidyr", "scales", "svglite"))
         ensure_bioc_packages(c(
             "BiocStyle", "minfi", "GenomicRanges", "annotatr", "missMethyl",
             "org.Hs.eg.db", "TxDb.Hsapiens.UCSC.hg19.knownGene",
@@ -69,7 +82,7 @@ suppressWarnings(
 )
 .loadCMEnt <- function() {
     root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
-    if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
+    if (!is.null(root)) {
         ok <- tryCatch({
             pkgload::load_all(root, quiet = TRUE)
             TRUE
@@ -89,8 +102,9 @@ suppressPackageStartupMessages({
     library(GenomicRanges)
     library(minfi)
 })
-
-getBenchmarkFile <- function(filename) {
+```
+```{r setup_study, message=FALSE, warning=FALSE}
+getStudyFile <- function(filename) {
     folder <- "metastudyEpic"
     if (getwd() == "notebooks") {
         benchmark_file <- file.path("cached_results", folder, filename)
@@ -129,10 +143,10 @@ genome <- "hg19"
 ## Load Data and Published Evidence
 
 ```{r load-inputs}
-beta_file <- getBenchmarkFile("GSE244696_beta_values.tsv.gz")
-samplesheet <- getBenchmarkFile("GSE244696_samplesheet.tsv")
-dmp_file <- getBenchmarkFile("GSE244696_DMPs.xlsx")
-published_dmr_file <- getBenchmarkFile("GSE244696_DMRs.xlsx")
+beta_file <- getStudyFile("GSE244696_beta_values.tsv.gz")
+samplesheet <- getStudyFile("GSE244696_samplesheet.tsv")
+dmp_file <- getStudyFile("GSE244696_DMPs.xlsx")
+published_dmr_file <- getStudyFile("GSE244696_DMRs.xlsx")
 
 
 zenodo_base_url <- "https://zenodo.org/records/23590928/files/"
@@ -297,7 +311,7 @@ ggplot(sig_dmps, aes(x = delta_beta_available)) +
 ## CMEnt Meta-Analysis DMRs
 
 ```{r cment-run}
-cment_file <- getBenchmarkFile("dmrs.CMEnt.meta_reported_dmps.rds")
+cment_file <- getStudyFile("dmrs.CMEnt.meta_reported_dmps.rds")
 if (!file.exists(cment_file)) {
     cment_njobs <- max(1L, min(8L, parallel::detectCores(logical = TRUE) - 1L))
     options("CMEnt.verbose" = 1)
@@ -747,6 +761,48 @@ if (length(overlap_hits) > 0L) {
     cat("No direct genomic overlap was found between CMEnt and the supplied Bumphunter DMRs.\n")
 }
 ```
+### Extent of Agreement Between DMR Sets
+
+For each DMR, this measures the fraction of its bases covered by the other set.
+All DMRs enter their own method's denominator, including those with no overlap.
+The other set is reduced first so overlapping intervals cannot double-count bases.
+These are descriptive comparisons between callsets, not accuracy against ground truth.
+
+```{r reciprocal_coverage_plot, fig.width=7, fig.height=5, fig.cap="Cumulative distribution of the fraction of each DMR covered by the other callset, including zero-overlap DMRs. Each method uses its own DMR count as the denominator; the other set is reduced before measuring covered bases.", fig.alt="Two cumulative step curves compare per-DMR coverage by the other method. The height at zero gives the fraction with no overlap, while curves rising near one indicate more extensive coordinate agreement."}
+reciprocal_coverage <- bind_rows(lapply(names(methods_list), function(method) {
+    gr <- methods_list[[method]]
+    other <- reduce(methods_list[[setdiff(names(methods_list), method)]], ignore.strand = TRUE)
+    hits <- findOverlaps(gr, other, ignore.strand = TRUE)
+    covered_fraction <- numeric(length(gr))
+    if (length(hits) > 0L) {
+        qi <- queryHits(hits)
+        si <- subjectHits(hits)
+        overlap_bp <- width(pintersect(gr[qi], other[si], ignore.strand = TRUE))
+        covered_bp <- rowsum(overlap_bp, group = qi)
+        indices <- as.integer(rownames(covered_bp))
+        covered_fraction[indices] <- covered_bp[, 1L] / width(gr)[indices]
+    }
+    set_label <- if (method == "BH") "Published Bumphunter" else method
+    data.frame(Set = rep(set_label, length(gr)), Covered_fraction = covered_fraction)
+}))
+if (nrow(reciprocal_coverage) > 0L) {
+    ggplot(reciprocal_coverage, aes(Covered_fraction, colour = Set)) +
+        stat_ecdf(geom = "step", linewidth = 0.8) +
+        scale_colour_manual(values = method_palette) +
+        scale_x_continuous(labels = scales::percent) +
+        scale_y_continuous(labels = scales::percent) +
+        coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+        theme_meta() +
+        labs(
+            title = "How extensively do the DMR coordinates agree?",
+            x = "Fraction of a DMR covered by the other set",
+            y = "Cumulative fraction of DMRs", colour = "DMR set"
+        )
+} else {
+    cat("No DMRs are available for the reciprocal coverage comparison.\n")
+}
+```
+
 ## CMEnt-specific plots
 ```{r cment-specific-plots-plot-dmr, fig.width=8, fig.height=6, fig.cap="Structure, gene context, and sample methylation of the top CMEnt DMR ranked by score in GSE244696.", fig.alt="Aligned panels show the top-scoring DMR, seed and surrounding-site positions, annotated gene context, and a heatmap of sample beta values along the locus."}
 dmr_rank_table <- as.data.frame(dmrs_cment)
@@ -856,7 +912,7 @@ knitr::kable(
     caption = "CMEnt-annotated promoter-overlapping DMRs supplied to missMethyl"
 )
 
-cached <- getBenchmarkFile("missmethyl_cment_gene_annotation_promoter_enrichment_results.rds")
+cached <- getStudyFile("missmethyl_cment_gene_annotation_promoter_enrichment_results.rds")
 if (file.exists(cached)) {
     missmethyl_long <- readRDS(cached)
     if (!all(c("PathwayID", "RegionScope") %in% colnames(missmethyl_long))) {
@@ -999,7 +1055,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
         if (nrow(promoter_gene_delta) == 0L) {
             cat("No promoter genes could be mapped to Entrez IDs for pathview.\n")
         } else {
-            kegg_gene_map_file <- getBenchmarkFile("kegg_hsa_pathway_gene_map.rds")
+            kegg_gene_map_file <- getStudyFile("kegg_hsa_pathway_gene_map.rds")
             kegg_gene_map <- if (file.exists(kegg_gene_map_file)) {
                 readRDS(kegg_gene_map_file)
             } else {
@@ -1044,7 +1100,7 @@ if (!is.null(missmethyl_long) && nrow(missmethyl_long) > 0L &&
                 gene_delta <- promoter_pathway_delta$delta_beta_promoter
                 names(gene_delta) <- promoter_pathway_delta$ENTREZID
                 kegg_id <- sub("^hsa", "", top_kegg$PathwayID[1])
-                pathview_dir <- getBenchmarkFile("pathview")
+                pathview_dir <- getStudyFile("pathview")
                 dir.create(pathview_dir, showWarnings = FALSE, recursive = TRUE)
                 pathview_suffix <- "promoter_delta_beta"
                 pathview_png <- file.path(pathview_dir, paste0("hsa", kegg_id, ".", pathview_suffix, ".png"))

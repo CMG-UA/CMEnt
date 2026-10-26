@@ -42,10 +42,52 @@ Methods:
 
 ## Setup and Dependencies
 
-```{r load_packages, message=FALSE, warning=FALSE}
+```{r setup, message=FALSE, warning=FALSE}
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
+}
+
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
+}
+suppressWarnings(
+    {
+        ensure_cran_packages(c("benchmarkme", "tidyr", "pkgload", "doParallel", "curl", "callr", "data.table", "ggplot2"))
+        ensure_bioc_packages(c(
+            "DMRcate", "bumphunter", "ChAMP",
+            "IlluminaHumanMethylation450kanno.ilmn12.hg19"
+        ))
+    }
+)
 .loadCMEnt <- function() {
     root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
-    if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
+    if (!is.null(root)) {
         ok <- tryCatch({
             pkgload::load_all(root, quiet = TRUE)
             TRUE
@@ -64,6 +106,41 @@ suppressPackageStartupMessages({
     library(GenomicRanges)
     library(ggplot2)
 })
+
+```
+
+**Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
+
+```{bash}
+touch .combp.sh
+{ command -v bedtools >/dev/null 2>&1; } || {
+    apt-get update && apt-get install -y bedtools
+}
+{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && echo "$(command -v comb-p) \$@"> .combp.sh; } || {
+    echo >&2 "comb-p or bedtools not found. Installing with conda...";
+    apt-get update && apt-get install -y curl git bedtools
+    if ! command -v conda >/dev/null 2>&1; then
+        curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
+        rm -rf $HOME/miniconda
+        bash miniconda.sh -b -p $HOME/miniconda
+        rm miniconda.sh
+        MINICONDA_BIN="$HOME/miniconda/bin/conda"
+        $MINICONDA_BIN init bash
+        export PATH="$HOME/miniconda/bin:$PATH"
+    else
+        MINICONDA_BIN=$(command -v conda)
+    fi
+    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    $MINICONDA_BIN create -n combp -y python=3.7
+    $MINICONDA_BIN run -n combp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
+    echo "$MINICONDA_BIN run -n combp comb-p \$@" > .combp.sh
+}
+chmod +x .combp.sh
+```
+
+
+```{r setup_simulation, message=FALSE, warning=FALSE}
 
 getBenchmarkFile <- function(filename) {
     folder <- "simulated_microarray450k_multisim"
@@ -115,56 +192,6 @@ NJOBS <- as.integer(
 )
 doParallel::registerDoParallel(cores = NJOBS)
 knitr::kable(simulation_plan, caption = "Simulation parameters generated under master seed 42")
-```
-
-### Install External Dependencies
-
-```{r setup_dependencies, message=FALSE, warning=FALSE}
-r <- getOption("repos")
-if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
-    options(repos = c(CRAN = "https://cloud.r-project.org"))
-}
-pkg_installed <- function(pkg) pkg %in% rownames(utils::installed.packages())
-if (!pkg_installed("benchmarkme")) install.packages("benchmarkme")
-if (!pkg_installed("BiocManager")) install.packages("BiocManager")
-if (!pkg_installed("DMRcate")) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
-if (!pkg_installed("bumphunter")) BiocManager::install("bumphunter", update = FALSE, ask = FALSE)
-if (!pkg_installed("doParallel")) install.packages("doParallel")
-if (!pkg_installed("tidyr")) install.packages("tidyr")
-if (!pkg_installed("callr")) install.packages("callr")
-if (!pkg_installed("ChAMP")) BiocManager::install("ChAMP", update = FALSE, ask = FALSE)
-anno_pkg <- "IlluminaHumanMethylation450kanno.ilmn12.hg19"
-if (!nzchar(system.file(package = anno_pkg))) BiocManager::install(anno_pkg, update = FALSE, ask = FALSE)
-```
-
-**Note:** comb-p requires the Python `combined-pvalues` command and bedtools:
-
-```{bash}
-touch .combp.sh
-{ command -v bedtools >/dev/null 2>&1; } || {
-    apt-get update && apt-get install -y bedtools
-}
-{ command -v comb-p >/dev/null 2>&1 && command -v bedtools >/dev/null 2>&1 && echo "$(command -v comb-p) \$@"> .combp.sh; } || { 
-    echo >&2 "comb-p or bedtools not found. Installing with conda...";
-    apt-get update && apt-get install -y curl git bedtools
-    if ! command -v conda >/dev/null 2>&1; then
-        curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
-        rm -rf $HOME/miniconda
-        bash miniconda.sh -b -p $HOME/miniconda
-        rm miniconda.sh
-        MINICONDA_BIN="$HOME/miniconda/bin/conda"
-        $MINICONDA_BIN init bash
-        export PATH="$HOME/miniconda/bin:$PATH"
-    else 
-        MINICONDA_BIN=$(command -v conda)
-    fi
-    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    $MINICONDA_BIN tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-    $MINICONDA_BIN create -n combp -y python=3.7
-    $MINICONDA_BIN run -n combp -- pip install git+https://github.com/brentp/combined-pvalues.git numpy==1.21.6
-    echo "$MINICONDA_BIN run -n combp comb-p \$@" > .combp.sh
-}
-chmod +x .combp.sh
 ```
 
 ## Load Input Data and Simulate
@@ -878,6 +905,32 @@ ggplot(metric_plot, aes(Method, Value, colour = Method)) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
     labs(title = "Method performance vs ground truth across simulations", x = "", y = "Score")
+```
+
+### Precision and Recall
+
+These operating points use the method-specific benchmark thresholds. Separating
+precision from recall shows whether a lower F1 reflects missed truth or excess
+calls. Region-level matching uses any overlap; base-pair matching also measures
+boundary agreement.
+
+```{r precision_recall_plot, fig.width=9, fig.height=5, fig.cap="Precision versus recall at the method-specific benchmark thresholds for simulated 450K datasets. Small symbols represent simulations; large symbols show each method's median precision and median recall. Panels distinguish any-overlap region matching from base-pair matching.", fig.alt="Two scatter panels show precision against recall on equal zero-to-one axes for regions and base pairs. Colors and shapes identify methods, and large symbols mark their median coordinates."}
+precision_recall <- rbind(
+    data.frame(Method = truth_eval_all$Method, Resolution = "Region", Recall = truth_eval_all$Recall_regions, Precision = truth_eval_all$Precision_regions),
+    data.frame(Method = truth_eval_all$Method, Resolution = "Base pair", Recall = truth_eval_all$Recall_bp, Precision = truth_eval_all$Precision_bp)
+)
+precision_recall$Resolution <- factor(precision_recall$Resolution, levels = c("Region", "Base pair"))
+precision_recall_medians <- precision_recall |>
+    dplyr::group_by(Method, Resolution) |>
+    dplyr::summarise(Recall = median(Recall), Precision = median(Precision), .groups = "drop")
+ggplot(precision_recall, aes(Recall, Precision, colour = Method, shape = Method)) +
+    geom_point(alpha = 0.45, size = 1.5) +
+    geom_point(data = precision_recall_medians, size = 3.5, stroke = 1) +
+    facet_wrap(~ Resolution, nrow = 1) +
+    coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(title = "Precision and recall across simulations", x = "Recall", y = "Precision")
 ```
 
 ### Runtime

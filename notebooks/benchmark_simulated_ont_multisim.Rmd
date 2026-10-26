@@ -46,10 +46,49 @@ their DSS defaults. The DSS runtime includes both testing and region calling.
 
 ## Setup and Dependencies
 
-```{r load_packages, warning=FALSE, message=FALSE, cache=FALSE}
+```{r setup, warning=FALSE, message=FALSE, cache=FALSE}
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
+}
+
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
+}
+suppressWarnings(
+    {
+        ensure_cran_packages(c("benchmarkme", "pkgload", "tidyr", "doParallel", "curl", "ggplot2", "data.table"))
+        ensure_bioc_packages(c("DSS", "DMRcate", "dmrseq", "hummingbird"))
+    }
+)
 .loadCMEnt <- function() {
     root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
-    if (!is.null(root) && requireNamespace("pkgload", quietly = TRUE)) {
+    if (!is.null(root)) {
         ok <- tryCatch({
             pkgload::load_all(root, quiet = TRUE)
             TRUE
@@ -63,6 +102,7 @@ their DSS defaults. The DSS runtime includes both testing and region calling.
 }
 .loadCMEnt()
 suppressPackageStartupMessages({
+    library(DSS)
     library(bsseq)
     library(data.table)
     library(dplyr)
@@ -71,6 +111,9 @@ suppressPackageStartupMessages({
     library(SummarizedExperiment)
     library(S4Vectors)
 })
+```
+
+```{r setup_simulation, message=FALSE, warning=FALSE}
 
 getBenchmarkFile <- function(filename) {
     folder <- "simulated_ont_multisim"
@@ -117,19 +160,6 @@ if (file.exists(plan_file)) {
     data.table::fwrite(simulation_plan, plan_file, sep = "\t")
 }
 knitr::kable(simulation_plan, caption = "Simulation parameters generated under master seed 42")
-```
-
-### Install External Dependencies
-
-```{r install_dependencies, warning=FALSE, message=FALSE, cache=FALSE}
-if (!requireNamespace("benchmarkme", quietly = TRUE)) install.packages("benchmarkme")
-if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
-if (!requireNamespace("DSS", quietly = TRUE)) BiocManager::install("DSS", update = FALSE, ask = FALSE)
-if (!requireNamespace("DMRcate", quietly = TRUE)) BiocManager::install("DMRcate", update = FALSE, ask = FALSE)
-if (!requireNamespace("dmrseq", quietly = TRUE)) BiocManager::install("dmrseq", update = FALSE, ask = FALSE)
-if (!requireNamespace("hummingbird", quietly = TRUE)) BiocManager::install("hummingbird", update = FALSE, ask = FALSE)
-if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
-suppressPackageStartupMessages(library(DSS))
 ```
 
 ## Load Input Data and Simulate
@@ -856,6 +886,32 @@ ggplot(metric_plot, aes(Method, Value, colour = Method)) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none") +
     labs(title = "Method performance vs ground truth across simulations", x = "", y = "Score")
+```
+
+### Precision and Recall
+
+These operating points use the method-specific benchmark thresholds. Separating
+precision from recall shows whether a lower F1 reflects missed truth or excess
+calls. Region-level matching uses any overlap; base-pair matching also measures
+boundary agreement.
+
+```{r precision_recall_plot, fig.width=9, fig.height=5, fig.cap="Precision versus recall at the method-specific benchmark thresholds for simulated ONT datasets. Small symbols represent simulations; large symbols show each method's median precision and median recall. Panels distinguish any-overlap region matching from base-pair matching.", fig.alt="Two scatter panels show precision against recall on equal zero-to-one axes for regions and base pairs. Colors and shapes identify methods, and large symbols mark their median coordinates."}
+precision_recall <- rbind(
+    data.frame(Method = truth_eval_all$Method, Resolution = "Region", Recall = truth_eval_all$Recall_regions, Precision = truth_eval_all$Precision_regions),
+    data.frame(Method = truth_eval_all$Method, Resolution = "Base pair", Recall = truth_eval_all$Recall_bp, Precision = truth_eval_all$Precision_bp)
+)
+precision_recall$Resolution <- factor(precision_recall$Resolution, levels = c("Region", "Base pair"))
+precision_recall_medians <- precision_recall |>
+    dplyr::group_by(Method, Resolution) |>
+    dplyr::summarise(Recall = median(Recall), Precision = median(Precision), .groups = "drop")
+ggplot(precision_recall, aes(Recall, Precision, colour = Method, shape = Method)) +
+    geom_point(alpha = 0.45, size = 1.5) +
+    geom_point(data = precision_recall_medians, size = 3.5, stroke = 1) +
+    facet_wrap(~ Resolution, nrow = 1) +
+    coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(title = "Precision and recall across simulations", x = "Recall", y = "Precision")
 ```
 
 ### Seed Recovery

@@ -20,25 +20,61 @@ knitr::opts_chunk$set(
     fig.height = 6,
     dpi = 300
 )
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
+}
 
-suppressPackageStartupMessages({
-    cment_source_dir <- if (file.exists("DESCRIPTION") && dir.exists("R")) {
-        "."
-    } else if (file.exists(file.path("..", "DESCRIPTION")) && dir.exists(file.path("..", "R"))) {
-        ".."
-    } else {
-        NA_character_
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
     }
-    loaded_cment_source <- FALSE
-    if (!is.na(cment_source_dir) && requireNamespace("pkgload", quietly = TRUE)) {
-        loaded_cment_source <- isTRUE(tryCatch({
-            pkgload::load_all(cment_source_dir, quiet = TRUE)
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
+}
+suppressWarnings(
+    {
+        ensure_cran_packages(c("curl", "pkgload", "data.table", "dplyr", "ggplot2", "scales"))
+        ensure_bioc_packages(c("bsseq", "GenomicRanges", "HDF5Array", "SummarizedExperiment"))
+    }
+)
+.loadCMEnt <- function() {
+    root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
+    if (!is.null(root)) {
+        ok <- tryCatch({
+            pkgload::load_all(root, quiet = TRUE)
             TRUE
-        }, error = function(e) FALSE))
+        }, error = function(e) {
+            message("Could not load local CMEnt source: ", conditionMessage(e))
+            FALSE
+        })
+        if (ok) return(invisible(TRUE))
     }
-    if (!loaded_cment_source) {
-        library(CMEnt)
-    }
+    suppressPackageStartupMessages(library(CMEnt))
+}
+.loadCMEnt()
+suppressPackageStartupMessages({
     library(bsseq)
     library(curl)
     library(data.table)
@@ -49,8 +85,9 @@ suppressPackageStartupMessages({
     library(scales)
     library(SummarizedExperiment)
 })
-
-getBenchmarkFile <- function(filename) {
+```
+```{r setup_study, message=FALSE, warning=FALSE}
+getStudyFile <- function(filename) {
     folder <- "ont"
     if (getwd() == "notebooks") {
         benchmark_file <- file.path("cached_results", folder, filename)
@@ -79,27 +116,27 @@ short_label <- function(x, width = 65L) {
 has_hdf5_se <- function(path) {
     dir.exists(path) && file.exists(file.path(path, "assays.h5"))
 }
-samplesheet_file <- getBenchmarkFile("pannet_samplesheet.csv")
-bsseq_archive <- getBenchmarkFile("pannet.h5.tar.gz")
-bsseq_h5_dir <- getBenchmarkFile("pannet.h5")
-pheno_file <- getBenchmarkFile("pheno.tsv")
-input_summary_file <- getBenchmarkFile("input_summary.tsv")
-filtered_bsseq_dir <- getBenchmarkFile("filtered_bsseq.h5")
-filtered_summary_file <- getBenchmarkFile("filtered_summary.tsv")
-dmps_file <- getBenchmarkFile("dmps.rds")
-seeds_file <- getBenchmarkFile("seeds.rds")
-seeds_summary_file <- getBenchmarkFile("seeds_summary.tsv")
-seeds_qs_file <- getBenchmarkFile("seeds_quantiles.tsv")
-reduced_bsseq_dir <- getBenchmarkFile("reduced_bsseq.h5")
-reduced_bsseq_summary_file <- getBenchmarkFile("reduced_bsseq_summary.tsv")
-sparsified_seeds_summary_file <- getBenchmarkFile("sparsified_seeds_summary.tsv")
-sparsified_seeds_qs_file <- getBenchmarkFile("sparsified_seeds_quantiles.tsv")
-sparsified_seeds_file <- getBenchmarkFile("sparsified_seeds.rds")
+samplesheet_file <- getStudyFile("pannet_samplesheet.csv")
+bsseq_archive <- getStudyFile("pannet.h5.tar.gz")
+bsseq_h5_dir <- getStudyFile("pannet.h5")
+pheno_file <- getStudyFile("pheno.tsv")
+input_summary_file <- getStudyFile("input_summary.tsv")
+filtered_bsseq_dir <- getStudyFile("filtered_bsseq.h5")
+filtered_summary_file <- getStudyFile("filtered_summary.tsv")
+dmps_file <- getStudyFile("dmps.rds")
+seeds_file <- getStudyFile("seeds.rds")
+seeds_summary_file <- getStudyFile("seeds_summary.tsv")
+seeds_qs_file <- getStudyFile("seeds_quantiles.tsv")
+reduced_bsseq_dir <- getStudyFile("reduced_bsseq.h5")
+reduced_bsseq_summary_file <- getStudyFile("reduced_bsseq_summary.tsv")
+sparsified_seeds_summary_file <- getStudyFile("sparsified_seeds_summary.tsv")
+sparsified_seeds_qs_file <- getStudyFile("sparsified_seeds_quantiles.tsv")
+sparsified_seeds_file <- getStudyFile("sparsified_seeds.rds")
 
 aggfun <- "median"
-cment_file <- getBenchmarkFile(sprintf("dmrs.CMEnt.%s.rds", aggfun))
-dmr_vis_file <- getBenchmarkFile("top_dmr_visualization.png")
-heatmap_file <- getBenchmarkFile("top_dmrs_heatmap.png")
+cment_file <- getStudyFile(sprintf("dmrs.CMEnt.%s.rds", aggfun))
+dmr_vis_file <- getStudyFile("top_dmr_visualization.png")
+heatmap_file <- getStudyFile("top_dmrs_heatmap.png")
 
 
 seed_probs <- c(0, 0.25, 0.5, 0.75, 0.9, 0.99, 1)
@@ -155,18 +192,45 @@ neuroendocrine tumor samples (PNET) and 5 neuroendocrine islet samples (ISLT).
 ## Setup and Dependencies
 
 ```{r install, eval=FALSE}
-r <- getOption("repos")
-if (is.null(r) || is.na(r["CRAN"]) || r["CRAN"] %in% c("@CRAN@", "")) {
-    options(repos = c(CRAN = "https://cloud.r-project.org"))
-}
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-    install.packages("BiocManager")
-}
-for (pkg in c("DSS", "TxDb.Hsapiens.UCSC.hg38.knownGene", "org.Hs.eg.db", "BSgenome.Hsapiens.UCSC.hg38")) {
-    if (!requireNamespace(pkg, quietly = TRUE)) {
-        BiocManager::install(pkg, update = FALSE, ask = FALSE)
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
     }
 }
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
+}
+
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
+}
+suppressWarnings(
+    {
+        ensure_cran_packages(c("curl", "data.table", "dplyr", "ggplot2", "scales"))
+        ensure_bioc_packages(c("HDF5Array", "SummarizedExperiment", "DSS", "TxDb.Hsapiens.UCSC.hg38.knownGene", "org.Hs.eg.db", "BSgenome.Hsapiens.UCSC.hg38"))
+    }
+)
 ```
 
 ## Load Data
@@ -840,6 +904,39 @@ if (length(dmrs_cment) > 0L && requireNamespace("ggnewscale", quietly = TRUE)) {
                 y = "Chromosome"
             )
     }
+}
+```
+
+### Seed and Regional Support
+
+The denominator is the number of measured CpGs within each DMR (`sites_num`).
+Supporting sites include the supplied seeds and sites retained during extension.
+The distance above the diagonal shows the added support beyond the seed set.
+
+```{r regional_support_plot, fig.width=6, fig.height=5, fig.cap="Seed and supporting-site fractions among all measured CpGs within each ONT DMR. Supporting sites include seeds and extension sites; the diagonal marks seed-only support. Bin color shows DMR counts.", fig.alt="A two-dimensional binned plot shows the fraction of regional CpGs supplied as seeds against the fraction supporting regional assembly. Points above the diagonal indicate additional supporting CpGs beyond the supplied seeds."}
+support_df <- data.frame(
+    Seeds = as.numeric(mcols(dmrs_cment)$seeds_num),
+    Supporting_sites = as.numeric(mcols(dmrs_cment)$supporting_sites_num),
+    Regional_sites = as.numeric(mcols(dmrs_cment)$sites_num)
+) |>
+    filter(is.finite(Seeds), is.finite(Supporting_sites), is.finite(Regional_sites), Regional_sites > 0) |>
+    mutate(Seed_fraction = Seeds / Regional_sites, Support_fraction = Supporting_sites / Regional_sites)
+if (nrow(support_df) > 0L) {
+    ggplot(support_df, aes(Seed_fraction, Support_fraction)) +
+        geom_bin_2d(bins = 35) +
+        geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey40") +
+        scale_fill_viridis_c(trans = "log10", name = "DMRs per bin") +
+        scale_x_continuous(labels = scales::percent) +
+        scale_y_continuous(labels = scales::percent) +
+        coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
+        theme_minimal(base_size = 11) +
+        labs(
+            title = "Regional support beyond the seed set",
+            subtitle = sprintf("All %s DMRs with available site counts", scales::comma(nrow(support_df))),
+            x = "Regional CpGs supplied as seeds", y = "Regional CpGs supporting assembly"
+        )
+} else {
+    cat("No DMRs have the site counts needed to summarize regional support.\n")
 }
 ```
 

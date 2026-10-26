@@ -18,29 +18,70 @@ knitr::opts_chunk$set(
     dpi = 300
 )
 
-required_packages <- c(
-    "CMEnt", "data.table", "GenomicRanges", "ggplot2", "readxl"
-)
-missing_packages <- required_packages[
-    !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
-]
-if (length(missing_packages) > 0L) {
-    stop("Install required packages before rendering: ", paste(missing_packages, collapse = ", "))
+install_with_retries <- function(pkgs, retries = 3L, is_bioc = FALSE) {
+    for (i in seq_len(retries)) {
+        tryCatch({
+            if (is_bioc) BiocManager::install(pkgs, update = FALSE, ask = FALSE) else install.packages(pkgs)
+            missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+            if (length(missing) > 0L) stop("Packages still unavailable: ", paste(missing, collapse = ", "))
+            break
+        }, error = function(e) {
+            if (i == retries) stop(sprintf("Failed to install %s after %d attempts", paste(pkgs, collapse = ", "), retries))
+        })
+        Sys.sleep(1L)
+    }
+}
+ensure_cran_packages <- function(pkgs) {
+    repos <- getOption("repos")
+    if (is.null(repos) || is.na(repos["CRAN"]) || repos["CRAN"] %in% c("@CRAN@", "")) {
+        options(repos = c(CRAN = "https://cloud.r-project.org"))
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing)
+    }
 }
 
-if (file.exists("DESCRIPTION") && requireNamespace("devtools", quietly = TRUE)) {
-    devtools::load_all(quiet = TRUE)
-} else if (file.exists("../DESCRIPTION") && requireNamespace("devtools", quietly = TRUE)) {
-    devtools::load_all("..", quiet = TRUE)
+ensure_bioc_packages <- function(pkgs) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) {
+        ensure_cran_packages("BiocManager")
+    }
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+    if (length(missing) > 0L) {
+        install_with_retries(missing, is_bioc = TRUE)
+    }
 }
+suppressWarnings(
+    {
+        ensure_cran_packages(c("data.table", "pkgload", "ggplot2", "curl", "utils", "readxl"))
+        ensure_bioc_packages(c("BiocStyle", "GenomicRanges", "SummarizedExperiment"))
+    }
+)
+
+.loadCMEnt <- function() {
+    root <- if (file.exists("NAMESPACE")) "." else if (file.exists(file.path("..", "NAMESPACE"))) ".." else NULL
+    if (!is.null(root)) {
+        ok <- tryCatch({
+            pkgload::load_all(root, quiet = TRUE)
+            TRUE
+        }, error = function(e) {
+            message("Could not load local CMEnt source: ", conditionMessage(e))
+            FALSE
+        })
+        if (ok) return(invisible(TRUE))
+    }
+    suppressPackageStartupMessages(library(CMEnt))
+}
+.loadCMEnt()
 
 suppressPackageStartupMessages({
     library(CMEnt)
     library(GenomicRanges)
     library(ggplot2)
 })
-
-get_project_file <- function(...) {
+```
+```{r setup_validation, message=FALSE, warning=FALSE}
+getStudyFile <- function(...) {
     parts <- c(...)
     if (file.exists("DESCRIPTION")) {
         do.call(file.path, as.list(parts))
@@ -53,12 +94,12 @@ get_project_file <- function(...) {
     }
 }
 
-input_dir <- get_project_file("notebooks", "cached_results", "metastudyEpic")
-result_dir <- Sys.getenv(
+input_dir <- getStudyFile("notebooks", "cached_results", "metastudyEpic")
+validation_dir <- Sys.getenv(
     "CMENT_NULL_RESULT_DIR",
-    get_project_file("notebooks", "cached_results", "null_model")
+    getStudyFile("notebooks", "cached_results", "null_model")
 )
-dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(validation_dir, recursive = TRUE, showWarnings = FALSE)
 
 genome <- "hg19"
 array_type <- "EPIC"
@@ -305,7 +346,7 @@ summarise_dmrs <- function(dmrs, replicate_id, is_observed) {
 ## Observed regional assembly
 
 ```{r observed}
-observed_cache <- file.path(result_dir, "observed.rds")
+observed_cache <- file.path(validation_dir, "observed.rds")
 observed_summary <- read_cache(observed_cache, cache_signature)
 if (is.null(observed_summary)) {
     observed_dmrs <- run_cment(beta_mat)
@@ -320,7 +361,7 @@ knitr::kable(observed_summary, row.names = FALSE, caption = "Observed CMEnt regi
 ```{r null-permutations}
 null_rows <- vector("list", n_permutations)
 for (permutation_id in seq_len(n_permutations)) {
-    permutation_cache <- file.path(result_dir, sprintf("permutation_%04d.rds", permutation_id))
+    permutation_cache <- file.path(validation_dir, sprintf("permutation_%04d.rds", permutation_id))
     permutation_signature <- c(cache_signature, list(permutation_id = permutation_id))
     cached_result <- read_cache(permutation_cache, permutation_signature)
     if (is.null(cached_result)) {
@@ -346,7 +387,7 @@ null_summary <- do.call(rbind, null_rows)
 all_results <- rbind(observed_summary, null_summary)
 data.table::fwrite(
     all_results,
-    file.path(result_dir, "null_validation_summary.tsv"),
+    file.path(validation_dir, "null_validation_summary.tsv"),
     sep = "\t"
 )
 ```
@@ -453,6 +494,31 @@ ggplot(null_summary, aes(x = dmrs)) +
         x = "Number of called DMRs",
         y = "Null permutations"
     )
+```
+
+### Seed Incorporation Relative to Region Count
+
+The joint distribution distinguishes increased seed incorporation from increased
+region count. The dashed line has the observed ratio of unique incorporated seeds
+to called DMRs; it is a descriptive reference, not a fitted null model.
+
+```{r assembly_joint_plot, fig.cap="Joint distribution of called DMRs and unique incorporated seeds under the conditional null, with the observed result shown as an orange triangle. The dashed line shows the observed seed-to-DMR ratio and is not a fitted null model.", fig.alt="Blue points show each null permutation's DMR count and unique incorporated seed count. An orange triangle marks the observed result; a dashed line through the origin and the observed result compares seed incorporation relative to DMR count."}
+assembly_plot <- ggplot(null_summary, aes(dmrs, incorporated_seeds)) +
+    geom_point(color = "#0072B2", alpha = 0.3, size = 1.5) +
+    geom_point(data = observed_summary, color = "#D55E00", shape = 17, size = 3.5) +
+    theme_minimal(base_size = 11) +
+    labs(
+        title = "Seed incorporation relative to region count",
+        subtitle = "Blue: null permutations; orange triangle: observed assembly",
+        x = "Called DMRs", y = "Unique supplied seeds incorporated into DMRs"
+    )
+if (observed_summary$dmrs[[1L]] > 0L) {
+    assembly_plot <- assembly_plot + geom_abline(
+        slope = observed_summary$incorporated_seeds[[1L]] / observed_summary$dmrs[[1L]],
+        intercept = 0, linetype = "dashed", color = "grey40"
+    )
+}
+assembly_plot
 ```
 
 ## Interpretation
