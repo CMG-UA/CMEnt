@@ -52,6 +52,8 @@ jobs:
 
       - name: Build pkgdown site and render notebooks
         shell: Rscript {0}
+        env:
+          ZENODO_TOKEN: ${{ secrets.ZENODO_TOKEN }}
         run: |
           site_dir <- "_site"
           articles_dir <- file.path(site_dir, "articles")
