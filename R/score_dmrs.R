@@ -59,7 +59,7 @@
             test_indices = test_indices,
             train_indices = train_indices,
             train_groups = train_groups,
-            train_levels = levels(train_groups)
+            train_levels = sort(levels(train_groups))
         )
     })
     fold_info <- Filter(Negate(is.null), fold_info)
@@ -67,7 +67,8 @@
     list(
         groups = groups,
         groups_chr = as.character(groups),
-        groups_y = ifelse(as.character(groups) == levels(groups)[1], 1, -1),
+        # Use value order so 0/FALSE maps to -1 and 1/TRUE maps to +1.
+        groups_y = ifelse(as.character(groups) == sort(levels(groups))[1], -1, 1),
         folds = folds,
         nfold = nfold,
         fold_info = fold_info
@@ -112,10 +113,10 @@
             fold_decision <- rep(NA_real_, length(test_indices))
         } else {
             train_levels <- fold_info$train_levels
-            # Orient decision signs to the training level order before
+            # Orient positive decisions to the second training level before
             # calculating the margin loss; predicted class labels provide the
             # orientation check.
-            pred_from_sign <- ifelse(fold_decision >= 0, train_levels[1], train_levels[2])
+            pred_from_sign <- ifelse(fold_decision >= 0, train_levels[2], train_levels[1])
             if (mean(pred_from_sign == fold_pred_chr, na.rm = TRUE) < 0.5) {
                 fold_decision <- -fold_decision
             }
