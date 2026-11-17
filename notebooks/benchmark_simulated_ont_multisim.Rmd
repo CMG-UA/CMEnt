@@ -701,10 +701,18 @@ get_dmr_stats <- function(dmrs, method, simulation_id) {
 evaluate_against_truth <- function(pred, truth) {
     n_pred <- length(pred)
     n_truth <- length(truth)
-    pred_hit <- sum(overlapsAny(pred, truth))
-    truth_hit <- sum(overlapsAny(truth, pred))
-    precision <- ifelse(n_pred == 0L, 0, pred_hit / n_pred)
-    recall <- ifelse(n_truth == 0L, 0, truth_hit / n_truth)
+    hits <- GenomicRanges::findOverlaps(pred, truth)
+    pred_index <- S4Vectors::queryHits(hits)
+    truth_index <- S4Vectors::subjectHits(hits)
+    pred_matches <- tabulate(pred_index, nbins = n_pred)
+    truth_matches <- tabulate(truth_index, nbins = n_truth)
+    one_truth <- pred_matches[pred_index] == 1L
+    tp <- sum(one_truth & truth_matches[truth_index] == 1L)
+    split_tp <- sum(one_truth & truth_matches[truth_index] > 1L)
+    pred_hit <- sum(pred_matches > 0L)
+    truth_hit <- sum(truth_matches > 0L)
+    precision <- ifelse(n_pred == 0L, 0, tp / n_pred)
+    recall <- ifelse(n_truth == 0L, 0, tp / n_truth)
     pred_red <- reduce(pred)
     truth_red <- reduce(truth)
     inter_bp <- sum(width(GenomicRanges::intersect(pred_red, truth_red)))
@@ -714,7 +722,9 @@ evaluate_against_truth <- function(pred, truth) {
     precision_bp <- ifelse(pred_bp == 0L, 0, inter_bp / pred_bp)
     recall_bp <- ifelse(truth_bp == 0L, 0, inter_bp / truth_bp)
     data.frame(
-        TP_regions = truth_hit,
+        TP_regions = tp,
+        `1TNTP_regions` = sum(pred_matches > 1L),
+        NT1TP_regions = split_tp,
         FP_regions = n_pred - pred_hit,
         FN_regions = n_truth - truth_hit,
         Precision_regions = precision,
@@ -723,7 +733,8 @@ evaluate_against_truth <- function(pred, truth) {
         Precision_bp = precision_bp,
         Recall_bp = recall_bp,
         F1_bp = ifelse(precision_bp + recall_bp == 0, 0, 2 * precision_bp * recall_bp / (precision_bp + recall_bp)),
-        IoU_bp = ifelse(union_bp == 0L, 0, inter_bp / union_bp)
+        IoU_bp = ifelse(union_bp == 0L, 0, inter_bp / union_bp),
+        check.names = FALSE
     )
 }
 
@@ -749,7 +760,8 @@ summarise_mean_pm <- function(df, group_cols, value_cols, digits = 2L) {
             Value = format_mean_pm(Value, digits = metric_digits[dplyr::first(Metric)]),
             .groups = "drop"
         ) |>
-        tidyr::pivot_wider(names_from = Metric, values_from = Value)
+        tidyr::pivot_wider(names_from = Metric, values_from = Value) |>
+        dplyr::select(dplyr::all_of(c(group_cols, value_cols)))
 }
 
 summarise_benchmark_table <- function(stats_all, runtime_all) {
@@ -847,12 +859,29 @@ ggplot(stats_plot, aes(Method, Value, colour = Method)) +
 
 ## Ground-Truth Evaluation
 
+Region matches use any genomic overlap. The TP categories count predicted
+regions:
+
+- **TP_regions**: a prediction overlaps exactly one ground-truth region, and
+  that ground-truth region overlaps exactly one prediction (1:1).
+- **1TNTP_regions**: a prediction overlaps multiple ground-truth regions (1:N),
+  counted once per prediction, including predictions in many-to-many overlaps.
+- **NT1TP_regions**: a prediction overlaps exactly one ground-truth region that
+  overlaps multiple predictions (N:1), counted once per prediction.
+
+These categories partition all predictions with a truth overlap. FP counts
+predictions with no truth overlap. Region precision is 1:1 TP divided by the
+total number of predicted regions; region recall is 1:1 TP divided by the
+total number of ground-truth regions. Region F1 is their harmonic mean.
+Merged and split matches do not contribute to these numerators. The macro
+table reports the mean and SD of these per-simulation metrics.
+
 ```{r}
 regions_truth_eval <- summarise_mean_pm(
     truth_eval_all,
     "Method",
-    c("TP_regions", "FP_regions", "FN_regions", "Precision_regions", "Recall_regions", "F1_regions"),
-    digits = c(TP_regions = 0L, FP_regions = 0L, FN_regions = 0L, Precision_regions = 2L, Recall_regions = 2L, F1_regions = 2L)
+    c("TP_regions", "1TNTP_regions", "NT1TP_regions", "FP_regions", "Precision_regions", "Recall_regions", "F1_regions"),
+    digits = c(TP_regions = 0L, `1TNTP_regions` = 0L, NT1TP_regions = 0L, FP_regions = 0L, Precision_regions = 2L, Recall_regions = 2L, F1_regions = 2L)
 )
 bp_truth_eval <- summarise_mean_pm(
     truth_eval_all,
@@ -892,10 +921,10 @@ ggplot(metric_plot, aes(Method, Value, colour = Method)) +
 
 These operating points use the method-specific benchmark thresholds. Separating
 precision from recall shows whether a lower F1 reflects missed truth or excess
-calls. Region-level matching uses any overlap; base-pair matching also measures
-boundary agreement.
+calls. Region-level precision and recall count only 1:1 matches; base-pair
+matching measures genomic coverage and boundary agreement.
 
-```{r precision_recall_plot, fig.width=9, fig.height=5, fig.cap="Precision versus recall at the method-specific benchmark thresholds for simulated ONT datasets. Small symbols represent simulations; large symbols show each method's median precision and median recall. Panels distinguish any-overlap region matching from base-pair matching.", fig.alt="Two scatter panels show precision against recall on equal zero-to-one axes for regions and base pairs. Colors and shapes identify methods, and large symbols mark their median coordinates."}
+```{r precision_recall_plot, fig.width=9, fig.height=5, fig.cap="Precision versus recall at the method-specific benchmark thresholds for simulated ONT datasets. Small symbols represent simulations; large symbols show each method's median precision and median recall. Panels distinguish 1:1 region matching from base-pair matching.", fig.alt="Two scatter panels show precision against recall on equal zero-to-one axes for regions and base pairs. Colors and shapes identify methods, and large symbols mark their median coordinates."}
 precision_recall <- rbind(
     data.frame(Method = truth_eval_all$Method, Resolution = "Region", Recall = truth_eval_all$Recall_regions, Precision = truth_eval_all$Precision_regions),
     data.frame(Method = truth_eval_all$Method, Resolution = "Base pair", Recall = truth_eval_all$Recall_bp, Precision = truth_eval_all$Precision_bp)
