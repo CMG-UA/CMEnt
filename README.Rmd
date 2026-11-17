@@ -227,7 +227,6 @@ If you use CMEnt in your research, please cite:
         title = {From DMPs to DMRs: CMEnt, Characterization of Methylation using positional Entanglement},
         author = {Vasileios Lemonidis, Ken op de Beeck, Joris R Vermeesch, Timon Vandamme, Guy Van Camp, Joe Ibrahim},
         year = {2026},
-        note = {R package version 0.99.9},
         url = {https://github.com/CMG-UA/CMEnt},
       }
 ```
