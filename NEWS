@@ -1,6 +1,9 @@
 CHANGES IN VERSION 1.1.1
 --------------------------
 BUG FIXES
+    o Check JASPAR availability before DMR discovery when motif extraction is
+      enabled, unless matching JASPAR PWMs are already cached.
+
     o Allow for spaces, backticks and backslashes in phenotype covariates names.
 
     o Allow for phenotype column called "condition" in the DMP calling helpers input (previously overwritten internally).

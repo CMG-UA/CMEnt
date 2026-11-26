@@ -97,6 +97,12 @@ test_that("annotateDMRsWithGenes reports TxDb and OrgDb requirements clearly", {
 })
 
 test_that("buildDMRs aggregates optional dependencies before running", {
+    cache <- tempfile("cment-jaspar-cache-")
+    withr::local_options(list(
+        CMEnt.jaspar_cache_dir = cache,
+        CMEnt.jaspar_version = 2024
+    ))
+    withr::defer(unlink(cache, recursive = TRUE))
     local_mocked_bindings(
         .isPackageInstalled = function(pkg_name) FALSE,
         .package = "CMEnt"
@@ -136,6 +142,71 @@ test_that("buildDMRs aggregates optional dependencies before running", {
     expect_match(conditionMessage(err), "TxDb\\.Hsapiens\\.UCSC\\.hg19\\.knownGene")
     expect_match(conditionMessage(err), "org\\.Hs\\.eg\\.db")
     expect_match(conditionMessage(err), "BSgenome\\.Hsapiens\\.UCSC\\.hg19")
+    expect_match(conditionMessage(err), "JASPAR2024")
+})
+
+test_that("buildDMRs checks JASPAR before beta preparation only for motif-enabled builds", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    cache <- tempfile("cment-jaspar-cache-")
+    withr::local_options(list(
+        CMEnt.jaspar_cache_dir = cache,
+        CMEnt.jaspar_version = 2024,
+        CMEnt.verbose = 0
+    ))
+    withr::defer(unlink(cache, recursive = TRUE))
+    local_mocked_bindings(
+        .isPackageInstalled = function(pkg_name) !startsWith(pkg_name, "JASPAR"),
+        getBetaHandler = function(...) stop("Beta preparation reached."),
+        .package = "CMEnt"
+    )
+
+    err <- expect_error(
+        runSyntheticBuildDMRs(fixture, extract_motifs = TRUE),
+        "buildDMRs() requires the following package: 'JASPAR2024'",
+        fixed = TRUE
+    )
+    expect_match(conditionMessage(err), "BiocManager::install", fixed = TRUE)
+    expect_error(
+        runSyntheticBuildDMRs(fixture, extract_motifs = FALSE),
+        "Beta preparation reached.",
+        fixed = TRUE
+    )
+})
+
+test_that("buildDMRs accepts a JASPAR cache only for the configured version and taxonomic group", {
+    fixture <- makeSyntheticBuildDMRsFixture()
+    cache <- tempfile("cment-jaspar-cache-")
+    withr::local_options(list(
+        CMEnt.jaspar_cache_dir = cache,
+        CMEnt.jaspar_version = 2024,
+        CMEnt.jaspar_tax_group = "vertebrates",
+        CMEnt.verbose = 0
+    ))
+    withr::defer(unlink(cache, recursive = TRUE))
+    CMEnt:::.saveBiocFileCacheRDS(list(), cache, "jaspar2024_vertebrates_pwms")
+    local_mocked_bindings(
+        .isPackageInstalled = function(pkg_name) !startsWith(pkg_name, "JASPAR"),
+        getBetaHandler = function(...) stop("Beta preparation reached."),
+        .package = "CMEnt"
+    )
+
+    expect_error(
+        runSyntheticBuildDMRs(fixture, extract_motifs = TRUE),
+        "Beta preparation reached.",
+        fixed = TRUE
+    )
+    withr::local_options(CMEnt.jaspar_tax_group = "plants")
+    expect_error(
+        runSyntheticBuildDMRs(fixture, extract_motifs = TRUE),
+        "buildDMRs() requires the following package: 'JASPAR2024'",
+        fixed = TRUE
+    )
+    withr::local_options(CMEnt.jaspar_tax_group = "vertebrates", CMEnt.jaspar_version = 2022)
+    expect_error(
+        runSyntheticBuildDMRs(fixture, extract_motifs = TRUE),
+        "buildDMRs() requires the following package: 'JASPAR2022'",
+        fixed = TRUE
+    )
 })
 
 test_that("dependency assertions never install missing packages", {

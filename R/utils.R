@@ -1749,6 +1749,9 @@ supportedOrganisms <- function() {
                     genome, "'."
                 )
             )
+        },
+        if (isTRUE(extract_motifs)) {
+            .jasparDependencyRequirements()
         }
     )
 }

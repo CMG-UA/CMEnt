@@ -6,30 +6,36 @@
 }
 
 test_that("container setup resolves the requested genome and input features", {
+    cache <- tempfile("cment-jaspar-cache-")
+    withr::local_options(list(
+        CMEnt.jaspar_cache_dir = cache,
+        CMEnt.jaspar_version = 2024
+    ))
+    withr::defer(unlink(cache, recursive = TRUE))
     setup <- .loadContainerSetup()
     args <- list(beta = "beta.tsv", array = "EPIC", genome = NULL,
                  annotate_with_genes = TRUE, bed_provided = FALSE)
     expect_setequal(setup$.containerDependencyPackages("buildDMRs", args), c(
         "IlluminaHumanMethylationEPICanno.ilm10b4.hg19",
         "TxDb.Hsapiens.UCSC.hg19.knownGene", "org.Hs.eg.db",
-        "BSgenome.Hsapiens.UCSC.hg19"
+        "BSgenome.Hsapiens.UCSC.hg19", "JASPAR2024"
     ))
 
     args$array <- "EPICv2"
     args$annotate_with_genes <- FALSE
     expect_setequal(setup$.containerDependencyPackages("buildDMRs", args), c(
         "IlluminaHumanMethylationEPICv2anno.20a1.hg38",
-        "BSgenome.Hsapiens.UCSC.hg38"
+        "BSgenome.Hsapiens.UCSC.hg38", "JASPAR2024"
     ))
     args$bed_provided <- TRUE
-    expect_equal(setup$.containerDependencyPackages("buildDMRs", args),
-                 "BSgenome.Hsapiens.UCSC.hg38")
+    expect_setequal(setup$.containerDependencyPackages("buildDMRs", args),
+                    c("BSgenome.Hsapiens.UCSC.hg38", "JASPAR2024"))
 
     args$array <- "Mouse"
     args$bed_provided <- FALSE
     expect_setequal(setup$.containerDependencyPackages("buildDMRs", args), c(
         "IlluminaMouseMethylationanno.12.v1.mm10",
-        "BSgenome.Mmusculus.UCSC.mm10"
+        "BSgenome.Mmusculus.UCSC.mm10", "JASPAR2024"
     ))
     expect_equal(setup$.containerDependencyPackages("findDMPsBSSeq", list()), "DSS")
     args$genome <- "mm10"
