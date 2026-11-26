@@ -2306,6 +2306,9 @@ plotDMRsCircos <- function(
 #'   selected regions (default: `2`).
 #' @param min_inter_region_bp Numeric. Nearby candidate windows within this gap are
 #'   merged instead of being shown as separate Circos sectors (default: `5e6`).
+#' @param sample_group_col Character. Name of the column in `pheno` containing
+#'   sample group labels. Required when both `beta` and `pheno` are provided;
+#'   checked before motif preparation and automatic region selection.
 #' @inheritParams plotDMRsCircos
 #' @param ... Additional arguments passed to [plotDMRsCircos()]. This is where
 #'   plot-only settings such as `max_dmrs_per_chr`, `max_sites_per_dmr`,
@@ -2339,6 +2342,7 @@ plotAutoDMRsCircos <- function(dmrs,
                                sorted_locs = NULL,
                                components = NULL,
                                interactions = NULL,
+                               sample_group_col = NULL,
                                min_similarity = 0.8,
                                motif_site_flank_size = 5,
                                min_component_size = 2,
@@ -2355,6 +2359,9 @@ plotAutoDMRsCircos <- function(dmrs,
     dot_names <- names(dots)
     if (!is.null(dot_names) && "region" %in% dot_names[nzchar(dot_names)]) {
         stop("plotAutoDMRsCircos() manages `region` directly. Pass only plotDMRsCircos()-specific arguments through `...`.")
+    }
+    if (!is.null(beta) && !is.null(pheno)) {
+        sample_group_col <- .requireSampleGroupCol(sample_group_col, "plotAutoDMRsCircos()")
     }
     method <- match.arg(method)
     dmrs_gr <- .convertToGRanges(dmrs, genome = genome)
@@ -2407,6 +2414,7 @@ plotAutoDMRsCircos <- function(dmrs,
         sorted_locs = sorted_locs,
         components = interaction_state$components,
         interactions = interaction_state$interactions,
+        sample_group_col = sample_group_col,
         min_similarity = min_similarity,
         motif_site_flank_size = motif_site_flank_size,
         min_component_size = min_component_size,
@@ -2437,12 +2445,12 @@ plotAutoDMRsCircos <- function(dmrs,
             on.exit(unlink(temp_file), add = TRUE)
             urls <- c(
                 paste0(
-                    "https://hgdownload.cse.ucsc.edu/goldenpath/",
+                    "https://hgdownload.soe.ucsc.edu/goldenpath/",
                     genome,
                     "/database/cytoBandIdeo.txt.gz"
                 ),
                 paste0(
-                    "https://hgdownload.cse.ucsc.edu/goldenpath/",
+                    "https://hgdownload.soe.ucsc.edu/goldenpath/",
                     genome,
                     "/database/cytoBand.txt.gz"
                 )

@@ -1,6 +1,12 @@
 CHANGES IN VERSION 1.1.1
 --------------------------
 BUG FIXES
+    o Expose sample_group_col in plotAutoDMRsCircos() and check it is supplied
+      before motif preparation and automatic region selection when both beta
+      and phenotype data are provided.
+
+    o Fixed cytoband download URL to one wih an SSL peer certificate.
+
     o Check JASPAR availability before DMR discovery when motif extraction is
       enabled, unless matching JASPAR PWMs are already cached.
 

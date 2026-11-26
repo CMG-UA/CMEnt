@@ -18,6 +18,7 @@ plotAutoDMRsCircos(
   sorted_locs = NULL,
   components = NULL,
   interactions = NULL,
+  sample_group_col = NULL,
   min_similarity = 0.8,
   motif_site_flank_size = 5,
   min_component_size = 2,
@@ -57,6 +58,10 @@ merged instead of being shown as separate Circos sectors (default: \code{5e6}).}
 \item{components}{Data frame. Output from motif component detection (optional, will be computed if missing).}
 
 \item{interactions}{Data frame. Output from motif interaction detection (optional, will be computed if missing).}
+
+\item{sample_group_col}{Character. Name of the column in \code{pheno} containing
+sample group labels. Required when both \code{beta} and \code{pheno} are provided;
+checked before motif preparation and automatic region selection.}
 
 \item{min_similarity}{Numeric. Minimum motifs PWM similarity threshold for considering DMRs are related (default: 0.8).}
 
