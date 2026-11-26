@@ -839,7 +839,8 @@
     # Create heatmap
     # Prepare data
     beta_data <- as.data.frame(beta_data)
-    beta_data[, "site"] <- rownames(beta_data)
+    site_col <- make.unique(c(colnames(beta_data), "site"))[ncol(beta_data) + 1L]
+    beta_data[[site_col]] <- rownames(beta_data)
     # When thinning groups, prioritize observed values at seeds, then fill
     # remaining slots by overall observed coverage. Missing cells stay missing.
     select_samples <- function(group_samples) {
@@ -848,7 +849,7 @@
         }
         sample_beta <- beta_data[, group_samples, drop = FALSE]
         finite_beta <- is.finite(as.matrix(sample_beta))
-        priority_rows <- match(seed_ids, beta_data$site)
+        priority_rows <- match(seed_ids, beta_data[[site_col]])
         priority_rows <- priority_rows[!is.na(priority_rows)]
         if (length(priority_rows) == 0L) {
             priority_rows <- seq_len(nrow(finite_beta))
@@ -904,18 +905,18 @@
         # if no sample grouping information is provided, limit to max_samples_per_group samples total for plotting
         if (ncol(beta_data) - 1 > max_samples_per_group) {
             .log_info("Limiting to ", max_samples_per_group, " samples for plotting. Original number of samples: ", ncol(beta_data) - 1)
-            sample_cols <- setdiff(colnames(beta_data), "site")
+            sample_cols <- setdiff(colnames(beta_data), site_col)
             selected_samples <- select_samples(sample_cols)
         }
     }
     if (!is.null(selected_samples)) {
-        beta_data <- beta_data[, c("site", selected_samples), drop = FALSE]
+        beta_data <- beta_data[, c(site_col, selected_samples), drop = FALSE]
         if (!is.null(pheno)) {
             pheno <- pheno[selected_samples, , drop = FALSE]
         }
     }
 
-    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id_vars = "site")))
+    beta_melted <- suppressWarnings(suppressMessages(reshape2::melt(beta_data, id.vars = site_col)))
     colnames(beta_melted) <- c("site", "Sample", "Beta")
     beta_melted$Position <- site_locs[as.character(beta_melted$site), "start"]
     beta_melted$is_seed <- is_seed[match(beta_melted$site, site_ids)]
@@ -1492,7 +1493,7 @@ plotDMR <- function(dmrs,
     if (!is.null(pheno)) {
         .log_info("Processing phenotype data...", level = 3)
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
         }
         if (!is.data.frame(pheno)) {
             stop("pheno must be a data frame or a valid file path to a phenotype table")

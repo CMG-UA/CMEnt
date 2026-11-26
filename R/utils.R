@@ -33,12 +33,14 @@
         return(seq.int(2L, length(beta_col_names)))
     }
 
-    structural_cols <- unique(tolower(c(
-        chrom_col, start_col,
-        "#chrom", "chrom", "chr", "start", "end", "stop",
-        "id", "name", "score", "strand"
-    )))
-    which(!(tolower(beta_col_names) %in% structural_cols))
+    # Recognize BED3 or a complete BED6 prefix; later columns are samples.
+    structural_ncol <- 3L
+    if (length(beta_col_names) >= 6L &&
+        tolower(beta_col_names[[4L]]) %in% c("id", "name") &&
+        all(tolower(beta_col_names[5:6]) == c("score", "strand"))) {
+        structural_ncol <- 6L
+    }
+    which(seq_along(beta_col_names) > structural_ncol)
 }
 
 .getBetaFileHeaderInfo <- function(beta_file,
@@ -1131,7 +1133,7 @@ genomicLocsFromBsseq <- function(input_bsseq, output_dir = NULL, hash = NULL,
         xc <- matrix(1, nrow = nrow(covariate_df), ncol = 1L)
         colnames(xc) <- "(Intercept)"
     } else {
-        xc <- stats::model.matrix(stats::reformulate(varying_covariates), data = covariate_df)
+        xc <- stats::model.matrix(stats::reformulate(.quoteNonSyntactic(varying_covariates)), data = covariate_df)
     }
     storage.mode(xc) <- "double"
     design_qr <- qr(xc)

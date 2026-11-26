@@ -245,6 +245,32 @@ test_that("covariate transformation residualizes nonsingular covariates", {
     )
 })
 
+test_that("covariate transformation preserves phenotype column names containing spaces", {
+    pheno <- data.frame(
+        "Biological sex" = c("F", "M", "F", "M", "F", "M"),
+        "Age (years)" = c(20, 30, 40, 50, 60, 70),
+        batch = c("A", "A", "B", "B", "A", "B"),
+        "Constant covariate" = rep("same", 6),
+        check.names = FALSE
+    )
+    covariates <- colnames(pheno)
+    beta <- matrix(seq(0.1, 0.9, length.out = 12), nrow = 2)
+
+    model <- CMEnt:::.prepareCovariateModel(pheno, covariates)
+    expected_matrix <- stats::model.matrix(~ `Biological sex` + `Age (years)` + batch, data = pheno)
+    expect_equal(model$covariate_matrix, expected_matrix)
+    expect_false(model$is_singular)
+    expect_identical(model$dropped_columns, "Constant covariate")
+    expect_identical(colnames(pheno), covariates)
+
+    syntactic_pheno <- pheno
+    colnames(syntactic_pheno) <- c("sex", "age", "batch", "constant")
+    expect_equal(
+        CMEnt:::.transformBeta(beta, pheno, covariates = covariates),
+        CMEnt:::.transformBeta(beta, syntactic_pheno, covariates = colnames(syntactic_pheno))
+    )
+})
+
 test_that("small pure utility helpers handle edge cases", {
     expect_equal(CMEnt:::.splitCsvValues(" a, ,b,NA "), c("a", "b", "NA"))
     expect_equal(CMEnt:::.splitCsvValues(NA_character_), character(0))

@@ -933,6 +933,10 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 if (is.null(beta_subset) || (!allow_missing && !is.null(row_names) && nrow(beta_subset) < nrow(qregions))) {
                     stop("Requested site sites not found in beta tabix file")
                 }
+                tabix_header_info <- .getBetaFileHeaderInfo(private$.tabix_file, is_tabix = TRUE)
+                # Keep sample columns distinct from BED fields and temporary join columns.
+                tabix_sample_cols <- sprintf(".CMEnt_sample_%d", seq_along(tabix_header_info$sample_col_inds))
+                colnames(beta_subset)[tabix_header_info$sample_col_inds] <- tabix_sample_cols
                 # Tabix queries operate on genomic ranges, which can return
                 # extra rows or a different order. Recover site identities, then
                 # restore the request order.
@@ -941,10 +945,11 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                 # https://github.com/cran/bedr/blob/ddf228e25c7ff2084246060a38cfc073ab56db33/R/tabix.R#L91
                 if (is.null(chr)) {
                     if ("id" %in% colnames(beta_subset) && all(unique(regions$name) %in% as.character(beta_subset$id))) {
-                        beta_subset$name <- as.character(beta_subset$id)
+                        beta_subset$.CMEnt_site_id <- as.character(beta_subset$id)
                     } else {
                         merge_on <- c("chr", "start")
                         regions_by_coord <- regions[!duplicated(regions[, merge_on, drop = FALSE]), c(merge_on, "name"), drop = FALSE]
+                        colnames(regions_by_coord)[ncol(regions_by_coord)] <- ".CMEnt_site_id"
                         beta_subset <- merge(
                             regions_by_coord,
                             beta_subset,
@@ -952,8 +957,8 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                             all.x = TRUE, all.y = FALSE
                         )
                     }
-                    if (anyDuplicated(beta_subset$name) > 0L) {
-                        duplicated_names <- unique(beta_subset$name[duplicated(beta_subset$name)])
+                    if (anyDuplicated(beta_subset$.CMEnt_site_id) > 0L) {
+                        duplicated_names <- unique(beta_subset$.CMEnt_site_id[duplicated(beta_subset$.CMEnt_site_id)])
                         stop(
                             "Beta tabix query returned duplicate row names: ",
                             paste(head(duplicated_names, 10), collapse = ", "),
@@ -961,16 +966,13 @@ BetaHandler <- R6::R6Class("BetaHandler", # nolint
                         )
                     }
                 }
-                rownames(beta_subset) <- beta_subset$name
+                rownames(beta_subset) <- if (is.null(chr)) beta_subset$.CMEnt_site_id else beta_subset$name
                 # order by input row_names if provided
                 if (!is.null(row_names)) {
                     beta_subset <- beta_subset[row_names, , drop = FALSE]
                 }
-                tabix_sample_cols <- .getBetaFileHeaderInfo(
-                    private$.tabix_file,
-                    is_tabix = TRUE
-                )$sample_col_names
                 beta_subset <- beta_subset[, tabix_sample_cols, drop = FALSE]
+                colnames(beta_subset) <- tabix_header_info$sample_col_names
                 beta_subset_rownames <- rownames(beta_subset)
                 beta_subset <- as.data.frame(
                     lapply(beta_subset, as.numeric),

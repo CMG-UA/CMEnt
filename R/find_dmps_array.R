@@ -127,6 +127,7 @@ findDMPsArray <- function(
         covariates = covariates
     )
     covariates <- attr(pheno, "covariates")
+    condition_col <- attr(pheno, "condition_col")
 
     chr <- .normalizeDMPsChromosomes(chr)
     beta_mat <- as.matrix(beta_handler$getBeta(chr = chr))
@@ -142,10 +143,10 @@ findDMPsArray <- function(
     # for this transform. Report the effect on the original beta scale below.
     eps <- 1e-6
     m_values <- log2(pmax(pmin(beta_mat, 1 - eps), eps) / (1 - pmax(pmin(beta_mat, 1 - eps), eps)))
-    condition <- pheno$condition
-    design_terms <- c("condition", .quoteNonSyntactic(covariates))
+    condition <- pheno[[condition_col]]
+    design_terms <- c(condition_col, .quoteNonSyntactic(covariates))
     design <- stats::model.matrix(stats::as.formula(paste("~", paste(design_terms, collapse = " + "))), data = pheno)
-    coef_name <- "conditioncase"
+    coef_name <- paste0(condition_col, "case")
     if (!coef_name %in% colnames(design)) {
         stop("Could not construct case/control contrast from the provided samplesheet.")
     }
@@ -260,16 +261,18 @@ findDMPsArray <- function(
 
     pheno <- pheno[match(sample_ids, pheno[[id_col]]), , drop = FALSE]
     rownames(pheno) <- pheno[[id_col]]
-    pheno$condition <- factor(
+    condition_col <- make.unique(c(colnames(pheno), "condition"))[ncol(pheno) + 1L]
+    pheno[[condition_col]] <- factor(
         pheno[[sample_group_col]] == case_group,
         levels = c(FALSE, TRUE),
         labels = c("control", "case")
     )
-    if (length(unique(pheno$condition)) < 2L) {
+    if (length(unique(pheno[[condition_col]])) < 2L) {
         stop("Condition has fewer than two levels after applying case_group; cannot fit contrast.")
     }
     attr(pheno, "case_group") <- case_group
     attr(pheno, "covariates") <- covariates
+    attr(pheno, "condition_col") <- condition_col
     pheno
 }
 
@@ -293,7 +296,7 @@ findDMPsArray <- function(
     if (is.null(x)) {
         return(NULL)
     }
-    ifelse(make.names(x) == x, x, paste0("`", x, "`"))
+    vapply(x, function(name) deparse1(as.name(name), backtick = TRUE), character(1), USE.NAMES = FALSE)
 }
 
 .normalizeDMPsChromosomes <- function(chr) {

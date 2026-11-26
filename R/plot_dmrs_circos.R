@@ -505,7 +505,7 @@
     if (show_beta_track) {
         sample_group_col <- .requireSampleGroupCol(sample_group_col, ".prepareCircosPlotState()")
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
         }
         if (!is.data.frame(pheno)) {
             stop("pheno must be a data frame or a valid file path to a phenotype table")
@@ -1795,7 +1795,7 @@ plotDMRsCircos <- function(
     if (show_beta_track) {
         sample_group_col <- .requireSampleGroupCol(sample_group_col, "plotDMRsCircos()")
         if (is.character(pheno) && length(pheno) == 1 && file.exists(pheno)) {
-            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE)
+            pheno <- read.table(pheno, header = TRUE, row.names = 1, sep = "\t", stringsAsFactors = FALSE, check.names = FALSE)
         }
         if (!is.data.frame(pheno)) {
             stop("pheno must be a data frame or a valid file path to a phenotype table")

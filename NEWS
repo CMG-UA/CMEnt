@@ -1,3 +1,15 @@
+CHANGES IN VERSION 1.1.1
+--------------------------
+BUG FIXES
+    o Allow for spaces, backticks and backslashes in phenotype covariates names.
+
+    o Allow for phenotype column called "condition" in the DMP calling helpers input (previously overwritten internally).
+    
+    o Allow for sample called "site" in the plot_dmrs heatmap plotter.
+
+    o Removed naming collision in tabix reader, that dropped ID, Name, SCORE and other BED field names.
+
+
 CHANGES IN VERSION 0.99.14
 --------------------------
 SIGNIFICANT USER-VISIBLE CHANGES

@@ -131,23 +131,16 @@ findDMPsBSSeq <- function(
 
     # Set control as the reference so positive delta beta consistently means
     # higher methylation in the selected case group.
-    pheno$condition <- factor(
+    condition_col <- make.unique(c(colnames(pheno), "condition"))[ncol(pheno) + 1L]
+    pheno[[condition_col]] <- factor(
         pheno[[sample_group_col]] == case_group,
         levels = c(FALSE, TRUE),
         labels = c("control", "case")
     )
-    if (length(unique(pheno$condition)) < 2) {
+    if (length(unique(pheno[[condition_col]])) < 2) {
         stop("Condition has fewer than two levels after applying case_group; cannot fit contrast.")
     }
-    covariates_formula <- covariates
-    if (!is.null(covariates_formula)) {
-        covariates_formula <- ifelse(
-            make.names(covariates_formula) == covariates_formula,
-            covariates_formula,
-            paste0("`", covariates_formula, "`")
-        )
-    }
-    formula <- as.formula(paste("~ condition", if (!is.null(covariates_formula)) paste("+", paste(covariates_formula, collapse = " + "))))
+    formula <- stats::reformulate(c(condition_col, .quoteNonSyntactic(covariates)))
 
     chr_in_bsseq <- unique(seqn)
     nworkers <- min(njobs, length(chr_in_bsseq))
@@ -172,7 +165,7 @@ findDMPsBSSeq <- function(
                     design = pheno,
                     formula = formula
                 )
-                DSS::DMLtest.multiFactor(fit, term = "condition")
+                DSS::DMLtest.multiFactor(fit, term = condition_col)
             }),
             error = function(e) {
                 stop(
@@ -183,8 +176,8 @@ findDMPsBSSeq <- function(
         )
         dml_chr <- as.data.frame(dml_chr)
 
-        case_idx <- pheno$condition == "case"
-        control_idx <- pheno$condition == "control"
+        case_idx <- pheno[[condition_col]] == "case"
+        control_idx <- pheno[[condition_col]] == "control"
         # Compute the reported case-minus-control effect from raw methylation
         # proportions; DSS supplies the fitted significance statistics.
         meth_chr <- bsseq::getMeth(bsseq_chr, type = "raw")
