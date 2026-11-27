@@ -2576,19 +2576,33 @@ plotAutoDMRsCircos <- function(dmrs,
         for (group in unique_groups) {
             group_samples <- rownames(pheno)[groups == group]
             if (length(group_samples) > max_num_samples_per_group) {
-                group_beta <- beta_data[, group_samples, drop = FALSE]
+                group_beta <- t(beta_data[, group_samples, drop = FALSE])
                 non_zero_cols <- apply(group_beta, 2, function(v) stats::var(v, na.rm = TRUE) != 0)
-                group_beta <- group_beta[, non_zero_cols, drop = FALSE]
-                group_beta <- t(group_beta)
-                pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
-                kmeans <- stats::kmeans(
-                    pcs,
-                    centers = max_num_samples_per_group,
-                    algorithm = "Lloyd",
-                    iter.max = 1000,
-                    nstart = 5
-                )
-                group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
+                if (!any(non_zero_cols)) {
+                    warning(
+                        "All sites have zero variance within sample group '", group,
+                        "'. Skipping PCA and using the first ", max_num_samples_per_group,
+                        " samples for the Circos heatmap.", call. = FALSE
+                    )
+                    group_samples <- head(group_samples, max_num_samples_per_group)
+                } else {
+                    if (any(!non_zero_cols)) {
+                        warning(
+                            "Excluding ", sum(!non_zero_cols), " zero-variance sites from PCA for sample group '",
+                            group, "'. These sites remain in the Circos heatmap.", call. = FALSE
+                        )
+                    }
+                    group_beta <- group_beta[, non_zero_cols, drop = FALSE]
+                    pcs <- stats::prcomp(group_beta, center = TRUE, scale. = TRUE, rank. = min(10, ncol(group_beta)))$x
+                    kmeans <- stats::kmeans(
+                        pcs,
+                        centers = max_num_samples_per_group,
+                        algorithm = "Lloyd",
+                        iter.max = 1000,
+                        nstart = 5
+                    )
+                    group_samples <- group_samples[.closest_rows_indices_to_centroids(pcs, kmeans$centers)]
+                }
             }
             reduced_pheno <- rbind(reduced_pheno, pheno[group_samples, , drop = FALSE])
             selected_samples <- c(selected_samples, group_samples)
